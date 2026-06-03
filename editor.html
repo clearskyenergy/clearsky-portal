@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+let mapMode<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
@@ -1149,7 +1149,7 @@ function loadBg(e){const f=e.target.files[0];if(!f)return;const r=new FileReader
 function dropBg(e){e.preventDefault();const f=e.dataTransfer.files[0];if(f&&f.type.startsWith('image/'))loadBg({target:{files:[f]}});}
 
 // ══ MAP MODE ════════════════════════════════════════════════
-let mapMode='google'; // 'google' | 'upload'
+='google'; // 'google' | 'upload'
 
 function setMapMode(mode){
   mapMode=mode;
@@ -2128,7 +2128,6 @@ function enableBESSAssemblyDrag() {
 // ════════════════════════════════════════════════════════════
 //  MAP MODE SWITCH
 // ════════════════════════════════════════════════════════════
-let mapMode = 'google';
 function setMapMode(mode) {
   mapMode = mode;
   const gmBtn = document.getElementById('btn-gmap');
