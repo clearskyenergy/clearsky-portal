@@ -1,0 +1,2247 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ClearSky Site Editor</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=IBM+Plex+Sans:wght@300;400;600;700&display=swap" rel="stylesheet">
+<style>
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=IBM+Plex+Sans:wght@300;400;600;700&display=swap');
+*{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --navy:#0B1E35;--blue:#1B4F8A;--sky:#2E86C1;--accent:#00D4FF;
+  --green:#1DB954;--amber:#F4A020;--red:#E53935;--purple:#7B2FBE;
+  --bg:#0D1B2A;--surface:#132338;--panel:#1A2E45;--border:#243B55;
+  --text:#E8F0FE;--sub:#8BA3C4;
+  --lw:270px;--th:52px;
+}
+body{font-family:'IBM Plex Sans',sans-serif;background:var(--bg);color:var(--text);height:100vh;display:flex;flex-direction:column;overflow:hidden}
+
+/* ── PORTAL NAV BAR ── */
+#portal-nav{height:38px;background:rgba(11,30,53,.95);border-bottom:1px solid rgba(255,255,255,.06);display:flex;align-items:center;padding:0 12px;gap:8px;flex-shrink:0;z-index:300}
+.pn-back{background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.12);color:rgba(255,255,255,.6);border-radius:5px;padding:3px 10px;cursor:pointer;font-size:10px;font-weight:600;font-family:inherit;text-decoration:none;display:flex;align-items:center;gap:4px}
+.pn-back:hover{background:rgba(255,255,255,.13);color:#fff}
+.pn-title{font-size:11px;font-weight:600;color:rgba(255,255,255,.5);flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pn-save-status{font-size:10px;color:var(--green);font-family:'IBM Plex Mono',monospace}
+.pn-save-status.saving{color:var(--amber)}
+.pn-save-status.error{color:var(--red)}
+.pn-btn{background:rgba(0,212,255,.15);border:1px solid rgba(0,212,255,.3);color:var(--accent);border-radius:5px;padding:3px 10px;cursor:pointer;font-size:10px;font-weight:700;font-family:inherit}
+.pn-btn:hover{background:rgba(0,212,255,.25)}
+.pn-btn-save{background:rgba(29,185,84,.15);border:1px solid rgba(29,185,84,.3);color:var(--green);border-radius:5px;padding:3px 12px;cursor:pointer;font-size:10px;font-weight:700;font-family:inherit}
+.pn-btn-save:hover{background:rgba(29,185,84,.25)}
+
+/* ── TOP BAR ── */
+#tb{height:var(--th);background:var(--navy);border-bottom:1px solid var(--border);display:flex;align-items:center;padding:0 12px;gap:8px;flex-shrink:0;z-index:200}
+.logo{display:flex;align-items:center;gap:8px;margin-right:4px}
+.logo svg{height:26px}
+.logo-t{color:var(--text);font-size:15px;font-weight:700;letter-spacing:.5px}
+.logo-t span{color:var(--accent)}
+#pname{background:transparent;border:1px solid var(--border);color:var(--text);padding:4px 10px;border-radius:5px;font-size:12px;width:200px;font-family:inherit}
+.sp{flex:1}
+.btn{border:none;padding:5px 11px;border-radius:5px;cursor:pointer;font-size:11px;font-weight:600;display:flex;align-items:center;gap:4px;font-family:inherit;transition:all .12s;white-space:nowrap}
+.btn-ghost{background:rgba(255,255,255,.07);color:var(--text)}
+.btn-ghost:hover{background:rgba(255,255,255,.14)}
+.btn-sel{background:rgba(46,134,193,.4)!important}
+.btn-cond{background:rgba(244,160,32,.4)!important}
+.btn-cal{background:rgba(0,212,255,.25)!important;color:var(--accent)!important}
+.btn-pri{background:var(--sky);color:#fff}
+.btn-pri:hover{background:var(--blue)}
+.btn-green{background:var(--green);color:#fff}
+.btn-sep{width:1px;height:28px;background:var(--border);margin:0 2px}
+
+/* ── LAYOUT ── */
+#ws{display:flex;flex:1;overflow:hidden}
+
+/* ── LEFT PANEL ── */
+#lp{width:var(--lw);background:var(--panel);border-right:1px solid var(--border);display:flex;flex-direction:column;overflow:hidden;flex-shrink:0}
+.sec{border-bottom:1px solid var(--border);padding:10px}
+.sec-h{font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:var(--sub);margin-bottom:8px;display:flex;align-items:center;justify-content:space-between}
+.sec-h button{background:var(--sky);color:#fff;border:none;border-radius:3px;padding:2px 7px;font-size:9px;cursor:pointer;font-family:inherit;font-weight:700}
+
+/* Address search */
+#addr-row{display:flex;gap:4px}
+#addr-in{flex:1;background:var(--surface);border:1px solid var(--border);color:var(--text);padding:5px 8px;border-radius:5px;font-size:11px;font-family:inherit}
+#addr-in::placeholder{color:var(--sub)}
+#addr-btn{background:var(--sky);color:#fff;border:none;border-radius:5px;padding:5px 10px;cursor:pointer;font-size:11px;font-weight:700;font-family:inherit}
+
+/* Upload / map area */
+#map-area{position:relative;height:130px;background:var(--surface);border-radius:6px;overflow:hidden;cursor:pointer;border:2px dashed var(--border);display:flex;align-items:center;justify-content:center;flex-direction:column;gap:4px}
+#map-area.hasimg{border-style:solid}
+#map-area p{font-size:10px;color:var(--sub);text-align:center;padding:0 10px}
+#map-img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;display:none}
+#map-area input[type=file]{display:none}
+.map-tools{display:flex;gap:4px;margin-top:5px}
+.map-tools button,.map-tools select{background:var(--surface);border:1px solid var(--border);color:var(--text);padding:3px 7px;border-radius:4px;cursor:pointer;font-size:10px;font-family:inherit}
+
+/* BESS Wizard Checklist */
+#wizard-list{max-height:190px;overflow-y:auto}
+.wiz-item{display:flex;align-items:center;gap:7px;padding:5px 6px;border-radius:5px;margin-bottom:2px;cursor:pointer;transition:background .1s;font-size:11px}
+.wiz-item:hover{background:rgba(255,255,255,.05)}
+.wiz-item.done .wi-num{background:var(--green);color:#fff}
+.wiz-item.active .wi-num{background:var(--accent);color:var(--navy)}
+.wi-num{width:20px;height:20px;border-radius:50%;background:var(--border);display:flex;align-items:center;justify-content:center;font-size:9px;font-weight:700;flex-shrink:0;font-family:'IBM Plex Mono',monospace}
+.wi-lbl{flex:1;color:var(--text)}
+.wi-sub{font-size:9px;color:var(--sub)}
+.wi-check{color:var(--green);font-size:12px}
+#place-btn{width:100%;padding:7px;background:var(--accent);color:var(--navy);border:none;border-radius:6px;cursor:pointer;font-weight:700;font-size:12px;margin-top:6px;font-family:inherit;transition:all .12s}
+#place-btn:hover{background:#00f0ff}
+#place-btn:disabled{background:var(--border);color:var(--sub);cursor:not-allowed}
+
+/* Equipment drag palette */
+#eq-grid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:4px;max-height:200px;overflow-y:auto}
+.eqi{background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:6px 3px;cursor:grab;text-align:center;transition:all .12s;user-select:none}
+.eqi:hover{border-color:var(--sky);transform:scale(1.04)}
+.eqi.dragging{opacity:.5}
+.eqi svg{display:block;margin:0 auto 2px}
+.eqi-l{font-size:8.5px;color:var(--sub);font-weight:600;line-height:1.2}
+
+/* Conduit types */
+.ct-row{display:flex;align-items:center;gap:6px;margin-bottom:5px}
+.ct-sw{width:16px;height:8px;border-radius:2px;flex-shrink:0}
+.ct-l{font-size:10px;flex:1;color:var(--text)}
+.ct-r input{accent-color:var(--accent)}
+
+/* Props */
+#pp{padding:10px;flex:1;overflow-y:auto;min-height:0}
+#ns{font-size:11px;color:var(--sub);text-align:center;padding:12px 0}
+.pr{margin-bottom:7px}
+.pr label{display:block;font-size:9px;color:var(--sub);margin-bottom:2px;font-weight:700;text-transform:uppercase;letter-spacing:.5px}
+.pr input,.pr select,.pr textarea{width:100%;background:var(--surface);border:1px solid var(--border);color:var(--text);border-radius:4px;padding:4px 7px;font-size:11px;font-family:inherit}
+.pr textarea{resize:vertical;min-height:40px}
+.pr input:focus,.pr select:focus{outline:none;border-color:var(--sky)}
+#del-btn{width:100%;padding:6px;background:rgba(229,57,53,.15);color:var(--red);border:1px solid rgba(229,57,53,.3);border-radius:5px;cursor:pointer;font-weight:700;font-size:11px;margin-top:4px;font-family:inherit}
+
+/* ── CANVAS ── */
+#cw{flex:1;position:relative;overflow:hidden;background:var(--bg)}
+#cw-grid{position:absolute;inset:0;background-image:radial-gradient(circle,#243B55 1px,transparent 1px);background-size:20px 20px;pointer-events:none}
+#sc{position:absolute;top:0;left:0;width:100%;height:100%}
+#backdrop{position:absolute;top:0;left:0;width:100%;height:100%;object-fit:cover;transform-origin:center;pointer-events:none;display:none}
+#els{position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none}
+#csvg{position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none;overflow:visible}
+#cov{position:absolute;inset:0;display:none;cursor:crosshair;z-index:50}
+#cov.on{display:block}
+#snapring{position:absolute;border-radius:50%;border:2px solid var(--accent);background:rgba(0,212,255,.12);pointer-events:none;display:none;z-index:60;transform:translate(-50%,-50%);width:26px;height:26px}
+
+/* Canvas elements */
+.cel{position:absolute;pointer-events:auto;z-index:10}
+.cel.sel .elbody{outline:2px solid var(--accent);outline-offset:2px}
+
+/* Resize/rotate/delete handles */
+.h-del{position:absolute;top:-11px;right:-11px;width:20px;height:20px;background:var(--red);border-radius:50%;cursor:pointer;display:none;align-items:center;justify-content:center;color:#fff;font-size:13px;font-weight:900;z-index:22;pointer-events:auto}
+.h-rot{position:absolute;top:-11px;left:-11px;width:20px;height:20px;background:var(--amber);border-radius:50%;cursor:grab;display:none;align-items:center;justify-content:center;color:#fff;font-size:11px;z-index:22;pointer-events:auto}
+.h-se{position:absolute;bottom:-6px;right:-6px;width:12px;height:12px;background:var(--sky);border-radius:2px;cursor:se-resize;display:none;z-index:22;pointer-events:auto}
+.h-sw{position:absolute;bottom:-6px;left:-6px;width:12px;height:12px;background:var(--sky);border-radius:2px;cursor:sw-resize;display:none;z-index:22;pointer-events:auto}
+.h-ne{position:absolute;top:-6px;right:-6px;width:12px;height:12px;background:var(--sky);border-radius:2px;cursor:ne-resize;display:none;z-index:22;pointer-events:auto}
+.h-nw{position:absolute;top:-6px;left:-6px;width:12px;height:12px;background:var(--sky);border-radius:2px;cursor:nw-resize;display:none;z-index:22;pointer-events:auto}
+.cel.sel .h-del,.cel.sel .h-rot,.cel.sel .h-se,.cel.sel .h-sw,.cel.sel .h-ne,.cel.sel .h-nw{display:flex}
+
+.eq-node{text-align:center;display:inline-block;cursor:move}
+.nd-lbl{font-size:10px;font-weight:700;color:#fff;margin-top:3px;background:rgba(0,0,0,.55);border-radius:3px;padding:1px 5px;display:inline-block;max-width:110px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.nd-spec{font-size:9px;color:rgba(255,255,255,.8);background:rgba(0,0,0,.45);border-radius:3px;padding:1px 4px;margin-top:1px;display:inline-block;white-space:nowrap}
+
+/* Text / callout */
+.txt-el{background:rgba(255,255,255,.92);border:1.5px solid #CBD5E1;border-radius:5px;padding:6px 10px;min-width:80px;min-height:28px;font-size:12px;font-weight:600;color:#1E293B;cursor:move;display:inline-block}
+/* Enhanced callout - box body, arrow handled separately in SVG */
+.callout-el{position:relative;background:rgba(255,255,0,.92);border:1.5px solid #B8860B;border-radius:5px;padding:6px 10px;min-width:80px;font-size:11px;font-weight:700;color:#1a1a00;cursor:move;display:inline-block}
+
+/* ── CALLOUT ARROW SVG overlay ── */
+.callout-arrow{position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none;overflow:visible;z-index:11}
+.ca-line{stroke:#B8860B;stroke-width:2.5;stroke-linecap:round;fill:none}
+.ca-head{fill:#B8860B;cursor:pointer;pointer-events:all}
+.ca-tail{fill:rgba(184,134,11,.3);cursor:pointer;pointer-events:all;stroke:#B8860B;stroke-width:1.5}
+
+/* Logo */
+.logo-el img{display:block;width:100%;height:auto;border-radius:3px}
+
+/* Banner */
+#banner{position:absolute;top:10px;left:50%;transform:translateX(-50%);display:none;padding:7px 18px;border-radius:20px;font-size:11px;font-weight:700;z-index:100;pointer-events:none;white-space:nowrap;font-family:'IBM Plex Mono',monospace}
+#banner.cond{background:rgba(244,160,32,.93);color:#fff}
+#banner.cal{background:rgba(0,212,255,.93);color:var(--navy)}
+#banner.wiz{background:rgba(27,185,84,.93);color:#fff}
+
+/* Scale ruler */
+#ruler{position:absolute;bottom:46px;left:50%;transform:translateX(-50%);display:none;background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.25);border-radius:7px;padding:5px 12px;z-index:30;pointer-events:none;backdrop-filter:blur(6px)}
+#ruler-bar{height:3px;background:var(--accent);border-radius:2px;position:relative}
+#ruler-bar::before,#ruler-bar::after{content:'';position:absolute;top:-4px;width:2px;height:11px;background:var(--accent);border-radius:1px}
+#ruler-bar::before{left:0}#ruler-bar::after{right:0}
+#ruler-lbl{font-size:10px;font-weight:700;color:var(--accent);margin-top:3px;text-align:center;font-family:'IBM Plex Mono',monospace}
+
+/* Legend */
+#lgd{position:absolute;bottom:14px;right:14px;background:rgba(13,27,42,.93);border:1px solid var(--border);border-radius:9px;padding:10px 12px;min-width:155px;z-index:30;pointer-events:none;backdrop-filter:blur(6px)}
+#lgd h4{font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:var(--sub);margin-bottom:7px}
+.li{display:flex;align-items:center;gap:6px;margin-bottom:4px;font-size:10px}
+.li-ico{width:18px;height:18px;flex-shrink:0;display:flex;align-items:center;justify-content:center}
+.li-line{width:20px;height:3px;border-radius:1px;flex-shrink:0}
+.li-txt{color:var(--text);font-weight:600}
+
+/* Zoom controls */
+#zc{position:absolute;bottom:14px;left:14px;display:flex;flex-direction:column;gap:3px;z-index:30}
+#zc button{width:28px;height:28px;background:rgba(255,255,255,.1);border:1px solid var(--border);border-radius:5px;cursor:pointer;font-size:14px;font-weight:700;color:var(--text);backdrop-filter:blur(4px)}
+#zpct{text-align:center;font-size:9px;color:var(--accent);font-weight:700;font-family:'IBM Plex Mono',monospace}
+
+/* Calibration overlay */
+#cal-ov{position:absolute;inset:0;display:none;cursor:crosshair;z-index:200}
+#cal-svg{position:absolute;inset:0;width:100%;height:100%;pointer-events:none}
+#cal-modal{position:absolute;inset:0;background:rgba(0,0,0,.6);display:none;align-items:center;justify-content:center;z-index:300}
+.cal-box{background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:22px;width:340px}
+.cal-box h3{font-size:14px;font-weight:700;margin-bottom:10px;color:var(--text)}
+.cal-box p{font-size:11px;color:var(--sub);margin-bottom:14px}
+.cal-row{display:flex;gap:6px;margin-bottom:14px;align-items:center}
+.cal-row input{flex:1;background:var(--surface);border:1.5px solid var(--sky);color:var(--text);border-radius:6px;padding:7px 10px;font-size:15px;font-weight:700;font-family:'IBM Plex Mono',monospace}
+.cal-row select{background:var(--surface);border:1px solid var(--border);color:var(--text);border-radius:6px;padding:7px 8px;font-size:12px;font-family:inherit}
+.cal-btns{display:flex;gap:6px;justify-content:flex-end}
+.cal-btns button{padding:6px 14px;border-radius:5px;border:none;cursor:pointer;font-size:12px;font-weight:700;font-family:inherit}
+
+/* BOTTOM BAR */
+#bb{height:30px;background:var(--navy);border-top:1px solid var(--border);display:flex;align-items:center;padding:0 12px;gap:12px;font-size:10px;color:var(--sub);flex-shrink:0;font-family:'IBM Plex Mono',monospace}
+#bb strong{color:var(--accent)}
+#bb .s{opacity:.3;margin:0 2px}
+#bb button{background:rgba(0,212,255,.15);border:1px solid rgba(0,212,255,.3);color:var(--accent);border-radius:3px;padding:1px 6px;cursor:pointer;font-size:9px;font-family:inherit;font-weight:700}
+
+/* SHEET TABS */
+#tabs{display:flex;gap:2px;padding:0 12px;background:var(--navy);border-bottom:1px solid var(--border);flex-shrink:0}
+.tab{padding:5px 14px;font-size:11px;font-weight:600;cursor:pointer;border-bottom:2px solid transparent;color:var(--sub);transition:all .12s}
+.tab.on{color:var(--accent);border-bottom-color:var(--accent)}
+
+/* SLD SHEET */
+#sld-sheet{display:none;flex:1;overflow:hidden;position:relative;background:var(--bg)}
+#sld-canvas{position:absolute;inset:0}
+#sld-els{position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none}
+#sld-svg{position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none;overflow:visible}
+
+/* BESS ASSEMBLY */
+.bess-asm{display:inline-block;cursor:move}
+
+/* Modals */
+.modal-bg{position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:500;display:none;align-items:center;justify-content:center}
+.modal-bg.on{display:flex}
+.modal{background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:22px;width:420px;max-width:95vw;max-height:85vh;overflow-y:auto}
+.modal h3{font-size:15px;font-weight:700;margin-bottom:14px;color:var(--text)}
+.mrow{margin-bottom:10px}
+.mrow label{display:block;font-size:10px;color:var(--sub);margin-bottom:3px;font-weight:700;text-transform:uppercase;letter-spacing:.5px}
+.mrow input,.mrow select{width:100%;background:var(--surface);border:1px solid var(--border);color:var(--text);border-radius:5px;padding:6px 9px;font-size:12px;font-family:inherit}
+.mrow input:focus,.mrow select:focus{outline:none;border-color:var(--sky)}
+.mbtns{display:flex;gap:7px;justify-content:flex-end;margin-top:14px}
+.mbtns button{padding:7px 16px;border-radius:5px;border:none;cursor:pointer;font-size:12px;font-weight:700;font-family:inherit}
+.mb-c{background:var(--surface);color:var(--sub)}
+.mb-s{background:var(--sky);color:#fff}
+
+/* Google Maps live iframe */
+#gmap-wrap{position:absolute;top:0;left:0;width:100%;height:100%;z-index:0;pointer-events:none;display:none}
+#gmap-frame{width:100%;height:100%;border:none;pointer-events:auto}
+#gmap-block{position:absolute;inset:0;display:none;z-index:2;background:transparent}
+
+/* Drag ghost */
+.drag-ghost{position:fixed;pointer-events:none;z-index:9999;opacity:.75;transform:translate(-50%,-50%)}
+
+@media print{
+  *{-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important}
+  html,body{width:100%!important;height:100%!important;overflow:visible!important}
+  #portal-nav,#tb,#lp,#bb,#tabs,#banner,#cov,#snapring,#zc,#cal-ov,#cal-modal,#ruler,#lock-btn,#gmap-status{display:none!important}
+  #ws{display:block!important;height:100vh!important}
+  #cw{position:fixed!important;inset:0!important;background:#fff!important}
+  #cw-grid{display:none!important}
+  #sc{position:absolute!important;inset:0!important}
+  #gmap-wrap{display:block!important;position:absolute!important;inset:0!important}
+  #gmap-frame{pointer-events:none!important}
+  #gmap-block{display:none!important}
+  #backdrop{display:block!important}
+  #lgd{display:block!important;visibility:visible!important;opacity:1!important;background:#fff!important;border:1.5px solid #64748B!important;position:absolute!important;bottom:16px!important;right:16px!important}
+  #lgd h4,#lgd .li-txt{color:#1E293B!important}
+  .h-del,.h-rot,.h-se,.h-sw,.h-ne,.h-nw{display:none!important}
+  .callout-arrow{display:block!important}
+}
+</style>
+</head>
+<body>
+
+<!-- PORTAL NAV -->
+<div id="portal-nav">
+  <a href="/" class="pn-back">← Portal</a>
+  <span class="pn-title" id="pn-title">Loading project…</span>
+  <span class="pn-save-status" id="save-status"></span>
+  <button class="pn-btn-save" onclick="saveProject()">💾 Save</button>
+  <button class="pn-btn" onclick="exportProjectJSON()">⬇ Export</button>
+</div>
+
+<!-- TOP BAR -->
+<div id="tb">
+  <div class="logo">
+    <svg viewBox="0 0 80 50" xmlns="http://www.w3.org/2000/svg">
+      <ellipse cx="25" cy="32" rx="18" ry="14" fill="#7B9FD4" opacity=".7"/>
+      <ellipse cx="40" cy="26" rx="20" ry="16" fill="#3A86C8" opacity=".85"/>
+      <ellipse cx="57" cy="30" rx="16" ry="13" fill="#00C2FF" opacity=".8"/>
+      <ellipse cx="32" cy="22" rx="14" ry="12" fill="#8B9FD8" opacity=".65"/>
+    </svg>
+    <span class="logo-t">Clear<span>Sky</span> <span style="font-size:10px;opacity:.5;font-weight:400">Site Pro</span></span>
+  </div>
+  <input id="pname" type="text" placeholder="Project name…" oninput="onNameChange()">
+  <div class="sp"></div>
+  <button class="btn btn-ghost btn-sel" id="btn-sel" onclick="setMode('select')">⬡ Select</button>
+  <button class="btn btn-ghost" id="btn-cond" onclick="setMode('conduit')">⚡ Conduit</button>
+  <button class="btn btn-ghost" onclick="addTextBox()">T Text</button>
+  <button class="btn btn-ghost" onclick="addCallout()">💬 Callout</button>
+  <div class="btn-sep"></div>
+  <button class="btn btn-ghost" onclick="undoLast()">↩ Undo</button>
+  <button class="btn btn-ghost" onclick="clearAll()">🗑 Clear</button>
+  <div class="btn-sep"></div>
+  <button class="btn btn-pri" onclick="window.print()">🖨 Print</button>
+  <button class="btn btn-green" onclick="saveProject()">💾 Save</button>
+</div>
+
+<div id="tabs">
+  <div class="tab on" onclick="switchTab('site')">📍 Site Map</div>
+  <div class="tab" onclick="switchTab('sld')">⚡ One-Line Diagram</div>
+</div>
+
+<div id="ws">
+<div id="lp">
+
+  <!-- Address / Satellite -->
+  <div class="sec">
+    <div class="sec-h">Satellite Photo</div>
+    <div id="addr-row">
+      <input id="addr-in" type="text" placeholder="Enter address or place…" onkeydown="if(event.key==='Enter')fetchMap()">
+      <button id="addr-btn" onclick="fetchMap()">Go</button>
+    </div>
+    <div style="display:flex;gap:4px;margin-top:6px">
+      <button id="btn-gmap" onclick="setMapMode('google')" style="flex:1;padding:4px;border-radius:4px;border:1px solid var(--sky);background:rgba(58,134,200,.3);color:var(--text);cursor:pointer;font-size:10px;font-weight:700">🗺 Google Maps</button>
+      <button id="btn-upload" onclick="setMapMode('upload')" style="flex:1;padding:4px;border-radius:4px;border:1px solid var(--border);background:var(--surface);color:var(--sub);cursor:pointer;font-size:10px">📷 Upload Photo</button>
+    </div>
+    <div id="gmap-controls" style="margin-top:6px">
+      <div style="font-size:9px;color:var(--sub);margin-bottom:4px">Live satellite imagery — uses your Google Maps API key</div>
+      <div style="display:flex;gap:4px;align-items:center">
+        <span style="font-size:9px;color:var(--sub)">🛰 Zoom:</span>
+        <select id="map-zoom" style="flex:1;background:var(--surface);border:1px solid var(--border);color:var(--text);padding:2px 5px;border-radius:3px;font-size:10px;font-family:inherit">
+          <option value="16">16 – Wide area</option>
+          <option value="17">17 – Neighborhood</option>
+          <option value="18" selected>18 – Parcel / Site ✓</option>
+          <option value="19">19 – Roof detail</option>
+          <option value="20">20 – Maximum</option>
+        </select>
+      </div>
+      <div style="margin-top:5px">
+        <button id="lock-btn" onclick="toggleMapLock()" style="width:100%;background:var(--surface);border:1px solid var(--border);color:var(--sub);padding:4px;border-radius:4px;cursor:pointer;font-size:10px;display:none">🔓 Unlock map</button>
+      </div>
+      <div id="gmap-status" style="font-size:9px;color:var(--sub);margin-top:4px;min-height:14px"></div>
+    </div>
+    <div id="upload-controls" style="display:none;margin-top:6px">
+      <div id="map-area" onclick="document.getElementById('fbg').click()" ondragover="ev=>{ev.preventDefault();this.style.borderColor='#00D4FF'}" ondragleave="ev=>{this.style.borderColor=''}" ondrop="dropBg(event)">
+        <img id="map-img">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="var(--sky)" stroke-width="1.5"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+        <p id="map-hint">Drop or click to upload aerial photo</p>
+      </div>
+      <input id="fbg" type="file" accept="image/*" onchange="loadBg(event)" style="display:none">
+      <div class="map-tools" style="margin-top:5px">
+        <button onclick="zoomBg(0.15)">+</button>
+        <button onclick="zoomBg(-0.15)">−</button>
+        <button onclick="resetBgZoom()">↺</button>
+        <button onclick="BG.rot=(BG.rot+90)%360;applyBg()">+90°</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- BESS Wizard -->
+  <div class="sec">
+    <div class="sec-h">BESS Wizard <button onclick="openBessModal(null)">+ Config</button></div>
+    <div id="wizard-list"></div>
+    <button id="place-btn" disabled onclick="placeNextWizardItem()">▶ Place Next Item</button>
+    <div id="bess-list" style="margin-top:6px;max-height:100px;overflow-y:auto"></div>
+  </div>
+
+  <!-- Equipment Library - Drag to Canvas -->
+  <div class="sec">
+    <div class="sec-h">Equipment — drag to canvas</div>
+    <div id="eq-grid"></div>
+  </div>
+
+  <!-- Conduit Type -->
+  <div class="sec">
+    <div class="sec-h">Active Conduit</div>
+    <div id="ctypes"></div>
+  </div>
+
+  <!-- Import Logo -->
+  <div class="sec">
+    <div class="sec-h">Import Logo / Image</div>
+    <div style="border:2px dashed var(--border);border-radius:6px;padding:8px;text-align:center;cursor:pointer;font-size:10px;color:var(--sub);background:var(--surface)" onclick="document.getElementById('flogo').click()" ondrop="dropLogo(event)" ondragover="ev=>ev.preventDefault()">↑ Drop PNG / SVG / JPG</div>
+    <input id="flogo" type="file" accept="image/*,.svg" style="display:none" onchange="loadLogo(event)">
+  </div>
+
+  <!-- Selected Element Properties -->
+  <div style="padding:8px 10px 3px;font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:var(--sub)">Selected Element</div>
+  <div id="pp">
+    <div id="ns">Click an element to edit</div>
+    <div id="pf" style="display:none">
+      <div class="pr"><label>Label</label><input id="p-lbl" oninput="uP('label',this.value)"></div>
+      <div class="pr"><label>Spec / Nameplate</label><textarea id="p-spec" oninput="uP('spec',this.value)"></textarea></div>
+      <div class="pr"><label>Width (px)</label><input type="number" id="p-w" min="20" max="600" oninput="uP('w',this.value)"></div>
+      <div class="pr"><label>Rotate (°)</label><input type="number" id="p-rot" min="-180" max="180" oninput="uP('rot',this.value)"></div>
+      <div class="pr" id="pr-color" style="display:none"><label>BG Color</label><input type="color" id="p-color" oninput="uP('color',this.value)"></div>
+      <button id="del-btn" onclick="delSel()">🗑 Delete Element</button>
+    </div>
+  </div>
+
+</div><!-- /lp -->
+
+<!-- SITE MAP CANVAS -->
+<div id="cw" style="display:flex;flex-direction:column;flex:1">
+  <div id="sc">
+    <div id="cw-grid"></div>
+    <!-- Google Maps live layer -->
+    <div id="gmap-wrap">
+      <iframe id="gmap-frame" referrerpolicy="no-referrer-when-downgrade" allowfullscreen></iframe>
+      <div id="gmap-block"></div>
+    </div>
+    <img id="backdrop">
+    <div id="els"></div>
+    <!-- Callout arrow SVG layer (above elements) -->
+    <svg id="arrow-svg" style="position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none;overflow:visible;z-index:15"></svg>
+    <svg id="csvg" xmlns="http://www.w3.org/2000/svg"></svg>
+    <div id="cov" onclick="covClick(event)" onmousemove="covMove(event)"></div>
+    <div id="snapring"></div>
+    <div id="banner"></div>
+    <div id="ruler"><div id="ruler-bar" style="width:100px"></div><div id="ruler-lbl">100 ft</div></div>
+    <div id="lgd"><h4>Legend</h4><div id="lgd-items"></div></div>
+    <div id="zc">
+      <button onclick="zoomBg(0.15)">+</button>
+      <button onclick="zoomBg(-0.15)">−</button>
+      <button onclick="resetBgZoom()" style="font-size:9px">RST</button>
+      <div id="zpct">100%</div>
+    </div>
+    <!-- Calibration overlay -->
+    <div id="cal-ov" onclick="calClick(event)" onmousemove="calMoveEv(event)">
+      <svg id="cal-svg">
+        <line id="cal-ln" display="none" stroke="var(--accent)" stroke-width="2.5" stroke-dasharray="8 4" stroke-linecap="round"/>
+        <circle id="cal-d1" display="none" r="6" fill="var(--accent)" stroke="#fff" stroke-width="2"/>
+        <circle id="cal-d2" display="none" r="6" fill="var(--accent)" stroke="#fff" stroke-width="2"/>
+        <text id="cal-tx" display="none" fill="var(--accent)" font-size="11" font-weight="700" text-anchor="middle"></text>
+      </svg>
+    </div>
+    <div id="cal-modal">
+      <div class="cal-box">
+        <h3>📏 Set Real-World Scale</h3>
+        <p>You drew a <strong id="cal-px">—</strong> pixel reference line. Enter actual length:</p>
+        <div class="cal-row">
+          <input type="number" id="cal-ft" placeholder="e.g. 50" min="0.1" step="0.5">
+          <select id="cal-unit"><option value="ft">Feet</option><option value="m">Meters</option><option value="yd">Yards</option></select>
+        </div>
+        <div class="cal-btns">
+          <button style="background:var(--surface);color:var(--sub)" onclick="cancelCal()">Cancel</button>
+          <button style="background:var(--accent);color:var(--navy)" onclick="confirmCal()">Set Scale ✓</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div><!-- /cw -->
+
+<!-- SLD SHEET -->
+<div id="sld-sheet">
+  <div id="sld-canvas">
+    <div style="position:absolute;inset:0;background-image:radial-gradient(circle,#243B55 1px,transparent 1px);background-size:20px 20px;pointer-events:none"></div>
+    <div id="sld-els"></div>
+    <svg id="sld-svg" xmlns="http://www.w3.org/2000/svg"></svg>
+    <div style="position:absolute;top:14px;left:14px;background:rgba(13,27,42,.9);border:1px solid var(--border);border-radius:8px;padding:10px 14px;font-size:11px;color:var(--sub)">
+      <strong style="color:var(--accent)">One-Line Diagram Sheet</strong><br>
+      <button onclick="placeSLDElement('bess-sld')" style="margin-top:6px;background:var(--blue);color:#fff;border:none;border-radius:4px;padding:4px 10px;cursor:pointer;font-size:10px;margin-right:4px">+ BESS Block</button>
+      <button onclick="placeSLDElement('inv-sld')" style="background:var(--green);color:#fff;border:none;border-radius:4px;padding:4px 10px;cursor:pointer;font-size:10px;margin-right:4px">+ Inverter</button>
+      <button onclick="placeSLDElement('xfmr-sld')" style="background:var(--purple);color:#fff;border:none;border-radius:4px;padding:4px 10px;cursor:pointer;font-size:10px;margin-right:4px">+ Transformer</button>
+      <button onclick="placeSLDElement('disco-sld')" style="background:var(--red);color:#fff;border:none;border-radius:4px;padding:4px 10px;cursor:pointer;font-size:10px;margin-right:4px">+ Disconnect</button>
+      <button onclick="placeSLDElement('panel-sld')" style="background:var(--amber);color:#000;border:none;border-radius:4px;padding:4px 10px;cursor:pointer;font-size:10px;margin-right:4px">+ Panelboard</button>
+      <button onclick="placeSLDElement('meter-sld')" style="background:var(--sky);color:#fff;border:none;border-radius:4px;padding:4px 10px;cursor:pointer;font-size:10px">+ Meter</button>
+    </div>
+  </div>
+</div>
+
+</div><!-- /ws -->
+
+<div id="bb">
+  <span>Mode: <strong id="mlbl">Select</strong></span>
+  <span class="s">|</span>
+  <span>Elements: <strong id="elcnt">0</strong></span>
+  <span class="s">|</span>
+  <span>Conduits: <strong id="ccnt">0</strong></span>
+  <span class="s">|</span>
+  <span id="sc-wrap">Scale: <strong id="sc-lbl">Not calibrated</strong><button onclick="startCal()">📏 Calibrate</button><button id="clr-sc" onclick="clearScale()" style="display:none;background:rgba(229,57,53,.2);border-color:rgba(229,57,53,.3);color:var(--red)">✕</button></span>
+  <span class="s">|</span>
+  <span>Total conduit: <strong id="tot-c">—</strong></span>
+  <div style="flex:1"></div>
+  <span style="color:rgba(255,255,255,.15)">ClearSky Site Pro v4.0</span>
+</div>
+
+<!-- BESS Config Modal -->
+<div class="modal-bg" id="bess-modal">
+  <div class="modal">
+    <h3 id="bm-title">Configure BESS Unit</h3>
+    <div class="mrow"><label>Unit Name</label><input id="bm-name" placeholder="BESS-01 · Great Power MAX-20HC-5000"></div>
+    <div class="mrow"><label>Manufacturer</label><input id="bm-mfr" value="Great Power"></div>
+    <div class="mrow"><label>Model Number</label><input id="bm-model" value="MAX-20HC-5000"></div>
+    <div class="mrow"><label>Battery Chemistry</label>
+      <select id="bm-chem">
+        <option value="LFP">LFP – Lithium Iron Phosphate (LiFePO₄)</option>
+        <option value="NMC">NMC – Lithium Nickel Manganese Cobalt</option>
+        <option value="LTO">LTO – Lithium Titanate</option>
+        <option value="NaS">NaS – Sodium-Sulfur</option>
+        <option value="VRFB">VRFB – Vanadium Redox Flow</option>
+        <option value="Lead-Acid">Lead-Acid (VRLA)</option>
+      </select>
+    </div>
+    <div class="mrow"><label>Energy Capacity (kWh)</label><input id="bm-kwh" type="number" value="5000"></div>
+    <div class="mrow"><label>Power Rating (kW)</label><input id="bm-kw" type="number" value="802"></div>
+    <div class="mrow"><label>DC Voltage (V)</label><input id="bm-dcv" type="number" value="1331.2"></div>
+    <div class="mrow"><label>AC Voltage (V)</label><input id="bm-acv" type="number" value="480"></div>
+    <div class="mrow"><label>Inverter Manufacturer / Model</label><input id="bm-inv" value="Dynapower LLC CPS-1250"></div>
+    <div class="mrow"><label>Inverter kVA</label><input id="bm-ikva" type="number" value="802"></div>
+    <div class="mrow"><label>Transformer</label><input id="bm-xfmr" value="1000KVA 480/480V Isolation"></div>
+    <div class="mrow"><label>Disconnect Rating</label><input id="bm-disco" value="1200A 480V NEMA 3R"></div>
+    <div class="mrow"><label>Battery Racks</label><input id="bm-racks" value="12 × 372.7kWh LIQRACK-280AH"></div>
+    <div class="mrow"><label>Container / Enclosure</label><input id="bm-enc" value="20ft ISO Container IP55"></div>
+    <div class="mrow"><label>Weight (lbs)</label><input id="bm-wt" value="49798"></div>
+    <div class="mrow"><label>Quantity</label><input id="bm-qty" type="number" value="1" min="1"></div>
+    <div class="mbtns">
+      <button class="mb-c" onclick="closeBessModal()">Cancel</button>
+      <button class="mb-s" onclick="saveBess()">Save & Add ✓</button>
+    </div>
+  </div>
+</div>
+
+<!-- Export Modal -->
+<div id="export-modal" style="display:none;position:fixed;inset:0;background:rgba(10,22,40,.92);z-index:9999;align-items:center;justify-content:center">
+  <div style="background:#0F2040;border:1px solid #1E3A5F;border-radius:14px;width:560px;max-width:94vw;max-height:90vh;overflow-y:auto;padding:28px 30px">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:18px">
+      <div>
+        <div style="font-size:18px;font-weight:700;color:#E2EEF9">📋 Export to Proposal Generator</div>
+        <div style="font-size:11px;color:#6B8CAE;margin-top:3px">Project data ready to load into the BESS Proposal Generator</div>
+      </div>
+      <button onclick="document.getElementById('export-modal').style.display='none'" style="background:rgba(255,255,255,.08);border:1px solid #1E3A5F;color:#6B8CAE;border-radius:6px;padding:4px 10px;cursor:pointer;font-size:13px">✕</button>
+    </div>
+    <div id="export-summary" style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:16px"></div>
+    <div style="background:rgba(0,212,255,.06);border:1px solid rgba(0,212,255,.2);border-radius:8px;padding:12px 14px;margin-bottom:14px;font-size:11px;color:#A0C4E0;line-height:1.7">
+      <strong style="color:#00D4FF">How to use:</strong><br>
+      1. Click <strong>Copy JSON</strong> or <strong>Download .json file</strong><br>
+      2. Open the <strong>ClearSky BESS Proposal Generator</strong><br>
+      3. Paste into the JSON field and click <strong>⚡ Parse &amp; Auto-Fill</strong>
+    </div>
+    <textarea id="export-json-box" readonly style="width:100%;height:140px;background:rgba(0,0,0,.4);border:1px solid #1E3A5F;color:#6B8CAE;border-radius:7px;padding:10px;font-size:10px;font-family:monospace;resize:none;margin-bottom:12px"></textarea>
+    <div style="display:flex;gap:8px">
+      <button onclick="copyExportJson()" id="copy-btn" style="flex:1;background:linear-gradient(135deg,#1DB95A,#00D4FF);color:#0A1628;border:none;border-radius:8px;padding:11px;font-size:13px;font-weight:700;cursor:pointer">📋 Copy JSON</button>
+      <button onclick="downloadExportJson()" style="flex:1;background:#0A1628;border:1px solid #1DB95A;color:#1DB95A;border-radius:8px;padding:11px;font-size:13px;font-weight:600;cursor:pointer">⬇ Download .json</button>
+    </div>
+  </div>
+</div>
+
+<!-- Firebase SDKs -->
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+<script src="/config.js"></script>
+<script>
+// ════════════════════════════════════════════════════════════
+//  CLEARSKY PORTAL — FULL EDITOR v4.0
+//  Firebase auth + save/load + Google Maps JS API +
+//  Enhanced BESS Wizard (drag-and-drop, auto conduit) +
+//  Draggable callout arrowheads
+// ════════════════════════════════════════════════════════════
+
+// ── FIREBASE INIT ──────────────────────────────────────────
+const CFG = window.CLEARSKY_CONFIG;
+firebase.initializeApp(CFG.firebase);
+const auth = firebase.auth();
+const db = firebase.firestore();
+let currentUser = null;
+let projectId = null;
+let saveTimer = null;
+
+// ── AUTH CHECK ─────────────────────────────────────────────
+auth.onAuthStateChanged(user => {
+  if (!user) { window.location.href = '/'; return; }
+  currentUser = user;
+  initEditor();
+});
+
+// ── PROJECT LOAD ───────────────────────────────────────────
+async function initEditor() {
+  const params = new URLSearchParams(window.location.search);
+  projectId = params.get('id');
+
+  if (!projectId) {
+    // Sandbox mode
+    document.getElementById('pname').value = 'Untitled Project';
+    document.getElementById('pn-title').textContent = 'Sandbox (unsaved)';
+    init();
+    return;
+  }
+
+  try {
+    const doc = await db.collection('projects').doc(projectId).get();
+    if (!doc.exists) { alert('Project not found'); window.location.href = '/'; return; }
+    const data = doc.data();
+    // Verify ownership
+    if (data.uid !== currentUser.uid) { alert('Access denied'); window.location.href = '/'; return; }
+    // Load project data
+    document.getElementById('pname').value = data.name || '';
+    document.getElementById('pn-title').textContent = data.name || 'Untitled';
+    if (data.address) document.getElementById('addr-in').value = data.address;
+    // Restore state
+    if (data.bessList) S.bessList = data.bessList;
+    if (data.wizDone) S.wizDone = data.wizDone;
+    if (data.pxPerFt) { S.pxPerFt = data.pxPerFt; S.unitLabel = data.unitLabel || 'ft'; }
+    init();
+    // Restore elements and conduits after init
+    if (data.elements && data.elements.length) {
+      data.elements.forEach(el => { S.elements.push(el); renderEl(el); });
+    }
+    if (data.conduits && data.conduits.length) {
+      data.conduits.forEach(c => { S.conduits.push(c); renderConduit(c); });
+    }
+    if (data.calloutArrows && data.calloutArrows.length) {
+      data.calloutArrows.forEach(a => { ARROWS.push(a); renderArrow(a); });
+    }
+    updCount(); updCondStat(); renderLegend(); renderBessList(); renderWizard();
+    if (data.address && CFG.googleMapsKey) setTimeout(() => fetchMap(), 500);
+    setSaveStatus('saved');
+  } catch(e) {
+    console.error('Load error:', e);
+    alert('Error loading project: ' + e.message);
+    init();
+  }
+}
+
+// ── SAVE PROJECT ──────────────────────────────────────────
+async function saveProject() {
+  if (!currentUser || !projectId) return;
+  setSaveStatus('saving');
+  try {
+    const name = document.getElementById('pname').value.trim() || 'Untitled';
+    const address = document.getElementById('addr-in').value.trim();
+    await db.collection('projects').doc(projectId).update({
+      name, address,
+      elements: S.elements,
+      conduits: S.conduits,
+      calloutArrows: ARROWS,
+      bessList: S.bessList,
+      wizDone: S.wizDone,
+      pxPerFt: S.pxPerFt,
+      unitLabel: S.unitLabel,
+      updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+    });
+    document.getElementById('pn-title').textContent = name;
+    setSaveStatus('saved');
+  } catch(e) {
+    setSaveStatus('error');
+    console.error('Save error:', e);
+  }
+}
+
+function setSaveStatus(status) {
+  const el = document.getElementById('save-status');
+  if (status === 'saved') el.textContent = '✓ Saved', el.className = 'pn-save-status';
+  else if (status === 'saving') el.textContent = '↻ Saving…', el.className = 'pn-save-status saving';
+  else el.textContent = '⚠ Save failed', el.className = 'pn-save-status error';
+}
+
+function autoSave() {
+  if (!projectId) return;
+  clearTimeout(saveTimer);
+  saveTimer = setTimeout(saveProject, 2000);
+  setSaveStatus('saving');
+}
+
+function onNameChange() {
+  document.getElementById('pn-title').textContent = document.getElementById('pname').value || 'Untitled';
+  autoSave();
+}
+
+// ════════════════════════════════════════════════════════════
+//  SVG ICON LIBRARY
+// ════════════════════════════════════════════════════════════
+const ICONS={
+  // BESS Container — matches Great Power MAX-20HC-5000 profile from docs
+  bess:(s=60)=>`<svg width="${s}" height="${s}" viewBox="0 0 56 56" xmlns="http://www.w3.org/2000/svg">
+    <circle cx="28" cy="28" r="28" fill="#0D3A6B"/>
+    <rect x="8" y="15" width="40" height="26" rx="2" fill="#1B4F8A" stroke="#4A9FE0" stroke-width="1.5"/>
+    <rect x="10" y="17" width="10" height="22" rx="1" fill="#0D3060" stroke="#2E7BC4" stroke-width="1"/>
+    <rect x="22" y="17" width="12" height="22" rx="1" fill="#0D3060" stroke="#2E7BC4" stroke-width="1"/>
+    <rect x="36" y="17" width="10" height="22" rx="1" fill="#0D3060" stroke="#2E7BC4" stroke-width="1"/>
+    <text x="15" y="29" font-size="4" fill="#4A9FE0" text-anchor="middle" font-family="monospace">GP</text>
+    <rect x="11" y="19" width="8" height="2.5" rx=".5" fill="#2E7BC4"/>
+    <rect x="11" y="23" width="8" height="2.5" rx=".5" fill="#2E7BC4"/>
+    <rect x="11" y="27" width="8" height="2.5" rx=".5" fill="#2E7BC4"/>
+    <rect x="11" y="31" width="8" height="2.5" rx=".5" fill="#2E7BC4"/>
+    <rect x="23" y="19" width="10" height="2.5" rx=".5" fill="#1D6FAA"/>
+    <rect x="23" y="23" width="10" height="2.5" rx=".5" fill="#1D6FAA"/>
+    <rect x="23" y="27" width="10" height="2.5" rx=".5" fill="#1D6FAA"/>
+    <rect x="23" y="31" width="10" height="2.5" rx=".5" fill="#1D6FAA"/>
+    <path d="M38 22l-2 4h4l-2 4" stroke="#00D4FF" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+    <rect x="10" y="39" width="5" height="2" rx=".5" fill="#243B55"/>
+    <rect x="10" y="39" width="5" height="2" rx=".5" fill="#243B55"/>
+    <text x="28" y="50" font-size="4.5" fill="#4A9FE0" text-anchor="middle" font-family="monospace" font-weight="bold">BESS</text>
+  </svg>`,
+
+  // PCS / Smart Inverter — green circle with Dynapower-style detail
+  pcs:(s=60)=>`<svg width="${s}" height="${s}" viewBox="0 0 56 56" xmlns="http://www.w3.org/2000/svg">
+    <circle cx="28" cy="28" r="28" fill="#0A3D20"/>
+    <rect x="11" y="13" width="34" height="30" rx="3" fill="#1B6B3A" stroke="#22C55E" stroke-width="1.5"/>
+    <rect x="14" y="16" width="28" height="12" rx="1.5" fill="#0A3D20" stroke="#1DB954" stroke-width="1"/>
+    <text x="28" y="24" font-size="5" fill="#22C55E" text-anchor="middle" font-family="monospace" font-weight="bold">PCS/INV</text>
+    <rect x="14" y="30" width="6" height="10" rx="1" fill="#0A3D20" stroke="#1DB954" stroke-width="1"/>
+    <rect x="22" y="30" width="20" height="10" rx="1" fill="#0A3D20" stroke="#1DB954" stroke-width="1"/>
+    <circle cx="17" cy="35" r="2.5" fill="none" stroke="#22C55E" stroke-width="1.2"/>
+    <path d="M24 35l2-3 2 3 2-3 2 3 2-3" stroke="#22C55E" stroke-width="1.2" fill="none" stroke-linecap="round"/>
+    <line x1="11" y1="43" x2="45" y2="43" stroke="#22C55E" stroke-width=".8" opacity=".4"/>
+    <text x="28" y="50" font-size="4" fill="#22C55E" text-anchor="middle" font-family="monospace">INVERTER</text>
+  </svg>`,
+
+  // Transformer — 3-phase pad-mount matching reference image
+  xfmr:(s=60)=>`<svg width="${s}" height="${s}" viewBox="0 0 56 56" xmlns="http://www.w3.org/2000/svg">
+    <circle cx="28" cy="28" r="28" fill="#2D0E6E"/>
+    <rect x="9" y="19" width="38" height="21" rx="2" fill="#4A1B9E" stroke="#9B59B6" stroke-width="1.5"/>
+    <line x1="14" y1="19" x2="14" y2="8" stroke="#9B59B6" stroke-width="2" stroke-linecap="round"/>
+    <rect x="11.5" y="8" width="5" height="2" rx="1" fill="#6C3483"/>
+    <rect x="11.5" y="11" width="5" height="2" rx="1" fill="#6C3483"/>
+    <rect x="11.5" y="14" width="5" height="2" rx="1" fill="#6C3483"/>
+    <line x1="28" y1="19" x2="28" y2="8" stroke="#9B59B6" stroke-width="2" stroke-linecap="round"/>
+    <rect x="25.5" y="8" width="5" height="2" rx="1" fill="#6C3483"/>
+    <rect x="25.5" y="11" width="5" height="2" rx="1" fill="#6C3483"/>
+    <rect x="25.5" y="14" width="5" height="2" rx="1" fill="#6C3483"/>
+    <line x1="42" y1="19" x2="42" y2="8" stroke="#9B59B6" stroke-width="2" stroke-linecap="round"/>
+    <rect x="39.5" y="8" width="5" height="2" rx="1" fill="#6C3483"/>
+    <rect x="39.5" y="11" width="5" height="2" rx="1" fill="#6C3483"/>
+    <rect x="39.5" y="14" width="5" height="2" rx="1" fill="#6C3483"/>
+    <path d="M13 26 q3-5 7 0 q3 5 7 0" fill="none" stroke="#FBBF24" stroke-width="1.8" stroke-linecap="round"/>
+    <path d="M13 32 q3-5 7 0 q3 5 7 0" fill="none" stroke="#FBBF24" stroke-width="1.8" stroke-linecap="round"/>
+    <path d="M30 26 q3-5 7 0 q3 5 7 0" fill="none" stroke="#E67E22" stroke-width="1.5" stroke-linecap="round"/>
+    <line x1="14" y1="40" x2="14" y2="47" stroke="#9B59B6" stroke-width="2" stroke-linecap="round"/>
+    <line x1="28" y1="40" x2="28" y2="47" stroke="#9B59B6" stroke-width="2" stroke-linecap="round"/>
+    <line x1="42" y1="40" x2="42" y2="47" stroke="#9B59B6" stroke-width="2" stroke-linecap="round"/>
+    <line x1="9" y1="47" x2="47" y2="47" stroke="#9B59B6" stroke-width="2" stroke-linecap="round"/>
+    <text x="28" y="52" font-size="4" fill="#9B59B6" text-anchor="middle" font-family="monospace">XFMR</text>
+  </svg>`,
+
+  disco:(s=60)=>`<svg width="${s}" height="${s}" viewBox="0 0 56 56" xmlns="http://www.w3.org/2000/svg">
+    <circle cx="28" cy="28" r="28" fill="#5B0000"/>
+    <rect x="15" y="11" width="26" height="34" rx="3" fill="#8B0000" stroke="#EF4444" stroke-width="1.5"/>
+    <rect x="18" y="14" width="20" height="8" rx="1.5" fill="#5B0000"/>
+    <text x="28" y="20" font-size="4" fill="#EF4444" text-anchor="middle" font-family="monospace">1200A</text>
+    <line x1="28" y1="23" x2="28" y2="29" stroke="#EF4444" stroke-width="2.5" stroke-linecap="round"/>
+    <line x1="28" y1="26" x2="34" y2="22" stroke="#EF4444" stroke-width="2" stroke-linecap="round"/>
+    <circle cx="28" cy="34" r="3.5" fill="none" stroke="#EF4444" stroke-width="1.8"/>
+    <line x1="22" y1="11" x2="22" y2="8" stroke="#EF4444" stroke-width="2" stroke-linecap="round"/>
+    <line x1="34" y1="11" x2="34" y2="8" stroke="#EF4444" stroke-width="2" stroke-linecap="round"/>
+    <text x="28" y="48" font-size="4" fill="#EF4444" text-anchor="middle" font-family="monospace">AC DISCO</text>
+  </svg>`,
+
+  panel:(s=60)=>`<svg width="${s}" height="${s}" viewBox="0 0 56 56" xmlns="http://www.w3.org/2000/svg">
+    <circle cx="28" cy="28" r="28" fill="#0A3D35"/>
+    <rect x="10" y="10" width="36" height="36" rx="2" fill="#0F5E4E" stroke="#1ABC9C" stroke-width="1.5"/>
+    <line x1="28" y1="10" x2="28" y2="46" stroke="#1ABC9C" stroke-width=".8" opacity=".4"/>
+    <rect x="13" y="13" width="12" height="4" rx="1" fill="#1ABC9C"/>
+    <rect x="13" y="19" width="12" height="4" rx="1" fill="#1ABC9C"/>
+    <rect x="13" y="25" width="12" height="4" rx="1" fill="#1ABC9C"/>
+    <rect x="13" y="31" width="12" height="4" rx="1" fill="#1ABC9C"/>
+    <rect x="13" y="37" width="12" height="4" rx="1" fill="#1ABC9C"/>
+    <rect x="31" y="13" width="12" height="4" rx="1" fill="#16A085"/>
+    <rect x="31" y="19" width="12" height="4" rx="1" fill="#16A085"/>
+    <rect x="31" y="25" width="12" height="4" rx="1" fill="#16A085"/>
+    <rect x="31" y="31" width="12" height="4" rx="1" fill="#16A085"/>
+    <rect x="31" y="37" width="12" height="4" rx="1" fill="#16A085"/>
+  </svg>`,
+
+  meter:(s=60)=>`<svg width="${s}" height="${s}" viewBox="0 0 56 56" xmlns="http://www.w3.org/2000/svg">
+    <circle cx="28" cy="28" r="28" fill="#003A5C"/>
+    <rect x="12" y="11" width="32" height="34" rx="3" fill="#005580" stroke="#3498DB" stroke-width="1.5"/>
+    <rect x="15" y="14" width="26" height="15" rx="2" fill="#003A5C" stroke="#2980B9" stroke-width="1"/>
+    <path d="M18 24 Q22 17 28 24 Q34 31 40 24" fill="none" stroke="#00D4FF" stroke-width="1.8" stroke-linecap="round"/>
+    <circle cx="28" cy="35" r="4" fill="none" stroke="#3498DB" stroke-width="1.5"/>
+    <text x="28" y="47" font-size="4" fill="#3498DB" text-anchor="middle" font-family="monospace">METER</text>
+  </svg>`,
+
+  hydrant:(s=60)=>`<svg width="${s}" height="${s}" viewBox="0 0 56 56" xmlns="http://www.w3.org/2000/svg">
+    <circle cx="28" cy="28" r="28" fill="#7B0022"/>
+    <ellipse cx="28" cy="13" rx="7" ry="3.5" fill="none" stroke="#F1948A" stroke-width="2"/>
+    <rect x="20" y="13" width="16" height="6" rx="1" fill="none" stroke="#F1948A" stroke-width="1.8"/>
+    <rect x="17" y="19" width="22" height="16" rx="3" fill="none" stroke="#F1948A" stroke-width="2"/>
+    <rect x="21" y="35" width="14" height="5" rx="1" fill="none" stroke="#F1948A" stroke-width="1.8"/>
+    <rect x="18" y="40" width="20" height="4" rx="1" fill="none" stroke="#F1948A" stroke-width="1.8"/>
+    <circle cx="28" cy="27" r="4.5" fill="none" stroke="#F1948A" stroke-width="2"/>
+    <line x1="13" y1="24" x2="17" y2="26" stroke="#F1948A" stroke-width="2" stroke-linecap="round"/>
+    <line x1="13" y1="30" x2="17" y2="30" stroke="#F1948A" stroke-width="2" stroke-linecap="round"/>
+    <line x1="43" y1="24" x2="39" y2="26" stroke="#F1948A" stroke-width="2" stroke-linecap="round"/>
+    <line x1="43" y1="30" x2="39" y2="30" stroke="#F1948A" stroke-width="2" stroke-linecap="round"/>
+  </svg>`,
+
+  genset:(s=60)=>`<svg width="${s}" height="${s}" viewBox="0 0 56 56" xmlns="http://www.w3.org/2000/svg">
+    <circle cx="28" cy="28" r="28" fill="#3D2000"/>
+    <rect x="9" y="18" width="38" height="22" rx="3" fill="#6B3600" stroke="#E67E22" stroke-width="1.5"/>
+    <circle cx="22" cy="29" r="6" fill="none" stroke="#E67E22" stroke-width="1.8"/>
+    <circle cx="22" cy="29" r="2.5" fill="#E67E22"/>
+    <rect x="32" y="22" width="11" height="14" rx="1.5" fill="#3D2000" stroke="#F39C12" stroke-width="1"/>
+    <path d="M34 29l3-4 3 4-3 4z" fill="none" stroke="#FBBF24" stroke-width="1.5" stroke-linejoin="round"/>
+    <line x1="20" y1="18" x2="20" y2="14" stroke="#E67E22" stroke-width="1.8" stroke-linecap="round"/>
+    <line x1="36" y1="18" x2="36" y2="14" stroke="#E67E22" stroke-width="1.8" stroke-linecap="round"/>
+  </svg>`,
+
+  solar:(s=60)=>`<svg width="${s}" height="${s}" viewBox="0 0 56 56" xmlns="http://www.w3.org/2000/svg">
+    <circle cx="28" cy="28" r="28" fill="#3D2E00"/>
+    <circle cx="28" cy="28" r="9" fill="none" stroke="#F4A020" stroke-width="2.5"/>
+    <circle cx="28" cy="28" r="5" fill="#F4A020" opacity=".6"/>
+    <line x1="28" y1="11" x2="28" y2="16" stroke="#F4A020" stroke-width="2" stroke-linecap="round"/>
+    <line x1="28" y1="40" x2="28" y2="45" stroke="#F4A020" stroke-width="2" stroke-linecap="round"/>
+    <line x1="11" y1="28" x2="16" y2="28" stroke="#F4A020" stroke-width="2" stroke-linecap="round"/>
+    <line x1="40" y1="28" x2="45" y2="28" stroke="#F4A020" stroke-width="2" stroke-linecap="round"/>
+    <line x1="16.3" y1="16.3" x2="19.9" y2="19.9" stroke="#F4A020" stroke-width="2" stroke-linecap="round"/>
+    <line x1="36.1" y1="36.1" x2="39.7" y2="39.7" stroke="#F4A020" stroke-width="2" stroke-linecap="round"/>
+    <line x1="39.7" y1="16.3" x2="36.1" y2="19.9" stroke="#F4A020" stroke-width="2" stroke-linecap="round"/>
+    <line x1="19.9" y1="36.1" x2="16.3" y2="39.7" stroke="#F4A020" stroke-width="2" stroke-linecap="round"/>
+  </svg>`,
+
+  pad:(s=60)=>`<svg width="${s}" height="${s}" viewBox="0 0 56 56" xmlns="http://www.w3.org/2000/svg">
+    <circle cx="28" cy="28" r="28" fill="#243B55"/>
+    <rect x="7" y="30" width="42" height="14" rx="2" fill="none" stroke="#8BA3C4" stroke-width="2"/>
+    <rect x="11" y="16" width="34" height="14" rx="2" fill="none" stroke="#8BA3C4" stroke-width="1.8"/>
+    <line x1="11" y1="20" x2="45" y2="20" stroke="#8BA3C4" stroke-width=".8" opacity=".5"/>
+    <line x1="11" y1="24" x2="45" y2="24" stroke="#8BA3C4" stroke-width=".8" opacity=".5"/>
+    <line x1="22" y1="16" x2="22" y2="30" stroke="#8BA3C4" stroke-width=".8" opacity=".4"/>
+    <line x1="34" y1="16" x2="34" y2="30" stroke="#8BA3C4" stroke-width=".8" opacity=".4"/>
+    <text x="28" y="52" font-size="4" fill="#8BA3C4" text-anchor="middle" font-family="monospace">CONCRETE PAD</text>
+  </svg>`,
+
+  bollard:(s=60)=>`<svg width="${s}" height="${s}" viewBox="0 0 56 56" xmlns="http://www.w3.org/2000/svg">
+    <circle cx="28" cy="28" r="28" fill="#3D2E00"/>
+    <rect x="22" y="14" width="12" height="27" rx="4" fill="none" stroke="#F4A020" stroke-width="2"/>
+    <line x1="22" y1="21" x2="34" y2="21" stroke="#F4A020" stroke-width="1.5"/>
+    <line x1="22" y1="27" x2="34" y2="27" stroke="#F4A020" stroke-width="1.5"/>
+    <line x1="22" y1="33" x2="34" y2="33" stroke="#F4A020" stroke-width="1.5"/>
+    <ellipse cx="28" cy="12" rx="7" ry="3" fill="none" stroke="#F4A020" stroke-width="1.8"/>
+    <ellipse cx="28" cy="41" rx="10" ry="3.5" fill="none" stroke="#F4A020" stroke-width="1.8"/>
+  </svg>`,
+
+  fence:(s=60)=>`<svg width="${s}" height="${s}" viewBox="0 0 56 56" xmlns="http://www.w3.org/2000/svg">
+    <circle cx="28" cy="28" r="28" fill="#3D1A00"/>
+    <line x1="8" y1="24" x2="48" y2="24" stroke="#E67E22" stroke-width="2"/>
+    <line x1="8" y1="32" x2="48" y2="32" stroke="#E67E22" stroke-width="2"/>
+    <line x1="14" y1="18" x2="14" y2="38" stroke="#E67E22" stroke-width="2.5" stroke-linecap="round"/>
+    <polygon points="14,15 12,19 16,19" fill="#E67E22"/>
+    <line x1="23" y1="18" x2="23" y2="38" stroke="#E67E22" stroke-width="2.5" stroke-linecap="round"/>
+    <polygon points="23,15 21,19 25,19" fill="#E67E22"/>
+    <line x1="33" y1="18" x2="33" y2="38" stroke="#E67E22" stroke-width="2.5" stroke-linecap="round"/>
+    <polygon points="33,15 31,19 35,19" fill="#E67E22"/>
+    <line x1="43" y1="18" x2="43" y2="38" stroke="#E67E22" stroke-width="2.5" stroke-linecap="round"/>
+    <polygon points="43,15 41,19 45,19" fill="#E67E22"/>
+  </svg>`,
+
+  jbox:(s=60)=>`<svg width="${s}" height="${s}" viewBox="0 0 56 56" xmlns="http://www.w3.org/2000/svg">
+    <circle cx="28" cy="28" r="28" fill="#1A2E45"/>
+    <rect x="12" y="14" width="32" height="28" rx="3" fill="none" stroke="#8BA3C4" stroke-width="2"/>
+    <line x1="19" y1="14" x2="19" y2="10" stroke="#8BA3C4" stroke-width="2" stroke-linecap="round"/>
+    <line x1="37" y1="14" x2="37" y2="10" stroke="#8BA3C4" stroke-width="2" stroke-linecap="round"/>
+    <line x1="19" y1="42" x2="19" y2="46" stroke="#8BA3C4" stroke-width="2" stroke-linecap="round"/>
+    <line x1="37" y1="42" x2="37" y2="46" stroke="#8BA3C4" stroke-width="2" stroke-linecap="round"/>
+    <line x1="12" y1="28" x2="8" y2="28" stroke="#8BA3C4" stroke-width="2" stroke-linecap="round"/>
+    <line x1="44" y1="28" x2="48" y2="28" stroke="#8BA3C4" stroke-width="2" stroke-linecap="round"/>
+    <circle cx="28" cy="28" r="5.5" fill="none" stroke="#8BA3C4" stroke-width="1.8"/>
+    <circle cx="28" cy="28" r="2" fill="#8BA3C4"/>
+  </svg>`,
+
+  charger:(s=60)=>`<svg width="${s}" height="${s}" viewBox="0 0 56 56" xmlns="http://www.w3.org/2000/svg">
+    <circle cx="28" cy="28" r="28" fill="#002D1A"/>
+    <rect x="14" y="10" width="28" height="40" rx="4" fill="none" stroke="#1DB954" stroke-width="2"/>
+    <rect x="17" y="13" width="22" height="13" rx="2" fill="#002D1A" stroke="#1DB954" stroke-width="1.2"/>
+    <path d="M25 30l-3 6h12l-3 6" stroke="#FBBF24" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+  </svg>`,
+
+  camera:(s=60)=>`<svg width="${s}" height="${s}" viewBox="0 0 56 56" xmlns="http://www.w3.org/2000/svg">
+    <circle cx="28" cy="28" r="28" fill="#1A2230"/>
+    <rect x="9" y="18" width="38" height="26" rx="4" fill="none" stroke="#64748B" stroke-width="2"/>
+    <circle cx="28" cy="31" r="7.5" fill="none" stroke="#64748B" stroke-width="2"/>
+    <circle cx="28" cy="31" r="3.5" fill="#64748B" opacity=".5"/>
+    <path d="M20 18l3-5h10l3 5" fill="none" stroke="#64748B" stroke-width="1.8"/>
+    <circle cx="39" cy="24" r="2" fill="#64748B" opacity=".7"/>
+  </svg>`,
+
+  ups:(s=60)=>`<svg width="${s}" height="${s}" viewBox="0 0 56 56" xmlns="http://www.w3.org/2000/svg">
+    <circle cx="28" cy="28" r="28" fill="#003348"/>
+    <rect x="11" y="13" width="34" height="30" rx="3" fill="none" stroke="#00BCD4" stroke-width="1.8"/>
+    <text x="28" y="22" font-size="5" fill="#00BCD4" text-anchor="middle" font-family="monospace" font-weight="bold">150kW</text>
+    <text x="28" y="29" font-size="4.5" fill="#00BCD4" text-anchor="middle" font-family="monospace">UPS</text>
+    <path d="M20 36l3-5h5l-3 5h5" stroke="#00D4FF" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+    <line x1="11" y1="43" x2="45" y2="43" stroke="#00BCD4" stroke-width=".8" opacity=".4"/>
+  </svg>`,
+};
+
+// Full BESS Assembly SVG — matches approved plans layout exactly
+function bessAssemblySVG(cfg,w){
+  const h=Math.round(w*0.55);
+  const name=cfg?cfg.name:'BESS-01';
+  const kwh=cfg?cfg.kwh:'5000';
+  const kw=cfg?cfg.kw:'802';
+  const dcv=cfg?cfg.dcv:'1331.2';
+  const inv=cfg?cfg.inv:'Dynapower CPS-1250';
+  const xfmr=cfg?cfg.xfmr:'1000KVA 480/480V';
+  const disco=cfg?cfg.disco:'1200A 480V';
+  const mfr=cfg?cfg.mfr:'Great Power';
+  const model=cfg?cfg.model:'MAX-20HC-5000';
+  return`<svg width="${w}" height="${h}" viewBox="0 0 400 220" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <marker id="ah" markerWidth="6" markerHeight="6" refX="3" refY="3" orient="auto">
+      <path d="M0 0L6 3L0 6z" fill="#E53935"/>
+    </marker>
+    <marker id="ah-dc" markerWidth="6" markerHeight="6" refX="3" refY="3" orient="auto">
+      <path d="M0 0L6 3L0 6z" fill="#DC2626"/>
+    </marker>
+    <marker id="ah-ac" markerWidth="6" markerHeight="6" refX="3" refY="3" orient="auto">
+      <path d="M0 0L6 3L0 6z" fill="#F59E0B"/>
+    </marker>
+    <marker id="ah-grn" markerWidth="6" markerHeight="6" refX="3" refY="3" orient="auto">
+      <path d="M0 0L6 3L0 6z" fill="#22C55E"/>
+    </marker>
+  </defs>
+  <!-- Privacy fence outline -->
+  <rect x="2" y="2" width="396" height="216" rx="6" fill="none" stroke="#E67E22" stroke-width="1.5" stroke-dasharray="6 4"/>
+  <text x="8" y="12" font-size="8" fill="#E67E22" font-family="monospace">PRIVACY FENCE</text>
+  <!-- Concrete Pad background -->
+  <rect x="10" y="18" width="260" height="190" rx="4" fill="#1A2E45" stroke="#8BA3C4" stroke-width="1" stroke-dasharray="3 3"/>
+  <text x="14" y="30" font-size="7" fill="#8BA3C4" font-family="monospace">BESS PAD (CONCRETE)</text>
+  <!-- BESS Container — large box left side -->
+  <rect x="15" y="35" width="155" height="140" rx="4" fill="#0D3060" stroke="#4A9FE0" stroke-width="2"/>
+  <text x="92" y="50" font-size="8" fill="#4A9FE0" text-anchor="middle" font-family="monospace" font-weight="bold">${mfr}</text>
+  <text x="92" y="60" font-size="7" fill="#4A9FE0" text-anchor="middle" font-family="monospace">${model}</text>
+  <!-- 12 battery racks inside container, 4 columns × 3 rows -->
+  ${[0,1,2,3].map(col=>[0,1,2].map(row=>`
+    <rect x="${22+col*36}" y="${68+row*33}" width="30" height="26" rx="2" fill="#0A2040" stroke="#2E7BC4" stroke-width="1"/>
+    <rect x="${24+col*36}" y="${70+row*33}" width="26" height="6" rx="1" fill="#1D4080"/>
+    <rect x="${24+col*36}" y="${78+row*33}" width="26" height="6" rx="1" fill="#1D4080"/>
+    <rect x="${24+col*36}" y="${86+row*33}" width="26" height="4" rx="1" fill="#1D4080"/>
+    <text x="${37+col*36}" y="${75+row*33}" font-size="4" fill="#4A9FE0" text-anchor="middle" font-family="monospace">R${col*3+row+1}</text>
+  `).join('')).join('')}
+  <!-- Battery nameplate callout -->
+  <text x="92" y="178" font-size="7" fill="#00D4FF" text-anchor="middle" font-family="monospace">${kwh}kWh · ${dcv}VDC</text>
+  <!-- DC cable — red, to inverter -->
+  <line x1="170" y1="105" x2="185" y2="105" stroke="#DC2626" stroke-width="3" stroke-linecap="round" marker-end="url(#ah-dc)"/>
+  <text x="177" y="101" font-size="6" fill="#DC2626" text-anchor="middle" font-family="monospace">DC+</text>
+  <line x1="170" y1="115" x2="185" y2="115" stroke="#1D4ED8" stroke-width="3" stroke-linecap="round" marker-end="url(#ah)"/>
+  <text x="177" y="128" font-size="6" fill="#1D4ED8" text-anchor="middle" font-family="monospace">DC-</text>
+  <!-- PCS / Inverter box -->
+  <rect x="185" y="78" width="72" height="64" rx="3" fill="#0A3D20" stroke="#22C55E" stroke-width="1.8"/>
+  <text x="221" y="95" font-size="6" fill="#22C55E" text-anchor="middle" font-family="monospace" font-weight="bold">PCS/INVERTER</text>
+  <text x="221" y="103" font-size="5.5" fill="#22C55E" text-anchor="middle" font-family="monospace">${inv}</text>
+  <text x="221" y="112" font-size="5.5" fill="#22C55E" text-anchor="middle" font-family="monospace">${kw}kW · 480VAC</text>
+  <path d="M200 123 q3-5 7 0 q3 5 7 0 q3-5 7 0" fill="none" stroke="#22C55E" stroke-width="1.5" stroke-linecap="round"/>
+  <text x="221" y="135" font-size="5" fill="#1DB954" text-anchor="middle" font-family="monospace">3Ø 480V</text>
+  <!-- AC cable — amber, to transformer -->
+  <line x1="257" y1="110" x2="272" y2="110" stroke="#F59E0B" stroke-width="3" stroke-linecap="round" marker-end="url(#ah-ac)"/>
+  <text x="264" y="106" font-size="5.5" fill="#F59E0B" text-anchor="middle" font-family="monospace">3Ø AC</text>
+  <!-- Transformer -->
+  <rect x="272" y="78" width="60" height="60" rx="3" fill="#2D0E6E" stroke="#9B59B6" stroke-width="1.8"/>
+  <text x="302" y="95" font-size="5.5" fill="#9B59B6" text-anchor="middle" font-family="monospace">ISOLATION</text>
+  <text x="302" y="103" font-size="5.5" fill="#9B59B6" text-anchor="middle" font-family="monospace">XFMR</text>
+  <text x="302" y="111" font-size="5" fill="#FBBF24" text-anchor="middle" font-family="monospace">${xfmr}</text>
+  <path d="M280 120 q4-6 9 0 q4 6 9 0" fill="none" stroke="#FBBF24" stroke-width="1.5" stroke-linecap="round"/>
+  <!-- AC cable to disconnect (vertical) -->
+  <line x1="302" y1="138" x2="302" y2="155" stroke="#F59E0B" stroke-width="3" stroke-linecap="round" marker-end="url(#ah-ac)"/>
+  <!-- Disconnect box -->
+  <rect x="272" y="155" width="60" height="40" rx="3" fill="#5B0000" stroke="#EF4444" stroke-width="1.8"/>
+  <text x="302" y="170" font-size="5.5" fill="#EF4444" text-anchor="middle" font-family="monospace">AC DISCO</text>
+  <text x="302" y="178" font-size="5" fill="#EF4444" text-anchor="middle" font-family="monospace">${disco}</text>
+  <line x1="295" y1="163" x2="295" y2="171" stroke="#EF4444" stroke-width="1.5" stroke-linecap="round"/>
+  <line x1="295" y1="169" x2="302" y2="163" stroke="#EF4444" stroke-width="1.5" stroke-linecap="round"/>
+  <circle cx="295" cy="173" r="2" fill="none" stroke="#EF4444" stroke-width="1.2"/>
+  <!-- Cable to building -->
+  <line x1="332" y1="175" x2="370" y2="175" stroke="#F59E0B" stroke-width="3" stroke-linecap="round" marker-end="url(#ah-ac)"/>
+  <text x="351" y="170" font-size="5.5" fill="#F59E0B" text-anchor="middle" font-family="monospace">TO PANEL</text>
+  <!-- Bollards around pad -->
+  ${[40,75,110,145].map(x=>`<circle cx="${x}" cy="17" r="4" fill="#F4A020" stroke="#fff" stroke-width="1"/>`).join('')}
+  ${[40,75,110,145].map(x=>`<circle cx="${x}" cy="207" r="4" fill="#F4A020" stroke="#fff" stroke-width="1"/>`).join('')}
+  <circle cx="10" cy="110" r="4" fill="#F4A020" stroke="#fff" stroke-width="1"/>
+  <circle cx="268" cy="110" r="4" fill="#F4A020" stroke="#fff" stroke-width="1"/>
+  <!-- System label -->
+  <rect x="275" y="18" width="115" height="52" rx="3" fill="rgba(13,27,42,.8)" stroke="#243B55" stroke-width="1"/>
+  <text x="281" y="30" font-size="6.5" fill="#00D4FF" font-family="monospace" font-weight="bold">${name}</text>
+  <text x="281" y="40" font-size="5.5" fill="#8BA3C4" font-family="monospace">${kwh} kWh · ${kw} kW</text>
+  <text x="281" y="49" font-size="5" fill="#8BA3C4" font-family="monospace">DC: ${dcv}V · AC: 480V 3Ø</text>
+  <text x="281" y="58" font-size="5" fill="#8BA3C4" font-family="monospace">EFF: 93.5% RTE</text>
+  <text x="281" y="67" font-size="5" fill="#8BA3C4" font-family="monospace">AHJ: CFC 2022, 1207</text>
+  <!-- Legend inside assembly -->
+  <line x1="280" y1="185" x2="295" y2="185" stroke="#DC2626" stroke-width="2"/>
+  <text x="297" y="188" font-size="5" fill="#DC2626" font-family="monospace">DC Power</text>
+  <line x1="280" y1="193" x2="295" y2="193" stroke="#F59E0B" stroke-width="2"/>
+  <text x="297" y="196" font-size="5" fill="#F59E0B" font-family="monospace">480V 3Ø AC</text>
+  <line x1="280" y1="201" x2="295" y2="201" stroke="#22C55E" stroke-width="2"/>
+  <text x="297" y="204" font-size="5" fill="#22C55E" font-family="monospace">BMS Data</text>
+  <line x1="280" y1="209" x2="295" y2="209" stroke="#8BA3C4" stroke-width="1.5" stroke-dasharray="3 2"/>
+  <text x="297" y="212" font-size="5" fill="#8BA3C4" font-family="monospace">Control</text>
+</svg>`;
+}
+
+// ══ EQUIPMENT LIST ══════════════════════════════════════════
+const EQ=[
+  {id:'bess',    label:'BESS Cabinet'},
+  {id:'pcs',     label:'PCS/Inverter'},
+  {id:'xfmr',    label:'Transformer'},
+  {id:'disco',   label:'AC Disconnect'},
+  {id:'panel',   label:'Panelboard'},
+  {id:'meter',   label:'Meter'},
+  {id:'hydrant', label:'Fire Hydrant'},
+  {id:'genset',  label:'Generator'},
+  {id:'solar',   label:'Solar'},
+  {id:'pad',     label:'Concrete Pad'},
+  {id:'bollard', label:'Bollard'},
+  {id:'fence',   label:'Fence'},
+  {id:'jbox',    label:'Junc. Box'},
+  {id:'charger', label:'EV Charger'},
+  {id:'camera',  label:'Camera'},
+  {id:'ups',     label:'UPS'},
+];
+
+const CTYPES=[
+  {id:'RMC-DC',  label:'RMC – DC Power',    color:'#DC2626', dash:'',      sw:3.5},
+  {id:'EMT-BMS', label:'EMT – BMS/Data',    color:'#2563EB', dash:'7 4',   sw:2},
+  {id:'RMC-AC',  label:'RMC – 480V 3Ø AC',  color:'#F59E0B', dash:'',      sw:3.5},
+  {id:'PVC-UG',  label:'PVC – Underground', color:'#7C3AED', dash:'4 4',   sw:3},
+  {id:'custom',  label:'Custom',            color:'#10B981', dash:'8 3 2 3',sw:2.5},
+];
+
+// ══ WIZARD STEPS ═══════════════════════════════════════════
+const WIZARD_STEPS=[
+  {id:'wiz-bess',   label:'BESS Assembly',     sub:'Container+Racks+Inverter+XFMR+Disco', icon:'🔋', eqId:'bess-asm'},
+  {id:'wiz-pad',    label:'Concrete Pad',       sub:'Equipment utility pad',               icon:'▬',  eqId:'pad'},
+  {id:'wiz-fence',  label:'Privacy Fence',      sub:'8\' high, CFC S3.0',                 icon:'🟧', eqId:'fence'},
+  {id:'wiz-boll',   label:'Bollards (11x)',      sub:'CFC 2022 1207.11.7.3(1)',            icon:'🟡', eqId:'bollard'},
+  {id:'wiz-jbox',   label:'Junction Box',        sub:'Pull box at foundation wall',         icon:'🔲', eqId:'jbox'},
+  {id:'wiz-panel',  label:'Main Panelboard',     sub:'2000A 480Y/277V POI',                icon:'🗂️', eqId:'panel'},
+  {id:'wiz-meter',  label:'Utility Meter',       sub:'Revenue meter / PT&CT set',          icon:'📊', eqId:'meter'},
+  {id:'wiz-hydrant',label:'Fire Hydrant',        sub:'Verify location per CFC',            icon:'🚒', eqId:'hydrant'},
+  {id:'wiz-cond1',  label:'DC Conduit Run',      sub:'RMC BESS→Inverter',                  icon:'⚡', condType:'RMC-DC'},
+  {id:'wiz-cond2',  label:'AC Conduit Run',      sub:'RMC Inverter→XFMR→Panel',            icon:'⚡', condType:'RMC-AC'},
+  {id:'wiz-cond3',  label:'BMS Data Link',       sub:'EMT Cat6/RS485',                     icon:'📡', condType:'EMT-BMS'},
+  {id:'wiz-cond4',  label:'Underground Conduit', sub:'PVC trench to building',             icon:'🌑', condType:'PVC-UG'},
+  {id:'wiz-callout',label:'Add Callouts',        sub:'Label key dimensions',               icon:'💬', action:'callout'},
+];
+
+// ══ STATE ═══════════════════════════════════════════════════
+const S={
+  mode:'select',tab:'site',
+  elements:[],conduits:[],bessList:[],
+  sel:null,drag:null,dox:0,doy:0,
+  resizing:null,rsX:0,rsY:0,rsW:0,rsH:0,rsCorner:'',
+  rotating:null,rotCx:0,rotCy:0,rotStart:0,rotInit:0,
+  condDrawing:false,condPts:[],condType:'RMC-DC',
+  pxPerFt:null,unitLabel:'ft',
+  wizStep:0,wizDone:[],
+  editBessId:null,history:[]
+};
+
+const BG={scale:1,tx:0,ty:0,rot:0,panning:false,lx:0,ly:0};
+
+function uid(){return Math.random().toString(36).substr(2,9)}
+
+// ══ INIT ═══════════════════════════════════════════════════
+function init(){
+  renderEqGrid();renderCtypes();renderWizard();renderBessList();renderLegend();
+  document.getElementById('els').addEventListener('mousedown',elsMD);
+  document.addEventListener('mousemove',globalMM);
+  document.addEventListener('mouseup',globalMU);
+  setMapMode('google'); // start in Google Maps mode
+  pushHist();
+}
+
+// ══ TAB SWITCH ══════════════════════════════════════════════
+function switchTab(t){
+  S.tab=t;
+  document.querySelectorAll('.tab').forEach((el,i)=>el.classList.toggle('on',i===(t==='site'?0:1)));
+  document.getElementById('cw').style.display=t==='site'?'flex':'none';
+  document.getElementById('sld-sheet').style.display=t==='sld'?'flex':'none';
+}
+
+// ══ EQ GRID ════════════════════════════════════════════════
+function renderEqGrid(){
+  document.getElementById('eq-grid').innerHTML=EQ.map(e=>`
+    <div class="eqi" draggable="true" data-eq="${e.id}" ondragstart="drgEq(event,'${e.id}')" title="${e.label}">
+      ${(ICONS[e.id]||ICONS.jbox)(32)}
+      <div class="eqi-l">${e.label}</div>
+    </div>`).join('');
+}
+
+// ══ CONDUIT TYPES ══════════════════════════════════════════
+function renderCtypes(){
+  document.getElementById('ctypes').innerHTML=CTYPES.map(c=>`
+    <div class="ct-row">
+      <input class="ct-r" type="radio" name="ct" value="${c.id}" ${S.condType===c.id?'checked':''} onchange="S.condType='${c.id}'">
+      <div class="ct-sw" style="background:${c.color}"></div>
+      <span class="ct-l">${c.label}</span>
+    </div>`).join('');
+}
+
+// ══ WIZARD ══════════════════════════════════════════════════
+function renderWizard(){
+  document.getElementById('wizard-list').innerHTML=WIZARD_STEPS.map((s,i)=>`
+    <div class="wiz-item ${S.wizDone.includes(s.id)?'done':i===S.wizStep?'active':''}" onclick="setWizStep(${i})">
+      <div class="wi-num">${S.wizDone.includes(s.id)?'✓':i+1}</div>
+      <div>
+        <div class="wi-lbl">${s.icon} ${s.label}</div>
+        <div class="wi-sub">${s.sub}</div>
+      </div>
+    </div>`).join('');
+  const btn=document.getElementById('place-btn');
+  if(S.wizStep<WIZARD_STEPS.length){
+    const step=WIZARD_STEPS[S.wizStep];
+    btn.disabled=false;
+    btn.textContent=`▶ Place: ${step.label}`;
+    if(step.condType) btn.textContent=`▶ Draw: ${step.label}`;
+    if(step.action==='callout') btn.textContent=`▶ Add Callout`;
+  } else {
+    btn.disabled=true;btn.textContent='✓ All steps complete';
+  }
+}
+
+function setWizStep(i){S.wizStep=i;renderWizard();}
+
+function placeNextWizardItem(){
+  if(S.wizStep>=WIZARD_STEPS.length)return;
+  const step=WIZARD_STEPS[S.wizStep];
+  const scr=document.getElementById('sc').getBoundingClientRect();
+
+  if(step.condType){
+    S.condType=step.condType;
+    document.querySelectorAll('.ct-r').forEach(r=>r.checked=r.value===step.condType);
+    setMode('conduit');
+    showBanner('cond',`⚡ Draw ${step.label} — click start, route to end`);
+  } else if(step.action==='callout'){
+    addCallout();
+    completeWizStep(step.id);
+  } else if(step.eqId==='bess-asm'){
+    const cfg=S.bessList[0]||null;
+    const elObj={type:'bess-asm',bessId:cfg?.id||null,label:cfg?cfg.name:'BESS Assembly',
+      spec:cfg?`${cfg.kwh}kWh · ${cfg.kw}kW · ${cfg.dcv}VDC`:'Configure BESS first',
+      x:scr.width/2-200,y:scr.height/2-60,w:400,rot:0};
+    addEl(elObj);
+    completeWizStep(step.id);
+    showBanner('wiz',`✓ ${step.label} placed! Move and resize it.`);
+  } else {
+    const eq=EQ.find(e=>e.id===step.eqId);
+    if(eq){
+      addEl({type:'eq',eqId:step.eqId,label:eq.label,
+        x:scr.width/2-35,y:scr.height/2-35,w:70,rot:0});
+      completeWizStep(step.id);
+      showBanner('wiz',`✓ ${step.label} placed — move it into position`);
+    }
+  }
+}
+
+function completeWizStep(id){
+  if(!S.wizDone.includes(id))S.wizDone.push(id);
+  S.wizStep=Math.min(S.wizStep+1,WIZARD_STEPS.length);
+  renderWizard();
+}
+
+// ══ BACKGROUND ══════════════════════════════════════════════
+function applyBg(){
+  const img=document.getElementById('backdrop');
+  img.style.transform=`translate(${BG.tx}px,${BG.ty}px) rotate(${BG.rot}deg) scale(${BG.scale})`;
+  img.style.transformOrigin='center center';
+  document.getElementById('zpct').textContent=Math.round(BG.scale*100)+'%';
+}
+function zoomBg(d){if(mapMode!=='upload')return;BG.scale=Math.max(0.1,Math.min(10,BG.scale+d));applyBg();}
+function resetBgZoom(){if(mapMode!=='upload')return;BG.scale=1;BG.tx=0;BG.ty=0;applyBg();}
+
+function loadBg(e){const f=e.target.files[0];if(!f)return;const r=new FileReader();r.onload=ev=>{const img=document.getElementById('backdrop');img.src=ev.target.result;img.style.display='block';BG.scale=1;BG.tx=0;BG.ty=0;applyBg();document.getElementById('map-img').src=ev.target.result;document.getElementById('map-img').style.display='block';document.getElementById('map-area').classList.add('hasimg');document.getElementById('map-hint').style.display='none';};r.readAsDataURL(f);}
+function dropBg(e){e.preventDefault();const f=e.dataTransfer.files[0];if(f&&f.type.startsWith('image/'))loadBg({target:{files:[f]}});}
+
+// ══ MAP MODE ════════════════════════════════════════════════
+let mapMode='google'; // 'google' | 'upload'
+
+function setMapMode(mode){
+  mapMode=mode;
+  document.getElementById('btn-gmap').style.background=mode==='google'?'rgba(58,134,200,.4)':'var(--surface)';
+  document.getElementById('btn-gmap').style.borderColor=mode==='google'?'var(--sky)':'var(--border)';
+  document.getElementById('btn-gmap').style.color=mode==='google'?'var(--text)':'var(--sub)';
+  document.getElementById('btn-upload').style.background=mode==='upload'?'rgba(58,134,200,.4)':'var(--surface)';
+  document.getElementById('btn-upload').style.borderColor=mode==='upload'?'var(--sky)':'var(--border)';
+  document.getElementById('btn-upload').style.color=mode==='upload'?'var(--text)':'var(--sub)';
+  document.getElementById('gmap-controls').style.display=mode==='google'?'block':'none';
+  document.getElementById('upload-controls').style.display=mode==='upload'?'block':'none';
+  // Show/hide layers
+  if(mode==='upload'){
+    document.getElementById('gmap-wrap').style.display='none';
+    document.getElementById('cw-grid').style.display='block';
+  }
+}
+
+// ══ GOOGLE MAPS EMBED ═══════════════════════════════════════
+// Uses Google Maps Embed API — free, no API key for basic embed,
+// renders live satellite imagery directly inside an iframe in the canvas.
+function fetchMap(){
+  const addr=document.getElementById('addr-in').value.trim();
+  if(!addr)return;
+  setMapMode('google');
+  const zoom=document.getElementById('map-zoom').value||18;
+  const btn=document.getElementById('addr-btn');
+  btn.textContent='...';btn.disabled=true;
+
+  // Google Maps Embed — satellite view, no API key required for basic embed
+  // The 'q' parameter geocodes the address; maptype=satellite shows aerial imagery
+  const encodedAddr=encodeURIComponent(addr);
+  const embedUrl=`https://maps.google.com/maps?q=${encodedAddr}&t=k&z=${zoom}&output=embed&iwloc=near`;
+
+  const frame=document.getElementById('gmap-frame');
+  frame.src=embedUrl;
+
+  // Show the map layer
+  const wrap=document.getElementById('gmap-wrap');
+  wrap.style.display='block';
+  // Hide the dot-grid background so map shows cleanly
+  document.getElementById('cw-grid').style.display='none';
+  // Hide static backdrop
+  document.getElementById('backdrop').style.display='none';
+
+  // Store address for export/SLD
+  window._lastAddr=addr;window._lastZoom=zoom;
+
+  frame.onload=()=>{
+    document.getElementById('gmap-status').textContent=`✓ Satellite loaded — scroll map to position, then click 🔒 Lock`;
+    document.getElementById('lock-btn').style.display='block';
+    document.getElementById('lock-btn').textContent='🔒 Lock map & place equipment';
+    window._mapLocked=false;
+    btn.textContent='Go';btn.disabled=false;
+    showBanner('wiz','🛰 Google satellite loaded — zoom & pan to position your site, then click 🔒 Lock');
+  };
+  frame.onerror=()=>{
+    btn.textContent='Go';btn.disabled=false;
+    document.getElementById('gmap-status').textContent='⚠️ Map blocked — try Upload Photo instead';
+  };
+
+  // Fallback timer in case onload doesn't fire
+  setTimeout(()=>{
+    if(btn.disabled){
+      btn.textContent='Go';btn.disabled=false;
+      document.getElementById('lock-btn').style.display='block';
+    }
+  },4000);
+}
+
+function toggleMapLock(){
+  window._mapLocked=!window._mapLocked;
+  const btn=document.getElementById('lock-btn');
+  const block=document.getElementById('gmap-block');
+  const wrap=document.getElementById('gmap-wrap');
+
+  if(window._mapLocked){
+    // Lock: overlay a transparent div so mouse events go to equipment layer, not map
+    block.style.display='block';
+    // Also make iframe pointer-events none
+    document.getElementById('gmap-frame').style.pointerEvents='none';
+    btn.textContent='🔓 Unlock map';
+    btn.style.background='rgba(0,212,255,.2)';
+    btn.style.color='var(--accent)';
+    btn.style.borderColor='var(--accent)';
+    document.getElementById('gmap-status').textContent='🔒 Map locked — drag & drop equipment over the satellite view';
+    showBanner('wiz','🔒 Map locked — now place your BESS equipment on top of the satellite imagery');
+  }else{
+    block.style.display='none';
+    document.getElementById('gmap-frame').style.pointerEvents='auto';
+    btn.textContent='🔒 Lock map & place equipment';
+    btn.style.background='var(--surface)';
+    btn.style.color='var(--sub)';
+    btn.style.borderColor='var(--border)';
+    document.getElementById('gmap-status').textContent='Map unlocked — scroll/pan to reposition, then lock again';
+    showBanner('cal','🔓 Map unlocked — scroll & pan to reposition the satellite view');
+  }
+}
+
+
+// ══ LOGO ════════════════════════════════════════════════════
+function loadLogo(e){const f=e.target.files[0];if(!f)return;const r=new FileReader();r.onload=ev=>{const scr=document.getElementById('sc').getBoundingClientRect();addEl({type:'logo',src:ev.target.result,label:f.name.replace(/\.[^.]+$/,''),x:scr.width/2-70,y:scr.height/2-40,w:140,rot:0});};r.readAsDataURL(f);}
+function dropLogo(e){e.preventDefault();const f=e.dataTransfer.files[0];if(!f)return;const r=new FileReader();r.onload=ev=>{const scr=document.getElementById('sc').getBoundingClientRect();addEl({type:'logo',src:ev.target.result,label:'logo',x:scr.width/2-70,y:scr.height/2-40,w:140,rot:0});};r.readAsDataURL(f);}
+
+// ══ ELEMENTS ════════════════════════════════════════════════
+function addEl(opts){const el={id:uid(),...opts};S.elements.push(el);renderEl(el);updCount();renderLegend();pushHist();return el;}
+
+function renderEl(el){
+  const container=document.getElementById('els');
+  const wrap=document.createElement('div');
+  wrap.className='cel';wrap.dataset.elid=el.id;
+  wrap.style.cssText=`left:${el.x}px;top:${el.y}px;`;
+
+  let inner='';
+  if(el.type==='eq'){
+    const fn=ICONS[el.eqId]||ICONS.jbox;
+    const sz=el.w||60;
+    inner=`<div class="elbody eq-node" style="width:${sz}px;transform:rotate(${el.rot||0}deg)">
+      ${fn(sz)}
+      <div class="nd-lbl">${el.label||''}</div>
+      ${el.spec?`<div class="nd-spec">${el.spec}</div>`:''}
+    </div>`;
+  } else if(el.type==='bess-asm'){
+    const cfg=el.bessId?S.bessList.find(b=>b.id===el.bessId):null;
+    inner=`<div class="elbody bess-asm" style="transform:rotate(${el.rot||0}deg);display:inline-block">
+      ${bessAssemblySVG(cfg,el.w||400)}
+    </div>`;
+  } else if(el.type==='text'){
+    inner=`<div class="elbody txt-el" style="min-width:${el.w||100}px;transform:rotate(${el.rot||0}deg)" tabindex="-1">${el.label||'Double-click to edit'}</div>`;
+  } else if(el.type==='callout'){
+    inner=`<div class="elbody callout-el" style="min-width:${el.w||120}px;transform:rotate(${el.rot||0}deg)">▲ ${el.label||'Click to edit'}</div>`;
+  } else if(el.type==='logo'){
+    inner=`<div class="elbody logo-el" style="width:${el.w||140}px;transform:rotate(${el.rot||0}deg)"><img src="${el.src}" style="width:100%;height:auto"></div>`;
+  }
+
+  wrap.innerHTML=`${inner}
+    <div class="h-del">×</div>
+    <div class="h-rot">↻</div>
+    <div class="h-nw" data-corner="nw"></div>
+    <div class="h-ne" data-corner="ne"></div>
+    <div class="h-sw" data-corner="sw"></div>
+    <div class="h-se" data-corner="se"></div>`;
+
+  wrap.querySelector('.h-del').addEventListener('click',e=>{e.stopPropagation();removeEl(el.id);});
+  wrap.querySelector('.h-rot').addEventListener('mousedown',e=>{e.stopPropagation();startRotate(e,el.id);});
+  wrap.querySelectorAll('[data-corner]').forEach(h=>h.addEventListener('mousedown',e=>{e.stopPropagation();startResize(e,el.id,h.dataset.corner);}));
+
+  if(el.type==='text'||el.type==='callout'){
+    const tb=wrap.querySelector('.txt-el,.callout-el');
+    if(tb){tb.addEventListener('dblclick',()=>{tb.contentEditable='true';tb.focus();});
+    tb.addEventListener('blur',()=>{el.label=tb.innerText.replace(/^▲\s*/,'');tb.contentEditable='false';if(el.type==='callout')tb.textContent='▲ '+el.label;});}
+  }
+  container.appendChild(wrap);
+}
+
+function removeEl(id){
+  document.querySelector(`[data-elid="${id}"]`)?.remove();
+  S.elements=S.elements.filter(e=>e.id!==id);
+  if(S.sel===id){S.sel=null;showProps(null);}
+  S.conduits.filter(c=>c.fromId===id||c.toId===id).forEach(c=>removeConduit(c.id));
+  updCount();renderLegend();pushHist();
+}
+
+function selEl(id){
+  document.querySelectorAll('.cel').forEach(e=>e.classList.remove('sel'));
+  S.sel=id;
+  if(id){document.querySelector(`[data-elid="${id}"]`)?.classList.add('sel');showProps(id);}
+  else showProps(null);
+}
+
+function showProps(id){
+  const el=S.elements.find(e=>e.id===id);
+  document.getElementById('ns').style.display=el?'none':'block';
+  document.getElementById('pf').style.display=el?'block':'none';
+  if(!el)return;
+  document.getElementById('p-lbl').value=el.label||'';
+  document.getElementById('p-spec').value=el.spec||'';
+  document.getElementById('p-w').value=el.w||60;
+  document.getElementById('p-rot').value=el.rot||0;
+  const cc=document.getElementById('pr-color');
+  cc.style.display=(el.type==='text'||el.type==='callout')?'block':'none';
+}
+
+function uP(k,v){
+  if(!S.sel)return;
+  const el=S.elements.find(e=>e.id===S.sel);
+  const dom=document.querySelector(`[data-elid="${S.sel}"]`);
+  if(!el||!dom)return;
+  if(k==='label'){el.label=v;const lb=dom.querySelector('.nd-lbl,.txt-el');if(lb)lb.textContent=el.type==='callout'?'▲ '+v:v;}
+  else if(k==='spec'){el.spec=v;let sp=dom.querySelector('.nd-spec');if(sp)sp.textContent=v;else if(v){sp=document.createElement('div');sp.className='nd-spec';sp.textContent=v;dom.querySelector('.eq-node')?.appendChild(sp);}}
+  else if(k==='w'){
+    el.w=+v;
+    const bd=dom.querySelector('.elbody');if(bd){bd.style.width=v+'px';bd.style.minWidth=v+'px';}
+    if(el.type==='eq'){const fn=ICONS[el.eqId]||ICONS.jbox;const os=dom.querySelector('svg');if(os){const t=document.createElement('div');t.innerHTML=fn(+v);os.replaceWith(t.firstChild);}}
+    if(el.type==='bess-asm'){const cfg=el.bessId?S.bessList.find(b=>b.id===el.bessId):null;const os=dom.querySelector('svg');if(os){const t=document.createElement('div');t.innerHTML=bessAssemblySVG(cfg,+v);os.replaceWith(t.firstChild);}}
+  }
+  else if(k==='rot'){el.rot=+v;const bd=dom.querySelector('.elbody');if(bd)bd.style.transform=`rotate(${v}deg)`;}
+}
+
+function delSel(){if(S.sel)removeEl(S.sel);}
+function updCount(){document.getElementById('elcnt').textContent=S.elements.length;}
+
+function clearAll(){
+  if(!confirm('Clear all elements and conduits?'))return;
+  document.getElementById('els').innerHTML='';
+  document.getElementById('csvg').innerHTML='';
+  S.elements=[];S.conduits=[];S.sel=null;S.condDrawing=false;S.condPts=[];
+  showProps(null);updCount();renderLegend();updCondStat();
+}
+
+// ══ DRAG FROM PANEL ══════════════════════════════════════════
+let drgEqId=null;
+function drgEq(e,id){drgEqId=id;e.dataTransfer.effectAllowed='copy';}
+document.getElementById('cw').addEventListener('dragover',e=>{if(S.mode==='select')e.preventDefault();});
+document.getElementById('cw').addEventListener('drop',e=>{
+  e.preventDefault();if(!drgEqId)return;
+  const eq=EQ.find(x=>x.id===drgEqId);if(!eq)return;
+  const scr=document.getElementById('sc').getBoundingClientRect();
+  addEl({type:'eq',eqId:drgEqId,label:eq.label,x:e.clientX-scr.left-30,y:e.clientY-scr.top-30,w:60,rot:0});
+  drgEqId=null;
+});
+
+// ══ ELEMENT DRAG ═════════════════════════════════════════════
+function elsMD(e){
+  if(S.mode!=='select')return;
+  const cel=e.target.closest('.cel');if(!cel)return;
+  if(e.target.classList.contains('h-del')||e.target.classList.contains('h-rot')||e.target.dataset.corner)return;
+  e.stopPropagation();
+  const id=cel.dataset.elid;selEl(id);
+  const rect=cel.getBoundingClientRect();
+  S.drag=id;S.dox=e.clientX-rect.left;S.doy=e.clientY-rect.top;
+}
+
+// ══ RESIZE (4 corners) ═══════════════════════════════════════
+function startResize(e,id,corner){
+  S.resizing=id;S.rsCorner=corner;S.rsX=e.clientX;S.rsY=e.clientY;
+  const el=S.elements.find(x=>x.id===id);S.rsW=el?.w||60;
+  e.stopPropagation();
+}
+
+// ══ ROTATE ═══════════════════════════════════════════════════
+function startRotate(e,id){
+  S.rotating=id;
+  const dom=document.querySelector(`[data-elid="${id}"]`);
+  const rect=dom.getBoundingClientRect();
+  S.rotCx=rect.left+rect.width/2;S.rotCy=rect.top+rect.height/2;
+  const el=S.elements.find(x=>x.id===id);S.rotInit=el?.rot||0;
+  S.rotStart=Math.atan2(e.clientY-S.rotCy,e.clientX-S.rotCx)*(180/Math.PI);
+  e.stopPropagation();
+}
+
+// ══ GLOBAL MOUSE ═════════════════════════════════════════════
+let bgPan=false;
+function globalMM(e){
+  if(bgPan){BG.tx+=e.clientX-BG.lx;BG.ty+=e.clientY-BG.ly;BG.lx=e.clientX;BG.ly=e.clientY;applyBg();return;}
+  if(S.drag){
+    const scr=document.getElementById('sc').getBoundingClientRect();
+    const el=S.elements.find(x=>x.id===S.drag);
+    const dom=document.querySelector(`[data-elid="${S.drag}"]`);
+    if(!el||!dom)return;
+    el.x=Math.max(0,e.clientX-scr.left-S.dox);el.y=Math.max(0,e.clientY-scr.top-S.doy);
+    dom.style.left=el.x+'px';dom.style.top=el.y+'px';
+    updateAttached(S.drag);return;
+  }
+  if(S.resizing){
+    const dx=e.clientX-S.rsX,dy=e.clientY-S.rsY;
+    const el=S.elements.find(x=>x.id===S.resizing);
+    const dom=document.querySelector(`[data-elid="${S.resizing}"]`);
+    if(!el||!dom)return;
+    const scr=document.getElementById('sc').getBoundingClientRect();
+    let newW=S.rsW;
+    const c=S.rsCorner;
+    if(c==='se'||c==='ne')newW=Math.max(30,S.rsW+dx);
+    if(c==='sw'||c==='nw'){newW=Math.max(30,S.rsW-dx);el.x=scr.left+Math.max(0,(e.clientX-scr.left));dom.style.left=el.x+'px';}
+    el.w=Math.round(newW);
+    const bd=dom.querySelector('.elbody');if(bd){bd.style.width=el.w+'px';bd.style.minWidth=el.w+'px';}
+    if(el.type==='eq'){const fn=ICONS[el.eqId]||ICONS.jbox;const os=dom.querySelector('svg');if(os){const t=document.createElement('div');t.innerHTML=fn(el.w);os.replaceWith(t.firstChild);}}
+    if(el.type==='bess-asm'){const cfg=el.bessId?S.bessList.find(b=>b.id===el.bessId):null;const os=dom.querySelector('svg');if(os){const t=document.createElement('div');t.innerHTML=bessAssemblySVG(cfg,el.w);os.replaceWith(t.firstChild);}}
+    document.getElementById('p-w').value=el.w;
+    return;
+  }
+  if(S.rotating){
+    const angle=Math.atan2(e.clientY-S.rotCy,e.clientX-S.rotCx)*(180/Math.PI);
+    const el=S.elements.find(x=>x.id===S.rotating);
+    const dom=document.querySelector(`[data-elid="${S.rotating}"]`);
+    if(!el||!dom)return;
+    el.rot=Math.round(S.rotInit+(angle-S.rotStart));
+    const bd=dom.querySelector('.elbody');if(bd)bd.style.transform=`rotate(${el.rot}deg)`;
+    document.getElementById('p-rot').value=el.rot;
+    return;
+  }
+  if(S.condDrawing&&S.condPts.length>0){
+    const scr=document.getElementById('sc').getBoundingClientRect();
+    const p={x:e.clientX-scr.left,y:e.clientY-scr.top};
+    const snap=nearestEl(p.x,p.y);
+    const ep=snap?{x:snap.cx,y:snap.cy}:p;
+    drawTmpLine(S.condPts[S.condPts.length-1],ep);
+    const ring=document.getElementById('snapring');
+    if(snap){ring.style.display='block';ring.style.left=snap.cx+'px';ring.style.top=snap.cy+'px';}
+    else ring.style.display='none';
+  }
+}
+function globalMU(){S.drag=null;S.resizing=null;S.rotating=null;bgPan=false;document.getElementById('cw').style.cursor='';}
+
+// Alt+drag pans the uploaded photo backdrop (upload mode only)
+document.getElementById('cw').addEventListener('mousedown',e=>{
+  if(S.mode==='conduit')return;
+  if(mapMode!=='upload')return;
+  if(e.button===1||(e.button===0&&e.altKey)){e.preventDefault();bgPan=true;BG.lx=e.clientX;BG.ly=e.clientY;document.getElementById('cw').style.cursor='grabbing';}
+});
+document.getElementById('cw').addEventListener('wheel',e=>{
+  if(e.target.closest('.cel')||e.target.closest('#lp'))return;
+  if(mapMode!=='upload')return; // in Google Maps mode, let iframe handle scroll
+  e.preventDefault();zoomBg(e.deltaY<0?0.1:-0.1);
+},{passive:false});
+
+// ══ CONDUIT ══════════════════════════════════════════════════
+const SNAP_R=40;
+function getCenter(id){
+  const el=S.elements.find(e=>e.id===id);
+  const dom=document.querySelector(`[data-elid="${id}"]`);
+  if(!el||!dom)return null;
+  const r=dom.getBoundingClientRect(),sr=document.getElementById('sc').getBoundingClientRect();
+  return{x:r.left-sr.left+r.width/2,y:r.top-sr.top+r.height/2};
+}
+function nearestEl(cx,cy){
+  let best=null,bestD=SNAP_R*SNAP_R;
+  S.elements.forEach(el=>{const c=getCenter(el.id);if(!c)return;const d=(cx-c.x)**2+(cy-c.y)**2;if(d<bestD){bestD=d;best={el,cx:c.x,cy:c.y};}});
+  return best;
+}
+
+function covClick(e){
+  if(S.mode!=='conduit')return;
+  e.stopPropagation();
+  const scr=document.getElementById('sc').getBoundingClientRect();
+  const p={x:e.clientX-scr.left,y:e.clientY-scr.top};
+  const snap=nearestEl(p.x,p.y);
+  const pt=snap?{x:snap.cx,y:snap.cy,elId:snap.el.id}:{x:p.x,y:p.y};
+  if(!S.condDrawing){S.condDrawing=true;S.condPts=[pt];showBanner('cond','⚡ Drawing — click to add points · click element to snap & finish · ESC=cancel');}
+  else{
+    S.condPts.push(pt);
+    if(snap&&S.condPts.length>1&&snap.el.id!==S.condPts[0].elId)finishConduit();
+    else if(S.condPts.length>=2&&!snap){}
+  }
+}
+function covMove(e){
+  if(S.mode!=='conduit'||!S.condDrawing)return;
+  const scr=document.getElementById('sc').getBoundingClientRect();
+  const p={x:e.clientX-scr.left,y:e.clientY-scr.top};
+  const snap=nearestEl(p.x,p.y);
+  const ep=snap?{x:snap.cx,y:snap.cy}:p;
+  drawTmpLine(S.condPts[S.condPts.length-1],ep);
+  const ring=document.getElementById('snapring');
+  if(snap){ring.style.display='block';ring.style.left=snap.cx+'px';ring.style.top=snap.cy+'px';}
+  else ring.style.display='none';
+}
+
+function drawTmpLine(a,b){
+  const svg=document.getElementById('csvg');
+  let l=document.getElementById('tmp-c');
+  if(!l){l=document.createElementNS('http://www.w3.org/2000/svg','polyline');l.id='tmp-c';svg.appendChild(l);}
+  const ct=CTYPES.find(x=>x.id===S.condType)||CTYPES[0];
+  // Draw all points including current position
+  const pts=[...S.condPts,b].map(p=>`${p.x},${p.y}`).join(' ');
+  l.setAttribute('points',pts);l.setAttribute('stroke',ct.color);l.setAttribute('stroke-width',ct.sw);
+  l.setAttribute('stroke-linecap','round');l.setAttribute('stroke-linejoin','round');
+  l.setAttribute('opacity','0.55');l.setAttribute('fill','none');
+  if(ct.dash)l.setAttribute('stroke-dasharray',ct.dash);else l.removeAttribute('stroke-dasharray');
+}
+
+function finishConduit(){
+  document.getElementById('tmp-c')?.remove();
+  if(S.condPts.length<2){cancelConduit();return;}
+  let px=0;for(let i=1;i<S.condPts.length;i++)px+=Math.hypot(S.condPts[i].x-S.condPts[i-1].x,S.condPts[i].y-S.condPts[i-1].y);
+  const ftLen=S.pxPerFt?+(px/S.pxPerFt).toFixed(1):px;
+  const c={id:uid(),condType:S.condType,pts:[...S.condPts],pxLen:px,ftLen,fromId:S.condPts[0].elId||null,toId:S.condPts[S.condPts.length-1].elId||null};
+  S.conduits.push(c);renderConduit(c);updCondStat();renderLegend();pushHist();
+  // chain from last point
+  const last=S.condPts[S.condPts.length-1];
+  S.condPts=[last];S.condDrawing=true;
+  document.getElementById('snapring').style.display='none';
+  showBanner('cond','⚡ Run recorded! Click to start next segment · ESC=exit conduit mode');
+  // complete wizard step if active
+  const step=WIZARD_STEPS[S.wizStep];
+  if(step&&step.condType===S.condType)completeWizStep(step.id);
+}
+
+function cancelConduit(){
+  S.condDrawing=false;S.condPts=[];
+  document.getElementById('tmp-c')?.remove();
+  document.getElementById('snapring').style.display='none';
+  hideBanner();
+}
+
+function renderConduit(c){
+  const svg=document.getElementById('csvg');
+  const ct=CTYPES.find(x=>x.id===c.condType)||CTYPES[0];
+  const g=document.createElementNS('http://www.w3.org/2000/svg','g');
+  g.dataset.cid=c.id;
+  const pl=document.createElementNS('http://www.w3.org/2000/svg','polyline');
+  pl.setAttribute('points',c.pts.map(p=>`${p.x},${p.y}`).join(' '));
+  pl.setAttribute('stroke',ct.color);pl.setAttribute('stroke-width',ct.sw);
+  pl.setAttribute('class','cline');pl.setAttribute('fill','none');
+  pl.setAttribute('stroke-linecap','round');pl.setAttribute('stroke-linejoin','round');
+  if(ct.dash)pl.setAttribute('stroke-dasharray',ct.dash);
+  const hit=document.createElementNS('http://www.w3.org/2000/svg','polyline');
+  hit.setAttribute('points',c.pts.map(p=>`${p.x},${p.y}`).join(' '));
+  hit.setAttribute('stroke','transparent');hit.setAttribute('stroke-width','14');hit.setAttribute('fill','none');hit.style.cursor='pointer';
+  hit.addEventListener('dblclick',()=>removeConduit(c.id));
+  g.appendChild(pl);g.appendChild(hit);
+  // Label
+  const mid=midPts(c.pts);
+  const lbl=fmtLen(c.ftLen);
+  const bg=document.createElementNS('http://www.w3.org/2000/svg','rect');
+  const tw=lbl.length*5.8+8;bg.setAttribute('x',mid.x-tw/2);bg.setAttribute('y',mid.y-9);bg.setAttribute('width',tw);bg.setAttribute('height',13);bg.setAttribute('rx',3);bg.setAttribute('fill','rgba(13,27,42,0.85)');bg.setAttribute('class','clbl-bg');
+  const tx=document.createElementNS('http://www.w3.org/2000/svg','text');
+  tx.setAttribute('x',mid.x);tx.setAttribute('y',mid.y);tx.setAttribute('text-anchor','middle');tx.setAttribute('dominant-baseline','middle');tx.setAttribute('font-size','10');tx.setAttribute('font-weight','700');tx.setAttribute('font-family',"'IBM Plex Mono',monospace");tx.setAttribute('fill',ct.color);tx.textContent=lbl;
+  // snap dots
+  c.pts.filter(p=>p.elId).forEach(p=>{const d=document.createElementNS('http://www.w3.org/2000/svg','circle');d.setAttribute('cx',p.x);d.setAttribute('cy',p.y);d.setAttribute('r','4');d.setAttribute('fill',ct.color);d.setAttribute('stroke','rgba(255,255,255,.6)');d.setAttribute('stroke-width','1.5');g.appendChild(d);});
+  g.appendChild(bg);g.appendChild(tx);
+  svg.appendChild(g);
+}
+
+function removeConduit(id){document.querySelector(`[data-cid="${id}"]`)?.remove();S.conduits=S.conduits.filter(c=>c.id!==id);updCondStat();renderLegend();}
+
+function updateAttached(elId){
+  const center=getCenter(elId);if(!center)return;
+  S.conduits.forEach(c=>{let ch=false;c.pts=c.pts.map(p=>{if(p.elId===elId){ch=true;return{...p,x:center.x,y:center.y};}return p;});
+  if(ch){let px=0;for(let i=1;i<c.pts.length;i++)px+=Math.hypot(c.pts[i].x-c.pts[i-1].x,c.pts[i].y-c.pts[i-1].y);c.pxLen=px;c.ftLen=S.pxPerFt?+(px/S.pxPerFt).toFixed(1):px;document.querySelector(`[data-cid="${c.id}"]`)?.remove();renderConduit(c);updCondStat();}});
+}
+
+function midPts(pts){
+  if(pts.length===1)return pts[0];
+  let tot=0;const segs=[];
+  for(let i=1;i<pts.length;i++){const d=Math.hypot(pts[i].x-pts[i-1].x,pts[i].y-pts[i-1].y);segs.push({a:pts[i-1],b:pts[i],d});tot+=d;}
+  let t=tot/2;
+  for(const s of segs){if(t<=s.d){const r=t/s.d;return{x:s.a.x+r*(s.b.x-s.a.x),y:s.a.y+r*(s.b.y-s.a.y)};}t-=s.d;}
+  return pts[pts.length-1];
+}
+
+function fmtLen(val){
+  if(!S.pxPerFt)return`${Math.round(val)}px`;
+  const u=S.unitLabel||'ft';
+  return`${(+val).toFixed(1)} ${u}`;
+}
+
+function updCondStat(){
+  document.getElementById('ccnt').textContent=S.conduits.length;
+  if(S.pxPerFt){const t=S.conduits.reduce((s,c)=>s+ +c.ftLen,0);document.getElementById('tot-c').textContent=`${t.toFixed(1)} ${S.unitLabel||'ft'}`;}
+  else document.getElementById('tot-c').textContent=S.conduits.length?'📏 Calibrate':'—';
+}
+
+// ══ SCALE CALIBRATION ════════════════════════════════════════
+const CAL={step:0,x1:0,y1:0,x2:0,y2:0,px:0};
+function startCal(){
+  CAL.step=1;
+  document.getElementById('cal-ov').style.display='block';
+  const cal=document.getElementById('cal-ov');
+  cal.onclick=calClick;cal.onmousemove=calMoveEv;
+  document.getElementById('cal-d1').setAttribute('display','none');
+  document.getElementById('cal-d2').setAttribute('display','none');
+  document.getElementById('cal-ln').setAttribute('display','none');
+  showBanner('cal','📏 Step 1: Click START of a known-length line on the photo');
+}
+function calClick(e){
+  const scr=document.getElementById('sc').getBoundingClientRect();
+  const x=e.clientX-scr.left,y=e.clientY-scr.top;
+  if(CAL.step===1){CAL.x1=x;CAL.y1=y;CAL.step=2;document.getElementById('cal-d1').setAttribute('cx',x);document.getElementById('cal-d1').setAttribute('cy',y);document.getElementById('cal-d1').setAttribute('display','block');showBanner('cal','📏 Step 2: Click END of that same line');}
+  else if(CAL.step===2){CAL.x2=x;CAL.y2=y;CAL.px=Math.hypot(x-CAL.x1,y-CAL.y1);document.getElementById('cal-d2').setAttribute('cx',x);document.getElementById('cal-d2').setAttribute('cy',y);document.getElementById('cal-d2').setAttribute('display','block');document.getElementById('cal-ln').setAttribute('x1',CAL.x1);document.getElementById('cal-ln').setAttribute('y1',CAL.y1);document.getElementById('cal-ln').setAttribute('x2',CAL.x2);document.getElementById('cal-ln').setAttribute('y2',CAL.y2);document.getElementById('cal-ln').setAttribute('display','block');document.getElementById('cal-px').textContent=`${Math.round(CAL.px)}px`;document.getElementById('cal-modal').style.display='flex';CAL.step=0;}
+}
+function calMoveEv(e){
+  if(CAL.step!==2)return;
+  const scr=document.getElementById('sc').getBoundingClientRect();
+  const x=e.clientX-scr.left,y=e.clientY-scr.top;
+  const ln=document.getElementById('cal-ln');ln.setAttribute('x1',CAL.x1);ln.setAttribute('y1',CAL.y1);ln.setAttribute('x2',x);ln.setAttribute('y2',y);ln.setAttribute('display','block');
+  const d=Math.hypot(x-CAL.x1,y-CAL.y1);
+  const tx=document.getElementById('cal-tx');tx.setAttribute('x',(CAL.x1+x)/2);tx.setAttribute('y',(CAL.y1+y)/2-10);tx.textContent=`${Math.round(d)}px`;tx.setAttribute('display','block');
+}
+function confirmCal(){
+  const v=parseFloat(document.getElementById('cal-ft').value);const u=document.getElementById('cal-unit').value;
+  if(isNaN(v)||v<=0)return;
+  let ft=v;if(u==='m')ft=v*3.28084;else if(u==='yd')ft=v*3;
+  S.pxPerFt=CAL.px/ft;S.unitLabel=u;
+  document.getElementById('cal-modal').style.display='none';
+  document.getElementById('cal-ov').style.display='none';
+  hideBanner();
+  const nice=(1/S.pxPerFt).toFixed(2);
+  document.getElementById('sc-lbl').textContent=`${nice} ${u}/px · ✓`;
+  document.getElementById('clr-sc').style.display='inline';
+  S.conduits.forEach(c=>{c.ftLen=+(c.pxLen/S.pxPerFt).toFixed(1);const tx=document.querySelector(`[data-cid="${c.id}"] text`);if(tx)tx.textContent=fmtLen(c.ftLen);});
+  updCondStat();updateRuler();
+}
+function cancelCal(){document.getElementById('cal-modal').style.display='none';document.getElementById('cal-ov').style.display='none';hideBanner();}
+function clearScale(){S.pxPerFt=null;document.getElementById('sc-lbl').textContent='Not calibrated';document.getElementById('clr-sc').style.display='none';document.getElementById('ruler').style.display='none';updCondStat();}
+function updateRuler(){
+  if(!S.pxPerFt){document.getElementById('ruler').style.display='none';return;}
+  const u=S.unitLabel||'ft';const cands=[1,2,5,10,20,25,50,100,200,500];
+  const target=120;const nice=cands.reduce((p,c)=>Math.abs(c/S.pxPerFt-target)<Math.abs(p/S.pxPerFt-target)?c:p);
+  const barPx=Math.round(nice*S.pxPerFt);
+  document.getElementById('ruler-bar').style.width=barPx+'px';
+  document.getElementById('ruler-lbl').textContent=`${nice} ${u}`;
+  document.getElementById('ruler').style.display='block';
+}
+
+// ══ LEGEND ══════════════════════════════════════════════════
+function renderLegend(){
+  const usedEq=[...new Set(S.elements.filter(e=>e.type==='eq').map(e=>e.eqId))];
+  const hasBess=S.elements.some(e=>e.type==='bess-asm');
+  const usedC=[...new Set(S.conduits.map(c=>c.condType))];
+  let h='';
+  if(hasBess)h+=`<div class="li"><div class="li-ico">${ICONS.bess(18)}</div><span class="li-txt">BESS Assembly</span></div>`;
+  usedEq.forEach(id=>{const eq=EQ.find(e=>e.id===id);if(eq)h+=`<div class="li"><div class="li-ico">${(ICONS[id]||ICONS.jbox)(18)}</div><span class="li-txt">${eq.label}</span></div>`;});
+  usedC.forEach(cid=>{const ct=CTYPES.find(c=>c.id===cid);if(ct)h+=`<div class="li"><div class="li-line" style="background:${ct.color}"></div><span class="li-txt">${ct.label}</span></div>`;});
+  document.getElementById('lgd-items').innerHTML=h||'<span style="font-size:9px;color:var(--sub)">Add elements</span>';
+}
+
+// ══ BESS CONFIG ══════════════════════════════════════════════
+function openBessModal(id){
+  S.editBessId=id;const b=id?S.bessList.find(x=>x.id===id):null;
+  document.getElementById('bm-title').textContent=b?'Edit BESS Unit':'Configure BESS Unit';
+  ['name','mfr','model','kwh','kw','dcv','acv','inv','ikva','xfmr','disco','racks','enc','wt','qty'].forEach(f=>{
+    const el=document.getElementById('bm-'+f);if(el)el.value=b?b[f]||el.defaultValue||'':el.defaultValue||'';
+  });
+  if(b&&b.chem)document.getElementById('bm-chem').value=b.chem;
+  document.getElementById('bess-modal').classList.add('on');
+}
+function closeBessModal(){document.getElementById('bess-modal').classList.remove('on');S.editBessId=null;}
+function saveBess(){
+  const get=id=>document.getElementById('bm-'+id)?.value||'';
+  const b={id:S.editBessId||uid(),name:get('name')||'BESS-01',mfr:get('mfr'),model:get('model'),chem:document.getElementById('bm-chem').value,kwh:get('kwh'),kw:get('kw'),dcv:get('dcv'),acv:get('acv'),inv:get('inv'),ikva:get('ikva'),xfmr:get('xfmr'),disco:get('disco'),racks:get('racks'),enc:get('enc'),wt:get('wt'),qty:get('qty')};
+  if(S.editBessId){const i=S.bessList.findIndex(x=>x.id===S.editBessId);if(i>=0)S.bessList[i]=b;}
+  else S.bessList.push(b);
+  // Update any placed assemblies
+  S.elements.filter(e=>e.type==='bess-asm'&&e.bessId===b.id).forEach(el=>{
+    el.label=b.name;el.spec=`${b.kwh}kWh · ${b.kw}kW`;
+    const dom=document.querySelector(`[data-elid="${el.id}"]`);
+    if(dom){const os=dom.querySelector('svg');if(os){const t=document.createElement('div');t.innerHTML=bessAssemblySVG(b,el.w);os.replaceWith(t.firstChild);}}
+  });
+  renderBessList();renderLegend();closeBessModal();renderWizard();
+}
+function renderBessList(){
+  const el=document.getElementById('bess-list');
+  if(!S.bessList.length){el.innerHTML='<p style="font-size:9px;color:var(--sub);padding:4px">No BESS configured. Click + Config.</p>';return;}
+  el.innerHTML=S.bessList.map(b=>`
+    <div class="bi" style="background:var(--surface);border:1px solid var(--border);border-radius:4px;padding:6px;margin-bottom:4px;font-size:10px">
+      <div style="font-weight:700;color:var(--accent)">🔋 ${b.name}</div>
+      <div style="color:var(--sub)">${b.kwh}kWh · ${b.kw}kW · ${b.chem}</div>
+      <div style="display:flex;gap:3px;margin-top:4px">
+        <button onclick="placeAssembly('${b.id}')" style="flex:1;background:#0A3D20;color:#22C55E;border:1px solid #22C55E;border-radius:3px;padding:2px;cursor:pointer;font-size:9px;font-weight:700">Place</button>
+        <button onclick="openBessModal('${b.id}')" style="flex:1;background:var(--surface);color:var(--sub);border:1px solid var(--border);border-radius:3px;padding:2px;cursor:pointer;font-size:9px">Edit</button>
+        <button onclick="deleteBess('${b.id}')" style="flex:1;background:rgba(229,57,53,.15);color:var(--red);border:1px solid rgba(229,57,53,.25);border-radius:3px;padding:2px;cursor:pointer;font-size:9px">Del</button>
+      </div>
+    </div>`).join('');
+}
+function placeAssembly(id){
+  const b=S.bessList.find(x=>x.id===id);if(!b)return;
+  const scr=document.getElementById('sc').getBoundingClientRect();
+  addEl({type:'bess-asm',bessId:id,label:b.name,spec:`${b.kwh}kWh · ${b.kw}kW`,x:scr.width/2-200,y:scr.height/2-60,w:400,rot:0});
+}
+function deleteBess(id){
+  if(!confirm('Delete this BESS unit?'))return;
+  S.bessList=S.bessList.filter(b=>b.id!==id);
+  S.elements.filter(e=>e.bessId===id).forEach(e=>removeEl(e.id));
+  renderBessList();renderLegend();
+}
+
+// ══ TEXT / CALLOUT ═══════════════════════════════════════════
+function addTextBox(){const scr=document.getElementById('sc').getBoundingClientRect();addEl({type:'text',label:'Double-click to edit',x:scr.width/2-70,y:scr.height/2-14,w:140,rot:0});}
+function addCallout(){const scr=document.getElementById('sc').getBoundingClientRect();addEl({type:'callout',label:'Callout note',x:scr.width/2-70,y:scr.height/2-14,w:150,rot:0});}
+
+// ══ MODE / BANNER ════════════════════════════════════════════
+function setMode(m){
+  if(S.mode==='conduit'&&m!=='conduit')cancelConduit();
+  S.mode=m;document.getElementById('mlbl').textContent=m==='conduit'?'Draw Conduit':'Select';
+  document.getElementById('btn-sel').className=`btn btn-ghost${m==='select'?' btn-sel':''}`;
+  document.getElementById('btn-cond').className=`btn btn-ghost${m==='conduit'?' btn-cond':''}`;
+  document.getElementById('cov').classList.toggle('on',m==='conduit');
+  if(m==='conduit')showBanner('cond','⚡ Click START point — or click directly on an element to snap');
+  else hideBanner();
+}
+let bannerTimer=null;
+function showBanner(type,msg){
+  const b=document.getElementById('banner');b.textContent=msg;b.className='';b.classList.add(type);b.style.display='block';
+  clearTimeout(bannerTimer);if(type!=='cond')bannerTimer=setTimeout(hideBanner,3500);
+}
+function hideBanner(){document.getElementById('banner').style.display='none';}
+
+// ══ SLD ELEMENTS ════════════════════════════════════════════
+function placeSLDElement(type){
+  const sldEls=document.getElementById('sld-els');
+  const scr=document.getElementById('sld-canvas').getBoundingClientRect();
+  const x=Math.random()*(scr.width-200)+50,y=Math.random()*(scr.height-150)+100;
+  const div=document.createElement('div');div.style.cssText=`position:absolute;left:${x}px;top:${y}px;cursor:move;user-select:none`;
+  const colors={bess_sld:'#1B4F8A',inv_sld:'#0A3D20','inv-sld':'#0A3D20','bess-sld':'#1B4F8A',xfmr_sld:'#2D0E6E','xfmr-sld':'#2D0E6E',disco_sld:'#5B0000','disco-sld':'#5B0000',panel_sld:'#0A3D35','panel-sld':'#0A3D35',meter_sld:'#003A5C','meter-sld':'#003A5C'};
+  const labels={'bess-sld':'BESS 5000kWh','inv-sld':'Dynapower CPS-1250\n802kW 480VAC','xfmr-sld':'1000KVA Isolation XFMR\n480/480V','disco-sld':'1200A AC Disconnect\nNEMA 3R 480V','panel-sld':'Main Switchboard MSB\n2000A 480Y/277V','meter-sld':'Utility Meter\nPT&CT Set'};
+  const col=colors[type]||'#243B55';const lbl=labels[type]||type;
+  div.innerHTML=`<div style="background:${col};border:2px solid rgba(255,255,255,.3);border-radius:6px;padding:10px 14px;min-width:120px;color:#fff;font-family:'IBM Plex Mono',monospace;font-size:11px;white-space:pre-line;font-weight:600;cursor:move">${lbl}</div>`;
+  div.addEventListener('mousedown',e=>{let ox=e.clientX-div.getBoundingClientRect().left,oy=e.clientY-div.getBoundingClientRect().top;const mm=ev=>{const sr=document.getElementById('sld-canvas').getBoundingClientRect();div.style.left=(ev.clientX-sr.left-ox)+'px';div.style.top=(ev.clientY-sr.top-oy)+'px';};const mu=()=>{document.removeEventListener('mousemove',mm);document.removeEventListener('mouseup',mu);};document.addEventListener('mousemove',mm);document.addEventListener('mouseup',mu);e.preventDefault();});
+  sldEls.appendChild(div);
+}
+
+// ══ UNDO ════════════════════════════════════════════════════
+function pushHist(){S.history.push({els:JSON.parse(JSON.stringify(S.elements)),conds:JSON.parse(JSON.stringify(S.conduits))});if(S.history.length>30)S.history.shift();}
+function undoLast(){
+  if(S.history.length<2)return;S.history.pop();const prev=S.history[S.history.length-1];
+  document.getElementById('els').innerHTML='';document.getElementById('csvg').innerHTML='';
+  S.elements=prev.els;S.conduits=prev.conds;S.sel=null;
+  S.elements.forEach(el=>renderEl(el));S.conduits.forEach(c=>renderConduit(c));
+  showProps(null);updCount();updCondStat();renderLegend();
+}
+
+// ══ KEYBOARD ════════════════════════════════════════════════
+document.addEventListener('keydown',e=>{
+  if(['INPUT','TEXTAREA'].includes(e.target.tagName)||e.target.contentEditable==='true')return;
+  if(e.key==='Escape'){if(S.condDrawing)cancelConduit();else setMode('select');}
+  if(e.key==='Delete'||e.key==='Backspace')delSel();
+  if((e.ctrlKey||e.metaKey)&&e.key==='z'){e.preventDefault();undoLast();}
+  if(e.key==='s')setMode('select');if(e.key==='c')setMode('conduit');
+  if(e.key==='Enter'&&S.condDrawing&&S.condPts.length>=2)finishConduit();
+});
+document.getElementById('sc').addEventListener('mousedown',e=>{
+  if(S.mode==='select'&&!e.target.closest('.cel'))selEl(null);
+});
+
+// ══ PRINT PREP ══════════════════════════════════════════════
+window.addEventListener('beforeprint',()=>{
+  const lgd=document.getElementById('lgd');
+  lgd.style.opacity='1';lgd.style.display='block';lgd.style.visibility='visible';
+});
+
+init();
+
+// ════════════════════════════════════════════════════════════
+//  GOOGLE MAPS JS API INTEGRATION (replaces iframe embed)
+// ════════════════════════════════════════════════════════════
+let googleMap = null;
+let mapMarkers = [];
+let mapLocked = false;
+
+function fetchMap() {
+  const addr = document.getElementById('addr-in').value.trim();
+  if (!addr) return;
+  setMapMode('google');
+  const btn = document.getElementById('addr-btn');
+  btn.textContent = '...'; btn.disabled = true;
+  window._lastAddr = addr;
+
+  if (CFG.googleMapsKey && CFG.googleMapsKey !== 'REPLACE_WITH_GOOGLE_MAPS_API_KEY') {
+    // Use Google Maps JavaScript API for full interactivity
+    loadGoogleMapsAPI().then(() => {
+      initGoogleMap(addr);
+      btn.textContent = 'Go'; btn.disabled = false;
+    }).catch(err => {
+      console.warn('Maps JS API failed, falling back to embed', err);
+      fetchMapEmbed(addr);
+      btn.textContent = 'Go'; btn.disabled = false;
+    });
+  } else {
+    // Fallback: use iframe embed (no key needed for basic embed)
+    fetchMapEmbed(addr);
+    setTimeout(() => { btn.textContent = 'Go'; btn.disabled = false; }, 2000);
+  }
+}
+
+let mapsApiLoading = false, mapsApiLoaded = false;
+const mapsApiCallbacks = [];
+function loadGoogleMapsAPI() {
+  return new Promise((resolve, reject) => {
+    if (mapsApiLoaded) { resolve(); return; }
+    mapsApiCallbacks.push({ resolve, reject });
+    if (mapsApiLoading) return;
+    mapsApiLoading = true;
+    window._mapsApiReady = () => { mapsApiLoaded = true; mapsApiCallbacks.forEach(cb => cb.resolve()); };
+    const s = document.createElement('script');
+    s.src = `https://maps.googleapis.com/maps/api/js?key=${CFG.googleMapsKey}&libraries=places&callback=_mapsApiReady`;
+    s.onerror = (e) => mapsApiCallbacks.forEach(cb => cb.reject(e));
+    document.head.appendChild(s);
+  });
+}
+
+function initGoogleMap(address) {
+  const frame = document.getElementById('gmap-frame');
+  const wrap = document.getElementById('gmap-wrap');
+  frame.style.display = 'none';
+  wrap.style.display = 'block';
+  document.getElementById('cw-grid').style.display = 'none';
+
+  // Create a real map div if not exists
+  let mapDiv = document.getElementById('real-map-div');
+  if (!mapDiv) {
+    mapDiv = document.createElement('div');
+    mapDiv.id = 'real-map-div';
+    mapDiv.style.cssText = 'position:absolute;inset:0;z-index:0';
+    document.getElementById('sc').insertBefore(mapDiv, document.getElementById('sc').firstChild);
+  }
+  mapDiv.style.display = 'block';
+
+  const geocoder = new google.maps.Geocoder();
+  geocoder.geocode({ address }, (results, status) => {
+    if (status !== 'OK' || !results.length) {
+      document.getElementById('gmap-status').textContent = '⚠ Address not found';
+      return;
+    }
+    const loc = results[0].geometry.location;
+    const zoom = parseInt(document.getElementById('map-zoom').value) || 18;
+    if (!googleMap) {
+      googleMap = new google.maps.Map(mapDiv, {
+        center: loc, zoom,
+        mapTypeId: 'satellite',
+        tilt: 0,
+        disableDefaultUI: false,
+        streetViewControl: false,
+        fullscreenControl: false,
+        mapTypeControl: true
+      });
+    } else {
+      googleMap.setCenter(loc);
+      googleMap.setZoom(zoom);
+    }
+    // Clear old markers
+    mapMarkers.forEach(m => m.setMap(null)); mapMarkers = [];
+    // Add location pin
+    const marker = new google.maps.Marker({ position: loc, map: googleMap, title: address });
+    mapMarkers.push(marker);
+    document.getElementById('gmap-status').textContent = '✓ Live satellite loaded — scroll/pan map, then 🔒 Lock';
+    document.getElementById('lock-btn').style.display = 'block';
+    document.getElementById('lock-btn').textContent = '🔒 Lock map & place equipment';
+    mapLocked = false;
+    showBanner('wiz', '🛰 Google satellite loaded — zoom & pan, then click 🔒 Lock');
+  });
+}
+
+function fetchMapEmbed(addr) {
+  // Fallback iframe embed
+  const frame = document.getElementById('gmap-frame');
+  const wrap = document.getElementById('gmap-wrap');
+  const zoom = document.getElementById('map-zoom').value || 18;
+  const enc = encodeURIComponent(addr);
+  frame.src = `https://maps.google.com/maps?q=${enc}&t=k&z=${zoom}&output=embed&iwloc=near`;
+  frame.style.display = 'block';
+  wrap.style.display = 'block';
+  document.getElementById('cw-grid').style.display = 'none';
+  document.getElementById('backdrop').style.display = 'none';
+  frame.onload = () => {
+    document.getElementById('gmap-status').textContent = '✓ Satellite loaded — lock to place equipment';
+    document.getElementById('lock-btn').style.display = 'block';
+    showBanner('wiz', '🛰 Map loaded — click 🔒 Lock to place equipment');
+  };
+}
+
+function toggleMapLock() {
+  mapLocked = !mapLocked;
+  const btn = document.getElementById('lock-btn');
+  const block = document.getElementById('gmap-block');
+
+  // Handle both JS API map and iframe
+  const realMap = document.getElementById('real-map-div');
+  const frame = document.getElementById('gmap-frame');
+
+  if (mapLocked) {
+    block.style.display = 'block';
+    if (frame) frame.style.pointerEvents = 'none';
+    if (realMap) { realMap.style.pointerEvents = 'none'; }
+    btn.textContent = '🔓 Unlock map';
+    btn.style.cssText = 'width:100%;background:rgba(0,212,255,.2);border:1px solid var(--accent);color:var(--accent);padding:4px;border-radius:4px;cursor:pointer;font-size:10px;display:block';
+    document.getElementById('gmap-status').textContent = '🔒 Map locked — drag & drop equipment on satellite';
+    showBanner('wiz', '🔒 Map locked — place BESS equipment on the satellite imagery');
+  } else {
+    block.style.display = 'none';
+    if (frame) frame.style.pointerEvents = 'auto';
+    if (realMap) { realMap.style.pointerEvents = 'auto'; }
+    btn.textContent = '🔒 Lock map & place equipment';
+    btn.style.cssText = 'width:100%;background:var(--surface);border:1px solid var(--border);color:var(--sub);padding:4px;border-radius:4px;cursor:pointer;font-size:10px;display:block';
+    document.getElementById('gmap-status').textContent = 'Map unlocked — pan to reposition';
+    showBanner('cal', '🔓 Map unlocked — scroll/pan to reposition');
+  }
+}
+
+// ════════════════════════════════════════════════════════════
+//  CALLOUT ARROWS — draggable arrowhead & tail
+// ════════════════════════════════════════════════════════════
+const ARROWS = []; // {id, fromElId, toX, toY, tailX, tailY, label}
+
+function addCallout() {
+  const scr = document.getElementById('sc').getBoundingClientRect();
+  const cx = scr.width / 2, cy = scr.height / 2;
+  // Box element
+  const el = addEl({ type:'callout', label:'Callout note', x: cx - 60, y: cy - 14, w: 140, rot: 0 });
+  // Arrow from box center toward a default target
+  const arrow = {
+    id: uid(), elId: el.id,
+    // tail attaches to element center
+    headX: cx + 80, headY: cy - 60,
+    label: ''
+  };
+  ARROWS.push(arrow);
+  renderArrow(arrow);
+  autoSave();
+}
+
+function renderArrow(arrow) {
+  const svg = document.getElementById('arrow-svg');
+  // Remove existing
+  document.getElementById('ca-' + arrow.id)?.remove();
+
+  const g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+  g.id = 'ca-' + arrow.id;
+  g.setAttribute('pointer-events', 'all');
+
+  // We'll compute tail point from element center
+  const el = S.elements.find(e => e.id === arrow.elId);
+  const tailX = el ? el.x + (el.w || 100) / 2 : 100;
+  const tailY = el ? el.y + 20 : 100;
+
+  const hx = arrow.headX, hy = arrow.headY;
+
+  // Line
+  const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+  line.setAttribute('x1', tailX); line.setAttribute('y1', tailY);
+  line.setAttribute('x2', hx); line.setAttribute('y2', hy);
+  line.setAttribute('stroke', '#E8C56A'); line.setAttribute('stroke-width', '2.5');
+  line.setAttribute('stroke-linecap', 'round');
+  line.id = 'ca-line-' + arrow.id;
+  g.appendChild(line);
+
+  // Arrowhead (draggable)
+  const angle = Math.atan2(tailY - hy, tailX - hx);
+  const headGroup = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+  headGroup.setAttribute('transform', `translate(${hx},${hy}) rotate(${angle * 180 / Math.PI})`);
+  headGroup.style.cursor = 'move';
+  const arrowPath = document.createElementNS('http://www.w3.org/2000/svg', 'polygon');
+  arrowPath.setAttribute('points', '0,0 -14,-6 -14,6');
+  arrowPath.setAttribute('fill', '#E8C56A');
+  headGroup.appendChild(arrowPath);
+  // Hit area
+  const hitCircle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+  hitCircle.setAttribute('r', '10'); hitCircle.setAttribute('fill', 'transparent');
+  hitCircle.style.cursor = 'crosshair';
+  headGroup.appendChild(hitCircle);
+  headGroup.id = 'ca-head-' + arrow.id;
+  g.appendChild(headGroup);
+
+  // Drag logic for arrowhead
+  headGroup.addEventListener('mousedown', e => {
+    e.stopPropagation();
+    const scr = document.getElementById('sc').getBoundingClientRect();
+    const onMove = mv => {
+      arrow.headX = mv.clientX - scr.left;
+      arrow.headY = mv.clientY - scr.top;
+      updateArrowPos(arrow);
+    };
+    const onUp = () => {
+      document.removeEventListener('mousemove', onMove);
+      document.removeEventListener('mouseup', onUp);
+      autoSave();
+    };
+    document.addEventListener('mousemove', onMove);
+    document.addEventListener('mouseup', onUp);
+  });
+
+  svg.appendChild(g);
+}
+
+function updateArrowPos(arrow) {
+  const el = S.elements.find(e => e.id === arrow.elId);
+  const tailX = el ? el.x + (el.w || 100) / 2 : 100;
+  const tailY = el ? el.y + 20 : 100;
+  const hx = arrow.headX, hy = arrow.headY;
+  const line = document.getElementById('ca-line-' + arrow.id);
+  if (line) {
+    line.setAttribute('x1', tailX); line.setAttribute('y1', tailY);
+    line.setAttribute('x2', hx); line.setAttribute('y2', hy);
+  }
+  const headGroup = document.getElementById('ca-head-' + arrow.id);
+  if (headGroup) {
+    const angle = Math.atan2(tailY - hy, tailX - hx);
+    headGroup.setAttribute('transform', `translate(${hx},${hy}) rotate(${angle * 180 / Math.PI})`);
+  }
+}
+
+// Update arrows when element moves
+const origUpdateAttached = updateAttached;
+function updateAttachedWithArrows(elId) {
+  origUpdateAttached(elId);
+  ARROWS.filter(a => a.elId === elId).forEach(a => updateArrowPos(a));
+}
+
+// ════════════════════════════════════════════════════════════
+//  AUTO CONDUIT WIRING
+//  When wizard places items, auto-draw conduit between
+//  the last two placed BESS components
+// ════════════════════════════════════════════════════════════
+function autoWireLastTwo(condType) {
+  if (S.elements.length < 2) return;
+  const last = S.elements[S.elements.length - 1];
+  const prev = S.elements[S.elements.length - 2];
+  if (!last || !prev) return;
+
+  // Get center points
+  const scr = document.getElementById('sc').getBoundingClientRect();
+  const getC = (el) => ({ x: el.x + (el.w || 60) / 2, y: el.y + (el.w || 60) / 2 });
+  const a = getC(prev), b = getC(last);
+
+  const c = {
+    id: uid(), condType,
+    pts: [
+      { x: a.x, y: a.y, elId: prev.id },
+      { x: b.x, y: b.y, elId: last.id }
+    ],
+    pxLen: Math.hypot(b.x - a.x, b.y - a.y),
+    ftLen: 0, fromId: prev.id, toId: last.id
+  };
+  if (S.pxPerFt) c.ftLen = +(c.pxLen / S.pxPerFt).toFixed(1);
+  S.conduits.push(c);
+  renderConduit(c);
+  updCondStat(); renderLegend();
+  showBanner('wiz', '⚡ Auto-wired conduit — move components to re-route');
+}
+
+// ── Override placeNextWizardItem to include auto-wiring ──
+const _origPlace = placeNextWizardItem;
+function placeNextWizardItemEnhanced() {
+  const before = S.elements.length;
+  _origPlace();
+  // After placing, check if we should auto-wire
+  if (S.elements.length > before) {
+    const step = WIZARD_STEPS[Math.max(0, S.wizStep - 1)];
+    if (!step) return;
+    // Auto wire DC conduit after inverter, AC conduit after transformer
+    if (step.id === 'wiz-bess' && S.elements.length >= 1) {
+      // Nothing to wire yet on first placement
+    } else if (S.elements.length >= 2) {
+      const condMap = {
+        'wiz-pad': null, 'wiz-fence': null, 'wiz-boll': null,
+        'wiz-jbox': 'RMC-DC', 'wiz-panel': 'RMC-AC',
+        'wiz-meter': 'EMT-BMS', 'wiz-hydrant': null
+      };
+      const condType = condMap[step.id];
+      if (condType) setTimeout(() => autoWireLastTwo(condType), 100);
+    }
+  }
+}
+
+// Patch init to use enhanced placement
+window.addEventListener('DOMContentLoaded', () => {
+  // We replace placeNextWizardItem reference
+});
+
+// Override updateAttached globally
+function updateAttached(elId) {
+  const center = getCenter(elId); if (!center) return;
+  S.conduits.forEach(c => {
+    let ch = false;
+    c.pts = c.pts.map(p => {
+      if (p.elId === elId) { ch = true; return { ...p, x: center.x, y: center.y }; }
+      return p;
+    });
+    if (ch) {
+      let px = 0;
+      for (let i = 1; i < c.pts.length; i++) px += Math.hypot(c.pts[i].x - c.pts[i-1].x, c.pts[i].y - c.pts[i-1].y);
+      c.pxLen = px; c.ftLen = S.pxPerFt ? +(px / S.pxPerFt).toFixed(1) : px;
+      document.querySelector(`[data-cid="${c.id}"]`)?.remove();
+      renderConduit(c); updCondStat();
+    }
+  });
+  // Update callout arrows
+  ARROWS.filter(a => a.elId === elId).forEach(a => updateArrowPos(a));
+}
+
+// ── BESS Assembly drag-and-drop from wizard panel ──
+function enableBESSAssemblyDrag() {
+  // The eq-grid items use HTML5 drag. This is already handled.
+  // Additional: make wizard Place button work as drag target too
+}
+
+// ════════════════════════════════════════════════════════════
+//  MAP MODE SWITCH
+// ════════════════════════════════════════════════════════════
+let mapMode = 'google';
+function setMapMode(mode) {
+  mapMode = mode;
+  const gmBtn = document.getElementById('btn-gmap');
+  const upBtn = document.getElementById('btn-upload');
+  gmBtn.style.cssText = `flex:1;padding:4px;border-radius:4px;cursor:pointer;font-size:10px;font-weight:700;${mode==='google'?'border:1px solid var(--sky);background:rgba(58,134,200,.3);color:var(--text)':'border:1px solid var(--border);background:var(--surface);color:var(--sub)'}`;
+  upBtn.style.cssText = `flex:1;padding:4px;border-radius:4px;cursor:pointer;font-size:10px;${mode==='upload'?'border:1px solid var(--sky);background:rgba(58,134,200,.3);color:var(--text)':'border:1px solid var(--border);background:var(--surface);color:var(--sub)'}`;
+  document.getElementById('gmap-controls').style.display = mode === 'google' ? 'block' : 'none';
+  document.getElementById('upload-controls').style.display = mode === 'upload' ? 'block' : 'none';
+  if (mode === 'upload') {
+    const wrap = document.getElementById('gmap-wrap');
+    wrap.style.display = 'none';
+    const realMap = document.getElementById('real-map-div');
+    if (realMap) realMap.style.display = 'none';
+    document.getElementById('cw-grid').style.display = 'block';
+  }
+}
+
+// ════════════════════════════════════════════════════════════
+//  EXPORT (reuse from original)
+// ════════════════════════════════════════════════════════════
+function exportProjectJSON() {
+  const conduitByType = {};
+  S.conduits.forEach(c => {
+    const t = (c.condType || 'unknown').toLowerCase();
+    if (!conduitByType[t]) conduitByType[t] = 0;
+    conduitByType[t] += +(c.ftLen || 0);
+  });
+  const address = document.getElementById('addr-in')?.value?.trim() || '';
+  const exportData = {
+    exportVersion: '2.0',
+    exportedAt: new Date().toISOString(),
+    projectName: document.getElementById('pname')?.value || 'BESS Site Project',
+    address,
+    pxPerFt: S.pxPerFt, unitLabel: S.unitLabel || 'ft',
+    elements: S.elements.map(el => ({
+      id: el.id, type: el.type, eqId: el.eqId || null,
+      label: el.label || '', spec: el.spec || '',
+      x: Math.round(el.x||0), y: Math.round(el.y||0),
+      w: el.w||60, rot: el.rot||0, bessId: el.bessId || null
+    })),
+    conduits: S.conduits.map(c => ({
+      id: c.id, condType: c.condType || 'unknown',
+      pxLen: Math.round(c.pxLen || 0), ftLen: +(c.ftLen||0).toFixed(1), pts: c.pts
+    })),
+    bessList: S.bessList.map(b => ({
+      id: b.id, name: b.name, mfr: b.mfr, model: b.model,
+      chem: b.chem||'LFP', kwh: +b.kwh||0, kw: +b.kw||0,
+      dcv: b.dcv||'', acv: b.acv||'480V', inv: b.inv||'',
+      ikva: b.ikva||'', xfmr: b.xfmr||'', disco: b.disco||'',
+      racks: b.racks||'', enc: b.enc||'', wt: b.wt||'', qty: +b.qty||1
+    })),
+    conduitTotals: conduitByType
+  };
+  const json = JSON.stringify(exportData, null, 2);
+  document.getElementById('export-json-box').value = json;
+  const chips = [];
+  if (exportData.bessList.length) chips.push({icon:'🔋',label:exportData.bessList.length+' BESS unit(s)',color:'#1DB95A'});
+  if (exportData.conduits.length) {
+    const tot = exportData.conduits.reduce((s,c)=>s+c.ftLen,0);
+    chips.push({icon:'⚡',label:tot.toFixed(0)+' ft conduit',color:'#00D4FF'});
+  }
+  if (address) chips.push({icon:'📍',label:address,color:'#F4A020'});
+  document.getElementById('export-summary').innerHTML = chips.map(c =>
+    `<span style="background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);border-radius:20px;padding:4px 10px;font-size:10px;color:${c.color};font-weight:600">${c.icon} ${c.label}</span>`
+  ).join('');
+  document.getElementById('export-modal').style.display = 'flex';
+  window._exportJsonData = json;
+}
+
+function copyExportJson() {
+  const box = document.getElementById('export-json-box');
+  const btn = document.getElementById('copy-btn');
+  box.select(); box.setSelectionRange(0, 99999);
+  try {
+    navigator.clipboard?.writeText(box.value).then(() => {
+      btn.textContent = '✓ Copied!'; btn.style.background = '#1DB95A';
+      setTimeout(() => { btn.textContent = '📋 Copy JSON'; btn.style.background = 'linear-gradient(135deg,#1DB95A,#00D4FF)'; }, 2500);
+    });
+  } catch(e) {
+    btn.textContent = '✓ Selected — press Cmd+C'; btn.style.background = '#F4A020';
+    setTimeout(() => { btn.textContent = '📋 Copy JSON'; btn.style.background = 'linear-gradient(135deg,#1DB95A,#00D4FF)'; }, 3000);
+  }
+}
+
+function downloadExportJson() {
+  const json = window._exportJsonData || document.getElementById('export-json-box').value;
+  const name = (document.getElementById('pname')?.value || 'clearsky-project').replace(/[^a-zA-Z0-9-_]/g,'-') + '.json';
+  const blob = new Blob([json], { type:'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a'); a.href = url; a.download = name;
+  document.body.appendChild(a); a.click();
+  setTimeout(() => { document.body.removeChild(a); URL.revokeObjectURL(url); }, 100);
+}
+
+// ── Auto-save on element changes ──
+const origAddEl = addEl;
+function addEl(opts) {
+  const el = origAddEl(opts);
+  autoSave();
+  return el;
+}
+
+// Close modals
+window.addEventListener('DOMContentLoaded', function() {
+  document.getElementById('export-modal')?.addEventListener('click', function(e) {
+    if (e.target === this) this.style.display = 'none';
+  });
+  // Patch placeNextWizardItem button
+  document.getElementById('place-btn').onclick = placeNextWizardItemEnhanced;
+  // Set default map mode
+  setMapMode('google');
+});
+
+</script>
+</body>
+</html>
