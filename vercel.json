@@ -3,13 +3,5 @@
     { "source": "/editor/:path*", "destination": "/editor.html" },
     { "source": "/projects", "destination": "/projects.html" },
     { "source": "/", "destination": "/index.html" }
-  ],
-  "headers": [
-    {
-      "source": "/(.*)",
-      "headers": [
-        { "key": "X-Frame-Options", "value": "SAMEORIGIN" }
-      ]
-    }
   ]
 }
