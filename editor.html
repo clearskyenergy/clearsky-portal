@@ -499,6 +499,7 @@ window.onerror = function(msg, src, line, col, err) {
   <button class="btn btn-pri" onclick="openProposalExport()" style="background:linear-gradient(135deg,#1DB95A,#00D4FF);color:#0A1628;font-weight:700;border:none" title="Export full proposal PDF with sitemap image">📄 Export Proposal</button>
   <button class="btn btn-pri" onclick="openPermitSetModal()" style="background:linear-gradient(135deg,#7C3AED,#DC2626);color:#fff;font-weight:700;border:none" title="Generate full BESS permit set">📋 Permit Set</button>
   <div class="btn-sep"></div>
+  <button class="btn btn-pri" onclick="openViabilityWorkflow()" style="background:linear-gradient(135deg,#C5A55A,#F59E0B);color:#0B1E35;font-weight:800;border:none;font-size:11px;letter-spacing:.3px" title="BESS Project Viability Workflow — 9 gated phases from intake to COD">✅ Viability</button>
   <button class="btn btn-pri" onclick="openComedPreQual()" style="background:linear-gradient(135deg,#1B4F8A,#0ea5e9);color:#fff;font-weight:700;border:none" title="AI Grid Pre-Qualification -- validate feeder capacity for your BESS">⚡ Grid Pre-Qual</button>
 </div>
 
@@ -519,6 +520,7 @@ window.onerror = function(msg, src, line, col, err) {
   <button onclick="openBlueprintExport();closeMobMenu()">🖨 &nbsp;Print / PDF</button>
   <button onclick="openProposalExport();closeMobMenu()">📄 &nbsp;Export Proposal</button>
   <button onclick="openPermitSetModal();closeMobMenu()">📋 &nbsp;Permit Set</button>
+  <button onclick="openViabilityWorkflow();closeMobMenu()">✅ &nbsp;Viability Workflow</button>
   <button onclick="openComedPreQual();closeMobMenu()">⚡ &nbsp;Grid Pre-Qual</button>
 </div>
 
@@ -1016,7 +1018,7 @@ function _mobClose(e){
       </label>
       <div id="comed-panel" style="display:none">
         <div style="font-size:9px;color:var(--sub);line-height:1.5;margin-bottom:8px;padding:6px 8px;background:rgba(0,0,0,.2);border-radius:5px">
-          <strong style="color:#60A5FA">ComEd BESH (Battery Energy Storage Honorarium)</strong> -- <strong style="color:#60A5FA">$250/kWh</strong> of nameplate capacity.<br>
+          <strong style="color:#60A5FA">ComEd BESH (Battery Energy Storage Honorarium)</strong> -- <strong style="color:#60A5FA">$250/kWh C&I</strong> of nameplate capacity.<br>
           <span style="color:#22C55E;font-size:8.5px">✓ STANDALONE storage qualifies -- solar pairing NOT required (IL CEJA, Public Act 102-0662, eff. 2022)</span><br>
           C&amp;I customers must enroll in the <strong style="color:#60A5FA">BESH rate plan</strong> and participate in ComEd <strong style="color:#60A5FA">demand response / peak load reduction</strong> program as a condition of rebate. Pre-approval required before installation.
         </div>
@@ -5556,7 +5558,7 @@ function _bmShowPreQualResult(r, totalKW, totalKWh) {
     ${r.isBTM ? `<div style="background:rgba(27,79,138,.12);border:1px solid rgba(96,165,250,.2);border-radius:5px;padding:7px;font-size:9px;line-height:1.5">
       <div style="color:#60A5FA;font-weight:700;margin-bottom:3px"> BTM -- BESH Rebate Estimate</div>
       ${totalKWh > 0 ? `<div><span style="color:var(--sub)">This system:</span> <span style="color:var(--text);font-weight:700">$${Math.round(totalKWh*250).toLocaleString()}-$${Math.round(totalKWh*300).toLocaleString()}</span></div>` : ''}
-      ${r.max_recommended_kwh > 0 ? `<div><span style="color:var(--sub)">Max (no study):</span> <span style="color:#22C55E;font-weight:700">$${r.max_besh_low.toLocaleString()}</span> <span style="color:rgba(255,255,255,.3)">(${r.max_recommended_kwh.toLocaleString()} kWh)</span></div>` : ''}
+      ${r.max_recommended_kwh > 0 ? `<div><span style="color:var(--sub)">Max (no study):</span> <span style="color:#22C55E;font-weight:700">$${r.max_besh_low.toLocaleString()}-$${r.max_besh_high.toLocaleString()}</span> <span style="color:rgba(255,255,255,.3)">(${r.max_recommended_kwh.toLocaleString()} kWh)</span></div>` : ''}
       <div style="margin-top:4px;color:rgba(255,255,255,.3);font-size:8px">Trickle charge off-peak . Discharge on ISO peak/VPP signals . Non-export (Rider SDVPP/BYODLR)</div>
     </div>` : totalKWh > 0 ? `<div style="background:rgba(245,158,11,.08);border:1px solid rgba(245,158,11,.2);border-radius:5px;padding:6px;font-size:9px">
       <span style="color:#F59E0B;font-weight:700">FOM / PJM FR mode:</span>
@@ -14092,7 +14094,7 @@ async function exportPermitPDF() {
 • <strong>Stacking:</strong> Stacks with Federal ITC 30% (IRA §48E) + MACRS 5-yr depreciation + potential IL Shines if solar added later
 • <strong>Payment timing:</strong> Paid after installation verification and meter confirmation . 60-90 day processing typical
 • <strong>ITC interaction:</strong> Utility rebates generally do NOT reduce ITC basis -- confirm with tax advisor
-• <strong>Program authority:</strong> ComEd Rider SDVPP/BYODLR (ICC Docket 25-0678, eff. July 2026) . §16-107.6 PUA (CRGA 2026) . IL CEJA PA 102-0662</div>
+• <strong>Program authority:</strong> ComEd Tariff Rider SDVPP/BYODLR . ICC Docket 25-0678 . IL CEJA Public Act 102-0662</div>
       </div>
 
       <!-- Drawing checklist -->
@@ -14241,7 +14243,7 @@ async function exportPermitPDF() {
           <div style="border-top:1px solid var(--border);padding-top:9px">
             <div style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:#60A5FA;margin-bottom:7px">⚡ ComEd Rebate Compliance</div>
             <div style="background:rgba(0,100,200,.07);border:1px solid rgba(0,120,255,.2);border-radius:6px;padding:8px;margin-bottom:8px;font-size:8.5px;color:var(--sub);line-height:1.5">
-              Standalone BESS Rebate . $250/kWh C&I . Rider SDVPP/BYODLR . §16-107.6 PUA (CRGA 2026). These fields appear on the E0 cover sheet.
+              Standalone BESS Rebate . $250/kWh C&I . Tariff Rider SDVPP/BYODLR . Public Act 102-0662 (CEJA). These fields appear on the E0 cover sheet.
             </div>
             <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px">
               <div><label style="font-size:9px;color:var(--sub);display:block;margin-bottom:2px">ICC Docket #</label><input id="ps-icc-docket" type="text" placeholder="[ICC Docket Number]" style="width:100%;background:var(--surface);border:1px solid var(--border);color:var(--text);border-radius:5px;padding:6px 10px;font-size:11px;font-family:inherit;box-sizing:border-box"></div>
@@ -14954,7 +14956,7 @@ function _runIEEEScreening(addr, geo, totalKW, totalKWh) {
     feasibility = isBTM ? 'SIZE TO MAXIMIZE REBATE' : 'SITE CAPACITY ESTIMATE';
     verdict_color = 'blue';
     screening_result = isBTM
-      ? `Level 3 non-export path -- est. max ${max_recommended_kw.toLocaleString()} kW / ${max_recommended_kwh.toLocaleString()} kWh (no load flow study likely) -> $${max_besh_low.toLocaleString()} BESH rebate ($250/kWh C&I)`
+      ? `Level 3 non-export path -- est. max ${max_recommended_kw.toLocaleString()} kW / ${max_recommended_kwh.toLocaleString()} kWh (no load flow study likely) -> $${max_besh_low.toLocaleString()}-$${max_besh_high.toLocaleString()} BESH rebate`
       : 'No BESS configured -- showing estimated maximum supportable system size';
     required_studies = isBTM
       ? ['Select a catalog model above to check if it fits this site', `Target:  ${max_recommended_kwh.toLocaleString()} kWh to maximize BESH rebate`]
@@ -14972,13 +14974,13 @@ function _runIEEEScreening(addr, geo, totalKW, totalKWh) {
         : `System within 15% of estimated feeder capacity -- standard Level 2 filing.`;
     if (qualifiesSimplified) {
       required_studies = bmsActive
-        ? [`Part 466 Level 3 non-export filing -- $500 + $2/kW ( 500kW tier)`, 'BMS charge rate programmed and documented in commissioning plan', 'Non-export commissioning verification (Rider SDVPP/BYODLR)', `BESH rebate: $${besh_low.toLocaleString()} on ${totalKWh.toLocaleString()} kWh nameplate ($250/kWh C&I -- §16-107.6 PUA, CRGA 2026)`]
+        ? [`Part 466 Level 3 non-export filing -- $500 + $2/kW ( 500kW tier)`, 'BMS charge rate programmed and documented in commissioning plan', 'Non-export commissioning verification (Rider SDVPP/BYODLR)', `BESH rebate: $${besh_low.toLocaleString()}-$${besh_high.toLocaleString()} on ${totalKWh.toLocaleString()} kWh nameplate -- standalone eligible (CRGA amendment 2026)`]
         : ['Part 466 Level 3 non-export filing -- $500 + $2/kW fee (~4-6 wks)', 'Non-export commissioning verification (Rider SDVPP/BYODLR)', 'BESH rebate application post-commissioning -- $250/kWh standalone eligible (CRGA amendment 2026)'];
       study_cost = '$500-$1,500';
       timeline_wks = 6;
     } else {
       required_studies = bmsActive
-        ? [`Part 466 Level 3 non-export filing -- $500 + $2/kW fee`, 'ComEd DER pre-application meeting (free, recommended)', 'BMS charge rate limit documented in commissioning plan and Rider SDVPP/BYODLR filing', 'Non-export commissioning verification', `BESH rebate: $${besh_low.toLocaleString()} on ${totalKWh.toLocaleString()} kWh nameplate ($250/kWh C&I -- §16-107.6 PUA)`]
+        ? [`Part 466 Level 3 non-export filing -- $500 + $2/kW fee`, 'ComEd DER pre-application meeting (free, recommended)', 'BMS charge rate limit documented in commissioning plan and Rider SDVPP/BYODLR filing', 'Non-export commissioning verification', `BESH rebate: $${besh_low.toLocaleString()}-$${besh_high.toLocaleString()} on ${totalKWh.toLocaleString()} kWh nameplate`]
         : ['Part 466 Level 3 non-export filing -- $500 + $2/kW fee (~4-6 wks)', 'ComEd DER pre-application meeting (free, recommended)', 'Non-export commissioning verification (Rider SDVPP/BYODLR)', 'BESH rebate application post-commissioning -- $250/kWh standalone eligible (CRGA amendment 2026)'];
       study_cost = '$1,500-$5,000';
       timeline_wks = 8;
@@ -15046,12 +15048,12 @@ function _runIEEEScreening(addr, geo, totalKW, totalKWh) {
     ].filter(Boolean),
     recommendations: isBTM ? [
       bmsActive
-        ? `BMS Throttle Strategy: ${totalKW.toLocaleString()} kW nameplate -> BESH rebate $${besh_low.toLocaleString()} ($250/kWh C&I) -> charge limited to ${screeningKW} kW (${Math.round((screeningKW/available_kw)*100)}% of est. feeder)`
+        ? `BMS Throttle Strategy: ${totalKW.toLocaleString()} kW nameplate -> BESH rebate $${besh_low.toLocaleString()}-$${besh_high.toLocaleString()} -> charge limited to ${screeningKW} kW (${Math.round((screeningKW/available_kw)*100)}% of est. feeder)`
         : `Interconnection path: Part 466 Level 3 (non-export, radial feeder) -- $500 + $2/kW, target 4-6 wks`,
       bmsActive
         ? `Feeder screen: ${screeningKW} kW charge = ${Math.round((screeningKW/available_kw)*100)}% of est. capacity -- ${screeningKW <= max_kw_15pct_screen ? 'OK under 15% -- clean Level 3 filing, no load flow study' : '!! reduce charge limit to ' + max_kw_15pct_screen + ' kW to clear screen'}`
         : `Goal: maximize kWh for BESH rebate -- target ${max_recommended_kwh.toLocaleString()} kWh / ${max_recommended_kw.toLocaleString()} kW for clean filing`,
-      `BESH rebate: $${besh_low.toLocaleString()} (${totalKWh.toLocaleString()} kWh x $250/kWh C&I -- §16-107.6 PUA, CRGA 2026) -- standalone eligible`,
+      `BESH rebate: $${besh_low.toLocaleString()}-$${besh_high.toLocaleString()} (${totalKWh.toLocaleString()} kWh x $250/kWh C&I) -- standalone eligible per CRGA amendment 2026`,
       `Operating model: trickle charge off-peak overnight -> discharge on ComEd/PJM peak events + VPP dispatch (non-export, Rider SDVPP/BYODLR)`,
       `Check actual hosting capacity: comed.com/hostingcapacity -- enter site address before filing`,
       `Request free ComEd DER pre-application meeting to confirm feeder ID and actual capacity`,
@@ -15066,7 +15068,7 @@ function _runIEEEScreening(addr, geo, totalKW, totalKWh) {
       'Part 466  466.80 -- Level 3 non-export: radial feeder  10MVA, $500 + $2/kW fee',
       'ComEd Rider SDVPP/BYODLR -- non-export BTM storage interconnection and operating rules',
       'CRGA amendment 2026 -- standalone BESS now eligible for DG Rebate ($250/kWh C&I) without paired solar',
-      'ComEd DG Storage Rebate (§16-107.6 PUA, ICC Docket 25-0678, eff. July 2026) -- $250/kWh C&I nameplate',
+      'ComEd DG Rebate Rider ( §16-107.6 PUA as amended) -- $250/kWh C&I nameplate storage rebate',
       'IEEE 1547-2018 -- voltage class definitions and feeder capacity reference ranges',
       'ComEd Tariff Sheet 18 -- distribution feeder typical capacity ranges',
       geo ? 'OpenStreetMap Nominatim -- location classification' : 'Address text classification only (geocoding unavailable)',
@@ -15200,7 +15202,7 @@ function _renderPreQualResults(r, totalKW, totalKWh, el, isHeuristic) {
     ${totalKWh > 0 ? `
     <div style="margin-bottom:12px;background:rgba(27,79,138,.12);border:1px solid rgba(96,165,250,.2);border-radius:8px;padding:10px 12px">
       <div style="font-size:9px;font-weight:700;color:#60A5FA;text-transform:uppercase;letter-spacing:.4px;margin-bottom:5px">  ComEd BESH Rebate Estimate</div>
-      <div style="font-size:13px;font-weight:700;color:#60A5FA">$${r.besh_low?.toLocaleString()}</div>
+      <div style="font-size:13px;font-weight:700;color:#60A5FA">$${r.besh_low?.toLocaleString()}-$${r.besh_high?.toLocaleString()}</div>
       <div style="font-size:10px;color:var(--sub);margin-top:2px">${totalKWh} kWh x $250/kWh C&I . requires enrollment in BESH rate plan + DR participation</div>
     </div>` : ''}
 
@@ -16331,5 +16333,554 @@ window.renderFreqReg = renderFreqReg;
 
 
 </script>
+<!-- ======================================================
+     BESS PROJECT VIABILITY WORKFLOW MODAL  v1.0
+     9 Gated Phases: Intake → COD
+     (c) 2026 Tommy Gilmer — ClearSky Builders LLC
+====================================================== -->
+<div id="viability-modal" style="display:none;position:fixed;inset:0;z-index:9000;background:rgba(7,14,26,.93);backdrop-filter:blur(6px);overflow:hidden">
+  <div style="display:flex;flex-direction:column;height:100vh;max-width:1140px;margin:0 auto">
+    <!-- HEADER -->
+    <div style="background:linear-gradient(135deg,#0B1E35,#1B4F8A);border-bottom:2px solid #C5A55A;padding:11px 18px;display:flex;align-items:center;gap:10px;flex-shrink:0">
+      <div style="font-size:20px">✅</div>
+      <div style="flex:1">
+        <div style="font-size:14px;font-weight:800;color:#fff;letter-spacing:.3px">BESS Project Viability Workflow</div>
+        <div style="font-size:9px;color:#C5A55A;letter-spacing:.5px;margin-top:1px">9 Gated Investment Phases — Property Intake through Commercial Operation</div>
+      </div>
+      <div id="vw-pills" style="display:flex;gap:3px"></div>
+      <button onclick="closeViabilityWorkflow()" style="background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.15);color:#fff;border-radius:5px;padding:4px 11px;cursor:pointer;font-size:12px;font-weight:700;font-family:inherit">✕ Close</button>
+    </div>
+    <!-- PHASE TABS -->
+    <div id="vw-tabs" style="background:#0D1B2A;border-bottom:1px solid #243B55;display:flex;overflow-x:auto;flex-shrink:0;padding:0 4px"></div>
+    <!-- BODY -->
+    <div style="display:flex;flex:1;overflow:hidden">
+      <div id="vw-panel" style="flex:1;overflow-y:auto;padding:18px 22px"></div>
+      <!-- SIDEBAR -->
+      <div style="width:210px;background:#0D1B2A;border-left:1px solid #243B55;overflow-y:auto;padding:12px;flex-shrink:0">
+        <div style="font-size:9px;font-weight:700;letter-spacing:1px;color:#C5A55A;margin-bottom:9px;text-transform:uppercase">Phase Status</div>
+        <div id="vw-scores" style="display:flex;flex-direction:column;gap:6px"></div>
+        <div style="margin-top:14px">
+          <div style="font-size:9px;font-weight:700;letter-spacing:1px;color:#C5A55A;margin-bottom:7px;text-transform:uppercase">Decision</div>
+          <div id="vw-decision" style="border-radius:7px;padding:9px;text-align:center;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.1)">
+            <div id="vw-dec-icon" style="font-size:20px;margin-bottom:3px">⏳</div>
+            <div id="vw-dec-label" style="font-size:11px;font-weight:700;color:#8BA3C4">Pending</div>
+            <div id="vw-dec-sub" style="font-size:8.5px;color:#8BA3C4;margin-top:3px;line-height:1.4">Complete phases to unlock</div>
+          </div>
+        </div>
+        <div style="margin-top:12px">
+          <button onclick="vwPrint()" style="width:100%;padding:6px;background:rgba(197,165,90,.1);border:1px solid rgba(197,165,90,.3);color:#C5A55A;border-radius:5px;cursor:pointer;font-size:10px;font-weight:700;font-family:inherit">🖨 Print Report</button>
+          <button onclick="vwReset()" style="width:100%;padding:6px;background:transparent;border:1px solid rgba(255,255,255,.08);color:#8BA3C4;border-radius:5px;cursor:pointer;font-size:9px;font-weight:600;font-family:inherit;margin-top:5px">↺ Reset All</button>
+        </div>
+      </div>
+    </div>
+    <!-- FOOTER NAV -->
+    <div style="background:#0B1E35;border-top:1px solid #243B55;padding:9px 18px;display:flex;align-items:center;gap:10px;flex-shrink:0">
+      <button id="vw-prev" onclick="vwPrev()" style="padding:6px 16px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);color:#8BA3C4;border-radius:5px;cursor:pointer;font-size:11px;font-weight:700;font-family:inherit">← Previous</button>
+      <div style="flex:1;text-align:center;font-size:10px;color:#8BA3C4" id="vw-footer-label"></div>
+      <button id="vw-next" onclick="vwNext()" style="padding:6px 18px;background:#C5A55A;color:#0B1E35;border:none;border-radius:5px;cursor:pointer;font-size:11px;font-weight:800;font-family:inherit">Next Phase →</button>
+    </div>
+  </div>
+</div>
+
+<script>
+(function(){
+'use strict';
+
+// ── CSS ──────────────────────────────────────────────────────
+var sty=document.createElement('style');
+sty.textContent=[
+  '#vw-panel::-webkit-scrollbar{width:4px}',
+  '#vw-panel::-webkit-scrollbar-thumb{background:rgba(197,165,90,.18);border-radius:3px}',
+  '.vwf{margin-bottom:8px}',
+  '.vwl{display:block;font-size:9px;font-weight:700;color:#8BA3C4;text-transform:uppercase;letter-spacing:.5px;margin-bottom:3px}',
+  '.vwi{width:100%;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.12);color:#E8F0FE;border-radius:5px;padding:6px 8px;font-size:11px;font-family:inherit;outline:none;transition:border-color .12s;box-sizing:border-box}',
+  '.vwi:focus{border-color:#C5A55A;background:rgba(197,165,90,.05)}',
+  '.vwi option{background:#1A2E45;color:#E8F0FE}',
+  '.vwck{display:flex;align-items:center;gap:5px;padding:5px 7px;border:1px solid rgba(255,255,255,.08);border-radius:5px;cursor:pointer;font-size:9.5px;color:#8BA3C4;margin-bottom:0;transition:all .12s}',
+  '.vwck:hover{border-color:rgba(197,165,90,.3);color:#E8F0FE}',
+  '.vwck input{accent-color:#C5A55A;flex-shrink:0}',
+  '.vwg2{display:grid;grid-template-columns:1fr 1fr;gap:9px}',
+  '.vwg3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:9px}',
+  '.vwsec{font-size:10px;font-weight:700;color:#C5A55A;text-transform:uppercase;letter-spacing:.7px;margin:16px 0 8px;padding-bottom:4px;border-bottom:1px solid rgba(197,165,90,.2)}',
+  '.vwgate{margin-top:16px;padding:12px;background:rgba(197,165,90,.05);border:1px solid rgba(197,165,90,.15);border-radius:7px}',
+].join('');
+document.head.appendChild(sty);
+
+// ── State ────────────────────────────────────────────────────
+var VW={phase:0,data:{},scores:{},fin:{}};
+var PHASES=[
+  {id:'p0',icon:'🏠',label:'Property Intake',short:'Intake',color:'#60A5FA'},
+  {id:'p1',icon:'🔍',label:'Candidate Viability',short:'Viability',color:'#34D399'},
+  {id:'p2',icon:'⚡',label:'BTM vs FTM Path',short:'BTM/FTM',color:'#F59E0B'},
+  {id:'p3',icon:'🔧',label:'Engineering',short:'Engineering',color:'#A78BFA'},
+  {id:'p4',icon:'🔌',label:'Interconnection',short:'Interconnect',color:'#22D3EE'},
+  {id:'p5',icon:'📋',label:'Permitting & AHJ',short:'Permitting',color:'#FB923C'},
+  {id:'p6',icon:'💰',label:'Revenue Stack',short:'Revenue',color:'#4ADE80'},
+  {id:'p7',icon:'📊',label:'Financial Viability',short:'Financial',color:'#F472B6'},
+  {id:'p8',icon:'🚀',label:'Execution & COD',short:'Execution',color:'#FBBF24'},
+];
+var ST={
+  pending:{l:'Pending',c:'#6B7280',i:'⏳'},
+  pass:{l:'Pass',c:'#22C55E',i:'✅'},
+  strong:{l:'Strong',c:'#22C55E',i:'💪'},
+  cond:{l:'Conditional',c:'#F59E0B',i:'⚠️'},
+  moderate:{l:'Moderate',c:'#F59E0B',i:'👍'},
+  weak:{l:'Weak',c:'#F97316',i:'⚡'},
+  fail:{l:'Fail / Reject',c:'#EF4444',i:'❌'},
+  invest:{l:'INVEST',c:'#22C55E',i:'🟢'},
+  hold:{l:'HOLD',c:'#F59E0B',i:'🟡'},
+  redesign:{l:'REDESIGN',c:'#F97316',i:'🔄'},
+  reject:{l:'REJECT',c:'#EF4444',i:'🔴'},
+};
+function st(s){return ST[s]||ST.pending;}
+
+// ── Persist ──────────────────────────────────────────────────
+function save(){try{localStorage.setItem('vw_d',JSON.stringify(VW.data));localStorage.setItem('vw_s',JSON.stringify(VW.scores));localStorage.setItem('vw_f',JSON.stringify(VW.fin));}catch(e){}}
+function load(){try{var d=localStorage.getItem('vw_d');if(d)VW.data=JSON.parse(d);var s=localStorage.getItem('vw_s');if(s)VW.scores=JSON.parse(s);var f=localStorage.getItem('vw_f');if(f)VW.fin=JSON.parse(f);}catch(e){}}
+function gv(k){return VW.data[k]||'';}
+function sv(k,v){VW.data[k]=v;save();renderScores();renderDecision();}
+
+// ── Open/Close ───────────────────────────────────────────────
+window.openViabilityWorkflow=function(){
+  document.getElementById('viability-modal').style.display='block';
+  load();renderTabs();renderPhase(VW.phase);renderScores();renderDecision();
+};
+window.closeViabilityWorkflow=function(){document.getElementById('viability-modal').style.display='none';};
+window.vwReset=function(){if(!confirm('Reset all viability data?'))return;VW={phase:0,data:{},scores:{},fin:{}};save();renderTabs();renderPhase(0);renderScores();renderDecision();};
+document.addEventListener('keydown',function(e){if(e.key==='Escape'&&document.getElementById('viability-modal').style.display==='block')closeViabilityWorkflow();});
+
+// ── Nav ──────────────────────────────────────────────────────
+function renderTabs(){
+  var tabs=document.getElementById('vw-tabs');
+  if(!tabs)return;
+  tabs.innerHTML=PHASES.map(function(p,i){
+    var sc=VW.scores[p.id]||'pending';var s=st(sc);var act=i===VW.phase;
+    return '<button onclick="vwGo('+i+')" style="padding:8px 11px;background:'+(act?'rgba(197,165,90,.1)':'transparent')+';border:none;border-bottom:2px solid '+(act?p.color:'transparent')+';color:'+(act?'#fff':'#6B7280')+';cursor:pointer;font-size:10px;font-weight:'+(act?700:500)+';font-family:inherit;white-space:nowrap;display:flex;align-items:center;gap:4px;flex-shrink:0"><span>'+p.icon+'</span><span>'+p.short+'</span>'+(sc!=='pending'?'<span style="font-size:9px">'+s.i+'</span>':'')+'</button>';
+  }).join('');
+  var pills=document.getElementById('vw-pills');
+  if(pills)pills.innerHTML=PHASES.map(function(p,i){var sc=VW.scores[p.id]||'pending';var s=st(sc);return '<div title="'+p.label+': '+s.l+'" onclick="vwGo('+i+')" style="width:9px;height:9px;border-radius:50%;background:'+(sc==='pending'?'rgba(255,255,255,.15)':s.c)+';cursor:pointer;transition:background .2s"></div>';}).join('');
+  var fl=document.getElementById('vw-footer-label');if(fl)fl.textContent='Phase '+(VW.phase+1)+' of '+PHASES.length+' — '+PHASES[VW.phase].label;
+  var prev=document.getElementById('vw-prev');if(prev)prev.disabled=VW.phase===0;
+  var next=document.getElementById('vw-next');if(next)next.textContent=VW.phase===PHASES.length-1?'✅ Finish':'Next Phase →';
+}
+window.vwGo=function(i){collectInputs();VW.phase=i;renderTabs();renderPhase(i);};
+window.vwNext=function(){collectInputs();if(VW.phase<PHASES.length-1){VW.phase++;renderTabs();renderPhase(VW.phase);}};
+window.vwPrev=function(){collectInputs();if(VW.phase>0){VW.phase--;renderTabs();renderPhase(VW.phase);}};
+
+function collectInputs(){
+  document.querySelectorAll('#vw-panel [id^="vwf-"]').forEach(function(el){
+    var k=el.id.replace('vwf-','');
+    if(el.type==='checkbox')VW.data[k]=el.checked?'1':'0';
+    else VW.data[k]=el.value;
+  });
+  save();
+}
+
+// ── HTML helpers (no script tags) ────────────────────────────
+function F(id,label,type,opts){
+  opts=opts||{};var v=gv(id);
+  var inp='';
+  if(type==='select'){
+    var os=(opts.options||[]).map(function(o){var val=o.v!==undefined?o.v:o;var lbl=o.l||o;return '<option value="'+val+'"'+(v===val?' selected':'')+'>'+lbl+'</option>';}).join('');
+    inp='<select class="vwi" id="vwf-'+id+'" onchange="sv(\''+id+'\',this.value)">'+os+'</select>';
+  }else if(type==='textarea'){
+    inp='<textarea class="vwi" id="vwf-'+id+'" rows="'+(opts.rows||2)+'" oninput="sv(\''+id+'\',this.value)">'+v+'</textarea>';
+  }else{
+    inp='<input class="vwi" id="vwf-'+id+'" type="'+(type||'text')+'" value="'+v+'" placeholder="'+(opts.ph||'')+'" oninput="sv(\''+id+'\',this.value)">';
+  }
+  return '<div class="vwf"><label class="vwl">'+label+'</label>'+inp+'</div>';
+}
+function CK(id,label,accentColor){
+  var ck=gv(id)==='1';var c=accentColor||'#C5A55A';
+  return '<label class="vwck" style="border-color:'+(ck?c+'66':'rgba(255,255,255,.08)')+';color:'+(ck?c:'#8BA3C4')+';background:'+(ck?'rgba(197,165,90,.05)':'transparent')+'" onclick="vwToggle(\''+id+'\',this)"><input type="checkbox" id="vwf-'+id+'"'+(ck?' checked':'')+' onchange="vwToggle(\''+id+'\',this.parentElement)" style="accent-color:'+c+'"> '+label+'</label>';
+}
+window.vwToggle=function(id,el){
+  var cb=el.querySelector?el.querySelector('input[type=checkbox]'):el.previousElementSibling;
+  var newVal=cb?!cb.checked:gv(id)!=='1';
+  sv(id,newVal?'1':'0');
+  // re-render checkboxes reflect state without full panel re-render
+  if(cb)cb.checked=newVal;
+  var c=el.dataset?el.dataset.accent||'#C5A55A':'#C5A55A';
+  el.style.borderColor=newVal?c+'66':'rgba(255,255,255,.08)';
+  el.style.color=newVal?c:'#8BA3C4';
+  el.style.background=newVal?'rgba(197,165,90,.05)':'transparent';
+  // recalc live outputs
+  if(document.getElementById('vw-p1-score'))calcP1();
+  if(document.getElementById('vw-rev-total'))calcRev();
+  if(document.getElementById('vw-fin-out'))calcFin();
+  if(document.getElementById('vw-exec-pct'))calcExec();
+};
+function G2(a,b){return '<div class="vwg2">'+a+b+'</div>';}
+function G3(a,b,c){return '<div class="vwg3">'+a+b+c+'</div>';}
+function SH(t){return '<div class="vwsec">'+t+'</div>';}
+function HEAD(t,s){return '<div style="margin:0 0 14px"><div style="font-size:13px;font-weight:800;color:#fff;margin-bottom:2px">'+t+'</div>'+(s?'<div style="font-size:10px;color:#8BA3C4">'+s+'</div>':'')+'</div>';}
+function ALERT(type,msg){var cfg={info:{bg:'rgba(96,165,250,.08)',bc:'rgba(96,165,250,.25)',c:'#60A5FA',i:'ℹ️'},warn:{bg:'rgba(245,158,11,.08)',bc:'rgba(245,158,11,.25)',c:'#F59E0B',i:'⚠️'},ok:{bg:'rgba(34,197,94,.08)',bc:'rgba(34,197,94,.25)',c:'#22C55E',i:'✅'},err:{bg:'rgba(239,68,68,.08)',bc:'rgba(239,68,68,.25)',c:'#EF4444',i:'❌'}};var q=cfg[type]||cfg.info;return '<div style="background:'+q.bg+';border:1px solid '+q.bc+';border-radius:6px;padding:8px 11px;margin:9px 0;font-size:10px;color:'+q.c+';line-height:1.5">'+q.i+' '+msg+'</div>';}
+function GATE(pid,opts){
+  var btns=opts.map(function(o){var s=st(o.s);var act=VW.scores[pid]===o.s;return '<button onclick="setScore(\''+pid+'\',\''+o.s+'\')" style="padding:5px 11px;border:1px solid '+(act?s.c:'rgba(255,255,255,.15)')+';background:'+(act?s.c+'22':'transparent')+';color:'+(act?s.c:'#8BA3C4')+';border-radius:4px;cursor:pointer;font-size:10px;font-weight:700;font-family:inherit;transition:all .12s">'+s.i+' '+(o.l||s.l)+'</button>';}).join('');
+  return '<div class="vwgate"><div style="font-size:9px;font-weight:700;color:#C5A55A;margin-bottom:8px;text-transform:uppercase;letter-spacing:.5px">⬛ Phase Gate</div><div style="display:flex;flex-wrap:wrap;gap:6px">'+btns+'</div></div>';
+}
+window.setScore=function(pid,status){VW.scores[pid]=status;save();renderTabs();renderScores();renderDecision();renderGate(pid,status);};
+function renderGate(pid,status){
+  // re-render just the gate buttons in place without full re-render
+  var gates=document.querySelectorAll('#vw-panel .vwgate button');
+  gates.forEach(function(btn){
+    var onclick=btn.getAttribute('onclick')||'';
+    var m=onclick.match(/setScore\('([^']+)','([^']+)'\)/);
+    if(!m||m[1]!==pid)return;
+    var s=st(m[2]);var act=status===m[2];
+    btn.style.border='1px solid '+(act?s.c:'rgba(255,255,255,.15)');
+    btn.style.background=act?s.c+'22':'transparent';
+    btn.style.color=act?s.c:'#8BA3C4';
+  });
+}
+
+// ── PHASE RENDERERS ──────────────────────────────────────────
+function renderPhase(i){
+  var fns=[P0,P1,P2,P3,P4,P5,P6,P7,P8];
+  var p=document.getElementById('vw-panel');
+  if(p&&fns[i])p.innerHTML=fns[i]();
+  // trigger live calcs after DOM is ready
+  setTimeout(function(){
+    if(i===1)calcP1();
+    if(i===6)calcRev();
+    if(i===7)calcFin();
+    if(i===8)calcExec();
+  },50);
+}
+
+// P0 — Property Intake
+function P0(){
+  var types=['Multifamily/MUD','Commercial Retail','Industrial/Warehouse','Office','Senior Living','Hospitality/Hotel','Municipal/Public','Parking Lot','Mixed-Use','EV Charging Site','Solar-Paired','Utility-Scale','Other'];
+  var typeGrid=types.map(function(t){var k='p0t_'+t.replace(/[^a-z0-9]/gi,'').toLowerCase();var ck=gv(k)==='1';return '<label class="vwck" style="border-color:'+(ck?'rgba(197,165,90,.5)':'rgba(255,255,255,.1)')+';background:'+(ck?'rgba(197,165,90,.07)':'transparent')+';color:'+(ck?'#C5A55A':'#8BA3C4')+'" onclick="vwToggle(\''+k+'\',this)" data-accent="#C5A55A"><input type="checkbox" id="vwf-'+k+'"'+(ck?' checked':'')+' onchange="vwToggle(\''+k+'\',this.parentElement)"> '+t+'</label>';}).join('');
+  var extras=[['p0_ev','EV Charging Exists/Planned'],['p0_solar','Solar Exists/Planned'],['p0_flood','Floodplain Risk'],['p0_fire','Fire Access Restrictions'],['p0_zoning','Zoning Restrictions Known'],['p0_ejc','Env. Justice / Priority Zone'],['p0_low_income','Low-Income / MUD Eligible'],['p0_bills','12-Mo Bills Available'],['p0_oneline','Existing One-Line Available']];
+  var extraGrid=extras.map(function(e){return CK(e[0],e[1]);}).join('');
+  return HEAD('Phase 0 — Property Intake & Classification','Collect all site data before screening. Incomplete intake = unreliable scoring.')
+    +SH('Property Identification')
+    +G2(F('p0_address','Site Address','text',{ph:'123 Main St, Chicago IL 60601'}),F('p0_utility','Utility Territory','select',{options:[{v:'',l:'— select —'},{v:'comed',l:'ComEd (Northern IL)'},{v:'ameren',l:'Ameren Illinois'},{v:'other',l:'Other'}]}))
+    +G3(F('p0_owner','Owner / Entity Name','text',{ph:'Acme LLC'}),F('p0_parcel','Parcel Size (acres)','number',{ph:'2.5'}),F('p0_site_control','Site Control','select',{options:[{v:'',l:'— select —'},{v:'owned',l:'Fee Simple Owned'},{v:'long_lease',l:'Long-Term Lease'},{v:'loi',l:'LOI / In Negotiation'},{v:'none',l:'No Control Yet'}]}))
+    +G2(F('p0_account','Electric Account #','text',{ph:'Optional'}),F('p0_rate_class','Rate Class','text',{ph:'e.g. BESH, LGS, RGS'}))
+    +SH('Property Type')
+    +'<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:5px;margin-bottom:10px">'+typeGrid+'</div>'
+    +SH('Electrical Infrastructure')
+    +G3(F('p0_meter_loc','Meter Location','text',{ph:'NE corner of building'}),F('p0_xfmr_loc','Transformer Location','text',{ph:'Utility pole / pad mount'}),F('p0_gear_loc','Main Gear / Switchboard','text',{ph:'Electrical room, 1st floor'}))
+    +G3(F('p0_service_v','Service Voltage','select',{options:[{v:'',l:'—'},{v:'120/240',l:'120/240V'},{v:'120/208',l:'120/208V 3ph'},{v:'277/480',l:'277/480V 3ph'},{v:'4160',l:'4.16kV MV'},{v:'12470',l:'12.47kV MV'},{v:'unknown',l:'Unknown'}]}),F('p0_service_amps','Existing Service (A)','text',{ph:'1200A'}),F('p0_xfmr_kva','Transformer kVA','text',{ph:'500 kVA'}))
+    +SH('Load & Utility Bills')
+    +G3(F('p0_annual_kwh','Annual Usage (kWh)','number',{ph:'500000'}),F('p0_peak_kw','Peak Demand (kW)','number',{ph:'350'}),F('p0_avg_bill','Avg Monthly Bill ($)','number',{ph:'8500'}))
+    +F('p0_load_notes','Load Profile / Demand Charge Notes','textarea',{rows:2})
+    +SH('Site Conditions')
+    +G2(F('p0_avail_area','Available Area for BESS (sq ft)','number',{ph:'500'}),F('p0_trench_ft','Est. Trench Distance (ft)','number',{ph:'150'}))
+    +'<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:5px;margin-bottom:10px">'+extraGrid+'</div>'
+    +F('p0_notes','Additional Notes','textarea',{rows:2})
+    +GATE('p0',[{s:'pass',l:'Intake Complete'},{s:'cond',l:'Partially Complete'},{s:'pending',l:'Reset'}]);
+}
+
+// P1 — Candidate Viability (auto-score)
+function P1(){
+  return HEAD('Phase 1 — Candidate Viability Screen','First go/no-go gate. Score whether this property is a realistic BESS candidate.')
+    +'<div id="vw-p1-score" style="background:rgba(197,165,90,.05);border:1px solid rgba(197,165,90,.2);border-radius:9px;padding:13px;margin-bottom:14px"><div style="color:#8BA3C4;font-size:10px">Calculating...</div></div>'
+    +SH('Primary Constraint Assessment')
+    +F('p1_constraint','Primary Constraint Identified','select',{options:[{v:'',l:'— select —'},{v:'space',l:'Space / Physical Fit'},{v:'utility',l:'Utility / Service Upgrade'},{v:'permit',l:'Permitting / Zoning'},{v:'economics',l:'Economics / Revenue'},{v:'site_control',l:'Site Control / Ownership'},{v:'fire',l:'Fire Access / NFPA'},{v:'unknown',l:'Unknown / TBD'}]})
+    +F('p1_followup','Required Follow-Up Actions','textarea',{rows:3})
+    +SH('Path Recommendation Override')
+    +F('p1_path_override','Path Override (optional)','select',{options:[{v:'',l:'Use Auto-Score Result'},{v:'btm',l:'BTM — Behind the Meter'},{v:'ftm',l:'FTM — Front of Meter'},{v:'either',l:'Either / Dual-Path'},{v:'reject',l:'Not Suitable — Reject'}]})
+    +ALERT('info','<strong>Scoring:</strong> Strong (80+) → proceed. Moderate (60-79) → proceed with conditions. Weak (40-59) → address constraints. Reject (&lt;40) → do not proceed.')
+    +GATE('p1',[{s:'strong',l:'Strong'},{s:'moderate',l:'Moderate'},{s:'weak',l:'Weak'},{s:'fail',l:'Reject'}]);
+}
+function calcP1(){
+  var el=document.getElementById('vw-p1-score');if(!el)return;
+  var fs=[
+    {l:'Available space (≥300 sq ft)',pts:+gv('p0_avail_area')>=300?20:+gv('p0_avail_area')>=100?10:0,ok:+gv('p0_avail_area')>=300},
+    {l:'Utility territory confirmed',pts:(gv('p0_utility')&&gv('p0_utility')!=='other')?15:0,ok:!!(gv('p0_utility')&&gv('p0_utility')!=='other')},
+    {l:'Site control exists',pts:['owned','long_lease'].includes(gv('p0_site_control'))?20:gv('p0_site_control')==='loi'?10:0,ok:['owned','long_lease'].includes(gv('p0_site_control'))},
+    {l:'Peak demand identified (≥100kW)',pts:+gv('p0_peak_kw')>=100?15:+gv('p0_peak_kw')>0?7:0,ok:+gv('p0_peak_kw')>=100},
+    {l:'No flood/fire constraints',pts:gv('p0_flood')!=='1'&&gv('p0_fire')!=='1'?15:7,ok:gv('p0_flood')!=='1'&&gv('p0_fire')!=='1'},
+  ];
+  var total=Math.min(100,fs.reduce(function(s,f){return s+(f.pts||0);},0));
+  var status='pending',color='#6B7280',path='TBD';
+  if(gv('p0_utility')){
+    if(total>=80){status='strong';color='#22C55E';}
+    else if(total>=60){status='moderate';color='#F59E0B';}
+    else if(total>=40){status='weak';color='#F97316';}
+    else{status='fail';color='#EF4444';}
+    path=+gv('p0_peak_kw')>=100&&gv('p0_ev')==='1'?'BTM preferred':+gv('p0_avail_area')>=2000&&+gv('p0_peak_kw')<50?'FTM preferred':'Either / TBD';
+  }
+  el.innerHTML='<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:10px">'
+    +'<div style="text-align:center"><div style="font-size:26px;font-weight:900;color:'+color+'">'+total+'/100</div><div style="font-size:9px;color:#8BA3C4">Candidate Score</div></div>'
+    +'<div style="text-align:center"><div style="font-size:20px">'+st(status).i+'</div><div style="font-size:11px;font-weight:800;color:'+color+'">'+st(status).l+'</div><div style="font-size:9px;color:#8BA3C4">Status</div></div>'
+    +'<div style="text-align:center"><div style="font-size:12px;font-weight:700;color:#22D3EE;margin-top:4px">'+path+'</div><div style="font-size:9px;color:#8BA3C4">Recommended Path</div></div>'
+    +'</div>'
+    +fs.map(function(f){return '<div style="display:grid;grid-template-columns:1fr 60px 40px;gap:6px;align-items:center;font-size:10px;margin-bottom:4px"><span style="color:'+(f.ok?'#E8F0FE':'#F59E0B')+'">'+(f.ok?'✅':'⚠️')+' '+f.l+'</span><div style="background:rgba(255,255,255,.06);border-radius:3px;height:5px"><div style="width:'+f.pts+'%;background:'+(f.ok?'#22C55E':'#F59E0B')+';height:100%;border-radius:3px"></div></div><span style="color:#8BA3C4;text-align:right">'+f.pts+'/20</span></div>';}).join('');
+}
+
+// P2 — BTM vs FTM
+function P2(){
+  var qs=[['p2_offset_load','Battery offsets customer load?'],['p2_export','Battery exports to grid?'],['p2_new_meter','New dedicated storage meter feasible?'],['p2_ev_pair','Paired with EV chargers or solar?'],['p2_host_owner','Site host = battery owner?'],['p2_rebate','Pursuing utility rebate (BESH)?'],['p2_vpp','Pursuing VPP / demand response?'],['p2_wholesale','Pursuing wholesale / FR markets?'],['p2_resiliency','Resiliency / backup required?'],['p2_itc','Federal ITC (IRA §48) applicable?']];
+  var qGrid=qs.map(function(q){var v=gv(q[0]);return '<div style="border:1px solid rgba(255,255,255,.08);border-radius:5px;padding:6px 9px;display:flex;align-items:center;justify-content:space-between;gap:6px"><span style="font-size:10px;color:#8BA3C4">'+q[1]+'</span><div style="display:flex;gap:4px">'+['Yes','No','TBD'].map(function(opt){return '<label style="display:flex;align-items:center;gap:3px;cursor:pointer;font-size:9px;color:'+(v===opt?'#C5A55A':'#8BA3C4')+'"><input type="radio" name="vwr-'+q[0]+'" value="'+opt+'"'+(v===opt?' checked':'')+' onchange="sv(\''+q[0]+'\',\''+opt+'\')" style="accent-color:#C5A55A"> '+opt+'</label>';}).join('')+'</div></div>';}).join('');
+  var btm=calcBTM(),ftm=calcFTM();
+  var rec=btm>ftm?'BTM preferred':(ftm>btm?'FTM preferred':'Either / Dual-Path');
+  return HEAD('Phase 2 — BTM vs FTM Path Determination','Determines interconnection structure, incentive eligibility, permitting complexity, and revenue model.')
+    +'<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:13px">'
+    +'<div style="background:rgba(96,165,250,.07);border:1px solid rgba(96,165,250,.25);border-radius:8px;padding:11px"><div style="font-size:11px;font-weight:800;color:#60A5FA;margin-bottom:5px">⚡ BTM Score: '+btm+'/100</div><div style="font-size:9px;color:#8BA3C4;line-height:1.5">Customer-side • Demand charge reduction • EV load management • BESH rebate eligible • Resiliency + VPP dispatch</div></div>'
+    +'<div style="background:rgba(34,197,94,.07);border:1px solid rgba(34,197,94,.25);border-radius:8px;padding:11px"><div style="font-size:11px;font-weight:800;color:#22C55E;margin-bottom:5px">🔌 FTM Score: '+ftm+'/100</div><div style="font-size:9px;color:#8BA3C4;line-height:1.5">Utility-side meter • Wholesale / FR markets • CRGA dispatch • Separate interconnection study • IEEE 1547</div></div>'
+    +'</div>'
+    +ALERT(btm>ftm?'info':'ok','<strong>Auto-Recommendation: '+rec+'</strong> — based on load, space, and site profile.')
+    +SH('Key Determination Questions')
+    +'<div style="display:grid;grid-template-columns:1fr 1fr;gap:5px;margin-bottom:12px">'+qGrid+'</div>'
+    +SH('Path Decision')
+    +F('p2_path_final','Final Path Decision','select',{options:[{v:'',l:'— select —'},{v:'BTM',l:'BTM — Behind the Meter (customer-side)'},{v:'FTM',l:'FTM — Front of Meter (utility-side, export)'},{v:'dual',l:'Dual-Path — await utility feedback'},{v:'reject',l:'Not viable'}]})
+    +F('p2_rationale','Path Rationale','textarea',{rows:2})
+    +GATE('p2',[{s:'pass',l:'BTM Confirmed'},{s:'strong',l:'FTM Confirmed'},{s:'cond',l:'Dual-Path'},{s:'fail',l:'Not Viable'}]);
+}
+function calcBTM(){var s=0;if(+gv('p0_peak_kw')>=100)s+=30;if(gv('p2_offset_load')==='Yes')s+=20;if(gv('p0_ev')==='1')s+=15;if(gv('p2_rebate')==='Yes')s+=15;if(gv('p2_resiliency')==='Yes')s+=10;if(gv('p2_host_owner')==='Yes')s+=10;return Math.min(100,s);}
+function calcFTM(){var s=0;if(gv('p2_export')==='Yes')s+=30;if(gv('p2_new_meter')==='Yes')s+=20;if(gv('p2_wholesale')==='Yes')s+=25;if(+gv('p0_avail_area')>=2000)s+=15;if(gv('p2_vpp')==='Yes')s+=10;return Math.min(100,s);}
+
+// P3 — Engineering
+function P3(){
+  var ck1=[['p3_fire_access','Fire dept. access confirmed'],['p3_nfpa855','NFPA 855 setbacks reviewed'],['p3_nec706','NEC Article 706 compliant'],['p3_ul9540','UL 9540 / 9540A listing available'],['p3_hvac','HVAC / thermal mgmt required'],['p3_civil_ok','No major civil issues (drainage/slope)'],['p3_underground','Underground utilities cleared'],['p3_bollards','Bollard / vehicle protection planned'],['p3_noise_ok','Noise limits acceptable']];
+  return HEAD('Phase 3 — Engineering Feasibility','Confirm the site can technically support the installation.')
+    +SH('System Sizing')
+    +G3(F('p3_kwh','BESS Capacity (kWh)','number',{ph:'760'}),F('p3_kw','BESS Power (kW)','number',{ph:'380'}),F('p3_duration','Duration','select',{options:[{v:'',l:'—'},{v:'1',l:'1 hr'},{v:'2',l:'2 hrs'},{v:'4',l:'4 hrs'},{v:'6',l:'6 hrs'}]}))
+    +G3(F('p3_ac_kw','AC Output (kW)','number',{ph:'380'}),F('p3_voltage','AC Voltage','select',{options:[{v:'',l:'—'},{v:'480',l:'480V 3ph'},{v:'208',l:'208V 3ph'},{v:'4160',l:'4.16kV'}]}),F('p3_pcs','PCS / Inverter','text',{ph:'Dynapower CPS-1250'}))
+    +SH('Physical Layout')
+    +G2(F('p3_bess_loc','BESS Location Description','text',{ph:'South parking lot, 40ft from building'}),F('p3_pad_size','Equipment Pad Size','text',{ph:'40ft x 20ft concrete'}))
+    +G3(F('p3_trench_ft','Trench Distance (ft)','number',{ph:'150'}),F('p3_crane','Crane / Truck Access','select',{options:[{v:'',l:'—'},{v:'yes',l:'Yes — clear path'},{v:'constrained',l:'Constrained'},{v:'no',l:'No — major issue'}]}),F('p3_xfmr_upgrade','Transformer Upgrade?','select',{options:[{v:'',l:'—'},{v:'no',l:'No — sufficient'},{v:'maybe',l:'Possible'},{v:'yes',l:'Yes — required'}]}))
+    +G2(F('p3_service_upgrade','Service Upgrade Required?','select',{options:[{v:'',l:'—'},{v:'no',l:'No'},{v:'maybe',l:'Possible'},{v:'yes',l:'Yes'}]}),F('p3_new_meter','New Meter Required?','select',{options:[{v:'',l:'—'},{v:'no',l:'No'},{v:'yes_btm',l:'Yes — BTM revenue meter'},{v:'yes_ftm',l:'Yes — FTM storage meter'}]}))
+    +SH('Compliance Checklist')
+    +'<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:5px;margin-bottom:10px">'+ck1.map(function(e){return CK(e[0],e[1],'#A78BFA');}).join('')+'</div>'
+    +F('p3_notes','Engineering Notes','textarea',{rows:2})
+    +GATE('p3',[{s:'pass',l:'Pass — No Issues'},{s:'cond',l:'Conditional'},{s:'fail',l:'Fail — Blocker'}]);
+}
+
+// P4 — Interconnection
+function P4(){
+  var ck1=[['p4_xfmr_risk','Transformer upgrade likely'],['p4_service_risk','Service upgrade likely'],['p4_feeder_constrained','Feeder capacity constrained'],['p4_protection_req','Special protection scheme required'],['p4_telemetry','Telemetry / SCADA required'],['p4_vpp_enroll','VPP/DR enrollment required'],['p4_oneline_ready','One-line diagram ready'],['p4_specs_ready','Equipment spec sheets ready'],['p4_ul_confirmed','UL 9540 listing confirmed']];
+  return HEAD('Phase 4 — Interconnection Feasibility','Utility gate. Determines interconnection path, risk, and required studies.')
+    +SH('Application Data')
+    +G3(F('p4_utility','Utility','select',{options:[{v:'',l:'—'},{v:'comed',l:'ComEd'},{v:'ameren',l:'Ameren IL'},{v:'other',l:'Other'}]}),F('p4_rate_class','Rate Class','text',{ph:'LGS-3, BESH'}),F('p4_account','Account Number','text',{ph:''}))
+    +G3(F('p4_service_v','Service Voltage','select',{options:[{v:'',l:'—'},{v:'120/208',l:'120/208V 3ph'},{v:'277/480',l:'277/480V 3ph'},{v:'4160',l:'4.16kV'},{v:'12470',l:'12.47kV'}]}),F('p4_xfmr_kva','Transformer kVA','text',{ph:'500'}),F('p4_export','Export Mode','select',{options:[{v:'',l:'—'},{v:'non_export',l:'Non-Export (BTM)'},{v:'limited',l:'Limited Export'},{v:'full',l:'Full Export (FTM)'},{v:'btm_vpp',l:'Non-Export + VPP'}]}))
+    +G3(F('p4_proposed_kw','Proposed kW','number',{ph:'380'}),F('p4_proposed_kwh','Proposed kWh','number',{ph:'760'}),F('p4_app_type','Application Type','select',{options:[{v:'',l:'—'},{v:'part466_l3',l:'Part 466 Level 3 (Non-Export)'},{v:'part466_l2',l:'Part 466 Level 2 (<500kW)'},{v:'full_study',l:'Full Study Required'},{v:'unknown',l:'TBD'}]}))
+    +G3(F('p4_app_status','Application Status','select',{options:[{v:'',l:'—'},{v:'not_started',l:'Not Started'},{v:'preapp',l:'Pre-App Requested'},{v:'submitted',l:'Submitted'},{v:'study',l:'In Study Phase'},{v:'agreement',l:'Agreement Received'},{v:'executed',l:'Executed'}]}),F('p4_timeline','Est. Timeline (wks)','text',{ph:'6-8 wks'}),F('p4_queue_risk','Queue Risk','select',{options:[{v:'',l:'—'},{v:'low',l:'Low'},{v:'moderate',l:'Moderate'},{v:'high',l:'High'}]}))
+    +SH('Risk Factors')
+    +'<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:5px;margin-bottom:10px">'+ck1.map(function(e){return CK(e[0],e[1],'#22D3EE');}).join('')+'</div>'
+    +F('p4_notes','Interconnection Notes','textarea',{rows:2})
+    +GATE('p4',[{s:'pass',l:'Application Ready'},{s:'cond',l:'Pre-Screen Needed'},{s:'weak',l:'Study Required'},{s:'fail',l:'High-Risk / Reject'}]);
+}
+
+// P5 — Permitting
+function P5(){
+  var ck1=[['p5_elec','Electrical permit required'],['p5_bldg','Building permit required'],['p5_fire_perm','Fire dept. permit required'],['p5_civil','Civil / site plan required'],['p5_stormwater','Stormwater review required'],['p5_zoning_ok','Zoning allows BESS accessory use'],['p5_fence','Fencing required by AHJ'],['p5_concrete','Concrete pad required'],['p5_signage','Signage / labeling required'],['p5_erp','Emergency response plan required'],['p5_haz','Hazard mitigation plan required'],['p5_flood_ok','Not in 100-yr floodplain'],['p5_historic_ok','No historic/environmental restrictions'],['p5_noise_ok','Noise limits will be met'],['p5_nfpa855_ok','NFPA 855 setbacks confirmed']];
+  return HEAD('Phase 5 — Permitting & AHJ Viability','Evaluate local authority approval risk before committing engineering resources.')
+    +SH('Jurisdiction')
+    +G3(F('p5_ahj','AHJ / Municipality','text',{ph:'City of Chicago, Building Dept.'}),F('p5_fire_dept','Fire Department','text',{ph:'Chicago Fire Dept.'}),F('p5_zoning','Zoning Classification','text',{ph:'B3-3 Commercial'}))
+    +SH('Permit Requirements')
+    +'<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:5px;margin-bottom:10px">'+ck1.map(function(e){return CK(e[0],e[1],'#FB923C');}).join('')+'</div>'
+    +G2(F('p5_setback_bldg','Setback from Building (ft)','number',{ph:'10'}),F('p5_setback_pl','Setback from Property Line (ft)','number',{ph:'5'}))
+    +F('p5_notes','Permitting Notes / AHJ Contact','textarea',{rows:2})
+    +GATE('p5',[{s:'pass',l:'Low Risk'},{s:'cond',l:'Medium Risk'},{s:'weak',l:'High Risk'},{s:'fail',l:'Not Viable'}]);
+}
+
+// P6 — Revenue Stack
+function P6(){
+  var progs=[['p6_besh','ComEd BESH Rebate (§16-107.6 PUA)','$250/kWh C&I'],['p6_itc','Federal ITC (IRA §48, 30%+)','30%+ CapEx'],['p6_macrs','MACRS Accelerated Depreciation','5-yr'],['p6_state','State / Other Rebate','Custom'],['p6_sgip','SGIP (CA only)','$/kWh']];
+  var progRows=progs.map(function(p){var ck=gv(p[0]+'_on')==='1';var cf=gv(p[0]+'_conf')||'';return '<div style="display:grid;grid-template-columns:1fr 90px 110px;gap:6px;align-items:center;margin-bottom:5px"><label class="vwck" style="border:none;padding:0;border-color:transparent;background:transparent;color:#8BA3C4" onclick="vwToggle(\''+p[0]+'_on\',this)" data-accent="#4ADE80"><input type="checkbox" id="vwf-'+p[0]+'_on"'+(ck?' checked':'')+' onchange="vwToggle(\''+p[0]+'_on\',this.parentElement)"> '+p[1]+'</label><span style="font-size:9px;color:#C5A55A">'+p[2]+'</span><select class="vwi" id="vwf-'+p[0]+'_conf" onchange="sv(\''+p[0]+'_conf\',this.value)" style="font-size:9px;padding:3px 5px">'+['Confirmed','Probable','Upside','N/A'].map(function(v){return '<option value="'+v+'"'+(cf===v?' selected':'')+'>'+v+'</option>';}).join('')+'</select></div>';}).join('');
+  return HEAD('Phase 6 — Revenue Stack Identification','Build the value stack. Separate confirmed, probable, and upside. Never sell on upside alone.')
+    +SH('Upfront Incentives / Rebates')
+    +'<div style="background:rgba(74,222,128,.04);border:1px solid rgba(74,222,128,.12);border-radius:7px;padding:10px;margin-bottom:12px"><div style="display:grid;grid-template-columns:1fr 90px 110px;gap:6px;font-size:8px;color:#8BA3C4;margin-bottom:6px"><span>Program</span><span>Rate</span><span>Confidence</span></div>'+progRows+'</div>'
+    +SH('Annual Revenue Streams')
+    +G3(F('p6_demand','Demand Charge Savings ($/yr)','number',{ph:'0'}),F('p6_vpp','VPP / DR Revenue ($/yr)','number',{ph:'0'}),F('p6_capacity','Capacity Payment ($/yr)','number',{ph:'0'}))
+    +G3(F('p6_freq_reg','Frequency Regulation ($/yr)','number',{ph:'0'}),F('p6_arbitrage','Energy Arbitrage ($/yr)','number',{ph:'0'}),F('p6_ev_demand','EV Demand Mgmt Savings ($/yr)','number',{ph:'0'}))
+    +G3(F('p6_host_lease','Site Host Lease ($/yr)','number',{ph:'0'}),F('p6_solar','Solar Self-Consumption ($/yr)','number',{ph:'0'}),F('p6_resiliency','Resiliency Value ($/yr)','number',{ph:'0'}))
+    +'<div style="margin-top:12px;background:rgba(74,222,128,.06);border:1px solid rgba(74,222,128,.2);border-radius:8px;padding:12px"><div style="font-size:10px;font-weight:700;color:#4ADE80;margin-bottom:8px">📊 Value Stack Summary</div><div id="vw-rev-total" style="font-size:10px;color:#8BA3C4">Enter values above.</div></div>'
+    +GATE('p6',[{s:'pass',l:'Strong Stack'},{s:'cond',l:'Moderate'},{s:'weak',l:'Thin'},{s:'fail',l:'No Revenue'}]);
+}
+function calcRev(){
+  var el=document.getElementById('vw-rev-total');if(!el)return;
+  var flds=['p6_demand','p6_vpp','p6_capacity','p6_freq_reg','p6_arbitrage','p6_ev_demand','p6_host_lease','p6_solar','p6_resiliency'];
+  var total=flds.reduce(function(s,f){return s+(parseFloat(gv(f))||0);},0);
+  VW.fin.annual_rev=total;save();
+  var rows=flds.filter(function(f){return parseFloat(gv(f))>0;}).map(function(f){return '<div style="display:flex;justify-content:space-between;font-size:10px;margin-bottom:2px"><span style="color:#8BA3C4">'+f.replace('p6_','').replace(/_/g,' ')+'</span><span style="color:#4ADE80;font-weight:700">$'+Math.round(parseFloat(gv(f))||0).toLocaleString()+'/yr</span></div>';});
+  el.innerHTML=(rows.length?rows.join(''):'<div style="color:#8BA3C4">No revenue entered yet.</div>')+'<div style="border-top:1px solid rgba(74,222,128,.3);margin-top:6px;padding-top:6px;display:flex;justify-content:space-between;font-weight:800"><span style="color:#fff">TOTAL ANNUAL</span><span style="color:#4ADE80;font-size:13px">$'+Math.round(total).toLocaleString()+'/yr</span></div>';
+}
+
+// P7 — Financial
+function P7(){
+  return HEAD('Phase 7 — Financial Viability','Investment gate. Full CapEx + OpEx + revenue model with payback, IRR, and NPV.')
+    +SH('CapEx — Hardware')
+    +G3(F('p7_bess','BESS Hardware ($)','number',{ph:'84740'}),F('p7_pcs','PCS / Inverter ($)','number',{ph:'45000'}),F('p7_xfmr','Transformer ($)','number',{ph:'0'}))
+    +G3(F('p7_switchgear','Switchgear / Panel ($)','number',{ph:'18500'}),F('p7_meter','Metering ($)','number',{ph:'5000'}),F('p7_ems','EMS / Software ($)','number',{ph:'8000'}))
+    +SH('CapEx — Civil & Installation')
+    +G3(F('p7_civil','Civil / Site Work ($)','number',{ph:'25000'}),F('p7_pad','Concrete Pad ($)','number',{ph:'12000'}),F('p7_trench','Trenching ($)','number',{ph:'15000'}))
+    +G3(F('p7_conduit','Conduit / Wire ($)','number',{ph:'8000'}),F('p7_bollards','Bollards / Fencing ($)','number',{ph:'5000'}),F('p7_fire','Fire Safety ($)','number',{ph:'4000'}))
+    +SH('CapEx — Soft Costs')
+    +G3(F('p7_eng','Engineering / Design ($)','number',{ph:'18000'}),F('p7_permit','Permitting Fees ($)','number',{ph:'3500'}),F('p7_ic_fee','Interconnection Fee ($)','number',{ph:'2500'}))
+    +G3(F('p7_util_upgrade','Utility Upgrade ($)','number',{ph:'0'}),F('p7_labor','Construction Labor ($)','number',{ph:'35000'}),F('p7_commissioning','Commissioning ($)','number',{ph:'8000'}))
+    +G3(F('p7_networking','Networking / Telemetry ($)','number',{ph:'4000'}),F('p7_dev_fee','Developer Fee ($)','number',{ph:'0'}),F('p7_contingency','Contingency (%)','number',{ph:'10'}))
+    +SH('Incentives (deducted)')
+    +G3(F('p7_rebate','Utility Rebate ($)','number',{ph:'0'}),F('p7_itc_pct','ITC Rate (%)','number',{ph:'30'}),F('p7_other_inc','Other Incentives ($)','number',{ph:'0'}))
+    +SH('Annual OpEx')
+    +G3(F('p7_om','O&M ($/yr)','number',{ph:'4500'}),F('p7_insurance','Insurance ($/yr)','number',{ph:'3000'}),F('p7_warranty','Warranty / Reserve ($/yr)','number',{ph:'2000'}))
+    +SH('Model Parameters')
+    +G3(F('p7_discount','Discount Rate (%)','number',{ph:'8'}),F('p7_life','Project Life (yrs)','number',{ph:'20'}),F('p7_financing','Financing Rate (%)','number',{ph:'0'}))
+    +'<div style="margin-top:12px;background:rgba(244,114,182,.06);border:1px solid rgba(244,114,182,.2);border-radius:8px;padding:12px"><div style="font-size:10px;font-weight:700;color:#F472B6;margin-bottom:8px">📊 Financial Model</div><div id="vw-fin-out" style="font-size:10px;color:#8BA3C4">Enter values above to compute.</div></div>'
+    +GATE('p7',[{s:'invest',l:'INVEST'},{s:'hold',l:'HOLD'},{s:'redesign',l:'REDESIGN'},{s:'reject',l:'REJECT'}]);
+}
+function calcFin(){
+  var el=document.getElementById('vw-fin-out');if(!el)return;
+  var g=function(k){return parseFloat(gv(k))||0;};
+  var hw=g('p7_bess')+g('p7_pcs')+g('p7_xfmr')+g('p7_switchgear')+g('p7_meter')+g('p7_ems');
+  var cv=g('p7_civil')+g('p7_pad')+g('p7_trench')+g('p7_conduit')+g('p7_bollards')+g('p7_fire');
+  var sf=g('p7_eng')+g('p7_permit')+g('p7_ic_fee')+g('p7_util_upgrade')+g('p7_labor')+g('p7_commissioning')+g('p7_networking')+g('p7_dev_fee');
+  var sub=hw+cv+sf;
+  var cont=sub*((g('p7_contingency')||10)/100);
+  var gross=sub+cont;
+  var rebate=g('p7_rebate');
+  var itc=gross*((g('p7_itc_pct')||0)/100);
+  var otherInc=g('p7_other_inc');
+  var net=gross-rebate-itc-otherInc;
+  var rev=VW.fin.annual_rev||0;
+  var opex=g('p7_om')+g('p7_insurance')+g('p7_warranty');
+  var netAnn=rev-opex;
+  var pb=netAnn>0?net/netAnn:999;
+  var disc=(g('p7_discount')||8)/100;
+  var life=g('p7_life')||20;
+  var npv=-net;
+  for(var y=1;y<=life;y++)npv+=netAnn/Math.pow(1+disc,y);
+  var irr=0;
+  try{var r=0.1;for(var iter=0;iter<50;iter++){var fv=-net,dfv=0;for(var y2=1;y2<=life;y2++){fv+=netAnn/Math.pow(1+r,y2);dfv-=y2*netAnn/Math.pow(1+r,y2+1);}if(Math.abs(dfv)<1e-10)break;r-=fv/dfv;if(r<-0.99){r=-0.99;break;}}irr=r;}catch(e){}
+  VW.fin=Object.assign(VW.fin||{},{gross,net,netAnn,pb,npv,irr,rev,opex});
+  var dec='pending';
+  if(net>0&&rev>0){if(pb<=7&&npv>0)dec='invest';else if(pb<=12&&npv>-net*0.2)dec='hold';else if(pb<=18)dec='redesign';else dec='reject';}
+  VW.fin.decision=dec;save();renderDecision();
+  var fmt=function(n){return '$'+Math.round(n).toLocaleString();};
+  var fpct=function(n){return(n*100).toFixed(1)+'%';};
+  var fyr=function(n){return n>=99?'N/A':n.toFixed(1)+' yrs';};
+  el.innerHTML='<div style="display:grid;grid-template-columns:1fr 1fr;gap:7px">'
+    +kpi('Gross CapEx',fmt(gross),'#fff')
+    +kpi('Net CapEx (after incentives)',fmt(net),'#4ADE80')
+    +kpi('Annual Net Revenue',fmt(netAnn)+'/yr','#22D3EE')
+    +kpi('Simple Payback',fyr(pb),pb<=7?'#22C55E':pb<=12?'#F59E0B':'#EF4444')
+    +kpi('NPV ('+fpct(disc)+' discount)',fmt(npv),npv>0?'#22C55E':'#EF4444')
+    +kpi('IRR',fpct(irr),irr>0.1?'#22C55E':irr>0?'#F59E0B':'#EF4444')
+    +'</div><div style="margin-top:8px;font-size:9px;color:#8BA3C4">ITC: '+fmt(itc)+' | Rebate: '+fmt(rebate)+' | OpEx: '+fmt(opex)+'/yr | Life: '+life+' yrs</div>';
+}
+function kpi(l,v,c){return '<div style="background:rgba(255,255,255,.04);border-radius:5px;padding:8px"><div style="font-size:8px;color:#8BA3C4;margin-bottom:2px">'+l+'</div><div style="font-size:14px;font-weight:800;color:'+(c||'#fff')+'">'+v+'</div></div>';}
+
+// P8 — Execution
+function P8(){
+  var pkg=[['p8_sitemap','Final site map (this tool)'],['p8_oneline','Final one-line diagram'],['p8_ic_app','Interconnection application'],['p8_rebate_app','Rebate / VPP application'],['p8_permit_pkg','AHJ permit package'],['p8_bess_spec','Battery spec sheet + UL listing'],['p8_pcs_spec','PCS / inverter spec sheet'],['p8_ems_plan','EMS / telemetry plan'],['p8_fire_pkg','Fire safety / NFPA 855 plan'],['p8_civil_dwgs','Civil drawings'],['p8_elec_dwgs','Electrical drawings (E-sheets)'],['p8_epc_quote','EPC / GC quote received'],['p8_vendor_quote','Battery vendor quote'],['p8_insurance','Insurance review complete'],['p8_host_agmt','Site host agreement executed'],['p8_easement','Easement / lease area exhibit'],['p8_om_plan','O&M plan'],['p8_comm_plan','Commissioning plan'],['p8_schedule','Project schedule'],['p8_cap_memo','Capital approval memo']];
+  var pkgKeys=pkg.map(function(p){return p[0];});
+  var cod=[['p8_ntp','Notice to Proceed (NTP) issued'],['p8_procurement','Equipment procurement started'],['p8_permits_ok','Permits approved'],['p8_ic_executed','Interconnection agreement executed'],['p8_util_upgrades','Utility upgrades scheduled'],['p8_delivery','Battery delivered to site'],['p8_pad_done','Concrete pad installed'],['p8_trenching','Trenching / conduit completed'],['p8_electrical','Electrical installation completed'],['p8_telemetry','Telemetry / SCADA installed'],['p8_inspection','AHJ inspection passed'],['p8_witness','Utility witness test passed'],['p8_pto','Permission to Operate (PTO) received'],['p8_enrollment','Program enrollment confirmed'],['p8_vpp_active','VPP / dispatch activated'],['p8_cod','Commercial Operation Date (COD) ✅'],['p8_rebate_sub','Rebate application submitted'],['p8_rebate_rec','Rebate payment received'],['p8_om_handoff','O&M handoff complete']];
+  var done=pkgKeys.filter(function(k){return gv(k)==='1';}).length;
+  var pct=Math.round(done/pkgKeys.length*100);
+  return HEAD('Phase 8 — Execution Readiness & COD Tracker','Assemble the project package and track construction through Commercial Operation.')
+    +SH('Required Project Package')
+    +'<div style="background:rgba(251,191,36,.06);border:1px solid rgba(251,191,36,.15);border-radius:7px;padding:10px;text-align:center;margin-bottom:10px"><div style="font-size:20px;font-weight:800;color:#FBBF24" id="vw-exec-pct">'+pct+'%</div><div style="font-size:9px;color:#8BA3C4">Package Complete ('+done+' / '+pkgKeys.length+' items)</div></div>'
+    +'<div style="display:grid;grid-template-columns:1fr 1fr;gap:5px;margin-bottom:12px">'+pkg.map(function(p){return CK(p[0],p[1],'#FBBF24');}).join('')+'</div>'
+    +SH('Construction & COD Tracker')
+    +'<div style="display:grid;grid-template-columns:1fr 1fr;gap:5px;margin-bottom:10px">'+cod.map(function(p){return CK(p[0],p[1],'#4ADE80');}).join('')+'</div>'
+    +F('p8_cod_date','Target COD Date','text',{ph:'Q3 2026'})
+    +F('p8_notes','Execution Notes','textarea',{rows:2})
+    +GATE('p8',[{s:'pass',l:'Package Complete'},{s:'cond',l:'In Progress'},{s:'pending',l:'Not Started'}]);
+}
+function calcExec(){
+  var keys=['p8_sitemap','p8_oneline','p8_ic_app','p8_rebate_app','p8_permit_pkg','p8_bess_spec','p8_pcs_spec','p8_ems_plan','p8_fire_pkg','p8_civil_dwgs','p8_elec_dwgs','p8_epc_quote','p8_vendor_quote','p8_insurance','p8_host_agmt','p8_easement','p8_om_plan','p8_comm_plan','p8_schedule','p8_cap_memo'];
+  var done=keys.filter(function(k){return gv(k)==='1';}).length;
+  var pct=Math.round(done/keys.length*100);
+  var el=document.getElementById('vw-exec-pct');
+  if(el)el.textContent=pct+'%';
+}
+
+// ── Scores Sidebar ────────────────────────────────────────────
+function renderScores(){
+  var el=document.getElementById('vw-scores');if(!el)return;
+  el.innerHTML=PHASES.map(function(p,i){
+    var s=VW.scores[p.id]||'pending';var st2=st(s);
+    return '<div style="background:rgba(255,255,255,.03);border:1px solid '+(s==='pending'?'rgba(255,255,255,.08)':st2.c+'44')+';border-radius:5px;padding:6px 8px;display:flex;align-items:center;gap:6px;cursor:pointer" onclick="vwGo('+i+')">'
+      +'<span style="font-size:13px">'+p.icon+'</span>'
+      +'<div style="flex:1;min-width:0"><div style="font-size:9px;font-weight:700;color:'+(s==='pending'?'#8BA3C4':st2.c)+';white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+p.short+'</div><div style="font-size:8px;color:#6B7280">'+st2.l+'</div></div>'
+      +'<span style="font-size:11px">'+st2.i+'</span>'
+      +'</div>';
+  }).join('');
+}
+
+// ── Decision ─────────────────────────────────────────────────
+function renderDecision(){
+  var scores=Object.values(VW.scores);
+  var fails=scores.filter(function(s){return s==='fail'||s==='reject';}).length;
+  var fd=VW.fin&&VW.fin.decision;
+  var dec='pending',ico='⏳',lbl='Pending',sub='Complete all phases.',c='#6B7280';
+  if(fails>=2){dec='reject';ico='🔴';lbl='REJECT';sub='Multiple blocking issues.';c='#EF4444';}
+  else if(fails===1){dec='redesign';ico='🔄';lbl='REDESIGN';sub='Address blocking constraint.';c='#F97316';}
+  else if(fd==='invest'&&scores.filter(function(s){return s==='pending';}).length===0){dec='invest';ico='🟢';lbl='INVEST';sub='All gates passed. Execute.';c='#22C55E';}
+  else if(fd==='hold'||scores.some(function(s){return s==='pending';})){dec='hold';ico='🟡';lbl='HOLD';sub='Awaiting confirmations.';c='#F59E0B';}
+  else if(fd==='redesign'){dec='redesign';ico='🔄';lbl='REDESIGN';sub='Adjust economics or scope.';c='#F97316';}
+  else if(fd==='reject'){dec='reject';ico='🔴';lbl='REJECT';sub='Economics do not support.';c='#EF4444';}
+  var di=document.getElementById('vw-dec-icon');
+  var dl=document.getElementById('vw-dec-label');
+  var ds=document.getElementById('vw-dec-sub');
+  var dd=document.getElementById('vw-decision');
+  if(di)di.textContent=ico;
+  if(dl){dl.textContent=lbl;dl.style.color=c;}
+  if(ds)ds.textContent=sub;
+  if(dd){dd.style.background=c+'1a';dd.style.borderColor=c+'55';}
+}
+
+// ── Print ─────────────────────────────────────────────────────
+window.vwPrint=function(){
+  var proj=(document.getElementById('pname')||{}).value||'BESS Project';
+  var addr=gv('p0_address')||'TBD';
+  var today=new Date().toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'});
+  var f=VW.fin||{};
+  var fmt=function(n){return '$'+Math.round(n||0).toLocaleString();};
+  var html='<!DOCTYPE html><html><head><meta charset="UTF-8"><title>BESS Viability Report — '+proj+'</title>'
+    +'<style>body{font-family:Arial,sans-serif;color:#111;padding:28px;max-width:880px;margin:0 auto}'
+    +'h1{color:#0B1E35;border-bottom:3px solid #C5A55A;padding-bottom:7px;margin-bottom:4px}'
+    +'h2{color:#1B4F8A;font-size:12px;text-transform:uppercase;letter-spacing:.5px;margin:18px 0 7px;border-left:3px solid #C5A55A;padding-left:7px}'
+    +'.kpis{display:flex;gap:10px;flex-wrap:wrap;margin:12px 0}'
+    +'.kpi{border:1px solid #ddd;border-radius:6px;padding:9px 13px;min-width:110px;text-align:center}'
+    +'.kv{font-size:17px;font-weight:800;color:#1B4F8A}'
+    +'.kl{font-size:8px;color:#777;text-transform:uppercase;letter-spacing:.5px}'
+    +'.ph{display:flex;align-items:center;gap:9px;padding:6px 0;border-bottom:1px solid #eee;font-size:11px}'
+    +'.badge{padding:2px 7px;border-radius:3px;font-size:9px;font-weight:700}'
+    +'@media print{body{padding:10px}}</style></head><body>'
+    +'<h1>BESS Project Viability Report</h1>'
+    +'<p style="font-size:10px;color:#777">'+proj+' &nbsp;·&nbsp; '+addr+' &nbsp;·&nbsp; '+today+' &nbsp;·&nbsp; ClearSky Builders LLC</p>'
+    +'<div class="kpis">';
+  if(f.gross)html+='<div class="kpi"><div class="kv">'+fmt(f.gross)+'</div><div class="kl">Gross CapEx</div></div>';
+  if(f.net)html+='<div class="kpi"><div class="kv">'+fmt(f.net)+'</div><div class="kl">Net CapEx</div></div>';
+  if(f.netAnn)html+='<div class="kpi"><div class="kv">'+fmt(f.netAnn)+'/yr</div><div class="kl">Net Annual</div></div>';
+  if(f.pb&&f.pb<99)html+='<div class="kpi"><div class="kv">'+f.pb.toFixed(1)+' yrs</div><div class="kl">Payback</div></div>';
+  if(f.npv!==undefined)html+='<div class="kpi"><div class="kv">'+fmt(f.npv)+'</div><div class="kl">NPV</div></div>';
+  if(f.irr)html+='<div class="kpi"><div class="kv">'+(f.irr*100).toFixed(1)+'%</div><div class="kl">IRR</div></div>';
+  html+='</div><h2>Phase Gate Summary</h2>';
+  var pc={'pass':'#16a34a','strong':'#16a34a','invest':'#16a34a','cond':'#d97706','moderate':'#d97706','hold':'#d97706','weak':'#ea580c','redesign':'#ea580c','fail':'#dc2626','reject':'#dc2626','pending':'#6b7280'};
+  PHASES.forEach(function(p){var s=VW.scores[p.id]||'pending';var st2=st(s);var c=pc[s]||'#6b7280';html+='<div class="ph"><span style="font-size:14px">'+p.icon+'</span><strong style="min-width:150px">'+p.label+'</strong><span class="badge" style="background:'+c+'22;color:'+c+';border:1px solid '+c+'55">'+st2.i+' '+st2.l+'</span></div>';});
+  var dec=f.decision||'pending';var decSt=st(dec);html+='<h2>Investment Decision</h2><div style="font-size:16px;font-weight:800;color:'+(decSt.c||'#1B4F8A')+';margin:8px 0">'+decSt.i+' '+decSt.l+'</div>';
+  var kfs=[['Property','p0_address'],['Utility','p0_utility'],['Owner','p0_owner'],['Peak Demand (kW)','p0_peak_kw'],['Path','p2_path_final'],['BESS kWh','p3_kwh'],['BESS kW','p3_kw'],['COD Target','p8_cod_date']];
+  html+='<h2>Project Data</h2><table style="width:100%;border-collapse:collapse;font-size:11px"><tr style="background:#f5f5f5"><th style="padding:5px 8px;border:1px solid #ddd;text-align:left">Field</th><th style="padding:5px 8px;border:1px solid #ddd;text-align:left">Value</th></tr>';
+  kfs.forEach(function(r){if(gv(r[1]))html+='<tr><td style="padding:5px 8px;border:1px solid #ddd">'+r[0]+'</td><td style="padding:5px 8px;border:1px solid #ddd">'+gv(r[1])+'</td></tr>';});
+  html+='</table></body></html>';
+  var w=window.open('','_blank','width=940,height=800');
+  if(!w){alert('Pop-up blocked.');return;}
+  w.document.write(html);w.document.close();
+  setTimeout(function(){try{w.print();}catch(e){}},500);
+};
+
+// ── Recalc on any input in the panel ─────────────────────────
+document.addEventListener('input',function(e){
+  if(!e.target||!e.target.id||!e.target.id.startsWith('vwf-'))return;
+  var k=e.target.id.replace('vwf-','');
+  sv(k,e.target.value);
+  if(document.getElementById('vw-p1-score'))calcP1();
+  if(document.getElementById('vw-rev-total'))calcRev();
+  if(document.getElementById('vw-fin-out'))calcFin();
+  if(document.getElementById('vw-exec-pct'))calcExec();
+});
+
+})();
+</script>
+
+
+
 </body>
 </html>
