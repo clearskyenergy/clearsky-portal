@@ -418,6 +418,21 @@ input[type=range]::-moz-range-thumb{width:15px;height:15px;background:linear-gra
 /* Callout element upgraded */
 .callout-el{background:rgba(197,165,90,.15)!important;border:1.5px solid var(--gold)!important;color:#E8F0FE!important}
 
+
+
+/* -- PATCH v4.23A: BESS viability workflow + reliable exports -- */
+.viability-pill{background:linear-gradient(135deg,#16A34A,#0EA5E9)!important;color:#fff!important;font-weight:800!important;border:none!important}
+#viability-modal input,#viability-modal select,#viability-modal textarea{width:100%;background:var(--surface);border:1px solid var(--border);color:var(--text);border-radius:5px;padding:6px 8px;font-size:11px;font-family:inherit}
+#viability-modal label{display:block;font-size:9px;color:var(--sub);font-weight:800;text-transform:uppercase;letter-spacing:.5px;margin-bottom:3px}
+#viability-modal .vg{display:grid;grid-template-columns:1fr 1fr;gap:9px}
+#viability-modal .vsec{background:rgba(255,255,255,.035);border:1px solid var(--border);border-radius:8px;padding:10px;margin-bottom:10px}
+#viability-modal .vhead{font-size:12px;color:var(--gold);font-weight:900;margin-bottom:8px}
+#viability-modal .scorebox{background:#071525;border:1px solid rgba(0,212,255,.25);border-radius:10px;padding:12px;margin-top:10px}
+#viability-modal .scorebig{font-size:34px;font-family:var(--font-mono);font-weight:900;color:var(--accent);line-height:1}
+#viability-modal .chip{display:inline-block;border-radius:999px;padding:4px 9px;font-size:10px;font-weight:800;margin:3px 4px 0 0;border:1px solid rgba(255,255,255,.14);background:rgba(255,255,255,.06)}
+#viability-modal .go{color:#22C55E}.hold{color:#F4A020}.bad{color:#E53935}
+.export-capture-clean .h-del,.export-capture-clean .h-rot,.export-capture-clean .h-se,.export-capture-clean .h-sw,.export-capture-clean .h-ne,.export-capture-clean .h-nw,.export-capture-clean .lbl-hide-btn{display:none!important}
+
 /* -- MOBILE TOOLBAR -- */
 #mob-menu-btn{display:none;width:38px;height:38px;align-items:center;justify-content:center;border-radius:8px;background:rgba(255,255,255,.08);border:1px solid var(--border);cursor:pointer;font-size:18px;color:var(--text);flex-shrink:0}
 #mob-menu-btn.open{background:rgba(0,212,255,.15);border-color:var(--accent);color:var(--accent)}
@@ -500,6 +515,7 @@ window.onerror = function(msg, src, line, col, err) {
   <button class="btn btn-pri" onclick="openPermitSetModal()" style="background:linear-gradient(135deg,#7C3AED,#DC2626);color:#fff;font-weight:700;border:none" title="Generate full BESS permit set">📋 Permit Set</button>
   <div class="btn-sep"></div>
   <button class="btn btn-pri" onclick="openComedPreQual()" style="background:linear-gradient(135deg,#1B4F8A,#0ea5e9);color:#fff;font-weight:700;border:none" title="AI Grid Pre-Qualification -- validate feeder capacity for your BESS">⚡ Grid Pre-Qual</button>
+  <button class="btn viability-pill" onclick="openViabilityModal()" title="Run gated BESS investment viability workflow">✅ Viability</button>
 </div>
 
 <!-- MOBILE TOOLS DROPDOWN -->
@@ -520,6 +536,7 @@ window.onerror = function(msg, src, line, col, err) {
   <button onclick="openProposalExport();closeMobMenu()">📄 &nbsp;Export Proposal</button>
   <button onclick="openPermitSetModal();closeMobMenu()">📋 &nbsp;Permit Set</button>
   <button onclick="openComedPreQual();closeMobMenu()">⚡ &nbsp;Grid Pre-Qual</button>
+  <button onclick="openViabilityModal();closeMobMenu()">✅ &nbsp;Viability Workflow</button>
 </div>
 
 <script>
@@ -16330,6 +16347,244 @@ window.renderFreqReg = renderFreqReg;
 })();
 
 
+
+
+// ===================================================================
+// PATCH v4.23A — reliable export capture + BESS viability workflow
+// ===================================================================
+async function _captureSiteMapForExport() {
+  const sc = document.getElementById('sc');
+  if (!sc) return _buildVectorSiteMapDataUrl('Site map canvas not found');
+
+  if (typeof html2canvas !== 'undefined') {
+    try {
+      document.body.classList.add('export-capture-clean');
+      const oldSel = (typeof S !== 'undefined') ? S.sel : null;
+      if (typeof selEl === 'function') selEl(null);
+      const hideIds = ['cov','snapring','cal-ov','cal-modal','banner','ruler'];
+      const prev = hideIds.map(id=>{const el=document.getElementById(id); return [el, el?el.style.display:null];});
+      prev.forEach(([el])=>{ if(el) el.style.display='none'; });
+      await new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)));
+      const canvas = await html2canvas(sc, {
+        scale: 2,
+        useCORS: true,
+        allowTaint: true,
+        backgroundColor: '#0A1628',
+        logging: false,
+        ignoreElements: function(el){
+          return el && (el.id==='cov' || el.id==='snapring' || el.id==='cal-ov' || el.id==='cal-modal' || el.id==='banner' || el.id==='ruler');
+        },
+        onclone: function(doc){
+          try {
+            doc.body.classList.add('export-capture-clean');
+            ['cov','snapring','cal-ov','cal-modal','banner','ruler'].forEach(function(id){var e=doc.getElementById(id); if(e)e.style.display='none';});
+            doc.querySelectorAll('.cel').forEach(function(e){e.classList.remove('sel');});
+            var g = doc.getElementById('cw-grid'); if(g) g.style.opacity = '0.25';
+          } catch(e) {}
+        }
+      });
+      prev.forEach(([el,disp])=>{ if(el) el.style.display=disp; });
+      if (oldSel && typeof selEl === 'function') selEl(oldSel);
+      document.body.classList.remove('export-capture-clean');
+      if (!_canvasLooksBlank(canvas)) return canvas.toDataURL('image/jpeg', 0.92);
+    } catch(err) {
+      console.warn('Primary sitemap capture failed, using vector export fallback:', err);
+      document.body.classList.remove('export-capture-clean');
+    }
+  }
+  return _buildVectorSiteMapDataUrl('Screenshot capture unavailable — generated from sitemap editor objects');
+}
+
+function _canvasLooksBlank(canvas) {
+  try {
+    const w = canvas.width, h = canvas.height;
+    if (!w || !h) return true;
+    const ctx = canvas.getContext('2d', {willReadFrequently:true});
+    const samples = ctx.getImageData(0,0,w,h).data;
+    let total=0, varied=0;
+    for (let i=0;i<samples.length;i+=1600) { total++; if (samples[i]!==samples[0] || samples[i+1]!==samples[1] || samples[i+2]!==samples[2]) varied++; }
+    return total>0 && varied < Math.max(3,total*0.01);
+  } catch(e) { return false; }
+}
+
+function _buildVectorSiteMapDataUrl(reason) {
+  const sc=document.getElementById('sc');
+  const W=(sc&&sc.clientWidth)||1200, H=(sc&&sc.clientHeight)||800;
+  const esc=function(x){return String(x||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');};
+  let bg='';
+  const bd=document.getElementById('backdrop');
+  if (window._frozenMapImg) bg = '<image href="'+esc(window._frozenMapImg)+'" x="0" y="0" width="'+W+'" height="'+H+'" preserveAspectRatio="xMidYMid slice" opacity=".95"/>';
+  else if (bd && bd.src && bd.style.display !== 'none') bg = '<image href="'+esc(bd.src)+'" x="0" y="0" width="'+W+'" height="'+H+'" preserveAspectRatio="xMidYMid slice" opacity=".95"/>';
+  else bg = '<rect width="100%" height="100%" fill="#10233a"/><g opacity=".18">'+Array.from({length:Math.ceil(W/40)},(_,i)=>'<line x1="'+(i*40)+'" y1="0" x2="'+(i*40)+'" y2="'+H+'" stroke="#8BA3C4"/>').join('')+Array.from({length:Math.ceil(H/40)},(_,i)=>'<line x1="0" y1="'+(i*40)+'" x2="'+W+'" y2="'+(i*40)+'" stroke="#8BA3C4"/>').join('')+'</g>';
+  const ctColor=function(t){ if(t&&t.includes('DC'))return '#DC2626'; if(t&&t.includes('AC'))return '#F59E0B'; if(t&&t.includes('BMS'))return '#8B5CF6'; if(t&&t.includes('UG'))return '#2563EB'; return '#00D4FF'; };
+  let lines='';
+  try {(S.conduits||[]).forEach(function(c){ const pts=(c.pts||[]).map(p=>p.x+','+p.y).join(' '); if(pts) lines += '<polyline points="'+pts+'" fill="none" stroke="'+ctColor(c.condType)+'" stroke-width="5" stroke-linecap="round" stroke-linejoin="round" opacity=".95"/>'; const m=(c.pts||[])[Math.floor((c.pts||[]).length/2)]; if(m) lines += '<text x="'+(m.x+8)+'" y="'+(m.y-8)+'" font-family="Arial" font-size="14" font-weight="700" fill="#fff" stroke="#000" stroke-width="3" paint-order="stroke">'+esc(c.label||c.condType||'Conduit')+'</text>'; });} catch(e){}
+  let els='';
+  try {(S.elements||[]).forEach(function(el){ const x=+el.x||0,y=+el.y||0,w=+el.w||60, rot=+el.rot||0; const label=esc(el.label||el.eqId||el.type||'Item'); if(el.type==='bess-asm'){ els += '<g transform="translate('+x+' '+y+') rotate('+rot+' '+(w/2)+' '+(w*.28)+')"><rect width="'+w+'" height="'+(w*.55)+'" rx="8" fill="#0A1E35" stroke="#4A9FE0" stroke-width="4"/><text x="'+(w/2)+'" y="'+(w*.30)+'" text-anchor="middle" font-family="Arial" font-size="22" font-weight="900" fill="#00D4FF">BESS ASSEMBLY</text><text x="'+(w/2)+'" y="'+(w*.43)+'" text-anchor="middle" font-family="Arial" font-size="15" font-weight="700" fill="#fff">'+label+'</text></g>'; }
+      else if(el.type==='text'||el.type==='callout'){ els += '<g transform="translate('+x+' '+y+') rotate('+rot+')"><rect width="'+Math.max(w,120)+'" height="34" rx="5" fill="'+(el.type==='callout'?'#C5A55A':'#fff')+'" opacity=".95"/><text x="10" y="22" font-family="Arial" font-size="14" font-weight="700" fill="#0A1628">'+label+'</text></g>'; }
+      else { const color = el.eqId==='bess'?'#1B4F8A':el.eqId==='pcs'?'#1DB954':el.eqId==='xfmr'?'#F4A020':el.eqId==='meter'?'#E53935':'#2E86C1'; els += '<g transform="translate('+x+' '+y+') rotate('+rot+' '+(w/2)+' '+(w/2)+')"><circle cx="'+(w/2)+'" cy="'+(w/2)+'" r="'+(w/2)+'" fill="'+color+'" stroke="#fff" stroke-width="3"/><text x="'+(w/2)+'" y="'+(w/2+5)+'" text-anchor="middle" font-family="Arial" font-size="12" font-weight="900" fill="#fff">'+label.substring(0,14)+'</text></g>'; }
+      if(!el.hideLabel && el.type!=='text' && el.type!=='callout' && el.type!=='bess-asm') els += '<text x="'+(x+w/2)+'" y="'+(y+w+18)+'" text-anchor="middle" font-family="Arial" font-size="14" font-weight="800" fill="#fff" stroke="#000" stroke-width="3" paint-order="stroke">'+label+'</text>'; });} catch(e){}
+  const header='<rect x="16" y="16" width="'+Math.min(560,W-32)+'" height="54" rx="8" fill="rgba(10,22,40,.88)"/><text x="32" y="39" font-family="Arial" font-size="18" font-weight="900" fill="#00D4FF">SITEMAP EDITOR EXPORT</text><text x="32" y="60" font-family="Arial" font-size="12" fill="#E8F0FE">'+esc(reason||'Generated from current project layout')+'</text>';
+  const svg='<svg xmlns="http://www.w3.org/2000/svg" width="'+W+'" height="'+H+'" viewBox="0 0 '+W+' '+H+'">'+bg+lines+els+header+'</svg>';
+  return 'data:image/svg+xml;charset=utf-8,'+encodeURIComponent(svg);
+}
+
+// Override proposal export capture so it uses the same robust sitemap image.
+async function generateAndExportProposal() {
+  const btn = document.getElementById('prop-gen-btn');
+  const status = document.getElementById('prop-status');
+  btn.disabled = true; btn.textContent = 'Building proposal...'; status.textContent = 'Capturing sitemap...';
+  try {
+    let sitemapDataUrl = null;
+    if (document.getElementById('prop-include-map')?.checked) sitemapDataUrl = await _captureSiteMapForExport();
+    status.textContent = 'Building proposal HTML...';
+    const proj    = document.getElementById('prop-project').value || 'BESS Installation';
+    const addr    = document.getElementById('prop-address').value || '[Site Address]';
+    const client  = document.getElementById('prop-client').value || '[Client]';
+    const utility = document.getElementById('prop-utility').value || '[Utility]';
+    const rep     = document.getElementById('prop-rep').value || 'Tommy Gilmer';
+    const propNum = document.getElementById('prop-num').value || 'CS-2026-001';
+    const today   = new Date().toLocaleDateString('en-US',{year:'numeric',month:'long',day:'numeric'});
+    const c       = calcProposalCosts();
+    const bessRows = (S.bessList && S.bessList.length > 0 ? S.bessList : [{name:'BESS-01',kwh:760,kw:380,qty:1,chem:'LFP',model:'Gotion EDGE 760',dcv:'1267V',usable:700}])
+      .map(b => `<tr><td>${b.name} -- ${b.model||b.name}<br><span style="font-size:10px;color:#6B8CA0">${b.kwh||760}kWh . ${b.usable||Math.round((b.kwh||760)*0.92)}kWh usable . ${b.kw||380}kW . ${b.chem||'LFP'}</span></td><td style="text-align:right">${b.qty||1}</td><td style="text-align:right">${c.fmt(getBESSCost(b.kwh,b.eqcost))}</td><td style="text-align:right">${c.fmt(getBESSCost(b.kwh,b.eqcost)*(b.qty||1))}</td></tr>`).join('');
+    const condRows = S.conduits.length > 0 ? S.conduits.map(cd => { const ft = S.pxPerFt ? cd.ftLen.toFixed(0) : Math.round(cd.pxLen/10); const p = PROP_PRICING.conduit[cd.condType]||{mat:8,labor:20}; const total = (+ft)*(p.mat+p.labor); return `<tr><td>${cd.label||cd.condType}</td><td style="text-align:right">${ft} ft</td><td style="text-align:right">${c.fmt(total)}</td></tr>`; }).join('') : '<tr><td colspan="3" style="text-align:center;color:#6B8CA0">No conduit runs drawn</td></tr>';
+    const proposalHTML = buildProposalHTML({proj,addr,client,utility,rep,propNum,today,c,bessRows,condRows,sitemapDataUrl});
+    await renderProposalPDF(proposalHTML, proj, propNum);
+    status.textContent = 'Proposal exported.';
+  } catch(err) { console.error('Proposal error:', err); status.textContent = 'Export failed: '+err.message; }
+  finally { btn.disabled=false; btn.textContent='Export Proposal PDF'; }
+}
+
+// Override permit set generator: always inserts the current sitemap editor export image.
+async function generatePermitSet() {
+  const btn = document.getElementById('ps-gen-btn');
+  const status = document.getElementById('ps-status');
+  btn.disabled = true; btn.textContent = 'Capturing sitemap...';
+  const P = {
+    gcName: 'ClearSky Builders LLC', gcLic: _psV('ps-gc-lic'), gcAddr: '1107 17th Ave N, Clinton, Iowa 52732',
+    gcPhone: _psV('ps-gc-phone'), gcEmail: _psV('ps-gc-email'), eeName: _psV('ps-ee-name'), eeFirm: _psV('ps-ee-firm'), eeAddr: _psV('ps-ee-addr'), eeContact: _psV('ps-ee-contact'),
+    ownerName: _psV('ps-owner-name'), ownerAddr: _psV('ps-owner-addr'), siteAddr: _psV('ps-site-addr'), apn: _psV('ps-apn'), zoning: _psV('ps-zoning'), lat: _psV('ps-lat'), lng: _psV('ps-lng'), seismic: _psV('ps-seismic'), flood: _psV('ps-flood'), wind: _psV('ps-wind'), exposure: _psV('ps-exposure'),
+    codes: _psV('ps-codes') || '2020 NEC (Illinois), 2021 IBC, 2021 IFC, NFPA 855', utility: _psV('ps-utility') || 'ComEd (Commonwealth Edison)', batMfr: _psV('ps-bat-mfr'), batModel: _psV('ps-bat-model'), kwh: _psV('ps-kwh'), kw: _psV('ps-kw'), dcv: _psV('ps-dcv'), invMfr: _psV('ps-inv-mfr'), invModel: _psV('ps-inv-model'), acv: _psV('ps-acv'), xfmr: _psV('ps-xfmr'), acdis: _psV('ps-acdis'), msb: _psV('ps-msb'), trench: _psV('ps-trench'), jobNo: _psV('ps-jobno'), designedBy: _psV('ps-designed-by'), checkedBy: _psV('ps-checked-by2'), issueDate: _psV('ps-date'), iccDocket: _psV('ps-icc-docket') || '[ICC DOCKET #]', comedApp: _psV('ps-comed-app') || '[DER APP #]', meterNo: _psV('ps-meter-no') || '[METER #]', meterImg: window._permitMeterImg || null, invWeight: _psV('ps-inv-weight') || '1,980', xfmrWeight: _psV('ps-xfmr-weight') || '8,530', batWeight: _psV('ps-bat-weight') || '86000',
+    sheets: { e0:!!document.getElementById('ps-e0')?.checked, e1:!!document.getElementById('ps-e1')?.checked, e11:!!document.getElementById('ps-e11')?.checked, e2:!!document.getElementById('ps-e2')?.checked, e3:!!document.getElementById('ps-e3')?.checked, s1:!!document.getElementById('ps-s1')?.checked, s12:!!document.getElementById('ps-s12')?.checked, s3:!!document.getElementById('ps-s3')?.checked }
+  };
+  try {
+    status.textContent = 'Capturing current sitemap editor layout...';
+    const canvasImg = await _captureSiteMapForExport();
+    let aiData = {};
+    if (document.getElementById('ps-ai')?.checked) {
+      status.textContent = 'Claude generating permit notes...';
+      try {
+        const conduit = (S.conduits||[]).map(c => (c.condType||'RMC')+': '+Math.round(c.ftLen||0)+'ft').join(', ');
+        const prompt = 'Generate concise ComEd Illinois BESS permit notes for '+P.siteAddr+'. System '+P.kwh+'kWh/'+P.kw+'kW. Include NEC 706, UL 9540/9540A, NFPA 855, non-export/BTM if applicable, interconnection, signage, pad/fence, and AHJ notes. Respond as JSON with keys scope_of_work,general_notes,electrical_notes,sld_notes,pad_design_criteria,fencing_notes.';
+        const msgs = [{role:'user',content:[{type:'image',source:{type:'base64',media_type:canvasImg.startsWith('data:image/svg')?'image/svg+xml':'image/jpeg',data:canvasImg.split(',')[1]}},{type:'text',text:prompt+' Conduit: '+conduit}]}];
+        const d = await _claudeFetch({model:'claude-sonnet-4-5',max_tokens:2000,messages:msgs});
+        const txt = (d.content||[]).map(c=>c.text||'').join('').trim().replace(/```json|```/g,'').trim();
+        aiData = JSON.parse(txt);
+      } catch(e) { console.warn('AI notes failed:', e); }
+    }
+    status.textContent = 'Building permit set HTML...';
+    const html = _psBuiltSet(P, canvasImg, aiData);
+    const blob = new Blob([html],{type:'text/html'});
+    const url = URL.createObjectURL(blob);
+    const win = window.open(url,'_blank');
+    if (!win) { const a=document.createElement('a'); a.href=url; a.download=(P.siteAddr||'PermitSet').replace(/[^a-z0-9]/gi,'-')+'-ClearSky.html'; a.click(); }
+    setTimeout(()=>URL.revokeObjectURL(url), 60000);
+    document.getElementById('permit-modal').style.display = 'none';
+    status.textContent = 'Permit set opened.';
+  } catch(err) { console.error('Permit set error:',err); status.textContent='Permit export failed: '+err.message; }
+  finally { btn.disabled=false; btn.textContent='📋 HTML Permit Set ->'; }
+}
+
+function openViabilityModal(){
+  const m=document.getElementById('viability-modal'); if(!m)return;
+  const addr=document.getElementById('addr-in')?.value||'';
+  const util=document.getElementById('ps-utility')?.value||document.getElementById('prop-utility')?.value||'';
+  if(util) document.getElementById('v-utility').value=util;
+  m.style.display='flex';
+  if(!document.getElementById('viability-output').innerHTML) calculateViability(true);
+}
+function _v(id){return document.getElementById(id)?.value||'';}
+function _score(v){return v==='strong'?25:v==='moderate'?16:v==='weak'?7:0;}
+function calculateViability(silent){
+  const ids=['v-space','v-proximity','v-fire','v-civil','v-load','v-export','v-ix','v-permit','v-incentive','v-revenue','v-cost','v-payback'];
+  const total=ids.reduce((s,id)=>s+_score(_v(id)),0);
+  const pct=Math.round(total/(ids.length*25)*100);
+  const hardFail=ids.some(id=>_v(id)==='fail');
+  const weakCount=ids.filter(id=>_v(id)==='weak').length;
+  let decision='INVEST'; let cls='go'; let reason='Site is passing the gated investment screen.';
+  if(hardFail || pct<45){decision='REJECT / DO NOT INVEST'; cls='bad'; reason='One or more hard gates failed or the score is too low.';}
+  else if(pct<65 || weakCount>=3){decision='REDESIGN / HOLD'; cls='hold'; reason='Site may work, but engineering, utility, AHJ, cost, or revenue assumptions need correction.';}
+  else if(pct<82){decision='HOLD PENDING CONFIRMATION'; cls='hold'; reason='Candidate is promising, but still needs utility/interconnection, permit, and economic confirmation.';}
+  const use=_v('v-use');
+  let path='Either / Dual-path pending utility review';
+  if(use==='btm' || (_v('v-load')==='strong' && _v('v-export')!=='strong')) path='BTM recommended: host load / demand management / VPP path';
+  if(use==='ftm' || (_v('v-export')==='strong' && _v('v-load')==='weak')) path='FTM recommended: dedicated meter/export/grid-services path';
+  const missing=[];
+  if(_v('v-ix')!=='strong') missing.push('Utility pre-screen or interconnection application');
+  if(_v('v-permit')!=='strong') missing.push('AHJ/fire marshal zoning and clearance review');
+  if(_v('v-cost')!=='strong') missing.push('EPC/vendor installed-cost quote');
+  if(_v('v-incentive')!=='strong') missing.push('Program eligibility confirmation / rebate reservation');
+  if(_v('v-revenue')!=='strong') missing.push('VPP/DR/wholesale revenue confirmation');
+  if(_v('v-control')!=='yes') missing.push('Signed site control / host agreement / LOA');
+  const next= decision.includes('INVEST') ? ['Build execution package','Finalize sitemap + one-line','Submit interconnection/rebate/VPP package','Pull AHJ permits'] : decision.includes('HOLD')||decision.includes('REDESIGN') ? ['Resolve missing documents','Run utility pre-screen','Update physical layout and cost model','Re-score after confirmations'] : ['Do not commit capital','Find a better site or change use case'];
+  const report={score:pct,decision,path,reason,propertyType:_v('v-prop-type'),utility:_v('v-utility'),missing,next,notes:_v('v-notes')};
+  window._lastViabilityReport=report;
+  const out=document.getElementById('viability-output');
+  out.style.display='block';
+  out.innerHTML='<div style="display:flex;gap:14px;align-items:center;flex-wrap:wrap"><div><div class="scorebig">'+pct+'</div><div style="font-size:10px;color:var(--sub);font-weight:800">VIABILITY SCORE</div></div><div style="flex:1;min-width:260px"><div class="'+cls+'" style="font-size:18px;font-weight:900">'+decision+'</div><div style="font-size:12px;color:var(--text);line-height:1.55;margin-top:4px">'+reason+'</div><div class="chip">'+path+'</div><div class="chip">'+report.propertyType+'</div><div class="chip">'+(report.utility||'Utility TBD')+'</div></div></div><div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:12px"><div><div class="vhead">Missing Items</div><div style="font-size:11px;line-height:1.7;color:var(--text)">'+(missing.length?missing.map(x=>'• '+x).join('<br>'):'No critical missing items based on current inputs.')+'</div></div><div><div class="vhead">Next Required Actions</div><div style="font-size:11px;line-height:1.7;color:var(--text)">'+next.map(x=>'• '+x).join('<br>')+'</div></div></div>';
+  if(!silent) showBanner('wiz','Viability decision generated: '+decision);
+  return report;
+}
+function _viabilityText(){ const r=window._lastViabilityReport||calculateViability(true); return `BESS VIABILITY REPORT\n\nScore: ${r.score}/100\nDecision: ${r.decision}\nRecommended Path: ${r.path}\nProperty Type: ${r.propertyType}\nUtility: ${r.utility||'TBD'}\n\nReason:\n${r.reason}\n\nMissing Items:\n${(r.missing||[]).map(x=>'- '+x).join('\n')||'- None identified'}\n\nNext Actions:\n${(r.next||[]).map(x=>'- '+x).join('\n')}\n\nNotes:\n${r.notes||''}\n`; }
+function copyViabilityReport(){ calculateViability(true); navigator.clipboard?.writeText(_viabilityText()); showBanner('wiz','Viability report copied.'); }
+function downloadViabilityReport(){ calculateViability(true); const blob=new Blob([_viabilityText()],{type:'text/plain'}); const url=URL.createObjectURL(blob); const a=document.createElement('a'); a.href=url; a.download='BESS-Viability-Report.txt'; a.click(); setTimeout(()=>URL.revokeObjectURL(url),1000); }
 </script>
+
+
+<!-- PATCH v4.23A: BESS Viability Workflow Modal -->
+<div id="viability-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.86);z-index:99998;align-items:flex-start;justify-content:center;padding:18px;overflow-y:auto">
+  <div style="width:min(1040px,96vw);background:var(--panel);border:1px solid var(--border);border-radius:14px;box-shadow:0 20px 60px rgba(0,0,0,.65);overflow:hidden">
+    <div style="display:flex;align-items:center;gap:12px;padding:14px 18px;border-bottom:1px solid var(--border);background:linear-gradient(135deg,rgba(22,163,74,.14),rgba(14,165,233,.12))">
+      <div style="font-size:24px">✅</div>
+      <div style="flex:1"><div style="font-size:18px;font-weight:900;color:var(--text)">BESS Project Viability Workflow</div><div style="font-size:10px;color:var(--sub);margin-top:2px">Candidate screen → FTM/BTM path → engineering → interconnection → permitting → value stack → investment decision</div></div>
+      <button onclick="document.getElementById('viability-modal').style.display='none'" style="background:none;border:none;color:var(--sub);font-size:24px;cursor:pointer">×</button>
+    </div>
+    <div style="padding:14px 18px;max-height:calc(100vh - 130px);overflow-y:auto">
+      <div class="vsec"><div class="vhead">Phase 0 — Property Intake</div><div class="vg">
+        <div><label>Property Type</label><select id="v-prop-type"><option>Multifamily / MUD</option><option>Commercial Retail</option><option>Industrial / Warehouse</option><option>Office</option><option>Senior Living</option><option>Hospitality / Hotel</option><option>Municipal / Public Site</option><option>Parking Lot / Standalone Land</option><option>Mixed-Use</option><option>EV Charging Site</option><option>Solar-Paired Site</option><option>Utility-Scale / Open Land</option><option>Other</option></select></div>
+        <div><label>Utility Territory</label><input id="v-utility" placeholder="ComEd, Eversource, National Grid..."></div>
+        <div><label>Site Control</label><select id="v-control"><option value="yes">Owner / signed site control</option><option value="partial">LOA / host interest only</option><option value="no">No site control yet</option></select></div>
+        <div><label>Use Case</label><select id="v-use"><option value="both">Both / Dual-path</option><option value="btm">BTM: load support, peak shaving, VPP</option><option value="ftm">FTM: grid/export asset</option></select></div>
+      </div></div>
+      <div class="vsec"><div class="vhead">Phase 1 — Candidate Site Screen</div><div class="vg">
+        <div><label>Available Space</label><select id="v-space"><option value="strong">Strong: clear equipment area</option><option value="moderate">Moderate: workable with layout review</option><option value="weak">Weak: tight / constrained</option><option value="fail">Fail: no safe battery area</option></select></div>
+        <div><label>Transformer / Meter Proximity</label><select id="v-proximity"><option value="strong">Strong: under 50 LF</option><option value="moderate">Moderate: 50–150 LF</option><option value="weak">Weak: 150+ LF / hard route</option><option value="fail">Fail: impractical route</option></select></div>
+        <div><label>Fire Access / Clearances</label><select id="v-fire"><option value="strong">Strong: clear access + setbacks</option><option value="moderate">Moderate: needs AHJ review</option><option value="weak">Weak: likely redesign</option><option value="fail">Fail: obvious fire/access issue</option></select></div>
+        <div><label>Flood / Civil / Protection Risk</label><select id="v-civil"><option value="strong">Low risk</option><option value="moderate">Medium risk</option><option value="weak">High risk</option><option value="fail">Not viable without major work</option></select></div>
+      </div></div>
+      <div class="vsec"><div class="vhead">Phases 2–5 — Utility, Engineering, Interconnection, AHJ</div><div class="vg">
+        <div><label>Existing Load / BTM Value</label><select id="v-load"><option value="strong">Strong load or EV charging planned</option><option value="moderate">Some load / future electrification</option><option value="weak">Low load; BTM economics uncertain</option><option value="fail">No useful host load</option></select></div>
+        <div><label>Export / FTM Potential</label><select id="v-export"><option value="moderate">Unknown until utility screen</option><option value="strong">Dedicated meter/export likely feasible</option><option value="weak">Export likely constrained</option><option value="fail">Export not viable</option></select></div>
+        <div><label>Interconnection Risk</label><select id="v-ix"><option value="moderate">Pre-screen needed</option><option value="strong">Application-ready / low risk</option><option value="weak">Study required / high upgrade risk</option><option value="fail">Reject / queue or service barrier</option></select></div>
+        <div><label>Permitting / AHJ Risk</label><select id="v-permit"><option value="strong">Low risk</option><option value="moderate">Medium risk</option><option value="weak">High risk</option><option value="fail">Not viable</option></select></div>
+      </div></div>
+      <div class="vsec"><div class="vhead">Phases 6–7 — Value Stack + Financial Gate</div><div class="vg">
+        <div><label>Confirmed Incentive / Rebate</label><select id="v-incentive"><option value="strong">Confirmed / program fit</option><option value="moderate">Likely but needs approval</option><option value="weak">Unclear / upside only</option><option value="fail">No identifiable incentive</option></select></div>
+        <div><label>Revenue Stack</label><select id="v-revenue"><option value="moderate">Probable: rebate + VPP/DR pending</option><option value="strong">Confirmed: savings/rebate/VPP path</option><option value="weak">Upside only</option><option value="fail">No real revenue path</option></select></div>
+        <div><label>Installed Cost Risk</label><select id="v-cost"><option value="moderate">Budgetary estimate</option><option value="strong">Vendor/EPC quote in hand</option><option value="weak">Major unknowns</option><option value="fail">Cost likely breaks payback</option></select></div>
+        <div><label>Target Payback</label><select id="v-payback"><option value="strong">Under 3 years</option><option value="moderate">3–5 years</option><option value="weak">5+ years / sensitive</option><option value="fail">No payback case</option></select></div>
+      </div></div>
+      <div class="vsec"><div class="vhead">Missing Documents / Notes</div><textarea id="v-notes" rows="4" placeholder="Example: Need utility bill, meter number, transformer size, AHJ setback check, one-line diagram, BESS spec sheet, fire access confirmation..."></textarea></div>
+      <div style="display:flex;gap:10px;align-items:stretch;flex-wrap:wrap">
+        <button onclick="calculateViability()" style="background:linear-gradient(135deg,#16A34A,#0EA5E9);border:none;color:white;border-radius:8px;padding:12px 22px;font-size:13px;font-weight:900;cursor:pointer;font-family:inherit">Run Viability Decision</button>
+        <button onclick="copyViabilityReport()" style="background:rgba(197,165,90,.18);border:1px solid rgba(197,165,90,.35);color:var(--gold);border-radius:8px;padding:12px 18px;font-size:12px;font-weight:800;cursor:pointer;font-family:inherit">Copy Report</button>
+        <button onclick="downloadViabilityReport()" style="background:rgba(255,255,255,.08);border:1px solid var(--border);color:var(--text);border-radius:8px;padding:12px 18px;font-size:12px;font-weight:800;cursor:pointer;font-family:inherit">Download TXT</button>
+      </div>
+      <div id="viability-output" class="scorebox" style="display:none"></div>
+    </div>
+  </div>
+</div>
+
 </body>
 </html>
