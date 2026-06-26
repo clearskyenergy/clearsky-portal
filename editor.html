@@ -18,7 +18,7 @@ window.addEventListener('unhandledrejection', function(e) {
 <meta charset="UTF-8">
 <meta name="copyright" content="Copyright 2026 Tommy Gilmer. All rights reserved. Unauthorized reproduction or distribution is prohibited.">
 <meta name="author" content="Tommy Gilmer">
-<meta name="build-id" content="TG-SITEPRO-v4.23-2026">
+<meta name="build-id" content="TG-SITEPRO-v4.24-2026">
 <!-- (c) 2026 Tommy Gilmer. This software is proprietary and confidential. -->
 <!-- Unauthorized copying, modification, or distribution is strictly prohibited. -->
 <!-- Original author: Thomas / Tommy Gilmer. Protected by US copyright law. -->
@@ -418,21 +418,6 @@ input[type=range]::-moz-range-thumb{width:15px;height:15px;background:linear-gra
 /* Callout element upgraded */
 .callout-el{background:rgba(197,165,90,.15)!important;border:1.5px solid var(--gold)!important;color:#E8F0FE!important}
 
-
-
-/* -- PATCH v4.23A: BESS viability workflow + reliable exports -- */
-.viability-pill{background:linear-gradient(135deg,#16A34A,#0EA5E9)!important;color:#fff!important;font-weight:800!important;border:none!important}
-#viability-modal input,#viability-modal select,#viability-modal textarea{width:100%;background:var(--surface);border:1px solid var(--border);color:var(--text);border-radius:5px;padding:6px 8px;font-size:11px;font-family:inherit}
-#viability-modal label{display:block;font-size:9px;color:var(--sub);font-weight:800;text-transform:uppercase;letter-spacing:.5px;margin-bottom:3px}
-#viability-modal .vg{display:grid;grid-template-columns:1fr 1fr;gap:9px}
-#viability-modal .vsec{background:rgba(255,255,255,.035);border:1px solid var(--border);border-radius:8px;padding:10px;margin-bottom:10px}
-#viability-modal .vhead{font-size:12px;color:var(--gold);font-weight:900;margin-bottom:8px}
-#viability-modal .scorebox{background:#071525;border:1px solid rgba(0,212,255,.25);border-radius:10px;padding:12px;margin-top:10px}
-#viability-modal .scorebig{font-size:34px;font-family:var(--font-mono);font-weight:900;color:var(--accent);line-height:1}
-#viability-modal .chip{display:inline-block;border-radius:999px;padding:4px 9px;font-size:10px;font-weight:800;margin:3px 4px 0 0;border:1px solid rgba(255,255,255,.14);background:rgba(255,255,255,.06)}
-#viability-modal .go{color:#22C55E}.hold{color:#F4A020}.bad{color:#E53935}
-.export-capture-clean .h-del,.export-capture-clean .h-rot,.export-capture-clean .h-se,.export-capture-clean .h-sw,.export-capture-clean .h-ne,.export-capture-clean .h-nw,.export-capture-clean .lbl-hide-btn{display:none!important}
-
 /* -- MOBILE TOOLBAR -- */
 #mob-menu-btn{display:none;width:38px;height:38px;align-items:center;justify-content:center;border-radius:8px;background:rgba(255,255,255,.08);border:1px solid var(--border);cursor:pointer;font-size:18px;color:var(--text);flex-shrink:0}
 #mob-menu-btn.open{background:rgba(0,212,255,.15);border-color:var(--accent);color:var(--accent)}
@@ -464,7 +449,7 @@ window.onerror = function(msg, src, line, col, err) {
 </head>
 <body>
 <!-- (c)2026 Tommy Gilmer. Proprietary. Token:D1FCEE6924ECB1F5. Author:Tommy Gilmer. -->
-<div id="_tg_copyright" aria-hidden="true" style="display:none;position:absolute;width:0;height:0;overflow:hidden" data-owner="Tommy Gilmer" data-build="TG-SITEPRO-v4.23" data-token="D1FCEE6924ECB1F5" data-year="2026" data-author="Thomas"></div>
+<div id="_tg_copyright" aria-hidden="true" style="display:none;position:absolute;width:0;height:0;overflow:hidden" data-owner="Tommy Gilmer" data-build="TG-SITEPRO-v4.24" data-token="D1FCEE6924ECB1F5" data-year="2026" data-author="Thomas"></div>
 
 
 <div id="portal-nav">
@@ -515,7 +500,6 @@ window.onerror = function(msg, src, line, col, err) {
   <button class="btn btn-pri" onclick="openPermitSetModal()" style="background:linear-gradient(135deg,#7C3AED,#DC2626);color:#fff;font-weight:700;border:none" title="Generate full BESS permit set">📋 Permit Set</button>
   <div class="btn-sep"></div>
   <button class="btn btn-pri" onclick="openComedPreQual()" style="background:linear-gradient(135deg,#1B4F8A,#0ea5e9);color:#fff;font-weight:700;border:none" title="AI Grid Pre-Qualification -- validate feeder capacity for your BESS">⚡ Grid Pre-Qual</button>
-  <button class="btn viability-pill" onclick="openViabilityModal()" title="Run gated BESS investment viability workflow">✅ Viability</button>
 </div>
 
 <!-- MOBILE TOOLS DROPDOWN -->
@@ -536,7 +520,6 @@ window.onerror = function(msg, src, line, col, err) {
   <button onclick="openProposalExport();closeMobMenu()">📄 &nbsp;Export Proposal</button>
   <button onclick="openPermitSetModal();closeMobMenu()">📋 &nbsp;Permit Set</button>
   <button onclick="openComedPreQual();closeMobMenu()">⚡ &nbsp;Grid Pre-Qual</button>
-  <button onclick="openViabilityModal();closeMobMenu()">✅ &nbsp;Viability Workflow</button>
 </div>
 
 <script>
@@ -1028,12 +1011,12 @@ function _mobClose(e){
         <input type="checkbox" id="comed-toggle" style="accent-color:#0064C8;width:15px;height:15px" onchange="toggleComedPanel()">
         <div>
           <div style="font-size:12px;font-weight:700;color:#60A5FA">⚡ ComEd BESH Program</div>
-          <div style="font-size:9px;color:var(--sub);margin-top:1px">Battery Energy Storage Honorarium -- $250-$300/kWh . Northern Illinois</div>
+          <div style="font-size:9px;color:var(--sub);margin-top:1px">Battery Energy Storage Honorarium -- $250/kWh C&I . Northern Illinois (§16-107.6 PUA)</div>
         </div>
       </label>
       <div id="comed-panel" style="display:none">
         <div style="font-size:9px;color:var(--sub);line-height:1.5;margin-bottom:8px;padding:6px 8px;background:rgba(0,0,0,.2);border-radius:5px">
-          <strong style="color:#60A5FA">ComEd BESH (Battery Energy Storage Honorarium)</strong> -- <strong style="color:#60A5FA">$250-$300/kWh</strong> of nameplate capacity.<br>
+          <strong style="color:#60A5FA">ComEd BESH (Battery Energy Storage Honorarium)</strong> -- <strong style="color:#60A5FA">$250/kWh</strong> of nameplate capacity.<br>
           <span style="color:#22C55E;font-size:8.5px">✓ STANDALONE storage qualifies -- solar pairing NOT required (IL CEJA, Public Act 102-0662, eff. 2022)</span><br>
           C&amp;I customers must enroll in the <strong style="color:#60A5FA">BESH rate plan</strong> and participate in ComEd <strong style="color:#60A5FA">demand response / peak load reduction</strong> program as a condition of rebate. Pre-approval required before installation.
         </div>
@@ -1274,7 +1257,7 @@ function _mobClose(e){
   <span class="s">|</span>
   <span>Total conduit: <strong id="tot-c">--</strong></span>
   <div style="flex:1"></div>
-  <span style="color:rgba(255,255,255,.2)">Tommy Gilmer v4.23</span>
+  <span style="color:rgba(255,255,255,.2)">Tommy Gilmer v4.24</span>
 </div>
 
 <!-- BESS Config Modal -->
@@ -5573,8 +5556,8 @@ function _bmShowPreQualResult(r, totalKW, totalKWh) {
     ${r.isBTM ? `<div style="background:rgba(27,79,138,.12);border:1px solid rgba(96,165,250,.2);border-radius:5px;padding:7px;font-size:9px;line-height:1.5">
       <div style="color:#60A5FA;font-weight:700;margin-bottom:3px"> BTM -- BESH Rebate Estimate</div>
       ${totalKWh > 0 ? `<div><span style="color:var(--sub)">This system:</span> <span style="color:var(--text);font-weight:700">$${Math.round(totalKWh*250).toLocaleString()}-$${Math.round(totalKWh*300).toLocaleString()}</span></div>` : ''}
-      ${r.max_recommended_kwh > 0 ? `<div><span style="color:var(--sub)">Max (no study):</span> <span style="color:#22C55E;font-weight:700">$${r.max_besh_low.toLocaleString()}-$${r.max_besh_high.toLocaleString()}</span> <span style="color:rgba(255,255,255,.3)">(${r.max_recommended_kwh.toLocaleString()} kWh)</span></div>` : ''}
-      <div style="margin-top:4px;color:rgba(255,255,255,.3);font-size:8px">Trickle charge off-peak . Discharge on ISO peak/VPP signals . Non-export (Rider CS)</div>
+      ${r.max_recommended_kwh > 0 ? `<div><span style="color:var(--sub)">Max (no study):</span> <span style="color:#22C55E;font-weight:700">$${r.max_besh_low.toLocaleString()}</span> <span style="color:rgba(255,255,255,.3)">(${r.max_recommended_kwh.toLocaleString()} kWh)</span></div>` : ''}
+      <div style="margin-top:4px;color:rgba(255,255,255,.3);font-size:8px">Trickle charge off-peak . Discharge on ISO peak/VPP signals . Non-export (Rider SDVPP/BYODLR)</div>
     </div>` : totalKWh > 0 ? `<div style="background:rgba(245,158,11,.08);border:1px solid rgba(245,158,11,.2);border-radius:5px;padding:6px;font-size:9px">
       <span style="color:#F59E0B;font-weight:700">FOM / PJM FR mode:</span>
       <span style="color:var(--sub)"> CEJA distributed generation incentive may apply (CRGA S.1-75(c-5)) -- confirm with ComEd pre-application</span>
@@ -5670,7 +5653,7 @@ function bmExportAnalysis() {
   const totalKW  = parseFloat(kw)  * parseInt(qty) || 0;
   const totalKWh = parseFloat(kwh) * parseInt(qty) || 0;
   const beshLow  = isBTM ? Math.round(totalKWh * 250) : 0;
-  const beshHigh = isBTM ? Math.round(totalKWh * 300) : 0;
+  const beshHigh = isBTM ? Math.round(totalKWh * 250) : 0;
   const fmt = n => n != null && n > 0 ? n.toLocaleString() : '--';
 
   let steps = '';
@@ -5680,7 +5663,7 @@ function bmExportAnalysis() {
 <h3 style="color:#22C55E;margin:0 0 10px">OK Illinois Simplified Interconnection Path</h3>
 <ol style="margin:0;padding-left:18px;line-height:2">
   <li><strong>Pre-Application Meeting</strong> -- Request free ComEd DER pre-application meeting (2-3 weeks). Bring equipment specs and one-line diagram.</li>
-  <li><strong>Submit Part 466 Level 3 Non-Export Application</strong> -- File with ComEd DER team. Include: equipment specs, UL 9540 listing, non-export control description (Rider CS), single-line diagram. Fee: $500 + $2/kW.</li>
+  <li><strong>Submit Part 466 Level 3 Non-Export Application</strong> -- File with ComEd DER team. Include: equipment specs, UL 9540 listing, non-export control description (Rider SDVPP/BYODLR), single-line diagram. Fee: $500 + $2/kW.</li>
   <li><strong>ComEd Review</strong> -- Part 466 Level 3 target: 4-6 weeks. ComEd confirms non-export controls and issues Permission to Operate (PTO).</li>
   <li><strong>Interconnection Agreement</strong> -- Execute agreement with ComEd. Includes non-export test requirement at commissioning.</li>
   <li><strong>AHJ Permits</strong> -- Pull electrical permit. Provide ComEd IA and full permit set (E-sheets, S-sheets, structural drawings).</li>
@@ -5695,7 +5678,7 @@ function bmExportAnalysis() {
   <li><strong>Pre-Application Meeting</strong> -- Request free ComEd DER pre-application meeting. Confirm feeder ID and hosting capacity for this address.</li>
   <li><strong>Submit DER Application</strong> -- File ComEd DER Interconnection Application with equipment specs, non-export controls description, and single-line diagram.</li>
   <li><strong>ComEd DER Pre-Application Meeting</strong> -- Free consultation; request feeder ID and hosting capacity for this address. Strongly recommended before filing at this size.</li>
-  <li><strong>Part 466 Level 3 Non-Export Filing</strong> -- $500 + $2/kW fee. Non-export operating profile (Rider CS) significantly reduces review complexity (~6-8 wks).</li>
+  <li><strong>Part 466 Level 3 Non-Export Filing</strong> -- $500 + $2/kW fee. Non-export operating profile (Rider SDVPP/BYODLR) significantly reduces review complexity (~6-8 wks).</li>
   <li><strong>Interconnection Agreement</strong> -- Execute IA with ComEd upon study approval.</li>
   <li><strong>AHJ Permits</strong> -- Pull electrical permit with full ClearSky permit set.</li>
   <li><strong>Installation &amp; Commissioning</strong> -- Install. Commission EMS for ComEd dispatch (VPP/DR per CRGA  1-75(c-5)).</li>
@@ -5815,12 +5798,12 @@ function bmExportAnalysis() {
   <!-- BESH Rebate -->
   <div class="rebate-box">
     <h2> ComEd BESH Rebate Estimate</h2>
-    <div class="rebate-num">$${beshLow.toLocaleString()} - $${beshHigh.toLocaleString()}</div>
-    <div class="rebate-sub">${fmt(totalKWh)} kWh x $250-$300/kWh .  16-107.6 PUA (IL Omnibus Oct 2025)</div>
+    <div class="rebate-num">$${beshLow.toLocaleString()}</div>
+    <div class="rebate-sub">${fmt(totalKWh)} kWh x $250/kWh C&I nameplate . §16-107.6 PUA (CRGA amendment 2026, eff. July 2026)</div>
     <div style="margin-top:10px;font-size:10px;color:#7A90A8;line-height:1.6">
       <strong style="color:#8BC4F0">Operating Cycle:</strong> Trickle charge overnight (ComEd off-peak rate) ->
       Discharge on ComEd ISO peak shaving events, VPP dispatch signals, and energy arbitrage windows .
-      Non-export at POI per Rider CS . EMS dispatched per CRGA  1-75(c-5)
+      Non-export at POI per Rider SDVPP/BYODLR . EMS dispatched per CRGA  1-75(c-5)
     </div>
   </div>
   ` : ''}
@@ -6659,7 +6642,7 @@ function sldExportSVG() {
     s += '<rect x="'+(emsX+90)+'" y="'+emsY+'" width="90" height="50" fill="none" stroke="#333" stroke-width="1.2" stroke-dasharray="4,3" rx="3"/>';
     s += '<text x="'+(emsX+135)+'" y="'+(emsY+17)+'" text-anchor="middle" font-size="8" font-family="Arial">Non-Export</text>';
     s += '<text x="'+(emsX+135)+'" y="'+(emsY+28)+'" text-anchor="middle" font-size="8" font-family="Arial">Control</text>';
-    s += '<text x="'+(emsX+135)+'" y="'+(emsY+39)+'" text-anchor="middle" font-size="7.5" fill="#555" font-family="Arial">(ComEd Rider CS)</text>';
+    s += '<text x="'+(emsX+135)+'" y="'+(emsY+39)+'" text-anchor="middle" font-size="7.5" fill="#555" font-family="Arial">(ComEd Rider SDVPP/BYODLR)</text>';
     s += '<line x1="'+(emsX+80)+'" y1="'+(emsY+25)+'" x2="'+(emsX+90)+'" y2="'+(emsY+25)+'" stroke="#333" stroke-width="1.2" stroke-dasharray="4,3" marker-end="url(#arr-dash)"/>';
 
     // Wire callout labels
@@ -6752,7 +6735,7 @@ function sldExportSVG() {
     ['Main Switchboard','480Y/277V MLO', cbRating+'A 3D 4W'],
     ['Main Disconnect', '3-ph Fusible', cbRating+'A NEMA 3R'],
     ['Revenue Meter',   'Bidirectional CT/PT', 'ComEd Revenue Grade'],
-    ['EMS Controller',  'Non-Export EMS', 'ComEd Rider CS Compliant'],
+    ['EMS Controller',  'Non-Export EMS', 'ComEd Rider SDVPP/BYODLR Compliant'],
   ] : [
     ['BESS Module',     bessName, bessKwh+' kWh / '+bessKw+' kW'],
     ['PCS / Inverter',  'Grid-Following Inverter', '480VAC 3-ph'],
@@ -6816,7 +6799,7 @@ function sldExportSVG() {
     '1. This diagram is conceptual -- for documentation purposes only.',
     '2. Actual design shall comply with ComEd, NEC, NFPA 855, and local codes.',
     '3. Equipment ratings and protection to be determined by Engineer of Record.',
-    '4. '+( wizMode==='BTM' ? 'Non-export control required per ComEd Rider CS / Part 466.' : 'FOM interconnection per IEEE 1547 / ComEd Part 466 Level 3.'),
+    '4. '+( wizMode==='BTM' ? 'Non-export control required per ComEd Rider SDVPP/BYODLR / Part 466.' : 'FOM interconnection per IEEE 1547 / ComEd Part 466 Level 3.'),
     '5. BESS: UL 9540 / UL 9540A / UL 1973 listed. PCS: UL 1741 SB compliant.',
   ];
   notes.forEach(function(n, ni) {
@@ -6856,7 +6839,7 @@ function sldExportSVG() {
   // Row 4: Rev block
   s += '<line x1="'+tbX+'" y1="'+(tbY2+68)+'" x2="'+(tbX+tbW)+'" y2="'+(tbY2+68)+'" stroke="#000" stroke-width="0.5"/>';
   s += '<text x="'+cols3[0]+'" y="'+(tbY2+77)+'" font-size="7" font-family="Arial">REV A -- PRELIMINARY -- NOT FOR CONSTRUCTION</text>';
-  s += '<text x="'+(tbX+tbW-5)+'" y="'+(tbY2+77)+'" text-anchor="end" font-size="7" fill="#888" font-family="Arial">PV-100 -- CHI Leasing LLC Site Pro v4.23</text>';
+  s += '<text x="'+(tbX+tbW-5)+'" y="'+(tbY2+77)+'" text-anchor="end" font-size="7" fill="#888" font-family="Arial">PV-100 -- CHI Leasing LLC Site Pro v4.24</text>';
 
   // Outer border segments (title block dividers)
   s += '<line x1="'+tbX+'" y1="'+tbY2+'" x2="'+tbX+'" y2="'+(tbY2+tbH)+'" stroke="#000" stroke-width="1.5"/>';
@@ -6995,7 +6978,7 @@ const WIZ_STEPS_BTM = [
   {
     id:'solar', icon:' ',
     title:'Place Solar PV / DG System (optional)',
-    desc:'Optional: Add the Associated DG System (solar + DG Smart Inverter). Solar is NOT required for ComEd BESH standalone BESS per IL Omnibus Bill Oct 2025. Skip if not in scope. Per diagram: "Associated DG System" with "DG Smart Inverter".',
+    desc:'Optional: Add the Associated DG System (solar + DG Smart Inverter). Solar is NOT required for ComEd BESH standalone BESS per CRGA amendment 2026. Skip if not in scope. Per diagram: "Associated DG System" with "DG Smart Inverter".',
     action:'click-place',
     eqId:'solar', label:'Solar / DG Smart Inverter', spec:'Optional -- not required for ComEd BESH standalone BESS',
     btnLabel:'  Place Solar / DG System (Optional)',
@@ -7015,7 +6998,7 @@ const WIZ_STEPS_BTM = [
   {
     id:'vpp', icon:' ',
     title:'Place EMS / Non-Export Control Note',
-    desc:'CRGA Required: Place the EMS / Non-Export Controller block note. Per diagram: "EMS / Controller" box with dashed connection to "Non-Export Control (if required)". Documents ComEd Rider CS non-export compliance.',
+    desc:'CRGA Required: Place the EMS / Non-Export Controller block note. Per diagram: "EMS / Controller" box with dashed connection to "Non-Export Control (if required)". Documents ComEd Rider SDVPP/BYODLR non-export compliance.',
     action:'place-vpp-note',
     btnLabel:'  Place EMS / Non-Export Note',
   },
@@ -7257,7 +7240,7 @@ const WIZ_STEPS = [
   {
     id:'solar', icon:'  ',
     title:'Place Solar PV (optional)',
-    desc:'Solar PV is NOT required for ComEd DG Rebate standalone BESS as of IL Omnibus Bill Oct 2025 (amends  16-107.6 PUA). Place here only if solar is part of this project.',
+    desc:'Solar PV is NOT required for ComEd DG Rebate standalone BESS as of CRGA amendment 2026 (amends  §16-107.6 PUA). Place here only if solar is part of this project.',
     action:'click-place',
     eqId:'solar', label:'Solar PV Array', spec:'Optional -- not required for ComEd BESH standalone BESS',
     btnLabel:'   Place Solar PV (Optional)',
@@ -9304,7 +9287,7 @@ const INC_CATALOG = [
   { id:'ira48e', tag:'tax',       name:'IRA  48E Standalone Storage',     type:'pct-project', rate:30,   desc:'Standalone BESS ITC. Stacks with domestic content (+10%) and energy community (+10%) adders.' },
   { id:'macrs',  tag:'tax',       name:'MACRS 5-yr Depreciation',         type:'fixed',       rate:0,    desc:'5-yr accelerated depreciation -- value depends on client tax rate.' },
   { id:'sgip',   tag:'rebate',    name:'SGIP (CA -- $325/kWh)',            type:'per-kwh',     rate:325,  desc:'CA Self-Generation Incentive Program. PG&E/SCE/SDG&E/LADWP territories.' },
-  { id:'comed',  tag:'rebate',    name:'ComEd BESH Rebate ($250/kWh)',    type:'per-kwh',     rate:250,  desc:'ComEd IL DG Rebate program -- standalone BESS qualifies (no solar required per IL Omnibus Bill Oct 2025, amending  16-107.6 PUA). C&I $250/kWh nameplate. Must enroll in ComEd DR/peak load reduction program. Interconnect via Part 466 Level 3 (non-export, $500 + $2/kW).' },
+  { id:'comed',  tag:'rebate',    name:'ComEd BESH Rebate ($250/kWh)',    type:'per-kwh',     rate:250,  desc:'ComEd DG Storage Rebate -- standalone BESS qualifies per §16-107.6 PUA (CRGA amendment 2026, ICC Docket 25-0678, eff. July 2026). C&I $250/kWh nameplate. Must enroll in DR/peak load reduction program. Interconnect via Part 466 Level 3 non-export ($500 + $2/kW).' },
   { id:'dr',     tag:'revenue',   name:'Demand Response (Utility)',       type:'fixed',       rate:0,    desc:'Annual demand response program enrollment. Enter estimated annual value.' },
   { id:'vpp',    tag:'revenue',   name:'Virtual Power Plant Revenue',     type:'fixed',       rate:0,    desc:'VPP participation via ClearSky EMS -- grid balancing & frequency regulation.' },
   { id:'custom', tag:'custom',    name:'Custom / Other',                  type:'fixed',       rate:0,    desc:'Custom incentive, grant, or rebate.' },
@@ -10739,7 +10722,7 @@ const COMED_DOC_CHECKLIST = [
   { id:'dd7',  text:'ComEd account number, service address, and billing verification (must match application address exactly)' },
   { id:'dd8',  text:'Illinois electrical contractor license number -- EC must hold valid Illinois EC license; attach copy of license' },
   { id:'dd9',  text:'BESH Rate Plan Enrollment Form -- C&I customers must enroll in ComEd BESH rate plan as condition of rebate' },
-  { id:'dd10', text:'Demand Response / Peak Load Reduction enrollment confirmation -- C&I customers must participate in ComEd DR program (BESH requirement per Rider CS)' },
+  { id:'dd10', text:'Demand Response / Peak Load Reduction enrollment confirmation -- C&I customers must participate in ComEd DR program (BESH requirement per §16-107.6 PUA + Rider SDVPP/BYODLR)' },
   { id:'dd11', text:'Load study / utility account demand history -- last 12 months of interval billing data showing existing peak demand (required for C&I accounts)' },
   { id:'dd12', text:'UL 9540A fire propagation test report for battery chemistry (LFP, NMC, etc.) -- required by AHJ and ComEd for C&I installations' },
   { id:'dd13', text:'NFPA 855 occupancy limit compliance documentation -- outdoor C&I BESS must verify kWh-per-control-area limits' },
@@ -11006,7 +10989,7 @@ function exportComedChecklist() {
   <tr><td style="font-weight:700">BESS System</td><td>${b?`${b.name} -- ${b.kwh}kWh / ${b.kw}kW . ${b.mfr||''} ${b.model||''}`:'--'}</td></tr>
   <tr><td style="font-weight:700">Inverter</td><td>${b?.inv||'--'} (verify against Illinois Approved Inverter List)</td></tr>
   <tr><td style="font-weight:700">Utility</td><td>Commonwealth Edison (ComEd) -- Northern Illinois</td></tr>
-  <tr><td style="font-weight:700">Program</td><td>BESH Rate Plan + DG Smart Inverter Storage Rebate</td></tr>
+  <tr><td style="font-weight:700">Program</td><td>ComEd DG Storage Rebate (§16-107.6 PUA / CRGA 2026)</td></tr>
 </table>
 
 <h2>Program Summary</h2>
@@ -11841,10 +11824,10 @@ function _psE0(P, ai, today, sheet, sn, idx) {
     <div style="border:1.5px solid #CC0000;margin-top:10px;background:#FFF5F5">
       <div style="background:#CC0000;color:#FFF;padding:3px 8px;font-size:7px;font-weight:800;text-transform:uppercase;letter-spacing:.8px;font-family:'Courier New',monospace">ComEd STANDALONE BESS REBATE COMPLIANCE -- BESH Program</div>
       <div style="padding:6px 8px;font-size:7px;line-height:1.65;font-family:'Courier New',monospace">
-        <div><strong>REBATE:</strong> ComEd DER -- Standalone Battery Storage . $250-$300/kWh nameplate . Tariff Rider CS</div>
+        <div><strong>REBATE:</strong> ComEd DER -- Standalone Battery Storage . $250/kWh C&I nameplate . Tariff Rider SDVPP/BYODLR</div>
         <div><strong>IL LAW:</strong> Public Act 102-0662 (CEJA) . ICC Docket No. ${_h(P.iccDocket||'[ICC DOCKET #]')}</div>
         <div><strong>DER APP:</strong> ComEd Application No. ${_h(P.comedApp||'[DER APP #]')}</div>
-        <div><strong>NON-EXPORT:</strong> System configured as non-export BTM per Rider CS . UL 1741-SA verified</div>
+        <div><strong>NON-EXPORT:</strong> System configured as non-export BTM per Rider SDVPP/BYODLR . UL 1741-SA verified</div>
         <div><strong>COMPLIANCE:</strong> UL 9540 / UL 9540A / UL 1973 / IEEE 1547-2018 / NFPA 855</div>
         <div><strong>METER:</strong> Revenue-grade meter per ComEd metering standards -- Meter No. ${_h(P.meterNo||'[METER #]')}</div>
       </div>
@@ -12446,7 +12429,7 @@ function _psE2(P, ai, today, sheet, sn) {
         </div>
         <div>
           <div class="sec-hd">Interconnect Std</div>
-          <div style="font-size:6.5px;line-height:1.7">UL 1741 SB<br>IEEE 1547-2018<br>NEC Article 706<br>ComEd Rider CS<br>CEJA PA 102-0662</div>
+          <div style="font-size:6.5px;line-height:1.7">UL 1741 SB<br>IEEE 1547-2018<br>NEC Article 706<br>ComEd Rider SDVPP/BYODLR<br>CEJA PA 102-0662</div>
         </div>
       </div>
       <!-- SLD main area -->
@@ -14089,7 +14072,7 @@ async function exportPermitPDF() {
       <div style="flex:1">
         <div style="font-size:10px;color:#60A5FA;font-weight:700;text-transform:uppercase;letter-spacing:.8px">ComEd Northern Illinois</div>
         <div style="font-size:18px;font-weight:700;color:var(--text);margin-top:2px">⚡ BESH Program -- Submittal Checklist</div>
-        <div style="font-size:10px;color:var(--sub);margin-top:2px">Battery Energy Storage Honorarium . DG Smart Inverter Rebate . $250-$300/kWh</div>
+        <div style="font-size:10px;color:var(--sub);margin-top:2px">Battery Energy Storage Honorarium . DG Smart Inverter Rebate . $250/kWh C&I</div>
       </div>
       <button onclick="document.getElementById('comed-modal').style.display='none'" style="background:none;border:none;color:var(--sub);font-size:22px;cursor:pointer">×</button>
     </div>
@@ -14104,12 +14087,12 @@ async function exportPermitPDF() {
 • <strong>Standalone eligibility:</strong> ✅ Standalone BESS qualifies WITHOUT solar -- solar pairing requirement removed by IL CEJA (Public Act 102-0662, eff. Sept 2021). Solar is optional.
 • <strong>Customer type:</strong> All commercial customers in ComEd service territory (northern Illinois) qualify -- businesses, nonprofits, institutions
 • <strong>Rate plan:</strong> C&amp;I customers must enroll in BESH rate plan upon rebate acceptance (required condition)
-• <strong>Demand response:</strong> C&amp;I customers must participate in ComEd peak load reduction / demand response program (required condition per Rider CS)
+• <strong>Demand response:</strong> C&amp;I customers must participate in ComEd peak load reduction / demand response program (required condition per Rider SDVPP/BYODLR)
 • <strong>Pre-approval:</strong> Required BEFORE installation -- submit pre-approval application first to reserve rebate amount
 • <strong>Stacking:</strong> Stacks with Federal ITC 30% (IRA §48E) + MACRS 5-yr depreciation + potential IL Shines if solar added later
 • <strong>Payment timing:</strong> Paid after installation verification and meter confirmation . 60-90 day processing typical
 • <strong>ITC interaction:</strong> Utility rebates generally do NOT reduce ITC basis -- confirm with tax advisor
-• <strong>Program authority:</strong> ComEd Tariff Rider CS . ICC Docket . IL CEJA Public Act 102-0662</div>
+• <strong>Program authority:</strong> ComEd Rider SDVPP/BYODLR (ICC Docket 25-0678, eff. July 2026) . §16-107.6 PUA (CRGA 2026) . IL CEJA PA 102-0662</div>
       </div>
 
       <!-- Drawing checklist -->
@@ -14258,7 +14241,7 @@ async function exportPermitPDF() {
           <div style="border-top:1px solid var(--border);padding-top:9px">
             <div style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:#60A5FA;margin-bottom:7px">⚡ ComEd Rebate Compliance</div>
             <div style="background:rgba(0,100,200,.07);border:1px solid rgba(0,120,255,.2);border-radius:6px;padding:8px;margin-bottom:8px;font-size:8.5px;color:var(--sub);line-height:1.5">
-              Standalone BESS Rebate . $250-$300/kWh . Tariff Rider CS . Public Act 102-0662 (CEJA). These fields appear on the E0 cover sheet.
+              Standalone BESS Rebate . $250/kWh C&I . Rider SDVPP/BYODLR . §16-107.6 PUA (CRGA 2026). These fields appear on the E0 cover sheet.
             </div>
             <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px">
               <div><label style="font-size:9px;color:var(--sub);display:block;margin-bottom:2px">ICC Docket #</label><input id="ps-icc-docket" type="text" placeholder="[ICC Docket Number]" style="width:100%;background:var(--surface);border:1px solid var(--border);color:var(--text);border-radius:5px;padding:6px 10px;font-size:11px;font-family:inherit;box-sizing:border-box"></div>
@@ -14638,9 +14621,9 @@ function openComedPreQualFromPanel() {
 // PARAMETERS AND SOURCES:
 //   IL Admin Code Title 83, Part 466  466.80 -- Level 1/2/3/4 framework
 //     Level 3 (our default): non-export, radial feeder  10MVA, $500 + $2/kW fee, ~4-6 wks
-//   IL Omnibus Bill Oct 2025 -- standalone BESS DG Rebate eligible, no solar req'd
-//    16-107.6 PUA (as amended) -- ComEd DG Rebate $250/kWh C&I nameplate
-//   ComEd Rider CS -- non-export BTM storage operating rules
+//   CRGA amendment 2026 -- standalone BESS DG Rebate eligible, no solar req'd
+//    §16-107.6 PUA (as amended) -- ComEd DG Rebate $250/kWh C&I nameplate
+//   ComEd Rider SDVPP/BYODLR -- non-export BTM storage operating rules
 //   IEEE 1547-2018 feeder capacity reference ranges (used for preliminary feasibility only):
 //     12kV urban feeder:       4-14 MW typical (8 MW midpoint)
 //     13.8kV suburban feeder:  6-18 MW typical (10 MW midpoint)
@@ -14809,7 +14792,7 @@ function _runIEEEScreening(addr, geo, totalKW, totalKWh) {
   //                        Fee: $500 + $2/kW. Target review: 4-6 wks.
   //   Part 466 Level 4 : anything that fails L1/L2/L3, or ComEd flags it.
   //
-  // All ClearSky BTM C&I projects are NON-EXPORT (Rider CS / zero net injection
+  // All ClearSky BTM C&I projects are NON-EXPORT (Rider SDVPP/BYODLR / zero net injection
   // at POI). They trickle-charge overnight at off-peak rates and discharge on
   // ComEd/PJM peak events, VPP dispatch, and arbitrage windows.
   // -> Default interconnection path = Part 466 LEVEL 3.
@@ -14822,10 +14805,10 @@ function _runIEEEScreening(addr, geo, totalKW, totalKWh) {
   // -- BESH REBATE (as of October 2025 Omnibus Bill amendment) ----------------
   // Standalone C&I BESS now qualifies for $250/kWh nameplate rebate WITHOUT
   // paired solar. Solar pairing requirement was removed by IL Omnibus Bill
-  // (Oct 2025), amending the DG Rebate program under  16-107.6 PUA.
+  // (Oct 2025), amending the DG Rebate program under  §16-107.6 PUA.
   // C&I customers must enroll in ComEd demand response / peak load reduction
   // program (ComEd still finalizing specific C&I program requirements as of 2026).
-  // Source: IL Omnibus Bill Oct 2025; DSIRE program #22233; convergentep.com Jan 2026.
+  // Source: CRGA amendment 2026; DSIRE program #22233; convergentep.com Jan 2026.
 
   // -- Classify area type from geocode + address text --
   const low = addr.toLowerCase();
@@ -14888,14 +14871,14 @@ function _runIEEEScreening(addr, geo, totalKW, totalKWh) {
   // -- BTM vs FOM mode --------------------------------------------------------
   // BTM non-export: charging load at POI is what matters for feeder impact.
   // BESS trickle-charges overnight (off-peak) -> discharges on peak/VPP signals.
-  // Net export at POI = 0 (Rider CS / non-export controls).
+  // Net export at POI = 0 (Rider SDVPP/BYODLR / non-export controls).
   // Charging load     of discharge kW (10-hr overnight charge vs 2-hr discharge).
   //
   // FOM export: full nameplate kW counts toward feeder capacity screen.
 
   const isBTM = !document.getElementById('bm-mode-fom')?.checked;
   // FOM = PJM FR projects -- non-export for interconnection purposes (BMS manages charge rate)
-  // BTM = peak shaving -- also non-export (Rider CS)
+  // BTM = peak shaving -- also non-export (Rider SDVPP/BYODLR)
   const isNonExport = true; // both BTM and FOM/FR are non-export at POI
 
   // Charging load for feeder screen:
@@ -14953,15 +14936,15 @@ function _runIEEEScreening(addr, geo, totalKW, totalKWh) {
     : Math.round(max_study_kw * 2.67);
 
   // -- BESH rebate (C&I standalone, $250/kWh nameplate) ----------------------
-  // Standalone eligible as of IL Omnibus Bill Oct 2025 (amends  16-107.6 PUA).
+  // Standalone eligible as of CRGA amendment 2026 (amends  §16-107.6 PUA).
   // $250/kWh C&I (large non-residential). $300/kWh residential/small C&I.
   // Must enroll in ComEd DR/peak load reduction program.
   // FOM systems NOT eligible for BESH rebate.
   const besh_rate = 250; // C&I rate $/kWh
   const besh_low  = isBTM ? Math.round(totalKWh * besh_rate) : 0;
-  const besh_high = isBTM ? Math.round(totalKWh * 300) : 0;
+  const besh_high = isBTM ? Math.round(totalKWh * 250) : 0;
   const max_besh_low  = isBTM ? Math.round(max_recommended_kwh * besh_rate) : 0;
-  const max_besh_high = isBTM ? Math.round(max_recommended_kwh * 300) : 0;
+  const max_besh_high = isBTM ? Math.round(max_recommended_kwh * 250) : 0;
 
   // -- Verdict ----------------------------------------------------------------
   const bmsActive = bmsOn && bmsChargeKW > 0;
@@ -14971,7 +14954,7 @@ function _runIEEEScreening(addr, geo, totalKW, totalKWh) {
     feasibility = isBTM ? 'SIZE TO MAXIMIZE REBATE' : 'SITE CAPACITY ESTIMATE';
     verdict_color = 'blue';
     screening_result = isBTM
-      ? `Level 3 non-export path -- est. max ${max_recommended_kw.toLocaleString()} kW / ${max_recommended_kwh.toLocaleString()} kWh (no load flow study likely) -> $${max_besh_low.toLocaleString()}-$${max_besh_high.toLocaleString()} BESH rebate`
+      ? `Level 3 non-export path -- est. max ${max_recommended_kw.toLocaleString()} kW / ${max_recommended_kwh.toLocaleString()} kWh (no load flow study likely) -> $${max_besh_low.toLocaleString()} BESH rebate ($250/kWh C&I)`
       : 'No BESS configured -- showing estimated maximum supportable system size';
     required_studies = isBTM
       ? ['Select a catalog model above to check if it fits this site', `Target:  ${max_recommended_kwh.toLocaleString()} kWh to maximize BESH rebate`]
@@ -14989,14 +14972,14 @@ function _runIEEEScreening(addr, geo, totalKW, totalKWh) {
         : `System within 15% of estimated feeder capacity -- standard Level 2 filing.`;
     if (qualifiesSimplified) {
       required_studies = bmsActive
-        ? [`Part 466 Level 3 non-export filing -- $500 + $2/kW ( 500kW tier)`, 'BMS charge rate programmed and documented in commissioning plan', 'Non-export commissioning verification (Rider CS)', `BESH rebate: $${besh_low.toLocaleString()}-$${besh_high.toLocaleString()} on ${totalKWh.toLocaleString()} kWh nameplate -- standalone eligible (IL Omnibus Oct 2025)`]
-        : ['Part 466 Level 3 non-export filing -- $500 + $2/kW fee (~4-6 wks)', 'Non-export commissioning verification (Rider CS)', 'BESH rebate application post-commissioning -- $250/kWh standalone eligible (IL Omnibus Oct 2025)'];
+        ? [`Part 466 Level 3 non-export filing -- $500 + $2/kW ( 500kW tier)`, 'BMS charge rate programmed and documented in commissioning plan', 'Non-export commissioning verification (Rider SDVPP/BYODLR)', `BESH rebate: $${besh_low.toLocaleString()} on ${totalKWh.toLocaleString()} kWh nameplate ($250/kWh C&I -- §16-107.6 PUA, CRGA 2026)`]
+        : ['Part 466 Level 3 non-export filing -- $500 + $2/kW fee (~4-6 wks)', 'Non-export commissioning verification (Rider SDVPP/BYODLR)', 'BESH rebate application post-commissioning -- $250/kWh standalone eligible (CRGA amendment 2026)'];
       study_cost = '$500-$1,500';
       timeline_wks = 6;
     } else {
       required_studies = bmsActive
-        ? [`Part 466 Level 3 non-export filing -- $500 + $2/kW fee`, 'ComEd DER pre-application meeting (free, recommended)', 'BMS charge rate limit documented in commissioning plan and Rider CS filing', 'Non-export commissioning verification', `BESH rebate: $${besh_low.toLocaleString()}-$${besh_high.toLocaleString()} on ${totalKWh.toLocaleString()} kWh nameplate`]
-        : ['Part 466 Level 3 non-export filing -- $500 + $2/kW fee (~4-6 wks)', 'ComEd DER pre-application meeting (free, recommended)', 'Non-export commissioning verification (Rider CS)', 'BESH rebate application post-commissioning -- $250/kWh standalone eligible (IL Omnibus Oct 2025)'];
+        ? [`Part 466 Level 3 non-export filing -- $500 + $2/kW fee`, 'ComEd DER pre-application meeting (free, recommended)', 'BMS charge rate limit documented in commissioning plan and Rider SDVPP/BYODLR filing', 'Non-export commissioning verification', `BESH rebate: $${besh_low.toLocaleString()} on ${totalKWh.toLocaleString()} kWh nameplate ($250/kWh C&I -- §16-107.6 PUA)`]
+        : ['Part 466 Level 3 non-export filing -- $500 + $2/kW fee (~4-6 wks)', 'ComEd DER pre-application meeting (free, recommended)', 'Non-export commissioning verification (Rider SDVPP/BYODLR)', 'BESH rebate application post-commissioning -- $250/kWh standalone eligible (CRGA amendment 2026)'];
       study_cost = '$1,500-$5,000';
       timeline_wks = 8;
     }
@@ -15063,13 +15046,13 @@ function _runIEEEScreening(addr, geo, totalKW, totalKWh) {
     ].filter(Boolean),
     recommendations: isBTM ? [
       bmsActive
-        ? `BMS Throttle Strategy: ${totalKW.toLocaleString()} kW nameplate -> BESH rebate $${besh_low.toLocaleString()}-$${besh_high.toLocaleString()} -> charge limited to ${screeningKW} kW (${Math.round((screeningKW/available_kw)*100)}% of est. feeder)`
+        ? `BMS Throttle Strategy: ${totalKW.toLocaleString()} kW nameplate -> BESH rebate $${besh_low.toLocaleString()} ($250/kWh C&I) -> charge limited to ${screeningKW} kW (${Math.round((screeningKW/available_kw)*100)}% of est. feeder)`
         : `Interconnection path: Part 466 Level 3 (non-export, radial feeder) -- $500 + $2/kW, target 4-6 wks`,
       bmsActive
         ? `Feeder screen: ${screeningKW} kW charge = ${Math.round((screeningKW/available_kw)*100)}% of est. capacity -- ${screeningKW <= max_kw_15pct_screen ? 'OK under 15% -- clean Level 3 filing, no load flow study' : '!! reduce charge limit to ' + max_kw_15pct_screen + ' kW to clear screen'}`
         : `Goal: maximize kWh for BESH rebate -- target ${max_recommended_kwh.toLocaleString()} kWh / ${max_recommended_kw.toLocaleString()} kW for clean filing`,
-      `BESH rebate: $${besh_low.toLocaleString()}-$${besh_high.toLocaleString()} (${totalKWh.toLocaleString()} kWh x $250-$300/kWh) -- standalone eligible per IL Omnibus Oct 2025`,
-      `Operating model: trickle charge off-peak overnight -> discharge on ComEd/PJM peak events + VPP dispatch (non-export, Rider CS)`,
+      `BESH rebate: $${besh_low.toLocaleString()} (${totalKWh.toLocaleString()} kWh x $250/kWh C&I -- §16-107.6 PUA, CRGA 2026) -- standalone eligible`,
+      `Operating model: trickle charge off-peak overnight -> discharge on ComEd/PJM peak events + VPP dispatch (non-export, Rider SDVPP/BYODLR)`,
       `Check actual hosting capacity: comed.com/hostingcapacity -- enter site address before filing`,
       `Request free ComEd DER pre-application meeting to confirm feeder ID and actual capacity`,
     ].filter(Boolean) : [
@@ -15081,9 +15064,9 @@ function _runIEEEScreening(addr, geo, totalKW, totalKWh) {
     data_sources: [
       bmsActive ? 'BMS Charge Throttle Strategy -- charge rate limited by BMS; feeder screened at throttled charge kW; BESH rebate on full nameplate kWh' : 'IL Admin Code Title 83, Part 466 -- Electric Interconnection of DER Facilities (Level 1/2/3/4 framework)',
       'Part 466  466.80 -- Level 3 non-export: radial feeder  10MVA, $500 + $2/kW fee',
-      'ComEd Rider CS -- non-export BTM storage interconnection and operating rules',
-      'IL Omnibus Bill Oct 2025 -- standalone BESS now eligible for DG Rebate ($250/kWh C&I) without paired solar',
-      'ComEd DG Rebate Rider ( 16-107.6 PUA as amended) -- $250/kWh C&I nameplate storage rebate',
+      'ComEd Rider SDVPP/BYODLR -- non-export BTM storage interconnection and operating rules',
+      'CRGA amendment 2026 -- standalone BESS now eligible for DG Rebate ($250/kWh C&I) without paired solar',
+      'ComEd DG Storage Rebate (§16-107.6 PUA, ICC Docket 25-0678, eff. July 2026) -- $250/kWh C&I nameplate',
       'IEEE 1547-2018 -- voltage class definitions and feeder capacity reference ranges',
       'ComEd Tariff Sheet 18 -- distribution feeder typical capacity ranges',
       geo ? 'OpenStreetMap Nominatim -- location classification' : 'Address text classification only (geocoding unavailable)',
@@ -15217,8 +15200,8 @@ function _renderPreQualResults(r, totalKW, totalKWh, el, isHeuristic) {
     ${totalKWh > 0 ? `
     <div style="margin-bottom:12px;background:rgba(27,79,138,.12);border:1px solid rgba(96,165,250,.2);border-radius:8px;padding:10px 12px">
       <div style="font-size:9px;font-weight:700;color:#60A5FA;text-transform:uppercase;letter-spacing:.4px;margin-bottom:5px">  ComEd BESH Rebate Estimate</div>
-      <div style="font-size:13px;font-weight:700;color:#60A5FA">$${r.besh_low?.toLocaleString()}-$${r.besh_high?.toLocaleString()}</div>
-      <div style="font-size:10px;color:var(--sub);margin-top:2px">${totalKWh} kWh x $250-$300/kWh . requires enrollment in BESH rate plan + DR participation</div>
+      <div style="font-size:13px;font-weight:700;color:#60A5FA">$${r.besh_low?.toLocaleString()}</div>
+      <div style="font-size:10px;color:var(--sub);margin-top:2px">${totalKWh} kWh x $250/kWh C&I . requires enrollment in BESH rate plan + DR participation</div>
     </div>` : ''}
 
     <!-- Data sources (transparency) -->
@@ -15286,7 +15269,7 @@ function pwaInstall() {
 </script>
 
 <!-- ═══════════════════════════════════════════════════════════════
-     GRID MARKET REVENUE CALCULATOR -- ClearSky v4.23
+     GRID MARKET REVENUE CALCULATOR -- ClearSky v4.24
      ISO/RTO identification + arbitrage/DR/capacity revenue modeling
      ═══════════════════════════════════════════════════════════════ -->
 <script>
@@ -15696,14 +15679,14 @@ window.exportGridReport=function(){
 
 <script>
 // ===================================================================
-// FR SYSTEM BUILDER v3 -- ClearSky v4.23
+// FR SYSTEM BUILDER v3 -- ClearSky v4.24
 // Single custom builder -- components drive perf score automatically
 // ===================================================================
 
 // ============================================================
 // (c) 2026 Tommy Gilmer. All rights reserved.
 // Proprietary software -- unauthorized use prohibited.
-// Build: TG-SITEPRO-v4.23 | Token: D1FCEE6924ECB1F5 | 2026-06-16
+// Build: TG-SITEPRO-v4.24 | Token: D1FCEE6924ECB1F5 | 2026-06-26
 // ============================================================
 window._frState = window._frState || {
   battery: 'GOTION-GRID-3421',
@@ -16318,7 +16301,7 @@ window.renderFreqReg = renderFreqReg;
 // Ownership declaration -- do not remove
 (function(){
   var _o = 'Tommy Gilmer';
-  var _b = 'TG-SITEPRO-v4.23';
+  var _b = 'TG-SITEPRO-v4.24';
   var _t = 'D1FCEE6924ECB1F5';
   var _y = '2026';
   if(typeof console !== 'undefined'){
@@ -16347,244 +16330,6 @@ window.renderFreqReg = renderFreqReg;
 })();
 
 
-
-
-// ===================================================================
-// PATCH v4.23A — reliable export capture + BESS viability workflow
-// ===================================================================
-async function _captureSiteMapForExport() {
-  const sc = document.getElementById('sc');
-  if (!sc) return _buildVectorSiteMapDataUrl('Site map canvas not found');
-
-  if (typeof html2canvas !== 'undefined') {
-    try {
-      document.body.classList.add('export-capture-clean');
-      const oldSel = (typeof S !== 'undefined') ? S.sel : null;
-      if (typeof selEl === 'function') selEl(null);
-      const hideIds = ['cov','snapring','cal-ov','cal-modal','banner','ruler'];
-      const prev = hideIds.map(id=>{const el=document.getElementById(id); return [el, el?el.style.display:null];});
-      prev.forEach(([el])=>{ if(el) el.style.display='none'; });
-      await new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)));
-      const canvas = await html2canvas(sc, {
-        scale: 2,
-        useCORS: true,
-        allowTaint: true,
-        backgroundColor: '#0A1628',
-        logging: false,
-        ignoreElements: function(el){
-          return el && (el.id==='cov' || el.id==='snapring' || el.id==='cal-ov' || el.id==='cal-modal' || el.id==='banner' || el.id==='ruler');
-        },
-        onclone: function(doc){
-          try {
-            doc.body.classList.add('export-capture-clean');
-            ['cov','snapring','cal-ov','cal-modal','banner','ruler'].forEach(function(id){var e=doc.getElementById(id); if(e)e.style.display='none';});
-            doc.querySelectorAll('.cel').forEach(function(e){e.classList.remove('sel');});
-            var g = doc.getElementById('cw-grid'); if(g) g.style.opacity = '0.25';
-          } catch(e) {}
-        }
-      });
-      prev.forEach(([el,disp])=>{ if(el) el.style.display=disp; });
-      if (oldSel && typeof selEl === 'function') selEl(oldSel);
-      document.body.classList.remove('export-capture-clean');
-      if (!_canvasLooksBlank(canvas)) return canvas.toDataURL('image/jpeg', 0.92);
-    } catch(err) {
-      console.warn('Primary sitemap capture failed, using vector export fallback:', err);
-      document.body.classList.remove('export-capture-clean');
-    }
-  }
-  return _buildVectorSiteMapDataUrl('Screenshot capture unavailable — generated from sitemap editor objects');
-}
-
-function _canvasLooksBlank(canvas) {
-  try {
-    const w = canvas.width, h = canvas.height;
-    if (!w || !h) return true;
-    const ctx = canvas.getContext('2d', {willReadFrequently:true});
-    const samples = ctx.getImageData(0,0,w,h).data;
-    let total=0, varied=0;
-    for (let i=0;i<samples.length;i+=1600) { total++; if (samples[i]!==samples[0] || samples[i+1]!==samples[1] || samples[i+2]!==samples[2]) varied++; }
-    return total>0 && varied < Math.max(3,total*0.01);
-  } catch(e) { return false; }
-}
-
-function _buildVectorSiteMapDataUrl(reason) {
-  const sc=document.getElementById('sc');
-  const W=(sc&&sc.clientWidth)||1200, H=(sc&&sc.clientHeight)||800;
-  const esc=function(x){return String(x||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');};
-  let bg='';
-  const bd=document.getElementById('backdrop');
-  if (window._frozenMapImg) bg = '<image href="'+esc(window._frozenMapImg)+'" x="0" y="0" width="'+W+'" height="'+H+'" preserveAspectRatio="xMidYMid slice" opacity=".95"/>';
-  else if (bd && bd.src && bd.style.display !== 'none') bg = '<image href="'+esc(bd.src)+'" x="0" y="0" width="'+W+'" height="'+H+'" preserveAspectRatio="xMidYMid slice" opacity=".95"/>';
-  else bg = '<rect width="100%" height="100%" fill="#10233a"/><g opacity=".18">'+Array.from({length:Math.ceil(W/40)},(_,i)=>'<line x1="'+(i*40)+'" y1="0" x2="'+(i*40)+'" y2="'+H+'" stroke="#8BA3C4"/>').join('')+Array.from({length:Math.ceil(H/40)},(_,i)=>'<line x1="0" y1="'+(i*40)+'" x2="'+W+'" y2="'+(i*40)+'" stroke="#8BA3C4"/>').join('')+'</g>';
-  const ctColor=function(t){ if(t&&t.includes('DC'))return '#DC2626'; if(t&&t.includes('AC'))return '#F59E0B'; if(t&&t.includes('BMS'))return '#8B5CF6'; if(t&&t.includes('UG'))return '#2563EB'; return '#00D4FF'; };
-  let lines='';
-  try {(S.conduits||[]).forEach(function(c){ const pts=(c.pts||[]).map(p=>p.x+','+p.y).join(' '); if(pts) lines += '<polyline points="'+pts+'" fill="none" stroke="'+ctColor(c.condType)+'" stroke-width="5" stroke-linecap="round" stroke-linejoin="round" opacity=".95"/>'; const m=(c.pts||[])[Math.floor((c.pts||[]).length/2)]; if(m) lines += '<text x="'+(m.x+8)+'" y="'+(m.y-8)+'" font-family="Arial" font-size="14" font-weight="700" fill="#fff" stroke="#000" stroke-width="3" paint-order="stroke">'+esc(c.label||c.condType||'Conduit')+'</text>'; });} catch(e){}
-  let els='';
-  try {(S.elements||[]).forEach(function(el){ const x=+el.x||0,y=+el.y||0,w=+el.w||60, rot=+el.rot||0; const label=esc(el.label||el.eqId||el.type||'Item'); if(el.type==='bess-asm'){ els += '<g transform="translate('+x+' '+y+') rotate('+rot+' '+(w/2)+' '+(w*.28)+')"><rect width="'+w+'" height="'+(w*.55)+'" rx="8" fill="#0A1E35" stroke="#4A9FE0" stroke-width="4"/><text x="'+(w/2)+'" y="'+(w*.30)+'" text-anchor="middle" font-family="Arial" font-size="22" font-weight="900" fill="#00D4FF">BESS ASSEMBLY</text><text x="'+(w/2)+'" y="'+(w*.43)+'" text-anchor="middle" font-family="Arial" font-size="15" font-weight="700" fill="#fff">'+label+'</text></g>'; }
-      else if(el.type==='text'||el.type==='callout'){ els += '<g transform="translate('+x+' '+y+') rotate('+rot+')"><rect width="'+Math.max(w,120)+'" height="34" rx="5" fill="'+(el.type==='callout'?'#C5A55A':'#fff')+'" opacity=".95"/><text x="10" y="22" font-family="Arial" font-size="14" font-weight="700" fill="#0A1628">'+label+'</text></g>'; }
-      else { const color = el.eqId==='bess'?'#1B4F8A':el.eqId==='pcs'?'#1DB954':el.eqId==='xfmr'?'#F4A020':el.eqId==='meter'?'#E53935':'#2E86C1'; els += '<g transform="translate('+x+' '+y+') rotate('+rot+' '+(w/2)+' '+(w/2)+')"><circle cx="'+(w/2)+'" cy="'+(w/2)+'" r="'+(w/2)+'" fill="'+color+'" stroke="#fff" stroke-width="3"/><text x="'+(w/2)+'" y="'+(w/2+5)+'" text-anchor="middle" font-family="Arial" font-size="12" font-weight="900" fill="#fff">'+label.substring(0,14)+'</text></g>'; }
-      if(!el.hideLabel && el.type!=='text' && el.type!=='callout' && el.type!=='bess-asm') els += '<text x="'+(x+w/2)+'" y="'+(y+w+18)+'" text-anchor="middle" font-family="Arial" font-size="14" font-weight="800" fill="#fff" stroke="#000" stroke-width="3" paint-order="stroke">'+label+'</text>'; });} catch(e){}
-  const header='<rect x="16" y="16" width="'+Math.min(560,W-32)+'" height="54" rx="8" fill="rgba(10,22,40,.88)"/><text x="32" y="39" font-family="Arial" font-size="18" font-weight="900" fill="#00D4FF">SITEMAP EDITOR EXPORT</text><text x="32" y="60" font-family="Arial" font-size="12" fill="#E8F0FE">'+esc(reason||'Generated from current project layout')+'</text>';
-  const svg='<svg xmlns="http://www.w3.org/2000/svg" width="'+W+'" height="'+H+'" viewBox="0 0 '+W+' '+H+'">'+bg+lines+els+header+'</svg>';
-  return 'data:image/svg+xml;charset=utf-8,'+encodeURIComponent(svg);
-}
-
-// Override proposal export capture so it uses the same robust sitemap image.
-async function generateAndExportProposal() {
-  const btn = document.getElementById('prop-gen-btn');
-  const status = document.getElementById('prop-status');
-  btn.disabled = true; btn.textContent = 'Building proposal...'; status.textContent = 'Capturing sitemap...';
-  try {
-    let sitemapDataUrl = null;
-    if (document.getElementById('prop-include-map')?.checked) sitemapDataUrl = await _captureSiteMapForExport();
-    status.textContent = 'Building proposal HTML...';
-    const proj    = document.getElementById('prop-project').value || 'BESS Installation';
-    const addr    = document.getElementById('prop-address').value || '[Site Address]';
-    const client  = document.getElementById('prop-client').value || '[Client]';
-    const utility = document.getElementById('prop-utility').value || '[Utility]';
-    const rep     = document.getElementById('prop-rep').value || 'Tommy Gilmer';
-    const propNum = document.getElementById('prop-num').value || 'CS-2026-001';
-    const today   = new Date().toLocaleDateString('en-US',{year:'numeric',month:'long',day:'numeric'});
-    const c       = calcProposalCosts();
-    const bessRows = (S.bessList && S.bessList.length > 0 ? S.bessList : [{name:'BESS-01',kwh:760,kw:380,qty:1,chem:'LFP',model:'Gotion EDGE 760',dcv:'1267V',usable:700}])
-      .map(b => `<tr><td>${b.name} -- ${b.model||b.name}<br><span style="font-size:10px;color:#6B8CA0">${b.kwh||760}kWh . ${b.usable||Math.round((b.kwh||760)*0.92)}kWh usable . ${b.kw||380}kW . ${b.chem||'LFP'}</span></td><td style="text-align:right">${b.qty||1}</td><td style="text-align:right">${c.fmt(getBESSCost(b.kwh,b.eqcost))}</td><td style="text-align:right">${c.fmt(getBESSCost(b.kwh,b.eqcost)*(b.qty||1))}</td></tr>`).join('');
-    const condRows = S.conduits.length > 0 ? S.conduits.map(cd => { const ft = S.pxPerFt ? cd.ftLen.toFixed(0) : Math.round(cd.pxLen/10); const p = PROP_PRICING.conduit[cd.condType]||{mat:8,labor:20}; const total = (+ft)*(p.mat+p.labor); return `<tr><td>${cd.label||cd.condType}</td><td style="text-align:right">${ft} ft</td><td style="text-align:right">${c.fmt(total)}</td></tr>`; }).join('') : '<tr><td colspan="3" style="text-align:center;color:#6B8CA0">No conduit runs drawn</td></tr>';
-    const proposalHTML = buildProposalHTML({proj,addr,client,utility,rep,propNum,today,c,bessRows,condRows,sitemapDataUrl});
-    await renderProposalPDF(proposalHTML, proj, propNum);
-    status.textContent = 'Proposal exported.';
-  } catch(err) { console.error('Proposal error:', err); status.textContent = 'Export failed: '+err.message; }
-  finally { btn.disabled=false; btn.textContent='Export Proposal PDF'; }
-}
-
-// Override permit set generator: always inserts the current sitemap editor export image.
-async function generatePermitSet() {
-  const btn = document.getElementById('ps-gen-btn');
-  const status = document.getElementById('ps-status');
-  btn.disabled = true; btn.textContent = 'Capturing sitemap...';
-  const P = {
-    gcName: 'ClearSky Builders LLC', gcLic: _psV('ps-gc-lic'), gcAddr: '1107 17th Ave N, Clinton, Iowa 52732',
-    gcPhone: _psV('ps-gc-phone'), gcEmail: _psV('ps-gc-email'), eeName: _psV('ps-ee-name'), eeFirm: _psV('ps-ee-firm'), eeAddr: _psV('ps-ee-addr'), eeContact: _psV('ps-ee-contact'),
-    ownerName: _psV('ps-owner-name'), ownerAddr: _psV('ps-owner-addr'), siteAddr: _psV('ps-site-addr'), apn: _psV('ps-apn'), zoning: _psV('ps-zoning'), lat: _psV('ps-lat'), lng: _psV('ps-lng'), seismic: _psV('ps-seismic'), flood: _psV('ps-flood'), wind: _psV('ps-wind'), exposure: _psV('ps-exposure'),
-    codes: _psV('ps-codes') || '2020 NEC (Illinois), 2021 IBC, 2021 IFC, NFPA 855', utility: _psV('ps-utility') || 'ComEd (Commonwealth Edison)', batMfr: _psV('ps-bat-mfr'), batModel: _psV('ps-bat-model'), kwh: _psV('ps-kwh'), kw: _psV('ps-kw'), dcv: _psV('ps-dcv'), invMfr: _psV('ps-inv-mfr'), invModel: _psV('ps-inv-model'), acv: _psV('ps-acv'), xfmr: _psV('ps-xfmr'), acdis: _psV('ps-acdis'), msb: _psV('ps-msb'), trench: _psV('ps-trench'), jobNo: _psV('ps-jobno'), designedBy: _psV('ps-designed-by'), checkedBy: _psV('ps-checked-by2'), issueDate: _psV('ps-date'), iccDocket: _psV('ps-icc-docket') || '[ICC DOCKET #]', comedApp: _psV('ps-comed-app') || '[DER APP #]', meterNo: _psV('ps-meter-no') || '[METER #]', meterImg: window._permitMeterImg || null, invWeight: _psV('ps-inv-weight') || '1,980', xfmrWeight: _psV('ps-xfmr-weight') || '8,530', batWeight: _psV('ps-bat-weight') || '86000',
-    sheets: { e0:!!document.getElementById('ps-e0')?.checked, e1:!!document.getElementById('ps-e1')?.checked, e11:!!document.getElementById('ps-e11')?.checked, e2:!!document.getElementById('ps-e2')?.checked, e3:!!document.getElementById('ps-e3')?.checked, s1:!!document.getElementById('ps-s1')?.checked, s12:!!document.getElementById('ps-s12')?.checked, s3:!!document.getElementById('ps-s3')?.checked }
-  };
-  try {
-    status.textContent = 'Capturing current sitemap editor layout...';
-    const canvasImg = await _captureSiteMapForExport();
-    let aiData = {};
-    if (document.getElementById('ps-ai')?.checked) {
-      status.textContent = 'Claude generating permit notes...';
-      try {
-        const conduit = (S.conduits||[]).map(c => (c.condType||'RMC')+': '+Math.round(c.ftLen||0)+'ft').join(', ');
-        const prompt = 'Generate concise ComEd Illinois BESS permit notes for '+P.siteAddr+'. System '+P.kwh+'kWh/'+P.kw+'kW. Include NEC 706, UL 9540/9540A, NFPA 855, non-export/BTM if applicable, interconnection, signage, pad/fence, and AHJ notes. Respond as JSON with keys scope_of_work,general_notes,electrical_notes,sld_notes,pad_design_criteria,fencing_notes.';
-        const msgs = [{role:'user',content:[{type:'image',source:{type:'base64',media_type:canvasImg.startsWith('data:image/svg')?'image/svg+xml':'image/jpeg',data:canvasImg.split(',')[1]}},{type:'text',text:prompt+' Conduit: '+conduit}]}];
-        const d = await _claudeFetch({model:'claude-sonnet-4-5',max_tokens:2000,messages:msgs});
-        const txt = (d.content||[]).map(c=>c.text||'').join('').trim().replace(/```json|```/g,'').trim();
-        aiData = JSON.parse(txt);
-      } catch(e) { console.warn('AI notes failed:', e); }
-    }
-    status.textContent = 'Building permit set HTML...';
-    const html = _psBuiltSet(P, canvasImg, aiData);
-    const blob = new Blob([html],{type:'text/html'});
-    const url = URL.createObjectURL(blob);
-    const win = window.open(url,'_blank');
-    if (!win) { const a=document.createElement('a'); a.href=url; a.download=(P.siteAddr||'PermitSet').replace(/[^a-z0-9]/gi,'-')+'-ClearSky.html'; a.click(); }
-    setTimeout(()=>URL.revokeObjectURL(url), 60000);
-    document.getElementById('permit-modal').style.display = 'none';
-    status.textContent = 'Permit set opened.';
-  } catch(err) { console.error('Permit set error:',err); status.textContent='Permit export failed: '+err.message; }
-  finally { btn.disabled=false; btn.textContent='📋 HTML Permit Set ->'; }
-}
-
-function openViabilityModal(){
-  const m=document.getElementById('viability-modal'); if(!m)return;
-  const addr=document.getElementById('addr-in')?.value||'';
-  const util=document.getElementById('ps-utility')?.value||document.getElementById('prop-utility')?.value||'';
-  if(util) document.getElementById('v-utility').value=util;
-  m.style.display='flex';
-  if(!document.getElementById('viability-output').innerHTML) calculateViability(true);
-}
-function _v(id){return document.getElementById(id)?.value||'';}
-function _score(v){return v==='strong'?25:v==='moderate'?16:v==='weak'?7:0;}
-function calculateViability(silent){
-  const ids=['v-space','v-proximity','v-fire','v-civil','v-load','v-export','v-ix','v-permit','v-incentive','v-revenue','v-cost','v-payback'];
-  const total=ids.reduce((s,id)=>s+_score(_v(id)),0);
-  const pct=Math.round(total/(ids.length*25)*100);
-  const hardFail=ids.some(id=>_v(id)==='fail');
-  const weakCount=ids.filter(id=>_v(id)==='weak').length;
-  let decision='INVEST'; let cls='go'; let reason='Site is passing the gated investment screen.';
-  if(hardFail || pct<45){decision='REJECT / DO NOT INVEST'; cls='bad'; reason='One or more hard gates failed or the score is too low.';}
-  else if(pct<65 || weakCount>=3){decision='REDESIGN / HOLD'; cls='hold'; reason='Site may work, but engineering, utility, AHJ, cost, or revenue assumptions need correction.';}
-  else if(pct<82){decision='HOLD PENDING CONFIRMATION'; cls='hold'; reason='Candidate is promising, but still needs utility/interconnection, permit, and economic confirmation.';}
-  const use=_v('v-use');
-  let path='Either / Dual-path pending utility review';
-  if(use==='btm' || (_v('v-load')==='strong' && _v('v-export')!=='strong')) path='BTM recommended: host load / demand management / VPP path';
-  if(use==='ftm' || (_v('v-export')==='strong' && _v('v-load')==='weak')) path='FTM recommended: dedicated meter/export/grid-services path';
-  const missing=[];
-  if(_v('v-ix')!=='strong') missing.push('Utility pre-screen or interconnection application');
-  if(_v('v-permit')!=='strong') missing.push('AHJ/fire marshal zoning and clearance review');
-  if(_v('v-cost')!=='strong') missing.push('EPC/vendor installed-cost quote');
-  if(_v('v-incentive')!=='strong') missing.push('Program eligibility confirmation / rebate reservation');
-  if(_v('v-revenue')!=='strong') missing.push('VPP/DR/wholesale revenue confirmation');
-  if(_v('v-control')!=='yes') missing.push('Signed site control / host agreement / LOA');
-  const next= decision.includes('INVEST') ? ['Build execution package','Finalize sitemap + one-line','Submit interconnection/rebate/VPP package','Pull AHJ permits'] : decision.includes('HOLD')||decision.includes('REDESIGN') ? ['Resolve missing documents','Run utility pre-screen','Update physical layout and cost model','Re-score after confirmations'] : ['Do not commit capital','Find a better site or change use case'];
-  const report={score:pct,decision,path,reason,propertyType:_v('v-prop-type'),utility:_v('v-utility'),missing,next,notes:_v('v-notes')};
-  window._lastViabilityReport=report;
-  const out=document.getElementById('viability-output');
-  out.style.display='block';
-  out.innerHTML='<div style="display:flex;gap:14px;align-items:center;flex-wrap:wrap"><div><div class="scorebig">'+pct+'</div><div style="font-size:10px;color:var(--sub);font-weight:800">VIABILITY SCORE</div></div><div style="flex:1;min-width:260px"><div class="'+cls+'" style="font-size:18px;font-weight:900">'+decision+'</div><div style="font-size:12px;color:var(--text);line-height:1.55;margin-top:4px">'+reason+'</div><div class="chip">'+path+'</div><div class="chip">'+report.propertyType+'</div><div class="chip">'+(report.utility||'Utility TBD')+'</div></div></div><div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:12px"><div><div class="vhead">Missing Items</div><div style="font-size:11px;line-height:1.7;color:var(--text)">'+(missing.length?missing.map(x=>'• '+x).join('<br>'):'No critical missing items based on current inputs.')+'</div></div><div><div class="vhead">Next Required Actions</div><div style="font-size:11px;line-height:1.7;color:var(--text)">'+next.map(x=>'• '+x).join('<br>')+'</div></div></div>';
-  if(!silent) showBanner('wiz','Viability decision generated: '+decision);
-  return report;
-}
-function _viabilityText(){ const r=window._lastViabilityReport||calculateViability(true); return `BESS VIABILITY REPORT\n\nScore: ${r.score}/100\nDecision: ${r.decision}\nRecommended Path: ${r.path}\nProperty Type: ${r.propertyType}\nUtility: ${r.utility||'TBD'}\n\nReason:\n${r.reason}\n\nMissing Items:\n${(r.missing||[]).map(x=>'- '+x).join('\n')||'- None identified'}\n\nNext Actions:\n${(r.next||[]).map(x=>'- '+x).join('\n')}\n\nNotes:\n${r.notes||''}\n`; }
-function copyViabilityReport(){ calculateViability(true); navigator.clipboard?.writeText(_viabilityText()); showBanner('wiz','Viability report copied.'); }
-function downloadViabilityReport(){ calculateViability(true); const blob=new Blob([_viabilityText()],{type:'text/plain'}); const url=URL.createObjectURL(blob); const a=document.createElement('a'); a.href=url; a.download='BESS-Viability-Report.txt'; a.click(); setTimeout(()=>URL.revokeObjectURL(url),1000); }
 </script>
-
-
-<!-- PATCH v4.23A: BESS Viability Workflow Modal -->
-<div id="viability-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.86);z-index:99998;align-items:flex-start;justify-content:center;padding:18px;overflow-y:auto">
-  <div style="width:min(1040px,96vw);background:var(--panel);border:1px solid var(--border);border-radius:14px;box-shadow:0 20px 60px rgba(0,0,0,.65);overflow:hidden">
-    <div style="display:flex;align-items:center;gap:12px;padding:14px 18px;border-bottom:1px solid var(--border);background:linear-gradient(135deg,rgba(22,163,74,.14),rgba(14,165,233,.12))">
-      <div style="font-size:24px">✅</div>
-      <div style="flex:1"><div style="font-size:18px;font-weight:900;color:var(--text)">BESS Project Viability Workflow</div><div style="font-size:10px;color:var(--sub);margin-top:2px">Candidate screen → FTM/BTM path → engineering → interconnection → permitting → value stack → investment decision</div></div>
-      <button onclick="document.getElementById('viability-modal').style.display='none'" style="background:none;border:none;color:var(--sub);font-size:24px;cursor:pointer">×</button>
-    </div>
-    <div style="padding:14px 18px;max-height:calc(100vh - 130px);overflow-y:auto">
-      <div class="vsec"><div class="vhead">Phase 0 — Property Intake</div><div class="vg">
-        <div><label>Property Type</label><select id="v-prop-type"><option>Multifamily / MUD</option><option>Commercial Retail</option><option>Industrial / Warehouse</option><option>Office</option><option>Senior Living</option><option>Hospitality / Hotel</option><option>Municipal / Public Site</option><option>Parking Lot / Standalone Land</option><option>Mixed-Use</option><option>EV Charging Site</option><option>Solar-Paired Site</option><option>Utility-Scale / Open Land</option><option>Other</option></select></div>
-        <div><label>Utility Territory</label><input id="v-utility" placeholder="ComEd, Eversource, National Grid..."></div>
-        <div><label>Site Control</label><select id="v-control"><option value="yes">Owner / signed site control</option><option value="partial">LOA / host interest only</option><option value="no">No site control yet</option></select></div>
-        <div><label>Use Case</label><select id="v-use"><option value="both">Both / Dual-path</option><option value="btm">BTM: load support, peak shaving, VPP</option><option value="ftm">FTM: grid/export asset</option></select></div>
-      </div></div>
-      <div class="vsec"><div class="vhead">Phase 1 — Candidate Site Screen</div><div class="vg">
-        <div><label>Available Space</label><select id="v-space"><option value="strong">Strong: clear equipment area</option><option value="moderate">Moderate: workable with layout review</option><option value="weak">Weak: tight / constrained</option><option value="fail">Fail: no safe battery area</option></select></div>
-        <div><label>Transformer / Meter Proximity</label><select id="v-proximity"><option value="strong">Strong: under 50 LF</option><option value="moderate">Moderate: 50–150 LF</option><option value="weak">Weak: 150+ LF / hard route</option><option value="fail">Fail: impractical route</option></select></div>
-        <div><label>Fire Access / Clearances</label><select id="v-fire"><option value="strong">Strong: clear access + setbacks</option><option value="moderate">Moderate: needs AHJ review</option><option value="weak">Weak: likely redesign</option><option value="fail">Fail: obvious fire/access issue</option></select></div>
-        <div><label>Flood / Civil / Protection Risk</label><select id="v-civil"><option value="strong">Low risk</option><option value="moderate">Medium risk</option><option value="weak">High risk</option><option value="fail">Not viable without major work</option></select></div>
-      </div></div>
-      <div class="vsec"><div class="vhead">Phases 2–5 — Utility, Engineering, Interconnection, AHJ</div><div class="vg">
-        <div><label>Existing Load / BTM Value</label><select id="v-load"><option value="strong">Strong load or EV charging planned</option><option value="moderate">Some load / future electrification</option><option value="weak">Low load; BTM economics uncertain</option><option value="fail">No useful host load</option></select></div>
-        <div><label>Export / FTM Potential</label><select id="v-export"><option value="moderate">Unknown until utility screen</option><option value="strong">Dedicated meter/export likely feasible</option><option value="weak">Export likely constrained</option><option value="fail">Export not viable</option></select></div>
-        <div><label>Interconnection Risk</label><select id="v-ix"><option value="moderate">Pre-screen needed</option><option value="strong">Application-ready / low risk</option><option value="weak">Study required / high upgrade risk</option><option value="fail">Reject / queue or service barrier</option></select></div>
-        <div><label>Permitting / AHJ Risk</label><select id="v-permit"><option value="strong">Low risk</option><option value="moderate">Medium risk</option><option value="weak">High risk</option><option value="fail">Not viable</option></select></div>
-      </div></div>
-      <div class="vsec"><div class="vhead">Phases 6–7 — Value Stack + Financial Gate</div><div class="vg">
-        <div><label>Confirmed Incentive / Rebate</label><select id="v-incentive"><option value="strong">Confirmed / program fit</option><option value="moderate">Likely but needs approval</option><option value="weak">Unclear / upside only</option><option value="fail">No identifiable incentive</option></select></div>
-        <div><label>Revenue Stack</label><select id="v-revenue"><option value="moderate">Probable: rebate + VPP/DR pending</option><option value="strong">Confirmed: savings/rebate/VPP path</option><option value="weak">Upside only</option><option value="fail">No real revenue path</option></select></div>
-        <div><label>Installed Cost Risk</label><select id="v-cost"><option value="moderate">Budgetary estimate</option><option value="strong">Vendor/EPC quote in hand</option><option value="weak">Major unknowns</option><option value="fail">Cost likely breaks payback</option></select></div>
-        <div><label>Target Payback</label><select id="v-payback"><option value="strong">Under 3 years</option><option value="moderate">3–5 years</option><option value="weak">5+ years / sensitive</option><option value="fail">No payback case</option></select></div>
-      </div></div>
-      <div class="vsec"><div class="vhead">Missing Documents / Notes</div><textarea id="v-notes" rows="4" placeholder="Example: Need utility bill, meter number, transformer size, AHJ setback check, one-line diagram, BESS spec sheet, fire access confirmation..."></textarea></div>
-      <div style="display:flex;gap:10px;align-items:stretch;flex-wrap:wrap">
-        <button onclick="calculateViability()" style="background:linear-gradient(135deg,#16A34A,#0EA5E9);border:none;color:white;border-radius:8px;padding:12px 22px;font-size:13px;font-weight:900;cursor:pointer;font-family:inherit">Run Viability Decision</button>
-        <button onclick="copyViabilityReport()" style="background:rgba(197,165,90,.18);border:1px solid rgba(197,165,90,.35);color:var(--gold);border-radius:8px;padding:12px 18px;font-size:12px;font-weight:800;cursor:pointer;font-family:inherit">Copy Report</button>
-        <button onclick="downloadViabilityReport()" style="background:rgba(255,255,255,.08);border:1px solid var(--border);color:var(--text);border-radius:8px;padding:12px 18px;font-size:12px;font-weight:800;cursor:pointer;font-family:inherit">Download TXT</button>
-      </div>
-      <div id="viability-output" class="scorebox" style="display:none"></div>
-    </div>
-  </div>
-</div>
-
 </body>
 </html>
