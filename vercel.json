@@ -1,8 +1,1 @@
-{
-  "rewrites": [
-    { "source": "/editor/:path*", "destination": "/editor.html" },
-    { "source": "/editor.html", "destination": "/editor.html" },
-    { "source": "/projects", "destination": "/projects.html" },
-    { "source": "/", "destination": "/index.html" }
-  ]
-}
+{}
