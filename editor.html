@@ -14131,8 +14131,8 @@ async function exportPermitPPTX() {
     // Load template — try multiple sources in order
     if (status) status.textContent = 'Loading permit template...';
     var _templateSources = [
-      'https://github.com/clearskyenergy/clearsky-portal/releases/download/v.1/claremont_template.pptx',
       '/claremont_template.pptx',
+      'https://github.com/clearskyenergy/clearsky-portal/releases/download/v.1/claremont_template.pptx',
       'https://raw.githubusercontent.com/clearskyenergy/clearsky-portal/main/claremont_template.pptx'
     ];
     templateBytes = await new Promise(function(resolve) {
@@ -14926,10 +14926,10 @@ async function exportPermitPDF() {
           <div style="border-top:1px solid var(--border);padding-top:9px">
             <div style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:var(--sub);margin-bottom:7px">📐 Drawing Info</div>
             <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px">
-              <div><label style="font-size:9px;color:var(--sub);display:block;margin-bottom:2px">Job Number</label><input id="ps-jobno" type="text" placeholder="25-48" style="width:100%;background:var(--surface);border:1px solid var(--border);color:var(--text);border-radius:5px;padding:6px 10px;font-size:11px;font-family:inherit;box-sizing:border-box"></div>
+              <div><label style="font-size:9px;color:var(--sub);display:block;margin-bottom:2px">Job Number</label><input id="ps-jobno" type="text" placeholder="CCS-01" style="width:100%;background:var(--surface);border:1px solid var(--border);color:var(--text);border-radius:5px;padding:6px 10px;font-size:11px;font-family:inherit;box-sizing:border-box"></div>
               <div><label style="font-size:9px;color:var(--sub);display:block;margin-bottom:2px">Issue Date</label><input id="ps-date" type="text" style="width:100%;background:var(--surface);border:1px solid var(--border);color:var(--text);border-radius:5px;padding:6px 10px;font-size:11px;font-family:inherit;box-sizing:border-box"></div>
-              <div><label style="font-size:9px;color:var(--sub);display:block;margin-bottom:2px">Designed By</label><input id="ps-designed-by" type="text" placeholder="S.B." style="width:100%;background:var(--surface);border:1px solid var(--border);color:var(--text);border-radius:5px;padding:6px 10px;font-size:11px;font-family:inherit;box-sizing:border-box"></div>
-              <div><label style="font-size:9px;color:var(--sub);display:block;margin-bottom:2px">Checked By</label><input id="ps-checked-by2" type="text" placeholder="W.V.D.W." style="width:100%;background:var(--surface);border:1px solid var(--border);color:var(--text);border-radius:5px;padding:6px 10px;font-size:11px;font-family:inherit;box-sizing:border-box"></div>
+              <div><label style="font-size:9px;color:var(--sub);display:block;margin-bottom:2px">Designed By</label><input id="ps-designed-by" type="text" placeholder="T.G." style="width:100%;background:var(--surface);border:1px solid var(--border);color:var(--text);border-radius:5px;padding:6px 10px;font-size:11px;font-family:inherit;box-sizing:border-box"></div>
+              <div><label style="font-size:9px;color:var(--sub);display:block;margin-bottom:2px">Checked By</label><input id="ps-checked-by2" type="text" placeholder="T.G." style="width:100%;background:var(--surface);border:1px solid var(--border);color:var(--text);border-radius:5px;padding:6px 10px;font-size:11px;font-family:inherit;box-sizing:border-box"></div>
             </div>
           </div>
         </div>
