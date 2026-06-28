@@ -1,0 +1,866 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>ClearSky Permit Creator</title>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'IBM Plex Sans',Arial,sans-serif;background:#0D1B2A;color:#E8F0FE;min-height:100vh;display:flex;flex-direction:column}
+:root{--navy:#0B1E35;--gold:#C5A55A;--green:#22C55E;--red:#EF4444;--text:#E8F0FE;--sub:#8BA3C4;--border:#243B55;--panel:#1A2E45;--surface:#152840}
+
+/* Header */
+.hdr{background:var(--navy);border-bottom:1px solid var(--border);padding:10px 20px;display:flex;align-items:center;gap:14px}
+.hdr-logo{font-size:15px;font-weight:900;color:var(--gold);letter-spacing:.5px}
+.hdr-sub{font-size:11px;color:var(--sub)}
+.hdr-right{margin-left:auto;display:flex;align-items:center;gap:10px}
+.back-btn{background:rgba(255,255,255,.08);border:1px solid var(--border);color:var(--text);padding:5px 12px;border-radius:5px;cursor:pointer;font-size:11px}
+.back-btn:hover{background:rgba(255,255,255,.14)}
+
+/* Main layout */
+.main{display:flex;flex:1;overflow:hidden}
+
+/* Left panel - form */
+.lp{width:320px;flex-shrink:0;background:var(--panel);border-right:1px solid var(--border);overflow-y:auto;display:flex;flex-direction:column}
+.sec{border-bottom:1px solid var(--border);padding:12px}
+.sec-h{font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:var(--gold);margin-bottom:8px}
+.field{margin-bottom:8px}
+.field label{display:block;font-size:9px;color:var(--sub);margin-bottom:3px;text-transform:uppercase;letter-spacing:.5px}
+.field input,.field textarea,.field select{width:100%;background:var(--surface);border:1px solid var(--border);color:var(--text);border-radius:5px;padding:6px 9px;font-size:11px;font-family:inherit}
+.field textarea{resize:vertical;min-height:60px}
+.row2{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+
+/* Right panel - preview */
+.rp{flex:1;display:flex;flex-direction:column;overflow:hidden}
+.rp-header{background:var(--navy);border-bottom:1px solid var(--border);padding:10px 16px;display:flex;align-items:center;gap:10px;flex-shrink:0}
+.rp-title{font-size:13px;font-weight:700}
+.preview-area{flex:1;overflow-y:auto;padding:20px;display:flex;flex-direction:column;align-items:center;gap:16px}
+
+/* Site map preview */
+.sitemap-preview{width:100%;max-width:700px;background:var(--surface);border:1px solid var(--border);border-radius:8px;overflow:hidden}
+.sitemap-preview img{width:100%;display:block}
+.sitemap-placeholder{height:300px;display:flex;align-items:center;justify-content:center;color:var(--sub);font-size:12px}
+
+/* Sheet checklist */
+.sheet-list{width:100%;max-width:700px;background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:12px}
+.sheet-list h3{font-size:11px;font-weight:700;color:var(--gold);margin-bottom:10px;text-transform:uppercase;letter-spacing:.5px}
+.sheet-item{display:flex;align-items:center;gap:10px;padding:6px 0;border-bottom:1px solid var(--border)}
+.sheet-item:last-child{border-bottom:none}
+.sheet-item input[type=checkbox]{accent-color:var(--gold);width:14px;height:14px}
+.sheet-num{font-size:10px;font-weight:700;color:var(--gold);width:40px;flex-shrink:0}
+.sheet-name{font-size:11px;color:var(--text);flex:1}
+.sheet-status{font-size:9px;color:var(--green)}
+
+/* AI notes panel */
+.ai-panel{width:100%;max-width:700px;background:var(--surface);border:1px solid rgba(167,139,250,.3);border-radius:8px;padding:12px}
+.ai-panel h3{font-size:11px;font-weight:700;color:#A78BFA;margin-bottom:8px}
+.ai-output{font-size:10px;color:var(--text);line-height:1.6;white-space:pre-wrap;max-height:200px;overflow-y:auto}
+
+/* Status bar */
+.status-bar{background:var(--navy);border-top:1px solid var(--border);padding:8px 16px;font-size:10px;color:var(--sub);display:flex;align-items:center;gap:10px}
+.status-dot{width:7px;height:7px;border-radius:50%;background:var(--green);flex-shrink:0}
+
+/* Buttons */
+.btn-row{padding:12px;border-top:1px solid var(--border);display:flex;gap:8px;flex-shrink:0}
+.btn{padding:9px 16px;border:none;border-radius:6px;font-size:11px;font-weight:700;cursor:pointer;font-family:inherit;display:flex;align-items:center;gap:5px}
+.btn-primary{background:linear-gradient(135deg,#7C3AED,#DC2626);color:#fff;flex:1;justify-content:center}
+.btn-secondary{background:var(--surface);color:var(--text);border:1px solid var(--border)}
+.btn:disabled{opacity:.5;cursor:not-allowed}
+
+/* Loading overlay */
+.loading{display:none;position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:9999;flex-direction:column;align-items:center;justify-content:center;gap:14px}
+.loading.show{display:flex}
+.spinner{width:44px;height:44px;border:4px solid rgba(197,165,90,.3);border-top-color:#C5A55A;border-radius:50%;animation:spin 1s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+.loading-text{color:#fff;font-size:13px;font-weight:700}
+.loading-sub{color:rgba(255,255,255,.6);font-size:11px}
+
+/* Auth screen */
+#auth-screen{display:flex;flex-direction:column;align-items:center;justify-content:center;flex:1;gap:16px}
+.auth-card{background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:32px;text-align:center;max-width:360px;width:100%}
+.auth-logo{font-size:24px;font-weight:900;color:var(--gold);margin-bottom:4px}
+.auth-sub{font-size:12px;color:var(--sub);margin-bottom:20px}
+.btn-google{background:#fff;color:#333;border:none;padding:10px 20px;border-radius:6px;font-size:13px;font-weight:600;cursor:pointer;display:flex;align-items:center;gap:8px;width:100%;justify-content:center}
+</style>
+</head>
+<body>
+<div id="err-banner" style="display:none;position:fixed;top:0;left:0;right:0;background:#DC2626;color:#fff;padding:12px 16px;font-size:13px;font-weight:700;z-index:99999;word-break:break-all"></div>
+<script>
+window.onerror = function(msg, src, line, col, err) {
+  var b = document.getElementById('err-banner');
+  if (b) {
+    b.style.display = 'block';
+    b.textContent = 'JS Error: ' + msg + ' (line ' + line + ')' + (err ? ' - ' + err.stack : '');
+  }
+  return false;
+};
+window.onunhandledrejection = function(e) {
+  var b = document.getElementById('err-banner');
+  if (b) {
+    b.style.display = 'block';
+    b.textContent = 'Promise Error: ' + (e.reason ? e.reason.toString() : 'unknown');
+  }
+};
+</script>
+
+<!-- Auth Screen -->
+<div id="loading-scripts" style="position:fixed;inset:0;background:#0D1B2A;display:flex;align-items:center;justify-content:center;z-index:99998;flex-direction:column;gap:12px">
+  <div style="color:#C5A55A;font-size:18px;font-weight:900">CLEARSKY</div>
+  <div style="color:#8BA3C4;font-size:12px">Loading permit creator...</div>
+</div>
+<div id="auth-screen" style="display:none">
+  <div class="auth-card">
+    <div class="auth-logo">CLEARSKY</div>
+    <div style="font-size:11px;color:#8BA3C4;margin-bottom:4px">BUILDERS LLC</div>
+    <div class="auth-sub">Permit Creator — Sign in to continue</div>
+    <button class="btn-google" onclick="signInWithGoogle()">
+      <svg width="18" height="18" viewBox="0 0 24 24"><path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/><path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/><path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/><path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/></svg>
+      Sign in with Google
+    </button>
+    <div style="font-size:10px;color:#8BA3C4;margin-top:12px">Access restricted to @clearsky-usa.com accounts</div>
+  </div>
+</div>
+
+<!-- Main App -->
+<div id="app" style="display:none;flex-direction:column;flex:1">
+
+  <!-- Header -->
+  <div class="hdr">
+    <div>
+      <div class="hdr-logo">CLEARSKY PERMIT CREATOR</div>
+      <div class="hdr-sub">Engineering permit set generator — AHJ ready</div>
+    </div>
+    <div class="hdr-right">
+      <span id="project-name" style="font-size:11px;color:#C5A55A;font-weight:700"></span>
+      <button class="back-btn" onclick="window.location.href='/'">← Portal</button>
+      <div id="user-avatar" style="width:28px;height:28px;border-radius:50%;background:var(--gold);display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;color:#0B1E35"></div>
+    </div>
+  </div>
+
+  <div class="main">
+
+    <!-- Left Panel - Form -->
+    <div class="lp">
+
+      <!-- Claude AI Key -->
+      <div class="sec">
+        <div class="sec-h">✨ Claude AI Key</div>
+        <div class="field">
+          <label>API Key (for AI-generated permit notes)</label>
+          <input type="password" id="claude-key" placeholder="sk-ant-api03-..." oninput="saveKey()">
+        </div>
+        <div style="font-size:9px;color:var(--sub)">Stored locally. Required for AI notes generation.</div>
+      </div>
+
+      <!-- General Contractor -->
+      <div class="sec">
+        <div class="sec-h">🏗 General Contractor</div>
+        <div class="field"><label>Company Name</label><input id="gc-name" value="ClearSky Builders LLC"></div>
+        <div class="field"><label>License #</label><input id="gc-lic" placeholder="C10 #930054"></div>
+        <div class="field"><label>Address</label><input id="gc-addr" value="1107 17th Ave N, Clinton, Iowa 52732"></div>
+        <div class="row2">
+          <div class="field"><label>Phone</label><input id="gc-phone" placeholder="(815) 555-0100"></div>
+          <div class="field"><label>Email</label><input id="gc-email" placeholder="info@csebuilders.com"></div>
+        </div>
+      </div>
+
+      <!-- Site Information -->
+      <div class="sec">
+        <div class="sec-h">📍 Site Information</div>
+        <div class="field"><label>Site Address</label><input id="site-addr" placeholder="1615 4th Street, Fulton, IL 61252"></div>
+        <div class="row2">
+          <div class="field"><label>APN</label><input id="apn" placeholder="[APN]"></div>
+          <div class="field"><label>Zoning</label><input id="zoning" placeholder="C-2"></div>
+        </div>
+        <div class="row2">
+          <div class="field"><label>Latitude</label><input id="lat" placeholder="41.8640"></div>
+          <div class="field"><label>Longitude</label><input id="lng" placeholder="-90.1482"></div>
+        </div>
+        <div class="row2">
+          <div class="field"><label>Seismic SDC</label><input id="seismic" value="D"></div>
+          <div class="field"><label>Flood Zone</label><input id="flood" value="X"></div>
+        </div>
+        <div class="row2">
+          <div class="field"><label>Wind (mph)</label><input id="wind" value="90"></div>
+          <div class="field"><label>Exposure</label><input id="exposure" value="C"></div>
+        </div>
+        <div class="field"><label>Applicable Codes</label><input id="codes" value="2020 NEC, 2021 IBC, 2021 IFC, NFPA 855"></div>
+        <div class="field"><label>Utility</label><input id="utility" placeholder="ComEd (Commonwealth Edison)"></div>
+      </div>
+
+      <!-- BESS System -->
+      <div class="sec">
+        <div class="sec-h">⚡ BESS System</div>
+        <div class="row2">
+          <div class="field"><label>Manufacturer</label><input id="bat-mfr" placeholder="Great Power"></div>
+          <div class="field"><label>Model</label><input id="bat-model" placeholder="MAX-20HC-5000"></div>
+        </div>
+        <div class="row2">
+          <div class="field"><label>DC Capacity (kWh)</label><input id="kwh" placeholder="5000"></div>
+          <div class="field"><label>AC Power (kW)</label><input id="kw" placeholder="802"></div>
+        </div>
+        <div class="row2">
+          <div class="field"><label>DC Voltage</label><input id="dcv" placeholder="1331.2"></div>
+          <div class="field"><label>AC Voltage</label><input id="acv" placeholder="480"></div>
+        </div>
+        <div class="row2">
+          <div class="field"><label>Inverter Mfr</label><input id="inv-mfr" placeholder="Dynapower"></div>
+          <div class="field"><label>Inverter Model</label><input id="inv-model" placeholder="CPS-1250"></div>
+        </div>
+        <div class="row2">
+          <div class="field"><label>XFMR (kVA)</label><input id="xfmr" placeholder="1000"></div>
+          <div class="field"><label>AC Disconnect (A)</label><input id="acdis" placeholder="1200"></div>
+        </div>
+        <div class="field"><label>Main Switchboard</label><input id="msb" placeholder="2000A, 480Y/277V, 3PH, 4W"></div>
+      </div>
+
+      <!-- Electrical Engineer -->
+      <div class="sec">
+        <div class="sec-h">⚡ Electrical Engineer of Record</div>
+        <div class="field"><label>Name + Credentials</label><input id="ee-name" placeholder="[Engineer Name, PE, EE]"></div>
+        <div class="field"><label>Firm Name</label><input id="ee-firm" placeholder="[Engineering Firm]"></div>
+        <div class="field"><label>Address</label><input id="ee-addr" placeholder="[Firm Address]"></div>
+        <div class="row2">
+          <div class="field"><label>Email</label><input id="ee-email" placeholder="[PE Email]"></div>
+          <div class="field"><label>Phone</label><input id="ee-phone" placeholder="[PE Phone]"></div>
+        </div>
+      </div>
+
+      <!-- Structural Engineer -->
+      <div class="sec">
+        <div class="sec-h">🏛 Structural Engineer</div>
+        <div class="field"><label>Name + Credentials</label><input id="se-name" placeholder="[SE Name, PE]"></div>
+        <div class="field"><label>Firm Name</label><input id="se-firm" placeholder="[SE Firm]"></div>
+        <div class="field"><label>Address</label><input id="se-addr" placeholder="[SE Address]"></div>
+        <div class="row2">
+          <div class="field"><label>Email</label><input id="se-email" placeholder="[SE Email]"></div>
+          <div class="field"><label>Phone</label><input id="se-phone" placeholder="[SE Phone]"></div>
+        </div>
+      </div>
+
+      <!-- Property Owner -->
+      <div class="sec">
+        <div class="sec-h">🏠 Property Owner</div>
+        <div class="field"><label>Name</label><input id="owner-name" placeholder="[Property Owner]"></div>
+        <div class="field"><label>Address</label><input id="owner-addr" placeholder="[Owner Address]"></div>
+      </div>
+
+      <!-- Drawing Info -->
+      <div class="sec">
+        <div class="sec-h">📋 Drawing Info</div>
+        <div class="row2">
+          <div class="field"><label>Job Number</label><input id="job-no" placeholder="CCS-01"></div>
+          <div class="field"><label>Issue Date</label><input id="issue-date" type="date"></div>
+        </div>
+        <div class="row2">
+          <div class="field"><label>Designed By</label><input id="designed-by" placeholder="T.G."></div>
+          <div class="field"><label>Checked By</label><input id="checked-by" placeholder="T.G."></div>
+        </div>
+        <div class="field"><label>Meter Number</label><input id="meter-no" placeholder="[METER NO.]"></div>
+      </div>
+
+      <!-- Export buttons -->
+      <div class="btn-row">
+        <button class="btn btn-secondary" onclick="runAI()">✨ Generate AI Notes</button>
+        <button class="btn btn-primary" id="export-btn" onclick="exportPPTX()">📋 Export Permit Set (PPTX) →</button>
+      </div>
+
+    </div>
+
+    <!-- Right Panel - Preview -->
+    <div class="rp">
+      <div class="rp-header">
+        <div class="rp-title">📋 Permit Set Preview</div>
+        <div style="font-size:10px;color:var(--sub);margin-left:auto">Fill in the form → Generate AI Notes → Export PPTX</div>
+      </div>
+
+      <div class="preview-area">
+
+        <!-- Site map preview -->
+        <div class="sitemap-preview">
+          <div id="sitemap-container" class="sitemap-placeholder">
+            <span>Site map will appear here after loading project</span>
+          </div>
+        </div>
+
+        <!-- Sheet checklist -->
+        <div class="sheet-list">
+          <h3>Sheets to Generate</h3>
+          <div class="sheet-item"><input type="checkbox" id="sh-e0" checked><span class="sheet-num">E0</span><span class="sheet-name">Cover Sheet</span><span class="sheet-status">✓ Auto-generated</span></div>
+          <div class="sheet-item"><input type="checkbox" id="sh-e1" checked><span class="sheet-num">E1.0</span><span class="sheet-name">Plot Plan</span><span class="sheet-status">✓ Site map injected</span></div>
+          <div class="sheet-item"><input type="checkbox" id="sh-e11" checked><span class="sheet-num">E1.1</span><span class="sheet-name">Enlarged Plot Plan</span><span class="sheet-status">✓ Site map injected</span></div>
+          <div class="sheet-item"><input type="checkbox" id="sh-e12" checked><span class="sheet-num">E1.2</span><span class="sheet-name">Demolition Plan</span><span class="sheet-status">✓ Template</span></div>
+          <div class="sheet-item"><input type="checkbox" id="sh-e2" checked><span class="sheet-num">E2.0</span><span class="sheet-name">Single Line Diagram</span><span class="sheet-status">✓ Auto-generated</span></div>
+          <div class="sheet-item"><input type="checkbox" id="sh-e3" checked><span class="sheet-num">E3.0</span><span class="sheet-name">Signage</span><span class="sheet-status">✓ Template</span></div>
+          <div class="sheet-item"><input type="checkbox" id="sh-s1" checked><span class="sheet-num">S1.1</span><span class="sheet-name">BESS Pad Details</span><span class="sheet-status">✓ Template</span></div>
+          <div class="sheet-item"><input type="checkbox" id="sh-s12" checked><span class="sheet-num">S1.2</span><span class="sheet-name">Gear Pad Details</span><span class="sheet-status">✓ Template</span></div>
+          <div class="sheet-item"><input type="checkbox" id="sh-s2" checked><span class="sheet-num">S2.0</span><span class="sheet-name">Grounding Detail</span><span class="sheet-status">✓ Template</span></div>
+          <div class="sheet-item"><input type="checkbox" id="sh-s3" checked><span class="sheet-num">S3.0</span><span class="sheet-name">Fencing Detail</span><span class="sheet-status">✓ Template</span></div>
+        </div>
+
+        <!-- AI Notes output -->
+        <div class="ai-panel" id="ai-panel" style="display:none">
+          <h3>✨ AI-Generated Permit Notes</h3>
+          <div class="ai-output" id="ai-output"></div>
+        </div>
+
+      </div>
+
+      <!-- Status bar -->
+      <div class="status-bar">
+        <div class="status-dot" id="status-dot"></div>
+        <span id="status-text">Ready — load a project to begin</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Loading overlay -->
+<div class="loading" id="loading">
+  <div class="spinner"></div>
+  <div class="loading-text" id="loading-text">Processing...</div>
+  <div class="loading-sub" id="loading-sub">This may take 30-60 seconds</div>
+</div>
+
+<script>
+// ── Firebase ────────────────────────────────────────────────────────────────
+var _fbConfig = {
+  apiKey: "AIzaSyABoM1lgOYUnd5ZadaoTMhYmA9cHa8Tyo0",
+  authDomain: "clearsky-portal.firebaseapp.com",
+  projectId: "clearsky-portal",
+  storageBucket: "clearsky-portal.appspot.com",
+  messagingSenderId: "742134484347",
+  appId: "1:742134484347:web:ab0f95fd221536158481de"
+};
+var _auth = null;
+var _db = null;
+function _initFirebase() {
+  try {
+    firebase.initializeApp(_fbConfig);
+    _auth = firebase.auth();
+    _db = firebase.firestore();
+    _auth.onAuthStateChanged(function(user) {
+      var ls = document.getElementById('loading-scripts');
+      if (ls) ls.style.display = 'none';
+      if (user) {
+        document.getElementById('auth-screen').style.display = 'none';
+        document.getElementById('app').style.display = 'flex';
+        var av = document.getElementById('user-avatar');
+        if (av) av.textContent = (user.displayName||user.email||'U')[0].toUpperCase();
+        var p = new URLSearchParams(window.location.search);
+        var id = p.get('id') || p.get('project');
+        if (id) loadProject(id);
+        else setStatus('No project ID. Open from SiteMap tool.', 'warn');
+        var k = localStorage.getItem('clearsky_claude_key');
+        if (k) document.getElementById('claude-key').value = k;
+        var today = new Date().toISOString().split('T')[0];
+        var de = document.getElementById('issue-date');
+        if (de && !de.value) de.value = today;
+      } else {
+        document.getElementById('auth-screen').style.display = 'flex';
+        document.getElementById('app').style.display = 'none';
+      }
+    });
+  } catch(e) {
+    var b = document.getElementById('err-banner');
+    if (b) { b.style.display='block'; b.textContent='Firebase error: '+e.message; }
+  }
+}
+document.addEventListener('DOMContentLoaded', _initFirebase);
+
+var _projectId = null;
+var _projectData = null;
+var _siteMapImg = null;
+var _aiNotes = {};
+
+// ── Auth ────────────────────────────────────────────────────────────────────
+function signInWithGoogle() {
+  var provider = new firebase.auth.GoogleAuthProvider();
+  provider.setCustomParameters({ hd: 'clearsky-usa.com' });
+  _auth.signInWithPopup(provider).catch(function(e){ alert('Sign in failed: ' + e.message); });
+}
+
+// auth state handled in _initFirebase
+
+// ── Load Project ─────────────────────────────────────────────────────────────
+async function loadProject(id) {
+  _projectId = id;
+  setStatus('Loading project from Firebase...', 'loading');
+  try {
+    var doc = await _db.collection('projects').doc(id).get({ source: 'server' });
+    if (!doc.exists) { setStatus('Project not found: ' + id, 'error'); return; }
+    _projectData = doc.data();
+
+    // Set project name in header
+    document.getElementById('project-name').textContent = _projectData.name || 'Unnamed Project';
+
+    // Pre-fill site address from project
+    var addr = _projectData.address || '';
+    if (addr) document.getElementById('site-addr').value = addr;
+
+    // Pre-fill BESS data from bessList
+    var bess = _projectData.bessList && _projectData.bessList[0];
+    if (bess) {
+      if (bess.kwh) document.getElementById('kwh').value = bess.kwh;
+      if (bess.kw)  document.getElementById('kw').value  = bess.kw;
+      if (bess.mfr) document.getElementById('bat-mfr').value = bess.mfr;
+      if (bess.model) document.getElementById('bat-model').value = bess.model;
+      if (bess.dcv) document.getElementById('dcv').value = bess.dcv;
+      if (bess.inv) document.getElementById('inv-model').value = bess.inv;
+    }
+
+    // Pre-fill conduit data for job description
+    var conduits = _projectData.conduits || [];
+    var totalTrench = Math.round(conduits.reduce(function(s,c){ return s+(c.ftLen||0); }, 0));
+
+    // Load site map image
+    _siteMapImg = _projectData.siteMapImg || null;
+    var container = document.getElementById('sitemap-container');
+    if (_siteMapImg) {
+      container.innerHTML = '<img src="'+_siteMapImg+'" style="width:100%;display:block">';
+    } else {
+      container.innerHTML = '<div class="sitemap-placeholder" style="height:250px"><span>No site map captured.<br>Go back to SiteMap tool and click<br>"📋 Permit Creator" to save the image.</span></div>';
+    }
+
+    setStatus('Project loaded: ' + (_projectData.name||id) + ' | ' + conduits.length + ' conduit runs | ' + totalTrench + ' LF total trenching', 'ok');
+
+  } catch(e) {
+    setStatus('Error loading project: ' + e.message, 'error');
+    console.error(e);
+  }
+}
+
+// ── API Key ──────────────────────────────────────────────────────────────────
+function saveKey() {
+  var k = document.getElementById('claude-key').value.trim();
+  if (k) localStorage.setItem('clearsky_claude_key', k);
+}
+
+function getApiKey() {
+  return document.getElementById('claude-key').value.trim() ||
+         localStorage.getItem('clearsky_claude_key') || '';
+}
+
+// ── Collect form params ───────────────────────────────────────────────────────
+function getP() {
+  var v = function(id){ return (function(el){ return el ? (el.value ? el.value.trim() : '') : ''; })(document.getElementById(id)); };
+  var today = v('issue-date') || new Date().toLocaleDateString('en-US',{month:'2-digit',day:'2-digit',year:'numeric'});
+  return {
+    gcName: v('gc-name') || 'ClearSky Builders LLC',
+    gcLic: v('gc-lic'), gcAddr: v('gc-addr'),
+    gcPhone: v('gc-phone'), gcEmail: v('gc-email'),
+    siteAddr: v('site-addr'), apn: v('apn'), zoning: v('zoning'),
+    lat: v('lat'), lng: v('lng'),
+    seismic: v('seismic'), flood: v('flood'),
+    wind: v('wind'), exposure: v('exposure'),
+    codes: v('codes') || '2020 NEC, 2021 IBC, 2021 IFC, NFPA 855',
+    utility: v('utility') || 'ComEd (Commonwealth Edison)',
+    batMfr: v('bat-mfr'), batModel: v('bat-model'),
+    kwh: v('kwh') || '5000', kw: v('kw') || '802',
+    dcv: v('dcv') || '1331.2', acv: v('acv') || '480',
+    invMfr: v('inv-mfr') || 'Dynapower', invModel: v('inv-model') || 'CPS-1250',
+    xfmr: v('xfmr') || '1000', acdis: v('acdis') || '1200',
+    msb: v('msb') || '2000A, 480Y/277V, 3PH, 4W',
+    eeName: v('ee-name'), eeFirm: v('ee-firm'),
+    eeAddr: v('ee-addr'), eeEmail: v('ee-email'), eePhone: v('ee-phone'),
+    seName: v('se-name'), seFirm: v('se-firm'),
+    seAddr: v('se-addr'), seEmail: v('se-email'), sePhone: v('se-phone'),
+    ownerName: v('owner-name'), ownerAddr: v('owner-addr'),
+    jobNo: v('job-no') || 'CCS-01',
+    designedBy: v('designed-by') || 'T.G.',
+    checkedBy: v('checked-by') || 'T.G.',
+    issueDate: today, meterNo: v('meter-no') || '[METER NO.]',
+  };
+}
+
+// ── AI Notes Generation ───────────────────────────────────────────────────────
+async function runAI() {
+  var key = getApiKey();
+  if (!key) { alert('Please enter your Claude API key in the left panel.'); return; }
+  var P = getP();
+  showLoading('Generating AI permit notes...', 'Claude is analyzing your project and generating scope, general notes, and electrical notes');
+
+  try {
+    var conduits = (_projectData && _projectData.conduits) || [];
+    var conduitDesc = conduits.map(function(c){ return (c.condType||'RMC')+': '+(c.label||'run')+' '+Math.round(c.ftLen||0)+'ft'; }).join(', ');
+
+    var prompt = 'You are a licensed PE creating a BESS permit set.\n\n'
+      + 'Project: ' + P.siteAddr + '\n'
+      + 'System: ' + P.kwh + 'kWh / ' + P.kw + 'kW BESS NON-EXPORT BTM\n'
+      + 'Battery: ' + P.batMfr + ' ' + P.batModel + '\n'
+      + 'Inverter: ' + P.invMfr + ' ' + P.invModel + '\n'
+      + 'XFMR: ' + P.xfmr + 'kVA | Disconnect: ' + P.acdis + 'A | MSB: ' + P.msb + '\n'
+      + 'Utility: ' + P.utility + '\n'
+      + 'Codes: ' + P.codes + '\n'
+      + 'Conduit runs: ' + (conduitDesc || 'see drawing') + '\n\n'
+      + 'Generate permit notes. Respond ONLY with JSON:\n'
+      + '{"scope":"2-3 sentence scope of work specific to this project",'
+      + '"general_notes":["note 1","note 2","note 3","note 4","note 5","note 6","note 7","note 8","note 9","note 10","note 11","note 12"],'
+      + '"electrical_notes":["note 1","note 2","note 3","note 4","note 5","note 6","note 7","note 8"],'
+      + '"sld_note":"one sentence describing the SLD",'
+      + '"site_clearing":"one sentence about site clearing if applicable"}';
+
+    var msgs = _siteMapImg
+      ? [{role:'user',content:[{type:'image',source:{type:'base64',media_type:'image/jpeg',data:_siteMapImg.split(',')[1]}},{type:'text',text:prompt}]}]
+      : [{role:'user',content:prompt}];
+
+    var resp = await fetch('https://api.anthropic.com/v1/messages', {
+      method:'POST',
+      headers:{'Content-Type':'application/json','x-api-key':key,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},
+      body:JSON.stringify({model:'claude-sonnet-4-6',max_tokens:2000,messages:msgs})
+    });
+    var data = await resp.json();
+    var txt = (data.content||[]).map(function(c){return c.text||'';}).join('').trim()
+      .replace(/^```json\s*/,'').replace(/\s*```$/,'').trim();
+    _aiNotes = JSON.parse(txt);
+
+    // Display in preview panel
+    var panel = document.getElementById('ai-panel');
+    var output = document.getElementById('ai-output');
+    panel.style.display = 'block';
+    output.textContent = 'SCOPE OF WORK:\n' + _aiNotes.scope + '\n\n'
+      + 'GENERAL NOTES:\n' + (_aiNotes.general_notes||[]).map(function(n,i){return (i+1)+'. '+n;}).join('\n') + '\n\n'
+      + 'ELECTRICAL NOTES:\n' + (_aiNotes.electrical_notes||[]).map(function(n,i){return (i+1)+'. '+n;}).join('\n');
+
+    setStatus('AI notes generated successfully — ready to export PPTX', 'ok');
+    hideLoading();
+  } catch(e) {
+    hideLoading();
+    setStatus('AI generation failed: ' + e.message, 'error');
+    alert('AI Error: ' + e.message);
+  }
+}
+
+// ── Export PPTX ───────────────────────────────────────────────────────────────
+
+// ── BESS Area Crop ────────────────────────────────────────────────────────────
+function _cropBESSArea(dataUrl) {
+  return new Promise(function(resolve) {
+    try {
+      var img = new Image();
+      img.onload = function() {
+        var canvas = document.createElement('canvas');
+        // Crop center 40% of the image (where BESS equipment typically is)
+        var cropW = Math.round(img.width * 0.5);
+        var cropH = Math.round(img.height * 0.5);
+        var cropX = Math.round((img.width - cropW) / 2);
+        var cropY = Math.round((img.height - cropH) / 2);
+        canvas.width = cropW;
+        canvas.height = cropH;
+        var ctx = canvas.getContext('2d');
+        ctx.drawImage(img, cropX, cropY, cropW, cropH, 0, 0, cropW, cropH);
+        resolve(canvas.toDataURL('image/jpeg', 0.85));
+      };
+      img.onerror = function() { resolve(null); };
+      img.src = dataUrl;
+    } catch(e) { resolve(null); }
+  });
+}
+
+// ── AI CAD Sketch Generator ───────────────────────────────────────────────────
+async function _generateCADSketch(siteMapImg, P) {
+  var apiKey = getApiKey();
+  if (!apiKey) return null;
+  try {
+    var prompt = 'You are an engineering CAD drafter. Analyze this BESS site map image and generate a CAD-style engineering SVG overlay.'
+      + ' Draw in engineering style with:'
+      + ' - Property/parcel boundary lines (amber dashed)'
+      + ' - Building outlines (white solid)'
+      + ' - BESS equipment footprint with label (cyan solid box)'
+      + ' - Inverter/XFMR footprint (cyan)'
+      + ' - Conduit routing lines with specs (red dashed)'  
+      + ' - Bollard locations (small filled circles)'
+      + ' - Dimension callouts for equipment setbacks'
+      + ' - North arrow'
+      + ' - Legend box'
+      + ' - All text in uppercase engineering font style'
+      + ' Return ONLY a valid SVG element with viewBox="0 0 1000 700" no background fill, using stroke colors: #FFB300=property, #FFFFFF=buildings, #00BCD4=BESS, #FF5252=conduit.'
+      + ' Site: ' + (P.siteAddr||'') + ' | BESS: ' + (P.kwh||'') + 'kWh ' + (P.batMfr||'');
+
+    var resp = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': apiKey,
+        'anthropic-version': '2023-06-01',
+        'anthropic-dangerous-direct-browser-access': 'true'
+      },
+      body: JSON.stringify({
+        model: 'claude-sonnet-4-6',
+        max_tokens: 4000,
+        messages: [{
+          role: 'user',
+          content: [
+            { type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: siteMapImg.split(',')[1] } },
+            { type: 'text', text: prompt }
+          ]
+        }]
+      })
+    });
+    var data = await resp.json();
+    var txt = (data.content||[]).map(function(c){return c.text||'';}).join('').trim();
+    // Extract SVG
+    var svgMatch = txt.match(/<svg[\s\S]*<\/svg>/i);
+    if (!svgMatch) return null;
+    var svgStr = svgMatch[0];
+    // Render SVG to canvas
+    return await _svgToImage(svgStr, 1000, 700);
+  } catch(e) {
+    console.warn('CAD sketch error:', e.message);
+    return null;
+  }
+}
+
+// ── SVG to Image ──────────────────────────────────────────────────────────────
+function _svgToImage(svgStr, w, h) {
+  return new Promise(function(resolve) {
+    try {
+      var blob = new Blob([svgStr], {type: 'image/svg+xml'});
+      var url = URL.createObjectURL(blob);
+      var img = new Image();
+      img.onload = function() {
+        var canvas = document.createElement('canvas');
+        canvas.width = w; canvas.height = h;
+        var ctx = canvas.getContext('2d');
+        ctx.drawImage(img, 0, 0, w, h);
+        URL.revokeObjectURL(url);
+        resolve(canvas.toDataURL('image/png'));
+      };
+      img.onerror = function() { URL.revokeObjectURL(url); resolve(null); };
+      img.src = url;
+    } catch(e) { resolve(null); }
+  });
+}
+
+// ── Blend Images (site map + CAD overlay) ─────────────────────────────────────
+function _blendImages(baseDataUrl, overlayDataUrl) {
+  return new Promise(function(resolve) {
+    try {
+      var base = new Image();
+      base.onload = function() {
+        var overlay = new Image();
+        overlay.onload = function() {
+          var canvas = document.createElement('canvas');
+          canvas.width = base.width;
+          canvas.height = base.height;
+          var ctx = canvas.getContext('2d');
+          // Draw base site map
+          ctx.drawImage(base, 0, 0);
+          // Draw CAD overlay at 60% opacity
+          ctx.globalAlpha = 0.6;
+          ctx.drawImage(overlay, 0, 0, base.width, base.height);
+          ctx.globalAlpha = 1.0;
+          resolve(canvas.toDataURL('image/jpeg', 0.85));
+        };
+        overlay.onerror = function() { resolve(baseDataUrl); };
+        overlay.src = overlayDataUrl;
+      };
+      base.onerror = function() { resolve(null); };
+      base.src = baseDataUrl;
+    } catch(e) { resolve(null); }
+  });
+}
+
+async function exportPPTX() {
+  var btn = document.getElementById('export-btn');
+  btn.disabled = true;
+  var P = getP();
+
+  showLoading('Loading permit template...', 'Fetching the Claremont approved permit set template');
+
+  try {
+    // Load JSZip dynamically
+    if (typeof JSZip === 'undefined') {
+      await new Promise(function(res, rej) {
+        var s = document.createElement('script');
+        s.src = 'https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js';
+        s.onload = res;
+        s.onerror = function() { rej(new Error('JSZip failed to load')); };
+        document.head.appendChild(s);
+      });
+    }
+
+    // Load template via XHR from server
+    var templateBytes = await new Promise(function(resolve) {
+      var xhr = new XMLHttpRequest();
+      xhr.open('GET','/claremont_template.pptx',true);
+      xhr.responseType='arraybuffer'; xhr.timeout=45000;
+      xhr.onload = function() {
+        if (xhr.status===200 && xhr.response && xhr.response.byteLength>100000) {
+          resolve(xhr.response);
+        } else {
+          console.warn('Template XHR failed:', xhr.status, (xhr.response ? xhr.response.byteLength : 0));
+          resolve(null);
+        }
+      };
+      xhr.onerror=function(){ console.warn('XHR error'); resolve(null); };
+      xhr.ontimeout=function(){ console.warn('XHR timeout'); resolve(null); };
+      xhr.send();
+    });
+
+    if (!templateBytes) {
+      hideLoading();
+      alert('⚠️ Template not found. Make sure claremont_template.pptx is in your GitHub repo.');
+      return;
+    }
+
+    updateLoading('Processing permit set...', 'Applying your project data to all 10 slides');
+
+    var zip = await JSZip.loadAsync(templateBytes);
+
+    var reps = [
+      ['{{PROJECT_NAME}}', P.siteAddr||'[PROJECT]'],
+      ['{{SITE_ADDR}}', P.siteAddr||'[SITE ADDRESS]'],
+      ['{{CITY_STATE}}', ''],
+      ['{{APN}}', P.apn||'[APN]'],
+      ['{{GC_PHONE}}', P.gcPhone||'(815) 555-0100'],
+      ['{{GC_LIC}}', P.gcLic||'C10 #930054'],
+      ['{{EE_NAME}}', P.eeName||'[ENGINEER NAME, PE]'],
+      ['{{EE_FIRM}}', P.eeFirm||'[ENGINEERING FIRM]'],
+      ['{{EE_ADDR}}', P.eeAddr||'[FIRM ADDRESS]'],
+      ['{{EE_EMAIL}}', P.eeEmail||'[PE EMAIL]'],
+      ['{{EE_PHONE}}', P.eePhone||'[PE PHONE]'],
+      ['{{SE_NAME}}', P.seName||'[STRUCTURAL PE]'],
+      ['{{SE_FIRM}}', P.seFirm||'[SE FIRM]'],
+      ['{{SE_ADDR}}', P.seAddr||'[SE ADDRESS]'],
+      ['{{SE_EMAIL}}', P.seEmail||'[SE EMAIL]'],
+      ['{{SE_PHONE}}', P.sePhone||'[SE PHONE]'],
+      ['{{OWNER_NAME}}', P.ownerName||'[PROPERTY OWNER]'],
+      ['{{OWNER_ADDR}}', P.ownerAddr||'[OWNER ADDRESS]'],
+      ['{{BAT_MFR}}', P.batMfr||'Great Power'],
+      ['{{BAT_MODEL}}', P.batModel||'MAX-20HC-5000'],
+      ['{{INV_MFR}}', (P.invMfr||'Dynapower').toUpperCase()],
+      ['{{INV_MODEL}}', P.invModel||'CPS-1250'],
+      ['{{KWH}}', P.kwh||'5000'],
+      ['{{KW}}', P.kw||'802'],
+      ['{{DCV}}', P.dcv||'1331.2'],
+      ['{{BAT_WEIGHT}}', '49,798'],
+      ['{{INV_WEIGHT}}', '1,980'],
+      ['{{INV_AC}}', '964.6'],
+      ['{{DC_A}}', '193'],
+      ['{{JOB_NO}}', P.jobNo||'CCS-01'],
+      ['{{CHECKED_BY}}', P.checkedBy||'T.G.'],
+      ['{{DESIGNED_BY}}', P.designedBy||'T.G.'],
+      ['{{ISSUE_DATE}}', P.issueDate],
+      ['{{METER_NO}}', P.meterNo||'[METER NO.]'],
+      ['{{LAT}}', P.lat||'[LAT]'],
+      ['{{LNG}}', P.lng||'[LNG]'],
+      ['{{ZONING}}', P.zoning||'[ZONING]'],
+      ['{{UTILITY}}', P.utility||'ComEd (Commonwealth Edison)'],
+      ['{{CODES}}', P.codes||'2020 NEC, 2021 IBC, 2021 IFC, NFPA 855'],
+    ];
+
+    var slideFiles = Object.keys(zip.files).filter(function(f){return f.match(/ppt\/slides\/slide\d+\.xml$/);});
+    for (var i=0;i<slideFiles.length;i++) {
+      updateLoading('Processing slide '+(i+1)+' of '+slideFiles.length+'...','');
+      await new Promise(function(r){setTimeout(r,0);});
+      var xml = await zip.files[slideFiles[i]].async('string');
+      for (var ri=0;ri<reps.length;ri++) {
+        var tok=reps[ri][0],val=reps[ri][1]; if (xml.indexOf(tok)>=0) xml=xml.split(tok).join(val);
+      }
+      zip.file(slideFiles[i], xml);
+    }
+
+    // ── Inject site maps into plot plan slides ──────────────────────────────
+    if (_siteMapImg) {
+      updateLoading('Injecting site map into plot plan slides...','');
+      await new Promise(function(r){setTimeout(r,0);});
+
+      // Convert full site map to bytes
+      var imgData = _siteMapImg.split(',')[1];
+      var imgBytes = Uint8Array.from(atob(imgData),function(c){return c.charCodeAt(0);});
+
+      // E1.0 Plot Plan - full site map (image9.png = main drawing slot in slide2)
+      zip.file('ppt/media/image9.png', imgBytes);
+
+      // E1.1 Enlarged Plan - zoomed BESS area (crop center of image)
+      var bessImg = await _cropBESSArea(_siteMapImg);
+      if (bessImg) {
+        var bessData = bessImg.split(',')[1];
+        var bessBytes = Uint8Array.from(atob(bessData),function(c){return c.charCodeAt(0);});
+        // Slide 3 also references image9 equivalents - inject into slide3 main image
+        // Check slide3 rels for main image slot
+        var s3rels = await zip.files['ppt/slides/_rels/slide3.xml.rels'].async('string');
+        var s3imgMatch = s3rels.match(/Id="rId5"[^>]*Target="\.\.\/media\/([^"]+)"/);
+        if (s3imgMatch) {
+          zip.file('ppt/media/' + s3imgMatch[1], bessBytes);
+        } else {
+          // Fallback: use same image9 slot
+          zip.file('ppt/media/image9.png', bessBytes);
+        }
+      }
+    }
+
+    // ── AI CAD sketch for E1.0 (if API key available) ────────────────────
+    var apiKey = getApiKey();
+    if (apiKey && _siteMapImg) {
+      try {
+        updateLoading('AI generating CAD engineering sketch...','This creates the CAD overlay on E1.0');
+        await new Promise(function(r){setTimeout(r,0);});
+        var cadImg = await _generateCADSketch(_siteMapImg, P);
+        if (cadImg) {
+          // Blend CAD sketch over the site map for E1.0
+          var blended = await _blendImages(_siteMapImg, cadImg);
+          if (blended) {
+            var blData = blended.split(',')[1];
+            var blBytes = Uint8Array.from(atob(blData),function(c){return c.charCodeAt(0);});
+            zip.file('ppt/media/image9.png', blBytes);
+          }
+        }
+      } catch(cadErr) {
+        console.warn('CAD sketch failed:', cadErr.message);
+      }
+    }
+
+    updateLoading('Compressing permit set...','');
+    await new Promise(function(r){setTimeout(r,50);});
+    var outBytes = await zip.generateAsync({
+      type:'uint8array', compression:'DEFLATE', compressionOptions:{level:3},
+      onUpdate:function(meta){ if(meta.percent) updateLoading('Compressing... '+Math.round(meta.percent)+'%',''); }
+    });
+
+    var blob = new Blob([outBytes],{type:'application/vnd.openxmlformats-officedocument.presentationml.presentation'});
+    var url = URL.createObjectURL(blob);
+    var fname = ((P.siteAddr||'PermitSet').replace(/[^a-z0-9]/gi,'-')+'-ClearSky-Permit.pptx');
+    var a = document.createElement('a');
+    a.href=url; a.download=fname;
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    setTimeout(function(){URL.revokeObjectURL(url);},30000);
+
+    hideLoading();
+    setStatus('✅ Permit set downloaded: ' + fname, 'ok');
+    alert('✅ Permit Set Downloaded!\n\nFile: '+fname+'\n\nOpen in PowerPoint. Have your PE review and stamp before AHJ submission.');
+
+  } catch(e) {
+    hideLoading();
+    setStatus('Export error: '+e.message, 'error');
+    alert('Export Error:\n'+e.message);
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+// ── UI Helpers ────────────────────────────────────────────────────────────────
+function setStatus(msg, type) {
+  document.getElementById('status-text').textContent = msg;
+  var dot = document.getElementById('status-dot');
+  dot.style.background = type==='error'?'#EF4444':type==='warn'?'#F59E0B':'#22C55E';
+}
+function showLoading(text, sub) {
+  document.getElementById('loading-text').textContent = text;
+  document.getElementById('loading-sub').textContent = sub||'';
+  document.getElementById('loading').classList.add('show');
+}
+function updateLoading(text, sub) {
+  document.getElementById('loading-text').textContent = text;
+  if(sub!==undefined) document.getElementById('loading-sub').textContent = sub;
+}
+function hideLoading() {
+  document.getElementById('loading').classList.remove('show');
+}
+</script>
+</body>
+</html>
