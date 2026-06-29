@@ -8398,7 +8398,7 @@ function setProjTab(tab) {
   filterProjects();
 }
 
-function filterProjects() {
+async function filterProjects() {
   const q = (document.getElementById('proj-search') || {}).value?.toLowerCase() || '';
   const sort = (document.getElementById('proj-sort') || {}).value || 'date';
   let projects = _allProjects.slice();
@@ -8437,7 +8437,7 @@ async function openProject(id) {
   window.location.href = base + '?project=' + id;
 }
 
-function newProject() {
+async function newProject() {
   document.getElementById('new-proj-modal').style.display='flex';
   document.getElementById('np-name').focus();
 }
@@ -9170,7 +9170,7 @@ function calcProposalCosts() {
   };
 }
 
-function openProposalExport() {
+async function openProposalExport() {
   // Pre-fill fields from editor
   const addr = document.getElementById('addr-in')?.value || '';
   const proj = document.getElementById('pname')?.value || 'BESS Installation';
@@ -9203,7 +9203,7 @@ function openProposalExport() {
   document.getElementById('proposal-modal').style.display = 'block';
 }
 
-function closeProposalExport() {
+async function closeProposalExport() {
   document.getElementById('proposal-modal').style.display = 'none';
 }
 
@@ -10841,7 +10841,7 @@ function _decodeConduitsFromGeo(geoConduits, conduits, mapState) {
 
 // Persist company info in localStorage
 const BP_PREFS_KEY = 'clearsky_bp_prefs';
-function _saveBpPrefs() {
+async function _saveBpPrefs() {
   const prefs = {
     company:    document.getElementById('bp-company')?.value,
     license:    document.getElementById('bp-license')?.value,
@@ -10855,7 +10855,7 @@ function _saveBpPrefs() {
   };
   try { localStorage.setItem(BP_PREFS_KEY, JSON.stringify(prefs)); } catch(e){}
 }
-function _loadBpPrefs() {
+async function _loadBpPrefs() {
   try {
     const prefs = JSON.parse(localStorage.getItem(BP_PREFS_KEY)||'{}');
     const set = (id, val) => { if(val && document.getElementById(id)) document.getElementById(id).value = val; };
@@ -10871,7 +10871,7 @@ function _loadBpPrefs() {
   } catch(e){}
 }
 
-function openBlueprintExport() {
+async function openBlueprintExport() {
   const pname = document.getElementById('pname')?.value || 'BESS Project';
   const addr  = document.getElementById('addr-in')?.value || '';
   document.getElementById('bp-project').value = pname;
