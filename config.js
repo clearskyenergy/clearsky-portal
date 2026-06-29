@@ -8,7 +8,7 @@ window.CLEARSKY_CONFIG = {
     appId: "1:742134484347:web:ab0f95fd221536158481de"
   },
 googleMapsKey: "AIzaSyC0roZ_qMwtbVzqRLtNx9nrCeaGqrE1sNs",
-  allowedDomain: "null",
+  allowedDomain: "clearsky-usa",
   companyName: "ClearSky USA",
   portalTitle: "BESS Site Portal"
 };
