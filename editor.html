@@ -14654,12 +14654,19 @@ function _ppDrawAssembly(asm, cxA, cyA, pxPerFt){
     var c={ nw:[_fx+inset,_fy+inset], ne:[_fx+_fw-inset,_fy+inset], se:[_fx+_fw-inset,_fy+_fh-inset], sw:[_fx+inset,_fy+_fh-inset] };
     var be={ n:[c.nw,c.ne], e:[c.ne,c.se], s:[c.se,c.sw], w:[c.sw,c.nw] };
     var sk2=['n','e','s','w'];
+    var MIN_SP=8;                                 /* min px between export bollards */
+    var br2=Math.max(1, Math.min(2.2, sp*0.22));  /* radius scales with spacing */
     for(var bqi=0;bqi<sk2.length;bqi++){
       if(hasB(sides[sk2[bqi]])){
         var seg=be[sk2[bqi]]; var a=seg[0], b=seg[1];
         var dx=b[0]-a[0], dy=b[1]-a[1]; var len=Math.sqrt(dx*dx+dy*dy);
         var steps=Math.max(1,Math.round(len/sp));
-        for(var st=0;st<=steps;st++){ var t=st/steps; s+='<circle cx="'+(a[0]+dx*t)+'" cy="'+(a[1]+dy*t)+'" r="3" fill="#1a1a1a"/>'; }
+        var onSp=len/steps;
+        var thin2=1; if(onSp<MIN_SP){ thin2=Math.ceil(MIN_SP/Math.max(1,onSp)); }
+        for(var st=0;st<=steps;st++){
+          if(thin2>1 && (st%thin2!==0) && st!==steps) continue;   /* keep endpoints */
+          var t=st/steps; s+='<circle cx="'+(a[0]+dx*t)+'" cy="'+(a[1]+dy*t)+'" r="'+br2.toFixed(2)+'" fill="#1a1a1a"/>';
+        }
       }
     }
   }
@@ -14674,8 +14681,18 @@ function _ppDrawAssembly(asm, cxA, cyA, pxPerFt){
       var isBess=(p.key==='bess');
       s+='<rect x="'+x+'" y="'+y+'" width="'+w+'" height="'+h+'" fill="none" stroke="#1a1a1a" stroke-width="'+(isPad?1.5:1)+'"/>';
       if(!isPad){ s+='<rect x="'+(x+3)+'" y="'+(y+3)+'" width="'+Math.max(0,w-6)+'" height="'+Math.max(0,h-6)+'" fill="none" stroke="#1a1a1a" stroke-width="0.4" stroke-dasharray="2,2"/>'; }
-      s+='<text x="'+pcx+'" y="'+(pcy+3)+'" font-size="'+(isPad?9:(isBess?8:7))+'" fill="#1a1a1a" text-anchor="middle" font-weight="'+(isPad||isBess?700:400)+'">'+(p.label||p.key)+'</text>';
-      if(isPad){ s+='<text x="'+pcx+'" y="'+(pcy+14)+'" font-size="6.5" fill="#555" text-anchor="middle">'+p.lf+"' x "+p.wf+"'</text>"; }
+      /* Label only if the box is large enough to hold readable text; otherwise
+         leave it clean (the S1.1/S1.2 detail sheets carry the callouts). Font
+         scales down to fit narrow gear boxes so labels never overrun/overlap. */
+      var lbl=(p.label||p.key);
+      var baseFs=(isPad?9:(isBess?8:7));
+      /* estimate text width ~0.55*fontSize per char; shrink font to fit box width */
+      var fitFs=Math.min(baseFs, (w-4)/Math.max(1,(lbl.length*0.55)));
+      var minFs=(isPad||isBess)?5:4.5;
+      if(fitFs>=minFs && h>=fitFs+2){
+        s+='<text x="'+pcx+'" y="'+(pcy+fitFs*0.35)+'" font-size="'+fitFs.toFixed(1)+'" fill="#1a1a1a" text-anchor="middle" font-weight="'+(isPad||isBess?700:400)+'">'+lbl+'</text>';
+      }
+      if(isPad && w>60){ s+='<text x="'+pcx+'" y="'+(pcy+14)+'" font-size="6.5" fill="#555" text-anchor="middle">'+p.lf+"' x "+p.wf+"'</text>"; }
     }
   }
   s+='</g>';
