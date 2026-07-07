@@ -840,6 +840,13 @@ window.onerror = function(msg, src, line, col, err) {
     </div>
     <div class="rpanel">
       <div class="rpanel-body">
+        <button class="rbtn" onclick="startCal()" title="Set the real-world scale: trace a known length (parking stall = 18ft, door = 3ft) so equipment drops at the correct size"><span class="rb-ico">📏</span><span class="rb-lbl">Calibrate<br>Scale</span></button>
+        <button class="rbtn" onclick="clearScale()" title="Clear the current scale calibration"><span class="rb-ico">⊘</span><span class="rb-lbl">Clear<br>Scale</span></button>
+      </div>
+      <div class="rpanel-cap">Scale</div>
+    </div>
+    <div class="rpanel">
+      <div class="rpanel-body">
         <button class="rbtn" onclick="rbRun(clearAll)"><span class="rb-ico">⊘</span><span class="rb-lbl">Clear<br>All</span></button>
       </div>
       <div class="rpanel-cap">Reset</div>
