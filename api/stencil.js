@@ -14,11 +14,15 @@
 // RESPONSE (JSON):       { "image": "data:image/png;base64,...." }  or  { "error": "..." }
 
 const DEFAULT_PROMPT =
-  'Convert this satellite/aerial photo into a clean black-and-white engineering ' +
-  'site-plan stencil, like a hand-drafted CAD line drawing. Keep crisp black ' +
-  'outlines for buildings, rooftops, roads, driveways, parking lots and stalls, ' +
-  'sidewalks, curbs, and property lines on a plain white background. Omit grass, ' +
-  'trees, landscaping, shadows, cars, and color. Line-art only, no shading, no text labels.';
+  'Redraw this satellite/aerial photo as a PURE BLACK-AND-WHITE LINE DRAWING - ' +
+  'a vector-style CAD site plan. Use ONLY solid black outlines (1-2px strokes) on ' +
+  'a PURE WHITE (#FFFFFF) background. Two-tone only: black lines, white fill, NO ' +
+  'gray tones, NO shading, NO gradients, NO photographic texture. Trace edges of ' +
+  'buildings/rooftops, road and driveway edges, parking lot outlines and stall ' +
+  'lines, sidewalks, curbs, and property lines. Interiors stay white - do not fill ' +
+  'with gray or black. Omit grass, trees, landscaping, shadows, cars, and color. ' +
+  'Result should look like a hand-inked engineering site plan, not a grayscale ' +
+  'photo. Outlines only, no text labels.';
 
 module.exports = async function handler(req, res) {
   // CORS: allow the tool (any origin) to call this proxy.
