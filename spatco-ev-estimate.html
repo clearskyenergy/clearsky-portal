@@ -1,0 +1,494 @@
+<!DOCTYPE html>
+<!--
+  ClearSky-OMEGA · SPATCO EV Estimate Builder
+  Platform IP: ClearSky Energy Solutions LLC. Customer-facing exports branded to SPATCO Energy Solutions.
+  Generates SPATCO-format EV charging installation estimates with AI-assisted
+  scope generation and drag-to-reorder scope editing. ES5, single-file.
+-->
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SPATCO EV Estimate Builder · ClearSky-OMEGA</title>
+<style>
+  :root{
+    --ink:#1a1a1a; --sub:#666; --line:#d9d9d9; --line2:#bfbfbf;
+    --shade:#ececec; --hl:#fff3b0; --blue:#1b4f8a; --teal:#00889e;
+    --bg:#f4f5f6; --panel:#fff; --accent:#00a9a4; --danger:#c0392b;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Arial,sans-serif;background:var(--bg);color:var(--ink);font-size:14px}
+  .topbar{height:54px;background:#08384f;display:flex;align-items:center;padding:0 20px;gap:14px;color:#fff}
+  .topbar a{color:#cfe6ea;text-decoration:none;font-size:13px}
+  .topbar .t-title{font-weight:700;letter-spacing:.02em}
+  .topbar .t-sub{margin-left:auto;font-size:11px;color:#8fb9c4}
+  .wrap{display:grid;grid-template-columns:420px 1fr;gap:0;height:calc(100vh - 54px)}
+  .controls{background:var(--panel);border-right:1px solid var(--line);overflow-y:auto;padding:18px}
+  .preview{overflow-y:auto;padding:28px;background:#e9ebed}
+
+  h2.sec{font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--blue);margin:22px 0 10px;padding-bottom:5px;border-bottom:1px solid var(--line)}
+  h2.sec:first-child{margin-top:0}
+  label{display:block;font-size:11px;font-weight:600;color:var(--sub);margin:10px 0 4px}
+  input[type=text],input[type=number],textarea,select{width:100%;padding:8px 10px;border:1px solid var(--line2);border-radius:6px;font-size:13px;font-family:inherit;background:#fff}
+  textarea{resize:vertical;min-height:60px;line-height:1.4}
+  .row2{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+  .row3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px}
+
+  .btn{border:none;border-radius:7px;padding:9px 14px;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit}
+  .btn-primary{background:linear-gradient(135deg,var(--blue),var(--teal));color:#fff}
+  .btn-ai{background:linear-gradient(135deg,#00889e,#00a9a4);color:#fff;width:100%;margin-top:10px}
+  .btn-ai:disabled{opacity:.6;cursor:wait}
+  .btn-ghost{background:#eef1f2;color:var(--ink);border:1px solid var(--line2)}
+  .btn-sm{padding:5px 9px;font-size:11px}
+  .btn-add{background:#eafaf9;color:#00776f;border:1px dashed var(--accent);width:100%;margin-top:8px}
+
+  /* Scope location blocks */
+  .loc-block{border:1px solid var(--line2);border-radius:8px;margin-top:12px;overflow:hidden}
+  .loc-head{background:#f0f7f9;padding:8px 10px;display:flex;align-items:center;gap:8px}
+  .loc-head input{flex:1;font-weight:600;border:1px solid transparent;background:transparent;padding:4px 6px}
+  .loc-head input:focus{border-color:var(--line2);background:#fff}
+  .loc-body{padding:8px}
+  .scope-item{display:flex;align-items:flex-start;gap:6px;padding:5px;border-radius:5px;background:#fafbfb;margin-bottom:4px;cursor:grab}
+  .scope-item.dragging{opacity:.4}
+  .scope-item.over{outline:2px dashed var(--accent);outline-offset:-2px}
+  .scope-grip{color:#bbb;font-size:14px;line-height:1.5;user-select:none;padding-top:2px}
+  .scope-item textarea{border:1px solid transparent;background:transparent;min-height:22px;padding:2px 4px;font-size:12.5px}
+  .scope-item textarea:focus{border-color:var(--line2);background:#fff}
+  .scope-del{color:var(--danger);background:none;border:none;cursor:pointer;font-size:15px;line-height:1;padding:2px 5px}
+  .scope-indent{margin-left:22px}
+
+  /* pricing rows */
+  .price-row{display:grid;grid-template-columns:1fr 110px 30px;gap:6px;align-items:center;margin-bottom:6px}
+  .price-row input[type=text]{font-size:12.5px}
+  .price-row input[type=number]{text-align:right}
+
+  .hint{font-size:10.5px;color:var(--sub);line-height:1.4;margin-top:5px}
+  .ai-note{background:#fff8e6;border:1px solid #f0d98a;border-radius:6px;padding:8px 10px;font-size:11px;color:#8a6d1a;line-height:1.45;margin-top:8px}
+
+  /* ============ ESTIMATE DOCUMENT (matches SPATCO PDF) ============ */
+  .doc{background:#fff;width:850px;margin:0 auto;padding:48px 54px;box-shadow:0 2px 14px rgba(0,0,0,.12);font-size:13px;color:#1a1a1a;line-height:1.5}
+  .doc-head{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:26px}
+  .doc-logo img{height:64px}
+  .doc-logo .logo-fallback{font-size:26px;font-weight:800;color:var(--blue);letter-spacing:-1px}
+  .doc-logo .logo-fallback span{color:var(--teal)}
+  .est-table{border-collapse:collapse}
+  .est-table th,.est-table td{border:1px solid #333;padding:5px 16px;text-align:center;font-size:12px}
+  .est-table th{background:#fff;font-weight:700;letter-spacing:.03em}
+  .cust-row{display:grid;grid-template-columns:1fr 1fr;gap:30px;margin-bottom:22px}
+  .cust-label{font-weight:700;font-size:11px;letter-spacing:.04em;background:var(--shade);padding:4px 8px;margin-bottom:6px}
+  .box-title{font-weight:700;font-size:11px;letter-spacing:.04em;background:var(--shade);padding:5px 9px;border:1px solid var(--line2);margin:22px 0 0}
+  .box-body{border:1px solid var(--line2);border-top:none;padding:14px 18px}
+  .scope-title{font-weight:700;font-size:14px;margin:0 0 8px}
+  .doc ul{margin:0 0 14px;padding-left:22px}
+  .doc ul ul{margin:2px 0}
+  .doc li{margin-bottom:2px}
+  .excl-hl{background:var(--hl);padding:1px 2px}
+  .ptable{width:100%;border-collapse:collapse;margin-top:22px}
+  .ptable th{background:var(--shade);text-align:left;padding:6px 8px;font-size:12px;border-bottom:1px solid #333}
+  .ptable th.r,.ptable td.r{text-align:right}
+  .ptable td{padding:5px 8px;border-bottom:1px solid var(--line);font-size:12.5px}
+  .ptotal{text-align:right;font-weight:700;font-size:14px;margin-top:14px}
+  .approval{border:1px solid var(--line2);margin-top:28px}
+  .approval .box-title{margin:0;border:none;border-bottom:1px solid var(--line2)}
+  .approval-body{padding:16px 18px;font-size:12.5px;line-height:2.4}
+  .std-excl{font-size:10.5px;color:#333;line-height:1.5;margin-top:22px}
+  .doc-foot{text-align:center;font-size:9.5px;color:#888;font-style:italic;margin-top:30px;border-top:1px solid var(--line);padding-top:10px}
+  @media print{
+    .topbar,.controls{display:none}
+    .wrap{display:block;height:auto}
+    .preview{padding:0;background:#fff;overflow:visible}
+    .doc{box-shadow:none;width:auto;margin:0}
+  }
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <a href="/">&larr; Portal</a>
+  <span class="t-title">SPATCO &middot; EV Estimate Builder</span>
+  <span class="t-sub">Powered by ClearSky-OMEGA</span>
+</div>
+
+<div class="wrap">
+  <!-- ═══════════ CONTROLS ═══════════ -->
+  <div class="controls">
+
+    <h2 class="sec">Estimate Details</h2>
+    <div class="row3">
+      <div><label>Estimate #</label><input type="text" id="est-num" value="1940" oninput="render()"></div>
+      <div><label>Date</label><input type="text" id="est-date" value="07/07/2026" oninput="render()"></div>
+      <div><label>Expires</label><input type="text" id="est-exp" value="08/07/2026" oninput="render()"></div>
+    </div>
+
+    <h2 class="sec">Customer</h2>
+    <label>Customer name</label>
+    <input type="text" id="cust-name" value="West Wynwood Group" oninput="render()">
+    <label>Service address</label>
+    <textarea id="cust-addr" oninput="render()">771 Northwest 29th Street
+Miami, FL 33127</textarea>
+
+    <h2 class="sec">Project Basis (for AI scope)</h2>
+    <div class="row2">
+      <div><label>Chargers now</label><input type="number" id="pb-now" value="4" oninput="0"></div>
+      <div><label>Future chargers</label><input type="number" id="pb-future" value="8" oninput="0"></div>
+    </div>
+    <div class="row2">
+      <div><label>Charger model</label><input type="text" id="pb-model" value="Tesla V4 Fast Charger" oninput="0"></div>
+      <div><label># Locations</label><input type="number" id="pb-locs" value="2" oninput="0"></div>
+    </div>
+    <div class="row2">
+      <div><label>Service size (A)</label><input type="number" id="pb-amps" value="1800" oninput="0"></div>
+      <div><label>Voltage</label><input type="text" id="pb-volt" value="277/480V" oninput="0"></div>
+    </div>
+    <label>Extra context for the AI (optional)</label>
+    <textarea id="pb-notes" placeholder="e.g. Tesla Power Cabinets, pole lights, EV striping, utility transformer pad required..."></textarea>
+
+    <button class="btn btn-ai" id="ai-btn" onclick="aiGenerateScope()">✨ Generate scope with AI</button>
+    <div class="ai-note"><b>AI drafts the scope of work</b> in SPATCO's estimate voice. Review every line before sending — the AI does <b>not</b> set prices. You confirm all pricing below.</div>
+
+    <h2 class="sec">Scope of Work <button class="btn btn-ghost btn-sm" style="float:right" onclick="addLocation()">+ Location</button></h2>
+    <div id="scope-editor"><!-- location blocks --></div>
+    <div class="hint">Drag the ⋮⋮ handle to reorder items. Click any line to edit. Indented lines are sub-items.</div>
+
+    <h2 class="sec">Exclusions</h2>
+    <div id="excl-editor"></div>
+    <button class="btn btn-add" onclick="addExclusion()">+ Add exclusion</button>
+
+    <h2 class="sec">Pricing <span class="hint" style="font-weight:400;text-transform:none">— you set every figure</span></h2>
+    <div id="price-editor"></div>
+    <button class="btn btn-add" onclick="addPriceRow()">+ Add line item</button>
+
+    <h2 class="sec">Footer</h2>
+    <label>Company footer line (editable)</label>
+    <textarea id="foot-line">SPATCO Energy Solutions · 301 McCullough Dr., Suite 500, Charlotte, NC 28262 · (704) 596-4373</textarea>
+    <div class="hint">Defaults to the Charlotte HQ. Switch to a branch address per proposal if needed.</div>
+
+    <div style="margin-top:22px;display:flex;gap:8px">
+      <button class="btn btn-primary" style="flex:1" onclick="window.print()">Print / Save PDF</button>
+    </div>
+  </div>
+
+  <!-- ═══════════ PREVIEW ═══════════ -->
+  <div class="preview">
+    <div class="doc" id="doc"><!-- rendered --></div>
+  </div>
+</div>
+
+<script>
+/* ═══════════════════════════════════════════════════════════════════════
+   STATE
+   ═══════════════════════════════════════════════════════════════════════ */
+var STATE = {
+  locations: [],   // [{ title, items:[{text, indent}] }]
+  exclusions: [],
+  prices: []       // [{ label, amount }]
+};
+
+/* ---- SPATCO seed data (from their actual estimate) ---- */
+function seedData(){
+  STATE.locations = [
+    { title: 'Preliminary Proposal for the Installation of (4) Tesla V4 Fast Chargers and (8) Future Tesla V4 Fast Chargers (Location 1)',
+      items: scopeSeed() },
+    { title: 'Preliminary Proposal for the Installation of (4) Tesla V4 Fast Chargers and (8) Future Tesla V4 Fast Chargers (Location 2)',
+      items: scopeSeed() }
+  ];
+  STATE.exclusions = [
+    { text: 'This is a preliminary proposal only that is based on the initial site design and is subject to change based on the final site design', hl:true },
+    { text:'Proposal is subject to change based on the utility and/or AHJ requirements'},
+    { text:'Utility transformer, transformer install, transformer pad and secondary connections'},
+    { text:'Provide or install the utility primary wire & conduit'},
+    { text:'Concrete work, paving, or grading outside of the stated SOW'},
+    { text:'Tree relocate/remove'}, { text:'Irrigation replace/repair'},
+    { text:'Permanent or temporary fencing'}, { text:'New or replace landscape'},
+    { text:'Boring at any location'}, { text:'Silt fence or any other erosion control measures'},
+    { text:'Any work or permits outside of the stated SOW'}
+  ];
+  STATE.prices = [
+    { label:'Install & Material Loc 1', amount:301685 },
+    { label:'Install & Material Loc 2', amount:301685 },
+    { label:'Tesla V3 Cabinet & V4 Posts (4) Loc 1', amount:273750 },
+    { label:'Tesla V3 Cabinet & V4 Posts (4) Loc 2', amount:273750 },
+    { label:'Utility Coordination', amount:5000 },
+    { label:'Engineered Drawings (Electrical)', amount:20995 },
+    { label:'Design Development (3 Lots)', amount:19500 }
+  ];
+}
+function scopeSeed(){
+  return [
+    {text:'Trenching as needed for all underground conduits',indent:0},
+    {text:'Install Utility transformer pad',indent:0},
+    {text:'Installation of (6) 4" conduits with (4) 500 MCM AL conductors from utility transformer secondary location to new service location',indent:0},
+    {text:'Installation of 1800 Amp Service',indent:0},
+    {text:'Concrete Pad for new MDP',indent:1},
+    {text:'New 1800 AMP 277/480V MDP',indent:1},
+    {text:'Installation of concrete pads for (3) Tesla Power Cabinets',indent:0},
+    {text:'Installation of (5) concrete bollards to protect service equipment',indent:0},
+    {text:'Installation of (1) Tesla Power cabinets',indent:0},
+    {text:'Installation of (12) concrete pads for Tesla V4 posts (8 for future installation)',indent:0},
+    {text:'Installation of (23) concrete filled bollards for equipment protection',indent:0},
+    {text:'Installation of (4) Tesla V4 posts',indent:0},
+    {text:'Striping and stenciling of EV parking areas',indent:0},
+    {text:'Installation of (4) pole lights',indent:0},
+    {text:'Engineered Drawings',indent:0},
+    {text:'Utility coordination',indent:0},
+    {text:'Permits and inspections for the stated SOW',indent:0}
+  ];
+}
+
+var STD_EXCL = 'STANDARD EXCLUSIONS: The following items are not included in the above price unless otherwise specified in the above quote. Trenching/Excavating, Concrete Pads For Equipment, Transformer & Pole Bases, Painting of Any & All Electrical Items, Any Re-work Of Existing Circuits, Anything Pertaining To Telephone/Data/Fire Alarm/CCTV/CATV/Intrusion Alarm, Asphalt/Concrete Cutting And Patching, Dumpster Charges, Liquidated Damages Due To Other Trades Not Completing Their Work Before Us In A Timely Manner, Lighting Protection, Overtime, Haul Off, Demo Or Relocate Of Existing Site Utilities, Excavation, Removal and/or Haul Off Of Rock, If Rock Is Encountered There Will Be A Minimum $1,000.00 Charge & From That Point On It Will Be $2500.00 Per Cubic Yard, (when normal digging is no longer possible with an 8k mini-ex; with an 18 inch bucket), Saw Cutting, Concrete/Asphalt Or Boring, Variable Frequency Drives, All Temporary Generators And Fuel For Temp Power, Primary Utility Pad, Pipe, Wire Or Charges By Utility Company, Arc Flash Study, Pole Lights, Fire Proofing, Sod, Painting Sheetrock And Bonds. If this submitted proposal is more than 20% of second responsible bid, we reserve the right to withdraw our proposal at any time without penalty.';
+
+/* ═══════════════════════════════════════════════════════════════════════
+   SCOPE EDITOR + DRAG REORDER
+   ═══════════════════════════════════════════════════════════════════════ */
+function renderScopeEditor(){
+  var box = document.getElementById('scope-editor');
+  box.innerHTML = '';
+  STATE.locations.forEach(function(loc, li){
+    var block = document.createElement('div');
+    block.className = 'loc-block';
+    var head = document.createElement('div');
+    head.className = 'loc-head';
+    var ti = document.createElement('input');
+    ti.type='text'; ti.value=loc.title;
+    ti.oninput = function(){ loc.title = ti.value; render(); };
+    var del = document.createElement('button');
+    del.className='scope-del'; del.innerHTML='&times;'; del.title='Remove location';
+    del.onclick = function(){ STATE.locations.splice(li,1); renderScopeEditor(); render(); };
+    head.appendChild(ti); head.appendChild(del);
+    block.appendChild(head);
+
+    var body = document.createElement('div');
+    body.className='loc-body';
+    body.setAttribute('data-loc', li);
+    loc.items.forEach(function(it, ii){
+      body.appendChild(scopeItemEl(li, ii, it));
+    });
+    var addBtn = document.createElement('button');
+    addBtn.className='btn btn-add btn-sm'; addBtn.textContent='+ Add scope line';
+    addBtn.onclick = function(){ loc.items.push({text:'',indent:0}); renderScopeEditor(); render(); };
+    body.appendChild(addBtn);
+    block.appendChild(body);
+    box.appendChild(block);
+  });
+}
+
+var dragCtx = null;
+function scopeItemEl(li, ii, it){
+  var row = document.createElement('div');
+  row.className = 'scope-item' + (it.indent?' scope-indent':'');
+  row.draggable = true;
+  row.setAttribute('data-li', li); row.setAttribute('data-ii', ii);
+
+  var grip = document.createElement('span');
+  grip.className='scope-grip'; grip.innerHTML='&#8942;&#8942;';
+
+  var ta = document.createElement('textarea');
+  ta.value = it.text; ta.rows=1;
+  ta.oninput = function(){ it.text = ta.value; autosize(ta); render(); };
+
+  var ind = document.createElement('button');
+  ind.className='btn-sm'; ind.style.cssText='background:none;border:none;color:#999;cursor:pointer;font-size:13px';
+  ind.innerHTML = it.indent? '&#8592;' : '&#8594;'; ind.title = it.indent?'Outdent':'Indent';
+  ind.onclick = function(){ it.indent = it.indent?0:1; renderScopeEditor(); render(); };
+
+  var del = document.createElement('button');
+  del.className='scope-del'; del.innerHTML='&times;';
+  del.onclick = function(){ STATE.locations[li].items.splice(ii,1); renderScopeEditor(); render(); };
+
+  row.appendChild(grip); row.appendChild(ta); row.appendChild(ind); row.appendChild(del);
+  setTimeout(function(){ autosize(ta); }, 0);
+
+  row.addEventListener('dragstart', function(e){ dragCtx={li:li,ii:ii}; row.classList.add('dragging'); e.dataTransfer.effectAllowed='move'; });
+  row.addEventListener('dragend', function(){ row.classList.remove('dragging'); });
+  row.addEventListener('dragover', function(e){ e.preventDefault(); row.classList.add('over'); });
+  row.addEventListener('dragleave', function(){ row.classList.remove('over'); });
+  row.addEventListener('drop', function(e){
+    e.preventDefault(); row.classList.remove('over');
+    if(!dragCtx) return;
+    var from = STATE.locations[dragCtx.li].items.splice(dragCtx.ii,1)[0];
+    var tgtLi = parseInt(row.getAttribute('data-li'),10);
+    var tgtIi = parseInt(row.getAttribute('data-ii'),10);
+    STATE.locations[tgtLi].items.splice(tgtIi,0,from);
+    dragCtx=null; renderScopeEditor(); render();
+  });
+  return row;
+}
+function autosize(ta){ ta.style.height='auto'; ta.style.height=(ta.scrollHeight)+'px'; }
+
+function addLocation(){
+  var n = STATE.locations.length + 1;
+  STATE.locations.push({ title:'Scope — Location '+n, items:[{text:'',indent:0}] });
+  renderScopeEditor(); render();
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+   EXCLUSIONS + PRICING EDITORS
+   ═══════════════════════════════════════════════════════════════════════ */
+function renderExclEditor(){
+  var box=document.getElementById('excl-editor'); box.innerHTML='';
+  STATE.exclusions.forEach(function(ex, i){
+    var r=document.createElement('div'); r.className='scope-item';
+    var ta=document.createElement('textarea'); ta.value=ex.text; ta.rows=1;
+    ta.oninput=function(){ ex.text=ta.value; autosize(ta); render(); };
+    var del=document.createElement('button'); del.className='scope-del'; del.innerHTML='&times;';
+    del.onclick=function(){ STATE.exclusions.splice(i,1); renderExclEditor(); render(); };
+    r.appendChild(ta); r.appendChild(del); box.appendChild(r);
+    setTimeout(function(){autosize(ta);},0);
+  });
+}
+function addExclusion(){ STATE.exclusions.push({text:''}); renderExclEditor(); render(); }
+
+function renderPriceEditor(){
+  var box=document.getElementById('price-editor'); box.innerHTML='';
+  STATE.prices.forEach(function(p, i){
+    var r=document.createElement('div'); r.className='price-row';
+    var lab=document.createElement('input'); lab.type='text'; lab.value=p.label;
+    lab.oninput=function(){ p.label=lab.value; render(); };
+    var amt=document.createElement('input'); amt.type='number'; amt.value=p.amount;
+    amt.oninput=function(){ p.amount=parseFloat(amt.value)||0; render(); };
+    var del=document.createElement('button'); del.className='scope-del'; del.innerHTML='&times;';
+    del.onclick=function(){ STATE.prices.splice(i,1); renderPriceEditor(); render(); };
+    r.appendChild(lab); r.appendChild(amt); r.appendChild(del); box.appendChild(r);
+  });
+}
+function addPriceRow(){ STATE.prices.push({label:'New line item',amount:0}); renderPriceEditor(); render(); }
+
+/* ═══════════════════════════════════════════════════════════════════════
+   AI SCOPE GENERATION  (Claude API — drafts scope only, never prices)
+   ═══════════════════════════════════════════════════════════════════════ */
+function aiGenerateScope(){
+  var btn=document.getElementById('ai-btn');
+  btn.disabled=true; btn.textContent='✨ Generating scope…';
+
+  var now=val('pb-now'), fut=val('pb-future'), model=val('pb-model'),
+      locs=parseInt(val('pb-locs'),10)||1, amps=val('pb-amps'), volt=val('pb-volt'),
+      notes=val('pb-notes');
+
+  var prompt =
+    'You are an estimator at SPATCO Energy Solutions, a turnkey EV charging infrastructure installer. '+
+    'Generate the SCOPE OF WORK (inclusions) for an EV charger installation estimate, in SPATCO\'s style. '+
+    'Project: install '+now+' '+model+' now plus '+fut+' future units, across '+locs+' location(s), '+
+    'with '+amps+'A '+volt+' electrical service. '+(notes?('Additional context: '+notes+'. '):'')+
+    'Write realistic, specific electrical/construction scope lines like a real contractor estimate: '+
+    'trenching, conduit runs with conductor specs (e.g. 4" conduits with 500 MCM AL conductors), '+
+    'service/MDP with breaker schedule, concrete pads, bollards, Tesla Power Cabinets, charger posts, '+
+    'striping, pole lights, engineered drawings, utility coordination, permits. '+
+    'Return ONLY valid JSON, no markdown, no preamble, in this exact shape: '+
+    '{"scope":[{"text":"line","indent":0}]} where indent is 0 for main items and 1 for sub-items '+
+    '(like breaker details under a service). Do NOT include any prices or dollar amounts. '+
+    'Aim for 14-20 lines that read like a professional preliminary EV install proposal.';
+
+  fetch('https://api.anthropic.com/v1/messages', {
+    method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({ model:'claude-sonnet-4-6', max_tokens:1000,
+      messages:[{role:'user', content:prompt}] })
+  }).then(function(r){ return r.json(); }).then(function(data){
+    var text = (data.content||[]).map(function(b){ return b.type==='text'?b.text:''; }).join('');
+    text = text.replace(/```json/g,'').replace(/```/g,'').trim();
+    var parsed = JSON.parse(text);
+    var items = parsed.scope || [];
+    // Apply to every location (so multi-location estimates share the generated scope)
+    var title = 'Preliminary Proposal for the Installation of ('+now+') '+model+
+                (parseInt(fut,10)>0?(' and ('+fut+') Future '+model):'');
+    STATE.locations = [];
+    for(var L=1; L<=locs; L++){
+      STATE.locations.push({ title: title+' (Location '+L+')',
+        items: items.map(function(it){ return {text:it.text, indent:it.indent?1:0}; }) });
+    }
+    renderScopeEditor(); render();
+    btn.disabled=false; btn.textContent='✨ Generate scope with AI';
+  }).catch(function(err){
+    btn.disabled=false; btn.textContent='✨ Generate scope with AI';
+    alert('Scope generation failed: '+(err&&err.message?err.message:err)+'\n\nYou can still build the scope manually below.');
+  });
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+   DOCUMENT RENDER  (matches SPATCO estimate PDF)
+   ═══════════════════════════════════════════════════════════════════════ */
+function money(v){ return '$'+(Number(v)||0).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2}); }
+function esc(s){ return (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+function val(id){ var e=document.getElementById(id); return e?e.value:''; }
+
+function scopeListHTML(items){
+  // build nested list respecting indent (0 = top, 1 = sub)
+  var html='<ul>'; var open=false;
+  for(var i=0;i<items.length;i++){
+    var it=items[i];
+    if(it.indent===1){
+      if(!open){ html+='<ul>'; open=true; }
+      html+='<li>'+esc(it.text)+'</li>';
+    } else {
+      if(open){ html+='</ul>'; open=false; }
+      html+='<li>'+esc(it.text)+'</li>';
+    }
+  }
+  if(open) html+='</ul>';
+  html+='</ul>';
+  return html;
+}
+
+function render(){
+  var total=0; STATE.prices.forEach(function(p){ total+=Number(p.amount)||0; });
+
+  var h='';
+  // header
+  h+='<div class="doc-head">'+
+       '<div class="doc-logo"><img src="/spatco-logo.jpg" alt="SPATCO Energy Solutions" onerror="this.outerHTML=\'<div class=\\\'logo-fallback\\\'>SPAT<span>CO</span></div>\'"></div>'+
+       '<table class="est-table"><tr><th>ESTIMATE #</th><th>DATE</th><th>EXPIRES</th></tr>'+
+       '<tr><td>'+esc(val('est-num'))+'</td><td>'+esc(val('est-date'))+'</td><td>'+esc(val('est-exp'))+'</td></tr></table>'+
+     '</div>';
+  // customer + service address
+  h+='<div class="cust-row"><div><div class="cust-label">CUSTOMER</div>'+esc(val('cust-name'))+'</div>'+
+     '<div><div class="cust-label">SERVICE ADDRESS</div>'+esc(val('cust-addr')).replace(/\n/g,'<br>')+'</div></div>';
+
+  // inclusions
+  h+='<div class="box-title">INCLUSIONS</div><div class="box-body">';
+  STATE.locations.forEach(function(loc){
+    h+='<div class="scope-title">'+esc(loc.title)+'</div>';
+    h+=scopeListHTML(loc.items);
+  });
+  h+='</div>';
+
+  // exclusions
+  h+='<div class="box-title">EXCLUSIONS</div><div class="box-body"><ul>';
+  STATE.exclusions.forEach(function(ex){
+    h+='<li>'+(ex.hl?'<span class="excl-hl">'+esc(ex.text)+'</span>':esc(ex.text))+'</li>';
+  });
+  h+='</ul></div>';
+
+  // pricing table
+  h+='<table class="ptable"><tr><th>Item</th><th class="r">Total</th></tr>';
+  STATE.prices.forEach(function(p){
+    h+='<tr><td>'+esc(p.label)+'</td><td class="r">'+money(p.amount)+'</td></tr>';
+  });
+  h+='</table>';
+  h+='<div class="ptotal">Subtotal: '+money(total)+'</div>';
+  h+='<div class="ptotal">Total&nbsp;&nbsp;'+money(total)+'</div>';
+
+  // approval
+  h+='<div class="approval"><div class="box-title">APPROVAL</div><div class="approval-body">'+
+     'This Estimate has been accepted on ________________ by ________________<br>'+
+     'Signature: ______________________________________________</div></div>';
+
+  // standard exclusions
+  h+='<div class="std-excl">'+esc(STD_EXCL)+'</div>';
+  h+='<div class="std-excl" style="margin-top:14px">SPATCO Energy Solutions is NOT responsible for locating or damage to privately owned utilities not located by the owner.</div>';
+
+  // footer
+  h+='<div class="doc-foot">'+esc(val('foot-line')).replace(/\n/g,'<br>')+'<br>Powered by ClearSky-OMEGA</div>';
+
+  document.getElementById('doc').innerHTML = h;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+   BOOT
+   ═══════════════════════════════════════════════════════════════════════ */
+seedData();
+renderScopeEditor();
+renderExclEditor();
+renderPriceEditor();
+render();
+</script>
+</body>
+</html>
