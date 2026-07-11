@@ -2926,7 +2926,7 @@ const _CFG = {
 };
 
 // -- FIREBASE INIT ---------------------------------------------
-var _app, _db, _auth, _currentUser = null, _projectId = null;
+var _app, _db, _auth, _currentUser = null, _projectId = null, _loadReady = true;
 
 function _initFirebase() {
   try {
@@ -13681,6 +13681,7 @@ async function saveProject(){
     showBanner('wiz','!! Sign in with Google to save your project -- click Sign In above');
     return;
   }
+  if(!_loadReady){ console.warn('Save blocked -- project still loading'); return; }
   _setSaved('saving');
   try{
     const name=document.getElementById('pname')?.value.trim()||'Untitled';
@@ -13825,6 +13826,10 @@ async function saveProject(){
 
 async function _loadProject(id){
   if(!_db){ console.warn('DB not ready'); return; }
+  // Block all saves until doRender() has repopulated S.elements/S.shapes.
+  // Prevents autosave/manual-save from overwriting real data with empty arrays
+  // during the ~1s window before delayed render runs (Google-satellite projects).
+  _loadReady = false;
   // Show loading indicator in project name area
   const pnameEl = document.getElementById('pname');
   const ptitleEl = document.getElementById('pn-title');
@@ -13951,6 +13956,8 @@ async function _loadProject(id){
         if(d.brand.hasLogo && id){ try{ _BRAND.logoDataUrl = localStorage.getItem('cs_brand_logo_'+id) || ''; }catch(e){} }
         if(typeof _brandSyncUI==='function') try{ _brandSyncUI(); }catch(e){}
       }
+      // Load fully rendered -- saves are now safe.
+      _loadReady = true;
       _setSaved('saved');
     };
 
@@ -14102,6 +14109,8 @@ async function _loadProject(id){
       }
     }
   }catch(e){
+  // Load failed -- unlock saving so the user isn't permanently blocked.
+  _loadReady = true;
   console.error('Load error:',e);
   const pt=document.getElementById('pn-title');
   if(pt) pt.textContent='Load failed -- '+e.message;
@@ -14109,7 +14118,7 @@ async function _loadProject(id){
 }
 }
 
-setInterval(()=>{ if(_currentUser && _projectId) saveProject(); }, 60000);
+setInterval(()=>{ if(_currentUser && _projectId && _loadReady) saveProject(); }, 60000);
 
 // == GOOGLE MAPS JS API ---------------------------------------
 let _gmap=null,_gmapMarkers=[],_gmapLoaded=false,_gmapLoading=false;
@@ -20694,7 +20703,7 @@ async function sendToPermitCreator() {
     if (btn) btn.textContent = '⏳ Saving...';
 
     // ── Step 2: Save FULL project to Firebase (bessList, conduits, elements + siteMapImg) ──
-    if (typeof _db !== 'undefined' && _db && _projectId && typeof S !== 'undefined') {
+    if (typeof _db !== 'undefined' && _db && _projectId && _loadReady && typeof S !== 'undefined') {
       // Build the same payload as saveProject so bessList/conduits are always fresh
       const name = document.getElementById('pname')?.value.trim() || 'Untitled';
       const address = document.getElementById('addr-in')?.value.trim() || '';
