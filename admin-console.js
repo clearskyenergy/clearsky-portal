@@ -112,6 +112,8 @@ function showApp(user){
   } else {
     wrap.innerHTML = '<div class="tb-avatar-fallback">' + first.charAt(0).toUpperCase() + '</div>';
   }
+  var impBtn = document.getElementById('apps-import-btn');
+  if (impBtn) impBtn.style.display = (currentRole === 'admin') ? '' : 'none';
 }
 
 /* ══════════ GOOGLE / EMAIL AUTH (same pattern as portal) ══════════ */
@@ -810,52 +812,76 @@ function toast(html){ var t=document.getElementById('toast'); t.innerHTML=html; 
    ══════════════════════════════════════════════════════════════════════ */
 var CLEARSKY_ORG = 'csebuilders.com';   // ClearSky's own developer org for projects
 
-var APPS = [
-  { name:'BESS Site Map', desc:'Wizard, conduit routing & equipment on live satellite.', action:'new:bess',
-    icon:'M2 7h20v14H2zM16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16' },
-  { name:'BESS Pro Forma', desc:'IRR, NPV, value stack & incentives in 8 steps.', href:'/proforma.html',
-    icon:'M18 20V10M12 20V4M6 20v-6' },
-  { name:'DCFC BESS Pro Forma', desc:'EV fast-charging + storage economics & demand offset.', href:'/dcfc-proforma.html', badge:'new',
-    icon:'M14 2v6h6M4 22V4a2 2 0 0 1 2-2h8l6 6v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2zM11 11l-2 4h3l-2 4' },
-  { name:'Residential BESS Analyzer', desc:'Multi-state apartment portfolio modeling & VPP stacking.', href:'/apartment-bess.html',
-    icon:'M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2zM9 22V12h6v10' },
-  { name:'3D Fleet Financial Modeler', desc:'3D fleet with 24-hr dispatch, hourly earnings & PDF reports.', href:'/fleet-simulator-3d.html',
-    icon:'M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16zM3.27 6.96L12 12.01l8.73-5.05M12 22.08V12' },
-  { name:'Sales Proposal Builder', desc:'3-page customer proposals with AI site placement.', href:'/sales-proposal.html',
-    icon:'M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8zM14 2v6h6M16 13H8M16 17H8' },
-  { name:'Value Stack Calculator', desc:'Revenue streams by utility with customer/ClearSky split.', href:'/valuestack.html',
-    icon:'M18 20V10M12 20V4M6 20v-6M2 20h20' },
-  { name:'Site Investment Analysis', desc:'Investor-grade returns, risk & portfolio underwriting.', href:'/investment-analysis.html', badge:'invest',
-    icon:'M3 3v18h18M18 9l-5 5-3-3-4 4' },
-  { name:'Permit Creator', desc:'AHJ-ready sets — cover, plot plan, SLD, details.', href:'/permit.html',
-    icon:'M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8zM14 2v6h6M16 13H8M16 17H8' },
-  { name:'AHJ Approval Portal', desc:'Submit & track permit approvals with the AHJ.', soon:true, dataHref:'/ahj-portal.html',
-    icon:'M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10zM9 12l2 2 4-4' },
-  { name:'Open a Sandbox', desc:'Full editor at any address — save when ready.', action:'new:sandbox',
-    icon:'M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20zM12 8v4M12 16h.01' }
-];
-
+/* ── Applications grid, rendered from the shared registry (omega-tools.js) ──
+   Admin console shows ALL tools unlocked (no workspace => everything visible). */
 function renderApps(){
+  var tools = OMEGATools.all();
   var grid='';
-  for (var i=0;i<APPS.length;i++){
-    var a=APPS[i];
+  for (var i=0;i<tools.length;i++){
+    var a=tools[i];
     var cls = a.soon ? ' soon' : ' ';
-    var badge = a.badge ? '<span class="pm-badge '+a.badge+'">'+(a.badge==='invest'?'Investors':(a.badge==='new'?'New':a.badge))+'</span>' : (a.soon?'<span class="pm-badge">Soon</span>':'');
+    var badgeTxt = a.badge ? (a.badge==='invest'?'Investors':(a.badge==='new'?'New':a.badge)) : (a.soon?'Soon':'');
+    var badge = badgeTxt ? '<span class="pm-badge '+esc(a.badge||'')+'">'+esc(badgeTxt)+'</span>' : '';
     var handler;
     if (a.soon) handler = 'onclick="pmSoon(&quot;'+esc(a.name)+'&quot;)"';
-    else if (a.action) handler = 'onclick="'+(a.action==='new:bess'?'openNewProjectModal(&quot;bess&quot;)':'openNewProjectModal(&quot;sandbox&quot;)')+'"';
-    else handler = 'href="'+esc(a.href)+'"';
+    else if (a.action) handler = 'onclick="openNewProjectModal(&quot;'+(a.action==='new:bess'?'bess':'sandbox')+'&quot;)"';
+    else handler = 'href="'+esc(a.file||'#')+'"';
     var stroke = a.soon ? '#9AA6B4' : '#1B4F8A';
     grid += '<a class="pm-tile'+cls+'" '+handler+'>'
       + badge
       + '<div class="pm-ico"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="'+stroke+'" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="'+a.icon+'"/></svg></div>'
       + '<div class="pm-name">'+esc(a.name)+'</div>'
-      + '<div class="pm-desc">'+a.desc+'</div></a>';
+      + '<div class="pm-desc">'+esc(a.desc)+'</div></a>';
   }
   document.getElementById('apps-grid').innerHTML = grid;
+  _showPublishedNote();
 }
 
 function pmSoon(name){ toast('<b>'+esc(name)+'</b> is coming online soon.'); }
+
+/* ── Import / Update Applications — publish catalog to Firestore. ADMIN ONLY. ── */
+function publishApps(){
+  if (currentRole !== 'admin'){ toast('Only ClearSky admins can publish the catalog.'); return; }
+  var btn = document.getElementById('apps-import-btn');
+  if (!db || !currentUser){ toast('Sign in first.'); return; }
+  if (btn){ btn.disabled = true; btn.textContent = 'Publishing…'; }
+  OMEGATools.publishToFirestore(db, firebase).then(function(){
+    return db.collection('meta').doc('tools').set({
+      publishedAt: firebase.firestore.FieldValue.serverTimestamp(),
+      publishedBy: currentUser.email || currentUser.uid,
+      count: OMEGATools.SEED_TOOLS.length
+    }, { merge:true });
+  }).then(function(){
+    toast('<b>'+OMEGATools.SEED_TOOLS.length+' applications</b> published to all portals.');
+    if (btn){ btn.disabled = false; btn.textContent = '\u21bb Import / Update Applications'; }
+    _showPublishedNote();
+  })['catch'](function(e){
+    toast('Publish failed: '+esc(e.message));
+    if (btn){ btn.disabled = false; btn.textContent = '\u21bb Import / Update Applications'; }
+  });
+}
+
+function _showPublishedNote(){
+  var note = document.getElementById('apps-published-note');
+  if (!note || !db) return;
+  db.collection('meta').doc('tools').get().then(function(snap){
+    if (!snap.exists){ note.textContent = ' · Not yet published.'; return; }
+    var d = snap.data();
+    var when = (d.publishedAt && d.publishedAt.toDate) ? d.publishedAt.toDate().toLocaleString() : '—';
+    note.textContent = ' · Last published ' + when + ' (' + (d.count||0) + ' apps).';
+  })['catch'](function(){});
+}
+
+/* ── Populate the Improvement "Tool" dropdown from the registry ── */
+function fillImproveToolOptions(){
+  var sel = document.getElementById('im-tool');
+  if (!sel) return;
+  var tools = OMEGATools.all();
+  var html = '';
+  for (var i=0;i<tools.length;i++){ html += '<option>'+esc(tools[i].name)+'</option>'; }
+  html += '<option>Editor / SiteMap Designer</option><option>Platform / Other</option>';
+  sel.innerHTML = html;
+}
 
 /* ── Recent ClearSky projects (live Firestore, scoped to ClearSky org) ── */
 function loadRecentProjects(){
@@ -992,6 +1018,7 @@ function meName(){ return (currentUser && (currentUser.displayName || currentUse
 function meEmail(){ return currentUser ? (currentUser.email||'') : ''; }
 
 function openImproveModal(){
+  fillImproveToolOptions();
   setVal('im-title',''); setVal('im-tool','BESS Pro Forma'); setVal('im-type','bug'); setVal('im-priority','p2'); setVal('im-assignee',''); setVal('im-detail','');
   openModal('improve-modal');
 }
