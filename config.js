@@ -10,5 +10,7 @@ window.CLEARSKY_CONFIG = {
   googleMapsKey: "AIzaSyC0roZ_qMwtbVzqRLtNx9nrCeaGqrE1sNs",
   allowedDomain: null,
   companyName: "ClearSky USA",
-  portalTitle: "BESS Site Portal"
+  portalTitle: "BESS Site Portal",
+  greenfieldStatic: "/data/land-listings.json",
+  greenfieldProxy: "/api/greenfield"
 };
