@@ -1,0 +1,400 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Data Center Compute Calculator &mdash; ClearSky OMEGA</title>
+<style>
+  :root{
+    --navy:#0a1626; --navy2:#0f2137; --topbar:#0b1a2e;
+    --cyan:#38d9c4; --blue:#3aa0f0; --lblue:#7fdcff;
+    --ink:#1A2733; --sub:#5B738B; --line:#dbe4ee; --line2:#c3d2e2;
+    --bg:#f2f6fb; --panel:#ffffff; --wash:#eef4fb;
+    --good:#2fb673; --warn:#e6a817; --bad:#d9534f;
+    --violet:#7858c4;
+    --accent:var(--cyan); --accent-d:#1a7f6f;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;padding:0}
+  body{
+    background:var(--bg);
+    color:var(--ink);
+    font-family:"Segoe UI",-apple-system,BlinkMacSystemFont,Roboto,Helvetica,Arial,sans-serif;
+    -webkit-font-smoothing:antialiased;line-height:1.5;
+  }
+  .wrap{max-width:1180px;margin:0 auto;padding:0 20px 80px}
+
+  /* Topbar — OMEGA navy */
+  .tb{
+    display:flex;align-items:center;gap:12px;padding:12px 20px;
+    background:var(--topbar);border-bottom:1px solid #16304d;
+    position:sticky;top:0;z-index:40;
+  }
+  .tb-omega{height:30px;width:30px;border-radius:7px;flex:0 0 auto;object-fit:cover;
+    box-shadow:0 0 0 1px rgba(127,220,255,.25), 0 0 18px rgba(56,217,196,.25)}
+  .tb-logo-txt{font-weight:700;font-size:15px;color:#eaf3fb;letter-spacing:.2px}
+  .tb-logo-txt span{color:var(--cyan)}
+  .tb-tag{margin-left:auto;font-size:12px;color:#9fb4cc;border:1px solid #1d3a5a;border-radius:999px;padding:5px 12px}
+  .tb-actions{display:flex;gap:8px}
+  .btn{border:1px solid #2b4a6d;background:transparent;color:#cfe6f5;border-radius:8px;
+    padding:7px 14px;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit}
+  .btn:hover{background:#12263f;border-color:var(--cyan);color:#fff}
+  .btn.pri{background:var(--cyan);color:#06212b;border-color:var(--cyan)}
+  .btn.pri:hover{background:#5fe6d4}
+
+  .hero{padding:30px 0 6px}
+  .kicker{font-size:12px;letter-spacing:.18em;text-transform:uppercase;color:var(--accent-d);font-weight:700}
+  h1{font-size:29px;line-height:1.14;margin:9px 0 6px;font-weight:700;letter-spacing:-.01em;color:var(--navy)}
+  .lede{color:var(--sub);max-width:72ch;font-size:14.5px}
+
+  .grid{display:grid;grid-template-columns:340px 1fr;gap:22px;margin-top:24px;align-items:start}
+  @media(max-width:880px){.grid{grid-template-columns:1fr}}
+
+  .panel{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:20px;box-shadow:0 1px 2px rgba(16,42,73,.04)}
+  .panel.sticky{position:sticky;top:70px}
+  .p-title{font-size:12px;letter-spacing:.14em;text-transform:uppercase;color:var(--sub);font-weight:700;margin:0 0 14px;display:flex;align-items:center;gap:8px}
+  .p-title::before{content:"";width:6px;height:6px;border-radius:2px;background:var(--cyan)}
+
+  label.fld{display:block;margin-bottom:16px}
+  .fld .lbl{font-size:12.5px;color:var(--sub);margin-bottom:6px;display:flex;justify-content:space-between}
+  .fld .lbl b{color:var(--ink);font-weight:600}
+  .inrow{display:flex;gap:8px}
+  input[type=number], select{width:100%;background:#fff;border:1px solid var(--line2);border-radius:8px;color:var(--ink);padding:10px 12px;font-size:15px;font-family:inherit;font-variant-numeric:tabular-nums}
+  input[type=number]:focus, select:focus{outline:none;border-color:var(--accent-d);box-shadow:0 0 0 3px rgba(56,217,196,.16)}
+  .unit-toggle{display:flex;background:#fff;border:1px solid var(--line2);border-radius:8px;overflow:hidden;flex:0 0 auto}
+  .unit-toggle button{background:transparent;border:0;color:var(--sub);padding:0 14px;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit}
+  .unit-toggle button.on{background:var(--accent-d);color:#fff}
+
+  input[type=range]{width:100%;accent-color:var(--accent-d);margin-top:4px}
+
+  .seg{display:flex;gap:6px;flex-wrap:wrap}
+  .seg button{flex:1;min-width:0;background:#fff;border:1px solid var(--line2);color:var(--sub);border-radius:8px;padding:9px 6px;font-size:12.5px;font-weight:600;cursor:pointer;font-family:inherit;text-align:center}
+  .seg button.on{border-color:var(--accent-d);color:var(--accent-d);background:var(--wash)}
+  .seg button small{display:block;font-weight:400;color:var(--sub);font-size:11px;margin-top:2px}
+  .seg button.on small{color:var(--accent-d)}
+
+  .note{font-size:11.5px;color:var(--sub);margin-top:-6px;margin-bottom:14px;line-height:1.45}
+
+  .cards{display:grid;grid-template-columns:repeat(2,1fr);gap:14px}
+  @media(max-width:560px){.cards{grid-template-columns:1fr}}
+  .card{background:#fff;border:1px solid var(--line);border-radius:12px;padding:16px;position:relative;overflow:hidden;box-shadow:0 1px 2px rgba(16,42,73,.04)}
+  .card::after{content:"";position:absolute;left:0;top:0;bottom:0;width:4px;background:var(--accent,var(--cyan))}
+  .card .c-lbl{font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--sub);font-weight:700}
+  .card .c-big{font-size:26px;font-weight:700;letter-spacing:-.01em;margin:6px 0 2px;font-variant-numeric:tabular-nums;color:var(--navy)}
+  .card .c-sub{font-size:12px;color:var(--sub);font-variant-numeric:tabular-nums}
+  .card.rev{--accent:var(--good)} .card.cap{--accent:var(--warn)}
+  .card.land{--accent:var(--violet)} .card.grid-c{--accent:var(--cyan)}
+
+  h2.sec{font-size:13px;letter-spacing:.12em;text-transform:uppercase;color:var(--sub);font-weight:700;margin:26px 0 12px;padding-bottom:8px;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:8px}
+  h2.sec b{color:var(--accent-d);font-weight:700}
+
+  table{width:100%;border-collapse:collapse;font-size:13.5px;background:#fff;border:1px solid var(--line);border-radius:10px;overflow:hidden}
+  table th,table td{text-align:left;padding:10px 12px;border-bottom:1px solid var(--line)}
+  table th{font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--sub);font-weight:700;background:var(--wash)}
+  table td.num{text-align:right;font-variant-numeric:tabular-nums}
+  table tr:last-child td{border-bottom:0}
+  .row-em td{background:rgba(56,217,196,.06);font-weight:700}
+
+  .pill{display:inline-block;font-size:11px;font-weight:700;padding:3px 9px;border-radius:999px}
+  .pill.good{background:rgba(47,182,115,.16);color:var(--good)}
+  .pill.warn{background:rgba(230,168,23,.18);color:#a9790a}
+  .pill.bad{background:rgba(217,83,79,.16);color:var(--bad)}
+
+  .flag{border:1px solid var(--line);border-left:4px solid var(--accent,var(--warn));border-radius:10px;padding:12px 14px;margin-top:10px;font-size:13px;color:var(--ink);background:#fff}
+  .flag b{color:var(--accent,#a9790a)}
+  .flag.aq{--accent:var(--bad)} .flag.ok{--accent:var(--good)}
+
+  .foot{margin-top:34px;font-size:12px;color:var(--sub);line-height:1.6;border-top:1px solid var(--line);padding-top:16px}
+  .foot b{color:var(--ink)}
+  .src{color:var(--sub);font-size:11.5px}
+  a{color:var(--accent-d)}
+
+  /* print / PDF */
+  @media print{
+    .tb-actions,.panel.sticky{display:none!important}
+    body{background:#fff}
+    .grid{grid-template-columns:1fr}
+    .tb{position:static}
+    .card,.panel,table{box-shadow:none}
+    .print-only{display:block!important}
+  }
+  .print-only{display:none}
+  .print-meta{font-size:12px;color:var(--sub);margin:6px 0 0}
+  .print-meta b{color:var(--ink)}
+</style>
+</head>
+<body>
+  <div class="tb">
+    <img src="/omega-logo.png" alt="OMEGA" class="tb-omega" onerror="this.style.display='none'">
+    <div class="tb-logo-txt">Clear<span>Sky</span> OMEGA</div>
+    <div class="tb-tag">Data Center &amp; Compute Feasibility</div>
+    <div class="tb-actions">
+      <button class="btn" onclick="exportCSV()">Export CSV</button>
+      <button class="btn pri" onclick="window.print()">Export PDF</button>
+    </div>
+  </div>
+
+  <div class="wrap">
+    <div class="hero">
+      <div class="kicker">Compute Load Model</div>
+      <h1>Data Center Compute Calculator</h1>
+      <p class="lede">Enter a system size in kW or a campus size in MW. The model estimates revenue, equipment/build capex, land area, substation demand, grid energy, and aquifer water draw over 1&#8209;day, 1&#8209;year, and 10&#8209;year horizons &mdash; benchmarked to 2026 industry figures and the Clinton, Iowa aquifer review.</p>
+      <div class="print-only print-meta">Report generated <b id="genDate"></b> &middot; Configuration: <b id="genCfg"></b></div>
+    </div>
+
+    <div class="grid">
+      <div class="panel sticky">
+        <div class="p-title">Inputs</div>
+
+        <label class="fld">
+          <span class="lbl"><span>System size</span><b id="sizeEcho">10 MW</b></span>
+          <div class="inrow">
+            <input type="number" id="size" value="10" min="0" step="0.1">
+            <div class="unit-toggle">
+              <button id="uMW" class="on" onclick="setUnit('MW')">MW</button>
+              <button id="uKW" onclick="setUnit('kW')">kW</button>
+            </div>
+          </div>
+        </label>
+        <div class="note">This is <b>IT load</b> (the power the compute equipment draws). Grid demand is higher &mdash; see PUE below.</div>
+
+        <label class="fld">
+          <span class="lbl"><span>Workload / revenue class</span></span>
+          <div class="seg" id="segClass">
+            <button class="on" data-k="colo">Standard colo<small>$196/kW-mo</small></button>
+            <button data-k="tier1">Tier-1 colo<small>$370/kW-mo</small></button>
+            <button data-k="ai">AI / GPU<small>$/kW premium</small></button>
+          </div>
+        </label>
+
+        <label class="fld" id="aiWrap" style="display:none">
+          <span class="lbl"><span>AI revenue per MW / yr</span><b id="aiEcho">$18.0M</b></span>
+          <input type="range" id="aiRev" min="6" max="60" step="1" value="18">
+          <div class="note" style="margin-top:6px">Practitioner range is $10M&ndash;$60M per MW&#8209;yr for dense GPU compute vs ~$4.4M for standard Tier&#8209;1 space.</div>
+        </label>
+
+        <label class="fld">
+          <span class="lbl"><span>Utilization / lease-up</span><b id="utilEcho">85%</b></span>
+          <input type="range" id="util" min="30" max="100" step="1" value="85">
+        </label>
+
+        <label class="fld">
+          <span class="lbl"><span>Cooling design</span></span>
+          <div class="seg" id="segCool">
+            <button class="on" data-k="closed">Closed-loop<small>low water</small></button>
+            <button data-k="hybrid">Hybrid<small>moderate</small></button>
+            <button data-k="evap">Evaporative<small>high water</small></button>
+          </div>
+        </label>
+
+        <label class="fld">
+          <span class="lbl"><span>PUE (facility overhead)</span><b id="pueEcho">1.30</b></span>
+          <input type="range" id="pue" min="1.08" max="1.6" step="0.01" value="1.30">
+          <div class="note" style="margin-top:6px">Grid must supply IT load &times; PUE. 2024 industry avg &asymp;1.56; efficient new builds 1.1&ndash;1.3.</div>
+        </label>
+
+        <label class="fld">
+          <span class="lbl"><span>Build cost</span><b id="capxEcho">$11.3M / MW</b></span>
+          <input type="range" id="capx" min="7" max="25" step="0.1" value="11.3">
+          <div class="note" style="margin-top:6px">Standard $8&ndash;$12M/MW; AI-optimized $15&ndash;$25M/MW (JLL 2026: $11.3M avg).</div>
+        </label>
+      </div>
+
+      <div>
+        <div class="cards">
+          <div class="card rev"><div class="c-lbl">Revenue / year</div><div class="c-big" id="revYr">&mdash;</div><div class="c-sub" id="revDay">&mdash;</div></div>
+          <div class="card cap"><div class="c-lbl">Equipment &amp; build capex</div><div class="c-big" id="capTot">&mdash;</div><div class="c-sub" id="capSub">&mdash;</div></div>
+          <div class="card land"><div class="c-lbl">Land area</div><div class="c-big" id="landAc">&mdash;</div><div class="c-sub" id="landSub">&mdash;</div></div>
+          <div class="card grid-c"><div class="c-lbl">Substation demand</div><div class="c-big" id="gridMW">&mdash;</div><div class="c-sub" id="gridSub">&mdash;</div></div>
+        </div>
+
+        <h2 class="sec">Revenue &amp; return &mdash; <b>1 day / 1 year / 10 years</b></h2>
+        <table><thead><tr><th>Metric</th><th class="num">Per day</th><th class="num">Per year</th><th class="num">10-year</th></tr></thead><tbody id="revTable"></tbody></table>
+
+        <h2 class="sec">Power to the grid &mdash; <b>what the utility must deliver</b></h2>
+        <table><thead><tr><th>Metric</th><th class="num">Per day</th><th class="num">Per year</th><th class="num">10-year</th></tr></thead><tbody id="powTable"></tbody></table>
+        <div class="flag" id="gridFlag"></div>
+
+        <h2 class="sec">Water draw &mdash; <b>aquifer &amp; supply outlook</b></h2>
+        <table><thead><tr><th>Metric</th><th class="num">Per day</th><th class="num">Per year</th><th class="num">10-year</th></tr></thead><tbody id="watTable"></tbody></table>
+        <div class="flag aq" id="aqFlag"></div>
+
+        <div class="foot" id="foot"></div>
+      </div>
+    </div>
+  </div>
+
+<script>
+var S={unit:'MW',cls:'colo',cool:'closed',aiRevPerMW:18,util:0.85,pue:1.30,capxPerMW:11.3,size:10};
+
+var REV={colo:196,tier1:370};
+var WATER={closed:80,hybrid:1200,evap:5000};
+var ACRES_PER_MW=7;
+var MUNI_MGD=2.24;
+var JORDAN_CAP_MGD=2000*1440/1e6; // 2.88
+var HOMES_PER_MW=800;
+
+function fmtUSD(v){var a=Math.abs(v);
+  if(a>=1e9)return '$'+(v/1e9).toFixed(a>=1e10?0:1)+'B';
+  if(a>=1e6)return '$'+(v/1e6).toFixed(a>=1e7?0:1)+'M';
+  if(a>=1e3)return '$'+Math.round(v/1e3)+'K';
+  return '$'+Math.round(v).toLocaleString();}
+function fmtUSDfull(v){return '$'+Math.round(v).toLocaleString();}
+function fmtGal(v){var a=Math.abs(v);
+  if(a>=1e9)return (v/1e9).toFixed(2)+'B gal';
+  if(a>=1e6)return (v/1e6).toFixed(a>=1e7?0:2)+'M gal';
+  if(a>=1e3)return Math.round(v/1e3).toLocaleString()+'K gal';
+  return Math.round(v).toLocaleString()+' gal';}
+function fmtNum(v,d){d=d||0;return v.toLocaleString(undefined,{minimumFractionDigits:d,maximumFractionDigits:d});}
+function mw(){return S.unit==='MW'?S.size:S.size/1000;}
+function coolLabel(){return S.cool==='closed'?'closed-loop':(S.cool==='evap'?'evaporative':'hybrid');}
+function clsLabel(){return S.cls==='ai'?'AI / GPU':(S.cls==='tier1'?'Tier-1 colo':'Standard colo');}
+
+function compute(){
+  var itMW=mw(),kW=itMW*1000,gridMW=itMW*S.pue;
+  var revYr;
+  if(S.cls==='ai'){revYr=itMW*S.aiRevPerMW*1e6*S.util;}
+  else{revYr=kW*REV[S.cls]*12*S.util;}
+  var revDay=revYr/365;
+  var capex=itMW*S.capxPerMW*1e6;
+  var acLo=Math.max(10,itMW*ACRES_PER_MW*0.85),acHi=Math.max(20,itMW*ACRES_PER_MW*1.25);
+  var galDay=itMW*WATER[S.cool];
+  var startupFill=(S.cool==='closed')?itMW*20000:itMW*5000;
+  return {itMW:itMW,kW:kW,gridMW:gridMW,revDay:revDay,revYr:revYr,rev10:revYr*10,
+    capex:capex,acLo:acLo,acHi:acHi,gridMWhDay:gridMW*24,gridMWhYr:gridMW*24*365,
+    galDay:galDay,galYr:galDay*365,gal10:galDay*365*10,startupFill:startupFill,mgd:galDay/1e6};
+}
+
+var LAST=null; // hold last computed rows for CSV
+
+function render(){
+  var r=compute(); LAST=r;
+  document.getElementById('sizeEcho').textContent=(S.unit==='MW'?fmtNum(S.size,S.size%1?1:0)+' MW':fmtNum(S.size)+' kW');
+
+  document.getElementById('revYr').textContent=fmtUSD(r.revYr);
+  document.getElementById('revDay').textContent='\u2248 '+fmtUSDfull(r.revDay)+' / day';
+  document.getElementById('capTot').textContent=fmtUSD(r.capex);
+  document.getElementById('capSub').textContent='$'+fmtNum(S.capxPerMW,1)+'M / MW \u00b7 '+fmtNum(r.itMW,r.itMW%1?1:0)+' MW build';
+  document.getElementById('landAc').textContent=Math.round(r.acLo)+'\u2013'+Math.round(r.acHi)+' ac';
+  document.getElementById('landSub').textContent='\u2248 '+ACRES_PER_MW+' ac/MW incl. yard & setbacks';
+  document.getElementById('gridMW').textContent=fmtNum(r.gridMW,r.gridMW%1?1:0)+' MW';
+  document.getElementById('gridSub').textContent='IT '+fmtNum(r.itMW,r.itMW%1?1:0)+' MW \u00d7 PUE '+S.pue.toFixed(2);
+
+  var payback=r.revYr>0?(r.capex/r.revYr):0;
+  var rev=[['Gross revenue',fmtUSDfull(r.revDay),fmtUSD(r.revYr),fmtUSD(r.rev10)],
+    ['Revenue \u00f7 build capex','\u2014',payback>0?payback.toFixed(1)+' yr to gross-even':'\u2014',payback>0?(10/payback).toFixed(1)+'\u00d7 capex':'\u2014']];
+  document.getElementById('revTable').innerHTML=rows(rev);
+
+  var pow=[['Continuous grid demand',fmtNum(r.gridMW,r.gridMW%1?1:0)+' MW',fmtNum(r.gridMW,r.gridMW%1?1:0)+' MW',fmtNum(r.gridMW,r.gridMW%1?1:0)+' MW'],
+    ['Energy delivered',fmtNum(r.gridMWhDay)+' MWh',fmtNum(Math.round(r.gridMWhYr/1000))+' GWh',fmtNum(Math.round(r.gridMWhYr*10/1000))+' GWh'],
+    ['IT load (compute only)',fmtNum(r.itMW*24)+' MWh',fmtNum(Math.round(r.itMW*24*365/1000))+' GWh',fmtNum(Math.round(r.itMW*24*365*10/1000))+' GWh']];
+  document.getElementById('powTable').innerHTML=rows(pow);
+
+  var homeEq=Math.round(r.gridMW*HOMES_PER_MW);
+  document.getElementById('gridFlag').innerHTML='Roughly the continuous draw of <b>'+fmtNum(homeEq)+' homes</b> ('+fmtNum(r.gridMW,r.gridMW%1?1:0)+' MW, ~'+HOMES_PER_MW+' homes/MW). A local substation and feeders must carry this 24/7 &mdash; interconnection headroom and utility upgrades are usually the pacing item, not construction.';
+
+  var pctMuni=r.mgd/MUNI_MGD*100;
+  var wt=[['Operational draw ('+coolLabel()+')',fmtGal(r.galDay),fmtGal(r.galYr),fmtGal(r.gal10)],
+    ['Share of Clinton municipal ('+MUNI_MGD+' MGD)',pctMuni.toFixed(pctMuni<10?1:0)+'%','\u2014','\u2014'],
+    ['One-time cooling-loop fill',fmtGal(r.startupFill),'(startup only)','\u2014']];
+  document.getElementById('watTable').innerHTML=rows(wt);
+
+  var f=document.getElementById('aqFlag'),pctJordan=r.mgd/JORDAN_CAP_MGD*100;
+  if(S.cool==='closed'){
+    f.className='flag ok';
+    f.innerHTML='<b>Low chronic water risk.</b> Closed-loop, non-evaporative cooling consumes water mainly for domestic building use once running &mdash; about '+fmtGal(r.galDay)+'/day, or '+pctMuni.toFixed(pctMuni<10?1:0)+'% of Clinton\u2019s '+MUNI_MGD+' MGD municipal supply. The material demand is the <b>one-time '+fmtGal(r.startupFill)+' loop fill</b> at startup, not daily consumption. Per the aquifer review, the priority becomes locking cooling design in writing, startup phasing, stormwater, and private-well protection.';
+  }else{
+    f.className='flag aq';
+    var band=pctJordan>100?'<span class="pill bad">exceeds Jordan cap</span>':(pctJordan>50?'<span class="pill warn">approaches Jordan cap</span>':'<span class="pill warn">material draw</span>');
+    f.innerHTML='<b>Elevated water risk.</b> '+coolLabel()+' cooling draws ~'+fmtGal(r.galDay)+'/day &mdash; '+pctMuni.toFixed(pctMuni<10?1:0)+'% of Clinton\u2019s '+MUNI_MGD+' MGD municipal supply, or '+pctJordan.toFixed(0)+'% of the '+JORDAN_CAP_MGD.toFixed(2)+' MGD (2,000 gpm) single-plant cap on new Jordan/Cambrian-Ordovician withdrawals. '+band+' The deep aquifer recharges at only 10<sup>-5</sup>&ndash;0.02 in/yr, so any direct high-volume withdrawal should trigger full hydrogeologic review, pumping tests, and enforceable limits before approval.';
+  }
+
+  document.getElementById('foot').innerHTML='<b>How the numbers are built.</b> Revenue uses 2026 colocation benchmarks &mdash; standard wholesale ~$196/kW-month (CBRE H2 2025), Tier-1 markets ~$370/kW-month, and AI/GPU compute at a per-MW annual rate ($10&ndash;$60M/MW-yr practitioner range). Build capex uses $7&ndash;$25M/MW (JLL 2026 avg $11.3M; AI-optimized $15&ndash;$25M). Land at ~'+ACRES_PER_MW+' acres/MW blended (small sites 10&ndash;20 ac; campuses 100+ ac; avg parcel ~224 ac). Grid demand = IT load &times; PUE. Water: closed-loop ~80 gal/MW-day (domestic), hybrid ~1,200, evaporative ~5,000 gal/MW-day (Vantage, Valicor, Uptime). Aquifer thresholds &mdash; Clinton municipal 2.24 MGD, Jordan/Cambrian-Ordovician 2,000 gpm (2.88 MGD) cap, recharge 10<sup>-5</sup>&ndash;0.02 in/yr &mdash; from the Clinton Iowa Data Center Water &amp; Aquifer Review and Iowa DNR / IGS sources.<br><br><span class="src">Planning estimates only. Real projects vary with market, redundancy tier, density, climate, contract terms, and permitted design. Not a quote or engineering determination.</span>';
+
+  // print meta
+  document.getElementById('genDate').textContent=new Date().toLocaleString();
+  document.getElementById('genCfg').textContent=(S.unit==='MW'?fmtNum(S.size,S.size%1?1:0)+' MW':fmtNum(S.size)+' kW')+' \u00b7 '+clsLabel()+' \u00b7 '+coolLabel()+' \u00b7 PUE '+S.pue.toFixed(2)+' \u00b7 '+Math.round(S.util*100)+'% util';
+}
+
+function rows(arr){var s='';for(var i=0;i<arr.length;i++){var e=arr[i];
+  s+='<tr'+(i===0?' class="row-em"':'')+'><td>'+e[0]+'</td><td class="num">'+e[1]+'</td><td class="num">'+e[2]+'</td><td class="num">'+e[3]+'</td></tr>';}return s;}
+
+/* ---------- CSV export ---------- */
+function csvEsc(v){v=(''+v);return /[",\n]/.test(v)?'"'+v.replace(/"/g,'""')+'"':v;}
+function exportCSV(){
+  var r=LAST||compute();
+  var payback=r.revYr>0?(r.capex/r.revYr):0;
+  var rows=[
+    ['Data Center Compute Feasibility \u2014 Estimate'],
+    ['Generated',new Date().toLocaleString()],
+    ['Configuration',(S.unit==='MW'?fmtNum(S.size,S.size%1?1:0)+' MW':fmtNum(S.size)+' kW')+' | '+clsLabel()+' | '+coolLabel()+' cooling | PUE '+S.pue.toFixed(2)+' | '+Math.round(S.util*100)+'% utilization'],
+    [],
+    ['Metric','Per day','Per year','10-year','Unit / note'],
+    ['IT load','','','',fmtNum(r.itMW,r.itMW%1?1:0)+' MW'],
+    ['Continuous grid demand','','','',fmtNum(r.gridMW,2)+' MW (IT x PUE)'],
+    ['Gross revenue',Math.round(r.revDay),Math.round(r.revYr),Math.round(r.rev10),'USD'],
+    ['Build capex (total)','',Math.round(r.capex),'','USD, one-time'],
+    ['Gross payback','',payback>0?payback.toFixed(1):'','','years to gross-even'],
+    ['Land area low',Math.round(r.acLo),'','','acres'],
+    ['Land area high',Math.round(r.acHi),'','','acres'],
+    ['Grid energy delivered',Math.round(r.gridMWhDay),Math.round(r.gridMWhYr),Math.round(r.gridMWhYr*10),'MWh'],
+    ['IT energy (compute only)',Math.round(r.itMW*24),Math.round(r.itMW*24*365),Math.round(r.itMW*24*365*10),'MWh'],
+    ['Homes-equivalent grid draw',Math.round(r.gridMW*HOMES_PER_MW),'','','homes (~'+HOMES_PER_MW+'/MW)'],
+    ['Water \u2014 operational draw',Math.round(r.galDay),Math.round(r.galYr),Math.round(r.gal10),'gallons ('+coolLabel()+')'],
+    ['Water \u2014 one-time loop fill',Math.round(r.startupFill),'','','gallons, startup'],
+    ['Water as % Clinton municipal',(r.mgd/MUNI_MGD*100).toFixed(2),'','','% of '+MUNI_MGD+' MGD'],
+    ['Water as % Jordan/C-O cap',(r.mgd/JORDAN_CAP_MGD*100).toFixed(2),'','','% of '+JORDAN_CAP_MGD.toFixed(2)+' MGD (2,000 gpm)'],
+    [],
+    ['Benchmarks','Standard colo ~$196/kW-mo (CBRE H2 2025); Tier-1 ~$370/kW-mo; AI/GPU $10-60M/MW-yr; capex $7-25M/MW (JLL avg $11.3M); land ~7 ac/MW; water closed-loop ~80 / hybrid ~1,200 / evap ~5,000 gal/MW-day.'],
+    ['Aquifer sources','Clinton IA Data Center Water & Aquifer Review; Iowa DNR / IGS. Municipal 2.24 MGD; Jordan/Cambrian-Ordovician 2,000 gpm cap; recharge 1e-5 to 0.02 in/yr.'],
+    ['Disclaimer','Planning estimates only. Not a quote or engineering determination.']
+  ];
+  var csv=rows.map(function(row){return row.map(csvEsc).join(',');}).join('\r\n');
+  var blob=new Blob(['\ufeff'+csv],{type:'text/csv;charset=utf-8;'});
+  var url=URL.createObjectURL(blob);
+  var a=document.createElement('a');
+  a.href=url;
+  a.download='datacenter-feasibility-'+(S.unit==='MW'?fmtNum(S.size,S.size%1?1:0)+'MW':fmtNum(S.size)+'kW').replace(/[^0-9A-Za-z]/g,'')+'.csv';
+  document.body.appendChild(a);a.click();document.body.removeChild(a);
+  setTimeout(function(){URL.revokeObjectURL(url);},1500);
+}
+
+/* ---------- input wiring ---------- */
+function setUnit(u){
+  if(u===S.unit)return;
+  var el=document.getElementById('size'),v=parseFloat(el.value)||0;
+  if(u==='kW'){v=v*1000;}else{v=v/1000;}
+  el.value=(u==='MW')?(Math.round(v*100)/100):Math.round(v);
+  S.unit=u;S.size=parseFloat(el.value)||0;
+  document.getElementById('uMW').className=u==='MW'?'on':'';
+  document.getElementById('uKW').className=u==='kW'?'on':'';
+  render();
+}
+document.getElementById('size').addEventListener('input',function(){S.size=parseFloat(this.value)||0;render();});
+
+var segClass=document.getElementById('segClass');
+segClass.addEventListener('click',function(e){
+  var b=e.target.closest('button');if(!b)return;
+  S.cls=b.getAttribute('data-k');
+  var k=segClass.getElementsByTagName('button');for(var i=0;i<k.length;i++)k[i].className=(k[i]===b)?'on':'';
+  document.getElementById('aiWrap').style.display=(S.cls==='ai')?'block':'none';render();
+});
+var segCool=document.getElementById('segCool');
+segCool.addEventListener('click',function(e){
+  var b=e.target.closest('button');if(!b)return;
+  S.cool=b.getAttribute('data-k');
+  var k=segCool.getElementsByTagName('button');for(var i=0;i<k.length;i++)k[i].className=(k[i]===b)?'on':'';
+  var pueEl=document.getElementById('pue');
+  if(S.cool==='evap'){pueEl.value=1.15;}else if(S.cool==='hybrid'){pueEl.value=1.25;}else{pueEl.value=1.30;}
+  S.pue=parseFloat(pueEl.value);document.getElementById('pueEcho').textContent=S.pue.toFixed(2);render();
+});
+function bindRange(id,fn){var el=document.getElementById(id);el.addEventListener('input',function(){fn(parseFloat(this.value));render();});}
+bindRange('aiRev',function(v){S.aiRevPerMW=v;document.getElementById('aiEcho').textContent='$'+v.toFixed(1)+'M';});
+bindRange('util',function(v){S.util=v/100;document.getElementById('utilEcho').textContent=v+'%';});
+bindRange('pue',function(v){S.pue=v;document.getElementById('pueEcho').textContent=v.toFixed(2);});
+bindRange('capx',function(v){S.capxPerMW=v;document.getElementById('capxEcho').textContent='$'+v.toFixed(1)+'M / MW';});
+
+render();
+</script>
+</body>
+</html>

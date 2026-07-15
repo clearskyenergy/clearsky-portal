@@ -116,6 +116,11 @@
       file:'/bess-iso-calculator.html', badge:'new', tier:TIER.STANDARD,
       icon:'M18 20V10M12 20V4M6 20v-6M2 20h20M4 4l4 4' },
 
+    { key:'datacenter', name:'Data Center Compute Calculator', category:'finance',
+      desc:'Size a data center by kW/MW — revenue, capex, land, substation demand, grid energy & aquifer water draw over 1-day / 1-year / 10-year.',
+      file:'/datacenter-compute-calculator.html', badge:'new', tier:TIER.ALL,
+      icon:'M4 4h16v6H4zM4 14h16v6H4zM8 7h.01M8 17h.01M12 7h4M12 17h4' },
+
     { key:'investment', name:'Site Investment Analysis', category:'finance',
       desc:'Investor-grade returns, risk & portfolio underwriting.',
       file:'/investment-analysis.html', badge:'invest', tier:TIER.ENTERPRISE, savesData:true,
