@@ -41,6 +41,8 @@
   .btn:hover{background:#12263f;border-color:var(--cyan);color:#fff}
   .btn.pri{background:var(--cyan);color:#06212b;border-color:var(--cyan)}
   .btn.pri:hover{background:#5fe6d4}
+  .btn.back{border-color:#1d3a5a;color:#9fb4cc}
+  .btn.back:hover{border-color:var(--cyan);color:#fff;background:#12263f}
 
   .hero{padding:30px 0 6px}
   .kicker{font-size:12px;letter-spacing:.18em;text-transform:uppercase;color:var(--accent-d);font-weight:700}
@@ -129,6 +131,7 @@
     <div class="tb-logo-txt">Clear<span>Sky</span> OMEGA</div>
     <div class="tb-tag">Data Center &amp; Compute Feasibility</div>
     <div class="tb-actions">
+      <button class="btn back" onclick="goBackToPlatform()" title="Return to the platform">&larr; Platform</button>
       <button class="btn" onclick="exportCSV()">Export CSV</button>
       <button class="btn pri" onclick="window.print()">Export PDF</button>
     </div>
@@ -226,6 +229,32 @@
 
 <script>
 var S={unit:'MW',cls:'colo',cool:'closed',aiRevPerMW:18,util:0.85,pue:1.30,capxPerMW:11.3,size:10};
+
+/* ---------- Return to the platform (works for every tenant) ----------
+   This one file is shared across all client portals, so the return target
+   can't be hardcoded. Resolve it in order:
+     1) document.referrer  — the exact portal page that opened this tool.
+     2) history.back()     — if we were navigated here in-tab.
+     3) TOOL_HOST root / same-origin — last-resort platform home.
+   The ?org=<orgId> the portal appended is preserved for #3. */
+function goBackToPlatform(){
+  var ref = (document.referrer || '').trim();
+  var here = window.location.host;
+  if(ref){
+    var refHost = '';
+    try{ refHost = (new URL(ref)).host; }catch(e){ refHost=''; }
+    // Use the referrer only if it's a real portal page (not this tool re-opening itself).
+    if(refHost && refHost !== '' && ref.indexOf(window.location.pathname) < 0){
+      window.location.href = ref; return;
+    }
+  }
+  if(window.history && window.history.length > 1){ window.history.back(); return; }
+  // Fallback: send them to the portal home, carrying their org if present.
+  var m = window.location.search.match(/[?&]org=([^&]+)/);
+  var org = m ? m[1] : '';
+  window.location.href = '/' + (org ? ('?org='+org) : '');
+}
+
 
 var REV={colo:196,tier1:370};
 var WATER={closed:80,hybrid:1200,evap:5000};
