@@ -15592,7 +15592,7 @@ function exportProjectJSON() {
     exportedAt: new Date().toISOString(),
     projectName: document.querySelector('#proj-name-inp')?.value ||
                  document.querySelector('.proj-name')?.textContent ||
-                 document.title.replace('NextNRG Site Map Designer Pro','').trim() ||
+                 document.title.replace(/\s*--?\s*Site Map Designer Pro\s*$/i,'').replace(/^NextNRG$/i,'').trim() ||
                  'BESS Site Project',
     address: address,
     utility: '',
@@ -32132,6 +32132,9 @@ window.conduitEstimate=conduitEstimate;
       var img=document.getElementById('tb-brand-logo');
       if(img && b.logo){ img.src = b.logo; img.alt = b.name || 'Logo'; img.style.display='block'; }
     }catch(e){}
+    /* Update the browser tab title to the resolved tenant, so a shared editor.html
+       shows the right brand per subdomain instead of a hardcoded default. */
+    try{ if(b.name){ document.title = b.name + ' -- Site Map Designer Pro'; } }catch(e){}
     try{ if(typeof _brandSyncUI==='function') _brandSyncUI(); }catch(e){}
   }
 
