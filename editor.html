@@ -17224,8 +17224,13 @@ function buildBOM() {
   };
 
   var b = (S.bessList && S.bessList[0]) ? S.bessList[0] : null;
-  var kw = b ? +(b.kw||380) : 380;
-  var wg = _bomWireGauge(kw);
+  // Actual system kW from placed BESS (0 if none). Used for the reported system
+  // size and $/kW. A separate sizing value drives wire gauge so conduit takeoffs
+  // still work on EV-only or conduit-only sites.
+  var _sysKw = (S.bessList||[]).reduce(function(s,x){ return s + (+(x.kw||0))*(+(x.qty||1)); }, 0);
+  var kwForSizing = _sysKw > 0 ? _sysKw : 380;
+  var wg = _bomWireGauge(kwForSizing);
+  var kw = _sysKw;   // reported systemKw reflects what's actually placed
   var C = 1 + BOM_CONTINGENCY;
   var ceil = function(n){ return Math.ceil(n); };
 
@@ -17292,28 +17297,60 @@ function buildBOM() {
   });
 
   // ---- Non-cabinet field components (NOT pre-assembled in the container) ----
+  // CRITICAL: every component below must reflect something actually placed on
+  // the map. An empty site (no BESS, no EV, no conduit) yields NO components —
+  // the estimate must never invent equipment that isn't drawn. We gate on
+  // concrete evidence: placed BESS units, placed EV chargers, drawn conduit,
+  // or drawn shapes flagged for a given part.
   var integ = function(part){ return typeof _bessIntegrates==='function' && _bessIntegrates(part); };
 
-  if (!integ('disco')) addItem('Component', 'AC Disconnect (service-rated, NEMA 3R)', String(wg.amps)+'A / 480V', 1, 'ea', 'Field-mounted utility-accessible disconnect');
-  // Revenue metering + step-up transformer are BESS/utility-interconnection
-  // items -- only include when the project actually has storage. Otherwise an
-  // EV-only site would show a phantom BESS interconnection package.
-  if (_hasBess) {
-    addItem('Component', 'Revenue meter socket + CT/PT (bidirectional)', '', 1, 'ea', 'Utility revenue metering at POI');
-    if (!integ('xfmr')) addItem('Component', 'Step-up/service transformer pad + conduit stubs', '', 1, 'lot', 'If utility-owned, coordinate — else source');
-  } else if (_hasEV) {
-    addItem('Component', 'Utility service meter', '', 1, 'ea', 'EV service metering at POI');
-    addItem('Component', 'Service transformer (if required)', '', 1, 'lot', 'Coordinate with utility for EV service capacity');
+  // Is there ANY buildable content on the map at all?
+  var _condFt = 0; Object.keys(byType).forEach(function(t){ _condFt += (byType[t].ft||0); });
+  var _hasConduit = _condFt > 0;
+  var _hasShapes  = (S.shapes||[]).length > 0;
+  var _hasAny = _hasBess || _hasEV || _hasConduit || _hasShapes;
+
+  // Count bollards ONLY from shapes explicitly flagged for them (no default).
+  var _bollardN = 0;
+  (S.shapes||[]).forEach(function(s){ if(s.hasBollards) _bollardN += (s.bollardCount||8); });
+
+  // --- Interconnection package: only when a system needs to tie to the grid ---
+  if (_hasBess || _hasEV) {
+    // AC Disconnect at the tie point (unless integrated into the BESS cabinet).
+    if (!integ('disco')) addItem('Component', 'AC Disconnect (service-rated, NEMA 3R)', String(wg.amps)+'A / 480V', 1, 'ea', 'Field-mounted utility-accessible disconnect');
+
+    // Metering + transformer differ by system type.
+    if (_hasBess) {
+      addItem('Component', 'Revenue meter socket + CT/PT (bidirectional)', '', 1, 'ea', 'Utility revenue metering at POI');
+      if (!integ('xfmr')) addItem('Component', 'Step-up/service transformer pad + conduit stubs', '', 1, 'lot', 'If utility-owned, coordinate — else source');
+    } else if (_hasEV) {
+      addItem('Component', 'Utility service meter', '', 1, 'ea', 'EV service metering at POI');
+      addItem('Component', 'Service transformer (if required)', '', 1, 'lot', 'Coordinate with utility for EV service capacity');
+    }
+
+    // Facility tie-in + electrode system: part of any grid interconnection.
+    addItem('Component', 'Main switchgear / MDP tie lugs + breaker', String(wg.amps)+'A', 1, 'ea', 'Facility connection point');
+    addItem('Component', 'Grounding: ground rods + #6 bare CU + acorn clamps', '', 1, 'lot', 'Electrode system per NEC 250');
+
+    // Terminations + labeling scale with the interconnection, not the drawing.
+    addItem('Component', 'Cable lugs / terminations kit', wg.gauge, 1, 'lot', 'Sized to phase conductors');
+    addItem('Component', 'Fire / arc-flash + equipment labels (UL 969)', '', 1, 'lot', 'NEC 706 / 110.16 signage set');
   }
-  addItem('Component', 'Main switchgear / MDP tie lugs + breaker', String(wg.amps)+'A', 1, 'ea', 'Facility connection point');
-  addItem('Component', 'Grounding: ground rods + #6 bare CU + acorn clamps', '', 1, 'lot', 'Electrode system per NEC 250');
-  if (_hasBess) addItem('Component', 'Concrete pad (if not integrated)', '', 1, 'lot', 'Reinforced slab — verify with civil');
-  addItem('Component', 'Bollards (Sch40 6" fill+cap)', '', (function(){
-    var n=0;(S.shapes||[]).forEach(function(s){ if(s.hasBollards) n+=8; }); return n||8;
-  })(), 'ea', 'Impact protection per AHJ');
-  addItem('Component', 'Fire / arc-flash + equipment labels (UL 969)', '', 1, 'lot', 'NEC 706 / 110.16 signage set');
-  addItem('Component', 'Cable lugs / terminations kit', wg.gauge, 1, 'lot', 'Sized to phase conductors');
-  addItem('Component', 'Fire-stop / seal-off fittings', '', 1, 'lot', 'At building penetrations');
+
+  // --- Storage-specific civil ---
+  if (_hasBess) {
+    addItem('Component', 'Concrete pad (if not integrated)', '', 1, 'lot', 'Reinforced slab — verify with civil');
+  }
+
+  // --- Bollards: only if shapes were flagged for impact protection ---
+  if (_bollardN > 0) {
+    addItem('Component', 'Bollards (Sch40 6" fill+cap)', '', _bollardN, 'ea', 'Impact protection per AHJ');
+  }
+
+  // --- Seal-offs: only when conduit actually penetrates the building ---
+  if (_hasConduit) {
+    addItem('Component', 'Fire-stop / seal-off fittings', '', 1, 'lot', 'At building penetrations');
+  }
 
   // ---- EV charging equipment (each charger placed on the map) ----
   if (typeof evChargerCosts === 'function') {
@@ -33034,6 +33071,26 @@ function openElectricalEstimate(){
 
 function _renderEstimate(host){
   var e = _EST;
+
+  /* Empty-state: nothing placed on the map yet -> no estimate to show.
+     The estimate must reflect what's actually built, so an empty design
+     gets an honest prompt rather than a table of invented components. */
+  if(!e.lines.length){
+    host.innerHTML =
+      '<div style="background:#0D1B2E;border:1px solid rgba(197,165,90,.3);border-radius:12px;max-width:520px;width:100%;box-shadow:0 30px 80px rgba(0,0,0,.5)">'
+      + '<div style="padding:16px 20px;border-bottom:1px solid rgba(255,255,255,.08);display:flex;align-items:center;justify-content:space-between">'
+      +   '<div style="font-size:15px;font-weight:700;color:#fff">⚡ Electrical Estimate</div>'
+      +   '<button onclick="document.getElementById(\'elec-est-modal\').remove()" style="background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.15);color:#8BA3C4;border-radius:6px;padding:4px 10px;cursor:pointer;font-family:inherit;font-size:13px">✕</button>'
+      + '</div>'
+      + '<div style="padding:28px 24px;text-align:center">'
+      +   '<div style="font-size:34px;margin-bottom:10px;opacity:.5">📐</div>'
+      +   '<div style="font-size:13px;font-weight:600;color:#E8F0FE;margin-bottom:6px">Nothing to estimate yet</div>'
+      +   '<div style="font-size:11px;color:#8BA3C4;line-height:1.6;max-width:400px;margin:0 auto">The estimate is generated from what you build on the site — conduit runs, BESS units, EV chargers, and equipment. Place equipment and route conduit on the map, then reopen this to see a live labor + material bid.</div>'
+      + '</div>'
+      + '</div>';
+    return;
+  }
+
   var sys = (e.bom.kwh/1000).toFixed(2)+' MWh / '+(e.bom.systemKw/1000).toFixed(2)+' MW';
 
   /* group lines by category for a clean McCormick-style recap */
@@ -33390,6 +33447,5 @@ window.homeOpenProject = homeOpenProject;
 
 </body>
 </html>
-
 
 
