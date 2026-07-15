@@ -1,0 +1,1813 @@
+<!DOCTYPE html>
+<!--
+  ═══════════════════════════════════════════════════════════════════════════════
+  ClearSky-OMEGA · EnergyOS Platform
+  Grid Atlas  ·  Interconnection & grid-proximity site intelligence
+
+  © 2025 ClearSky Energy Solutions LLC. All rights reserved.
+  Proprietary and Confidential. Author: Tommy Gilmer.
+
+  Full-screen grid explorer + pin-drop interconnect scoring over public data:
+  HIFLD/ArcGIS substations·transmission·plants, OSM power network (Overpass) with
+  OpenInfraMap voltage styling, EIA-860M operable generators (MW bubbles + national
+  technology breakdown), and a Greenfield land-for-sale layer (real LandSearch/Land.com
+  listings via a committed static file and/or serverless proxy; acreage-scaled bubbles,
+  $/ac, listing links) as a site-control overlay for siting analysis. Served from
+  tools.csebuilders.com, shared across tenants; brand/tier from window.OMEGA_WORKSPACE,
+  keys/paths from config.js. ES5 only.
+  ═══════════════════════════════════════════════════════════════════════════════
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<meta name="author" content="Tommy Gilmer · ClearSky Energy Solutions LLC">
+<meta name="copyright" content="© 2025 ClearSky Energy Solutions LLC. Proprietary.">
+<title>Grid Atlas · ClearSky-OMEGA</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css"/>
+<style>
+  :root{
+    --bg:#0a0e14; --panel:#0f1620; --panel2:#131c28; --line:#1e2b3a;
+    --ink:#e6edf3; --muted:#7d8fa3; --dim:#4a5a6b;
+    --amp:#ffb020;        /* interconnect amber - signature */
+    --tx:#ff5c3a;         /* transmission */
+    --sub:#ffb020;        /* substations */
+    --plant:#38d9c4;      /* generation */
+    --dc:#a78bfa;         /* data centers */
+    --ev:#4ea3ff;         /* ev chargers */
+    --bess:#6ee76e;       /* storage */
+    --ok:#6ee76e; --warn:#ffb020; --bad:#ff5c3a;
+    --mono:"SFMono-Regular",ui-monospace,Menlo,Consolas,monospace;
+    --sans:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+  }
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  html,body{margin:0;height:100%;background:var(--bg);color:var(--ink);font-family:var(--sans);overflow:hidden}
+  #map{position:absolute;top:60px;left:0;right:0;bottom:0;background:#070a0f}
+  .leaflet-container{background:#070a0f;font-family:var(--sans)}
+
+  /* OMEGA standard topbar */
+  #topbar{position:absolute;top:0;left:0;right:0;height:60px;z-index:1200;
+    display:flex;align-items:center;gap:16px;padding:0 20px;
+    background:#0B1E35;border-bottom:1px solid rgba(255,255,255,.08)}
+  .tb-logo{display:flex;align-items:center;gap:10px;text-decoration:none}
+  .tb-omega{height:24px;width:auto;display:block}
+  .tb-logo-txt{color:#fff;font-weight:700;font-size:15px;letter-spacing:-.2px}
+  .tb-logo-txt span{color:var(--cs-gold,#E8C56A)}
+  .tb-sep{width:1px;height:24px;background:rgba(255,255,255,.12)}
+  .tb-portal{color:rgba(255,255,255,.45);font-size:12px;font-weight:500;letter-spacing:.5px;text-transform:uppercase}
+  .tb-badge{font-size:10px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:#4ADE80;
+    background:rgba(29,185,84,.14);border:1px solid rgba(29,185,84,.3);padding:4px 10px;border-radius:20px}
+  .tb-title{color:rgba(255,255,255,.85);font-size:13px;font-weight:600;letter-spacing:.02em;padding-left:4px}
+  .tb-spacer{flex:1}
+  .tb-back{background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.15);color:rgba(255,255,255,.7);
+    border-radius:7px;padding:7px 14px;cursor:pointer;font-size:12px;font-weight:600;text-decoration:none}
+  .tb-back:hover{background:rgba(255,255,255,.14);color:#fff}
+  #search{position:relative;width:min(300px,32vw)}
+  #search input{width:100%;height:32px;border:1px solid rgba(255,255,255,.15);background:rgba(255,255,255,.06);
+    color:#fff;border-radius:7px;padding:0 30px 0 11px;font-size:13px;font-family:var(--sans);outline:none}
+  #search input::placeholder{color:rgba(255,255,255,.4)}
+  #search input:focus{border-color:var(--amp)}
+  #search .ic{position:absolute;right:9px;top:8px;color:rgba(255,255,255,.4);font-size:13px}
+  .modechip{font-family:var(--mono);font-size:10px;color:var(--amp);border:1px solid rgba(255,176,32,.4);
+    border-radius:20px;padding:6px 12px;letter-spacing:.1em;text-transform:uppercase;cursor:pointer;user-select:none;white-space:nowrap}
+  .modechip.on{background:rgba(255,176,32,.16);border-color:var(--amp)}
+
+  /* Left layer rail */
+  #rail{position:absolute;left:12px;top:72px;z-index:1150;width:216px;
+    background:var(--panel);border:1px solid var(--line);border-radius:11px;overflow:hidden;
+    box-shadow:0 14px 40px rgba(0,0,0,.5);max-height:calc(100vh - 96px);display:flex;flex-direction:column}
+  #layers{overflow-y:auto;flex:1 1 auto}
+  .rail-h{padding:10px 12px;font-family:var(--mono);font-size:10px;letter-spacing:.16em;
+    text-transform:uppercase;color:var(--muted);border-bottom:1px solid var(--line);display:flex;justify-content:space-between;align-items:center;flex:0 0 auto}
+  .rail-h .cnt{color:var(--dim)}
+  #railFilter{position:relative;flex:0 0 auto;border-bottom:1px solid var(--line)}
+  #railFilter input{width:100%;height:30px;border:0;background:var(--panel2);color:var(--ink);
+    padding:0 26px 0 12px;font-size:12px;font-family:var(--sans);outline:none}
+  #railFilter input::placeholder{color:var(--dim)}
+  #railFilter .fx{position:absolute;right:9px;top:7px;color:var(--dim);font-size:11px;cursor:pointer}
+  /* category header (collapsible) */
+  .cat-h{display:flex;align-items:center;gap:8px;padding:9px 12px;cursor:pointer;
+    background:var(--panel2);border-bottom:1px solid var(--line);user-select:none}
+  .cat-h:hover{background:var(--line)}
+  .cat-h .car{font-size:9px;color:var(--muted);transition:transform .15s;width:8px}
+  .cat-h.collapsed .car{transform:rotate(-90deg)}
+  .cat-h .cnm{flex:1;font-family:var(--mono);font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--ink)}
+  .cat-h .con{font-family:var(--mono);font-size:9px;color:var(--amp)}
+  .cat-body.collapsed{display:none}
+  .lyr{display:flex;align-items:center;gap:10px;padding:8px 12px 8px 20px;cursor:pointer;border-bottom:1px solid rgba(30,43,58,.5)}
+  .lyr:last-child{border-bottom:0}
+  .lyr:hover{background:var(--panel2)}
+  .lyr.hidden{display:none}
+  .sw{width:11px;height:11px;border-radius:3px;flex:0 0 auto;box-shadow:0 0 0 3px rgba(255,255,255,.04)}
+  .lyr .nm{font-size:12px;flex:1}
+  .lyr .st{font-family:var(--mono);font-size:9px;color:var(--dim)}
+  .lyr.off{opacity:.4}
+  .lyr.off .st{color:var(--dim)}
+  .tick{width:14px;height:14px;border-radius:4px;border:1.5px solid var(--line);flex:0 0 auto;position:relative}
+  .lyr:not(.off) .tick{background:var(--amp);border-color:var(--amp)}
+  .lyr:not(.off) .tick:after{content:"";position:absolute;left:4px;top:1px;width:4px;height:8px;
+    border:solid #0a0e14;border-width:0 2px 2px 0;transform:rotate(45deg)}
+
+  /* Analysis panel (right) */
+  #panel{position:absolute;right:12px;top:72px;bottom:12px;z-index:1150;width:326px;
+    background:var(--panel);border:1px solid var(--line);border-radius:11px;
+    display:flex;flex-direction:column;box-shadow:0 14px 40px rgba(0,0,0,.5);transform:translateX(360px);
+    transition:transform .28s cubic-bezier(.2,.8,.2,1)}
+  #panel.open{transform:none}
+  .p-h{padding:13px 14px;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:9px}
+  .p-h .dot{width:8px;height:8px;border-radius:50%;background:var(--amp);box-shadow:0 0 10px var(--amp)}
+  .p-h .ti{font-weight:700;font-size:13px}
+  .p-h .x{margin-left:auto;color:var(--muted);cursor:pointer;font-size:16px;line-height:1;padding:2px 4px}
+  .p-b{padding:6px 14px 16px;overflow:auto;flex:1}
+  .coord{font-family:var(--mono);font-size:11px;color:var(--muted);margin:8px 0 14px;padding:8px 10px;
+    background:var(--panel2);border:1px solid var(--line);border-radius:7px}
+  .sec{font-family:var(--mono);font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--dim);margin:16px 0 8px}
+  .row{display:flex;align-items:flex-start;gap:10px;padding:9px 0;border-bottom:1px solid rgba(30,43,58,.55)}
+  .row:last-child{border-bottom:0}
+  .row .ic{width:9px;height:9px;border-radius:2px;margin-top:4px;flex:0 0 auto}
+  .row .main{flex:1;min-width:0}
+  .row .nm{font-size:12.5px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .row .meta{font-family:var(--mono);font-size:10px;color:var(--muted);margin-top:2px}
+  .row .dist{font-family:var(--mono);font-size:12px;font-weight:700;color:var(--amp);white-space:nowrap}
+  .score{display:flex;align-items:baseline;gap:8px;margin:4px 0 2px}
+  .score .n{font-size:34px;font-weight:800;line-height:1;font-family:var(--mono)}
+  .score .lab{font-size:11px;color:var(--muted)}
+  .bar{height:5px;border-radius:3px;background:var(--panel2);overflow:hidden;margin:9px 0 2px}
+  .bar>span{display:block;height:100%;border-radius:3px}
+  .hint{font-size:12px;color:var(--muted);line-height:1.5}
+  .empty{text-align:center;color:var(--dim);padding:40px 16px}
+  .empty .big{font-size:26px;margin-bottom:10px}
+  .empty .t{font-size:13px;color:var(--muted);line-height:1.5}
+
+  /* legend / status bottom-left */
+  #status{position:absolute;left:12px;bottom:12px;z-index:1100;font-family:var(--mono);font-size:10px;
+    color:var(--muted);background:rgba(15,22,32,.88);border:1px solid var(--line);border-radius:7px;padding:7px 11px;
+    display:flex;gap:12px;align-items:center;max-width:calc(100vw - 24px);overflow:hidden}
+  #status .d{width:6px;height:6px;border-radius:50%;background:var(--ok)}
+  #status.load .d{background:var(--warn);animation:pulse 1s infinite}
+  @keyframes pulse{50%{opacity:.3}}
+
+  /* Basemap switcher */
+  #baseSwitch{position:absolute;right:12px;bottom:56px;z-index:1100;display:flex;gap:4px;
+    background:rgba(15,22,32,.9);border:1px solid var(--line);border-radius:8px;padding:4px;backdrop-filter:blur(8px)}
+  #baseSwitch .bchip{font-family:var(--mono);font-size:10px;color:var(--muted);padding:5px 9px;border-radius:5px;
+    cursor:pointer;user-select:none;letter-spacing:.04em;white-space:nowrap}
+  #baseSwitch .bchip:hover{background:var(--panel2);color:var(--ink)}
+  #baseSwitch .bchip.on{background:var(--amp);color:#0a0e14;font-weight:700}
+  #baseSwitch .bsep{width:1px;align-self:stretch;background:var(--line);margin:2px 2px}
+  #baseSwitch .invtoggle{color:var(--amp)}
+  #baseSwitch .invtoggle.on{background:rgba(255,176,32,.16);color:var(--amp);font-weight:700}
+  @media(max-width:720px){ #baseSwitch{bottom:52px;left:12px;right:auto;flex-wrap:wrap;max-width:60vw} }
+
+  /* ── Zip Radius Report ── */
+  #zipChip{font-family:var(--mono);font-size:10px;color:var(--amp);border:1px solid rgba(255,176,32,.4);
+    border-radius:20px;padding:6px 12px;letter-spacing:.1em;text-transform:uppercase;cursor:pointer;user-select:none;white-space:nowrap}
+  #zipChip:hover{background:rgba(255,176,32,.16);border-color:var(--amp)}
+  #zipModalWrap{position:fixed;inset:0;z-index:1400;display:none;align-items:flex-start;justify-content:center;
+    background:rgba(4,7,11,.62);backdrop-filter:blur(3px)}
+  #zipModalWrap.on{display:flex}
+  #zipModal{margin-top:12vh;width:min(380px,92vw);background:var(--panel);border:1px solid var(--line);
+    border-radius:14px;box-shadow:0 24px 70px rgba(0,0,0,.6);overflow:hidden}
+  #zipModal .zm-h{padding:14px 18px;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:10px}
+  #zipModal .zm-h .ti{font-weight:700;font-size:14px;letter-spacing:-.2px;flex:1}
+  #zipModal .zm-h .x{cursor:pointer;color:var(--muted);font-size:14px}
+  #zipModal .zm-h .x:hover{color:var(--ink)}
+  #zipModal .zm-b{padding:18px}
+  #zipModal label{display:block;font-family:var(--mono);font-size:10px;letter-spacing:.14em;text-transform:uppercase;
+    color:var(--muted);margin:0 0 7px}
+  #zipModal input[type=text]{width:100%;height:40px;border:1px solid var(--line);background:var(--panel2);color:var(--ink);
+    border-radius:8px;padding:0 13px;font-size:16px;font-family:var(--mono);outline:none;letter-spacing:.12em}
+  #zipModal input[type=text]:focus{border-color:var(--amp)}
+  .zm-radrow{display:flex;gap:8px;margin:16px 0 4px}
+  .zm-rad{flex:1;text-align:center;padding:11px 0;border:1px solid var(--line);border-radius:9px;cursor:pointer;
+    font-family:var(--mono);font-size:13px;color:var(--muted);user-select:none;background:var(--panel2)}
+  .zm-rad:hover{border-color:var(--dim);color:var(--ink)}
+  .zm-rad.on{background:var(--amp);color:#0a0e14;font-weight:700;border-color:var(--amp)}
+  .zm-rad small{display:block;font-size:9px;letter-spacing:.08em;opacity:.7;margin-top:2px}
+  #zipGo{width:100%;height:44px;margin-top:16px;border:0;border-radius:9px;background:var(--amp);color:#0a0e14;
+    font-weight:800;font-size:14px;letter-spacing:.02em;cursor:pointer;font-family:var(--sans)}
+  #zipGo:hover{filter:brightness(1.06)}
+  #zipGo:disabled{opacity:.5;cursor:default}
+  #zipErr{color:var(--bad);font-size:12px;margin-top:10px;min-height:16px}
+
+  /* Report results panel (reuses #panel geometry, left side) */
+  #zipReport{position:absolute;left:12px;top:72px;bottom:12px;z-index:1160;width:360px;
+    background:var(--panel);border:1px solid var(--line);border-radius:11px;box-shadow:0 14px 40px rgba(0,0,0,.5);
+    display:none;flex-direction:column;overflow:hidden}
+  #zipReport.open{display:flex}
+  #zipReport .zr-h{padding:12px 14px;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:9px;flex:0 0 auto}
+  #zipReport .zr-h .dot{width:8px;height:8px;border-radius:50%;background:var(--amp)}
+  #zipReport .zr-h .ti{flex:1;font-weight:700;font-size:13px;letter-spacing:-.2px}
+  #zipReport .zr-h .x{cursor:pointer;color:var(--muted);font-size:13px}
+  #zipReport .zr-h .x:hover{color:var(--ink)}
+  .zr-exp{display:flex;gap:5px}
+  .zr-exp button{font-family:var(--mono);font-size:10px;letter-spacing:.06em;color:var(--amp);
+    background:rgba(255,176,32,.1);border:1px solid rgba(255,176,32,.35);border-radius:6px;
+    padding:5px 9px;cursor:pointer;white-space:nowrap}
+  .zr-exp button:hover{background:rgba(255,176,32,.2)}
+  .zr-exp button:disabled{opacity:.35;cursor:default}
+  #zrSub{padding:8px 14px;font-family:var(--mono);font-size:10px;color:var(--muted);border-bottom:1px solid var(--line);flex:0 0 auto}
+  #zrBody{overflow-y:auto;flex:1 1 auto}
+  .zr-sec{padding:10px 14px 4px;font-family:var(--mono);font-size:10px;letter-spacing:.14em;text-transform:uppercase;
+    color:var(--amp);border-bottom:1px solid var(--line);background:var(--panel2);
+    display:flex;justify-content:space-between;align-items:center;position:sticky;top:0}
+  .zr-sec .cnt{color:var(--dim)}
+  .zr-item{padding:10px 14px;border-bottom:1px solid rgba(30,43,58,.5);cursor:pointer}
+  .zr-item:hover{background:var(--panel2)}
+  .zr-item .r1{display:flex;justify-content:space-between;gap:10px;align-items:baseline}
+  .zr-item .nm{font-size:13px;font-weight:600;color:var(--ink);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .zr-item .di{font-family:var(--mono);font-size:11px;color:var(--amp);white-space:nowrap;flex:0 0 auto}
+  .zr-item .r2{font-family:var(--mono);font-size:11px;color:var(--muted);margin-top:3px}
+  .zr-item a.lnk{color:var(--ev);text-decoration:none;font-size:11px;font-family:var(--mono)}
+  .zr-item a.lnk:hover{text-decoration:underline}
+  .zr-empty{padding:16px 14px;color:var(--dim);font-size:12px;font-style:italic}
+  .zr-loading{padding:16px 14px;color:var(--muted);font-size:12px}
+  @media(max-width:720px){
+    #zipReport{width:calc(100vw - 16px);left:8px;right:8px;top:auto;bottom:8px;height:56vh}
+  }
+
+  .leaflet-popup-content-wrapper{background:var(--panel);color:var(--ink);border:1px solid var(--line);border-radius:9px}
+  .leaflet-popup-tip{background:var(--panel);border:1px solid var(--line)}
+  .leaflet-popup-content{margin:11px 13px;font-size:12.5px}
+  .pp-t{font-weight:700;margin-bottom:5px}
+  .pp-r{font-family:var(--mono);font-size:10.5px;color:var(--muted);line-height:1.7}
+  .pp-r b{color:var(--ink);font-weight:600}
+  .leaflet-bar a{background:var(--panel2);color:var(--ink);border-color:var(--line)}
+  .leaflet-bar a:hover{background:var(--line)}
+
+  @media(max-width:720px){
+    #rail{width:170px;top:60px;left:8px}
+    #panel{width:calc(100vw - 16px);right:8px;top:auto;bottom:8px;height:52vh}
+    #panel.open{transform:none}
+    #search{width:38vw}
+    .brand .sub{display:none}
+  }
+  .pin-drop{cursor:crosshair!important}
+  #eiaPanel{position:absolute;left:12px;bottom:52px;z-index:1150;width:236px;
+    background:var(--panel);border:1px solid var(--line);border-radius:11px;overflow:hidden;
+    box-shadow:0 14px 40px rgba(0,0,0,.5);max-height:56vh;overflow-y:auto}
+  .eia-h{padding:12px 13px 8px}
+  .eia-h .big{font-size:22px;font-weight:800;font-family:var(--mono);letter-spacing:-.02em}
+  .eia-h .sub{font-family:var(--mono);font-size:10px;color:var(--muted);margin-top:2px;letter-spacing:.06em}
+  .eia-t{display:flex;align-items:center;gap:9px;padding:6px 13px;font-size:12px}
+  .eia-t .sw{width:9px;height:9px;border-radius:2px;flex:0 0 auto}
+  .eia-t .nm{flex:1}
+  .eia-t .val{font-family:var(--mono);font-size:10.5px;color:var(--muted);text-align:right}
+  .eia-t .val b{color:var(--ink);font-weight:600}
+</style>
+</head>
+<body>
+<div id="map"></div>
+
+<div id="topbar">
+  <a href="/" id="tb-logo-link" class="tb-logo">
+    <img src="/clearsky-omega-mark-white.png" alt="OMEGA" class="tb-omega" onerror="this.style.display='none'">
+    <span class="tb-logo-txt">ClearSky<span>-OMEGA</span></span>
+  </a>
+  <div class="tb-sep"></div>
+  <div class="tb-portal">EnergyOS</div>
+  <span class="tb-badge" id="tb-badge">Enterprise</span>
+  <div class="tb-title">Grid Atlas</div>
+  <div class="tb-spacer"></div>
+  <div class="modechip on" id="pinBtn" title="Drop a site pin to analyze grid proximity">◎ Pin&nbsp;Site</div>
+  <div id="zipChip" title="Enter a ZIP and radius — get a list of land for sale + substations">⌖ Zip&nbsp;Report</div>
+  <div id="search"><input id="q" placeholder="Search address or place…" autocomplete="off"><span class="ic">⌕</span></div>
+  <a href="/" id="tb-back-link" class="tb-back">← Platform</a>
+</div>
+
+<div id="rail">
+  <div class="rail-h"><span>Grid Layers</span><span class="cnt" id="railCnt">—</span></div>
+  <div id="railFilter"><input id="lyrFilter" placeholder="Filter layers…" autocomplete="off"><span class="fx" id="lyrFilterClear" style="display:none">✕</span></div>
+  <div id="layers"></div>
+  <div class="rail-h" style="border-top:1px solid var(--line)"><span>Voltage</span></div>
+  <div id="voltLegend"></div>
+</div>
+
+<div id="eiaPanel" style="display:none"></div>
+
+<div id="panel">
+  <div class="p-h"><span class="dot"></span><span class="ti">Site Analysis</span><span class="x" id="pClose">✕</span></div>
+  <div class="p-b" id="pBody">
+    <div class="empty">
+      <div class="big">◎</div>
+      <div class="t">Drop a pin anywhere on the map to score interconnection proximity — nearest substation, transmission voltage, generation, data-center clusters, EV/BESS context, and nearby land for sale for site control.</div>
+    </div>
+  </div>
+</div>
+
+<div id="status"><span class="d"></span><span id="stTxt">Ready · public grid data</span></div>
+
+<!-- Zip Radius report dialog -->
+<div id="zipModalWrap">
+  <div id="zipModal">
+    <div class="zm-h"><span class="ti">⌖ Zip Radius Report</span><span class="x" id="zipModalClose">✕</span></div>
+    <div class="zm-b">
+      <label for="zipInput">ZIP code</label>
+      <input id="zipInput" type="text" inputmode="numeric" maxlength="5" placeholder="e.g. 52732" autocomplete="off">
+      <div class="zm-radrow" id="zipRadRow">
+        <div class="zm-rad" data-mi="25">25 mi<small>tight</small></div>
+        <div class="zm-rad on" data-mi="50">50 mi<small>default</small></div>
+        <div class="zm-rad" data-mi="100">100 mi<small>wide</small></div>
+      </div>
+      <button id="zipGo">Run Report</button>
+      <div id="zipErr"></div>
+    </div>
+  </div>
+</div>
+
+<!-- Zip Radius report results -->
+<div id="zipReport">
+  <div class="zr-h"><span class="dot"></span><span class="ti" id="zrTitle">Zip Report</span>
+    <span class="zr-exp"><button id="zrCsv" disabled title="Download as CSV">CSV</button><button id="zrPdf" disabled title="Print / save as PDF">PDF</button></span>
+    <span class="x" id="zrClose">✕</span></div>
+  <div id="zrSub">—</div>
+  <div id="zrBody"></div>
+</div>
+
+<div id="baseSwitch">
+  <span class="bchip on" data-b="dark" onclick="__setBase('dark')">Dark</span>
+  <span class="bchip" data-b="light" onclick="__setBase('light')">Light</span>
+  <span class="bchip" data-b="streets" onclick="__setBase('streets')">Streets</span>
+  <span class="bchip" data-b="satellite" onclick="__setBase('satellite')">Satellite</span>
+  <span class="bchip" data-b="hybrid" onclick="__setBase('hybrid')">Hybrid</span>
+  <span class="bsep"></span>
+  <span class="bchip invtoggle" data-b="invert" onclick="__toggleInvert()" title="Brighten / invert the basemap">◐ Invert</span>
+</div>
+
+<!-- Firebase compat v8 + shared platform config/registry (OMEGA standard order) -->
+<!-- config.js should provide (browser-visible; free-tier keys only, NEVER paid backend keys):
+       window.CLEARSKY_CONFIG.eiaApiKey   = "...";  // EIA plants layer  (free)
+       window.CLEARSKY_CONFIG.fccBbKey    = "...";  // live fiber-at-point (broadbandmap.com free demo)
+       window.CLEARSKY_CONFIG.greenfieldStatic = "/data/land-listings.json"; // committed listings file (RECOMMENDED)
+       window.CLEARSKY_CONFIG.greenfieldProxy  = "/api/greenfield";          // live serverless scrape (optional)
+     Paid fiber route data (GeoTel/FiberLocator/LandGate) needs a serverless proxy — do NOT
+     put those keys here; wire them behind a Vercel function and point the tool at that.
+     GREENFIELD (land-for-sale) layer — two sources, merged & deduped if both set:
+     1) greenfieldStatic (RECOMMENDED, deterministic): a listings file committed to the repo.
+        Accepts GeoJSON *or* the RAW dataset JSON downloaded from an Apify Land.com actor run —
+        no conversion needed. Workflow: run the actor in the Apify console for your corridor,
+        Storage → Dataset → download JSON, commit as /data/land-listings.json, set this path.
+     2) greenfieldProxy: live /api/greenfield Vercel function (LandSearch scrape, or Apify if
+        APIFY_TOKEN env is set). Use the "test" link in the Land rail to verify it end-to-end.
+     The Land rail shows a sticky status line (#gfNote) with source-by-source results/errors. -->
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+<script src="/config.js"></script>
+<script src="/omega-tools.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script>
+(function(){
+"use strict";
+/* Build tag — check window.GRID_ATLAS_BUILD in the console to confirm which version is live. */
+window.GRID_ATLAS_BUILD = "2026-07-14-greenfield-v3-static-diagnostics";
+
+function fail(msg){
+  var s=document.getElementById("stTxt"), b=document.getElementById("status");
+  if(s){ s.textContent=msg; } if(b){ b.className=""; b.querySelector(".d").style.background="#ff5c3a"; }
+}
+if(typeof L==="undefined"||!L.map){
+  fail("Map library failed to load — check network/CDN access");
+  return;
+}
+window.onerror=function(m){ fail("Error: "+m); };
+
+/* ---------- OMEGA workspace badge + tenant platform nav (matches other tools) ---------- */
+(function applyWorkspace(){
+  try{
+    if(window.OMEGA_WORKSPACE){
+      var b=document.getElementById("tb-badge");
+      if(b) b.textContent=window.OMEGA_WORKSPACE.accountTier||"Enterprise";
+      var t=document.getElementById("tb-title");
+      if(t&&window.OMEGA_WORKSPACE.name) t.textContent=window.OMEGA_WORKSPACE.name+" · Grid Atlas";
+    }
+  }catch(e){}
+})();
+/* Rewrite logo + "← Platform" to the tenant portal the user came from.
+   Served from tools.csebuilders.com and shared, so bare "/" would land on the tool host. */
+function gaTenantPortalUrl(){
+  var BRAND={"nextnrg.com":"nextnrg","solela.com":"solela","chileasing.com":"chileasing",
+    "spatco.com":"spatco","ogisolar.com":"ogisolar"};
+  var slug=null;
+  try{ var org=((window.OMEGATools&&OMEGATools.orgFromUrl?OMEGATools.orgFromUrl(""):"")||"").toLowerCase();
+       if(BRAND[org]) slug=BRAND[org]; }catch(e){}
+  if(!slug&&document.referrer){
+    try{ var h=new URL(document.referrer).hostname;
+      if(/\.csebuilders\.com$/.test(h)){ var sub=h.split(".")[0]; if(sub&&sub!=="tools") slug=sub; } }catch(e2){}
+  }
+  return slug?"https://"+slug+".csebuilders.com/":"https://tools.csebuilders.com/";
+}
+(function wireNav(){
+  var url=gaTenantPortalUrl();
+  var back=document.getElementById("tb-back-link"), logo=document.getElementById("tb-logo-link");
+  if(back) back.setAttribute("href",url);
+  if(logo) logo.setAttribute("href",url);
+})();
+
+/* ---------- Layer registry: real public ArcGIS/HIFLD + open endpoints ---------- */
+/* Each layer queries live in the user's browser (no key needed for HIFLD/OSM). */
+var LAYERS = {
+  substations: {
+    name:"Substations", color:"#ffb020", on:true, geom:"point", role:"interconnect",
+    url:"https://services5.arcgis.com/HDRa0B57OVrv2E1q/ArcGIS/rest/services/Electric_Substations/FeatureServer/0",
+    urls:[
+      // 1) EIA U.S. Energy Atlas — federally maintained (EIA), WGS84-native, actively updated
+      "https://services5.arcgis.com/HDRa0B57OVrv2E1q/ArcGIS/rest/services/Electric_Substations/FeatureServer/0",
+      // 2) HIFLD mirror (program decommissioned 8/25/2025, but service still responds)
+      "https://services.arcgis.com/G4S1dGvn7PIgYd6Y/ArcGIS/rest/services/HIFLD_electric_power_substations/FeatureServer/0",
+      // 3) FEMA IEM_Support energy MapServer (federal, live)
+      "https://disasters.geoplatform.gov/arcgis/rest/services/IEM_Support/r00_energy/MapServer/2"
+    ],
+    label:function(a){return a.NAME||a.name||a.SUBSTATION||"Substation";},
+    meta:function(a){var v=a.MAX_VOLT||a.VOLTAGE||a.max_volt||a.MAX_VOLTAG;return (v&&v>0?v+" kV · ":"")+(a.STATUS||a.TYPE||a.LINES?(a.LINES+" lines"):"");}
+  },
+  transmission: {
+    name:"Transmission", color:"#ff5c3a", on:true, geom:"line", role:"interconnect",
+    url:"https://services2.arcgis.com/FiaPA4ga0iQKduv3/arcgis/rest/services/US_Electric_Power_Transmission_Lines/FeatureServer/0",
+    urls:[
+      // EIA Atlas / fedmaps (Aug-2025 edit, WGS84) then HIFLD mirrors
+      "https://services2.arcgis.com/FiaPA4ga0iQKduv3/arcgis/rest/services/US_Electric_Power_Transmission_Lines/FeatureServer/0",
+      "https://services5.arcgis.com/HDRa0B57OVrv2E1q/ArcGIS/rest/services/Electric_Power_Transmission_Lines/FeatureServer/0",
+      "https://services.arcgis.com/G4S1dGvn7PIgYd6Y/ArcGIS/rest/services/Electric_Power_Transmission_Lines/FeatureServer/0"
+    ],
+    label:function(a){return a.OWNER||a.SUB_1||"Transmission line";},
+    meta:function(a){var v=+(a.VOLTAGE||0);return (v>0?v+" kV":(a.VOLT_CLASS||"HV"));}
+  },
+  plants: {
+    name:"Power Plants", color:"#38d9c4", on:true, geom:"point", role:"generation",
+    url:"https://services2.arcgis.com/FiaPA4ga0iQKduv3/arcgis/rest/services/Power_Plants_in_the_US/FeatureServer/0",
+    urls:[
+      "https://services2.arcgis.com/FiaPA4ga0iQKduv3/arcgis/rest/services/Power_Plants_in_the_US/FeatureServer/0",
+      "https://services.arcgis.com/G4S1dGvn7PIgYd6Y/ArcGIS/rest/services/Power_Plants/FeatureServer/0"
+    ],
+    label:function(a){return a.Plant_Name||a.NAME||a.PLANT_NAME||"Power plant";},
+    meta:function(a){var mw=a.Total_MW||a.TOTAL_MW||a.MW||a.OP_CAP;return (mw?Math.round(mw)+" MW · ":"")+(a.PrimSource||a.PRIM_FUEL||a.PRIMSOURCE||a.FUEL||"");}
+  },
+  datacenters: {
+    name:"Data Centers", color:"#a78bfa", on:false, geom:"point", role:"load",
+    url:"__OSM__", osmTag:'["telecom"="data_center"]',
+    label:function(a){return a.name||"Data center";},
+    meta:function(a){return a.operator||a.brand||"colo / compute";}
+  },
+  greenfield: {
+    name:"Land for Sale", color:"#7CFF6B", on:false, geom:"bubble", role:"land",
+    url:"__PROXY__", proxyKind:"greenfield",
+    label:function(a){return a.address||a.name||"Parcel for sale";},
+    meta:function(a){
+      var p=(a.price!=null?"$"+Number(a.price).toLocaleString():"");
+      var ac=(a.acres!=null?Number(a.acres).toLocaleString()+" ac":"");
+      var pa=(a.ppa!=null&&isFinite(a.ppa)?"$"+Math.round(a.ppa).toLocaleString()+"/ac":"");
+      return [p,ac,pa].filter(Boolean).join(" · ")||(a.status||"listing");
+    }
+  },
+  ev: {
+    name:"EV Chargers", color:"#4ea3ff", on:false, geom:"point", role:"load",
+    url:"__OSM__", osmTag:'["amenity"="charging_station"]',
+    label:function(a){return a.name||a.operator||"Charging station";},
+    meta:function(a){return (a.socket_type2||a.socket_ccs2?"CCS/L2":"")||(a.capacity?a.capacity+" ports":"EV")}
+  },
+  bess: {
+    name:"Storage / BESS", color:"#6ee76e", on:false, geom:"point", role:"generation",
+    url:"__OSM__", osmTag:'["power"="plant"]["plant:source"="battery"]',
+    label:function(a){return a.name||"Battery storage";},
+    meta:function(a){return a["plant:output:electricity"]||a.operator||"BESS";}
+  },
+  osm_lines: {
+    name:"OSM Power Lines", color:"#B55D00", on:false, geom:"line", role:"interconnect",
+    url:"__OSMGEOM__", osmTag:'["power"="line"]', voltColor:true,
+    label:function(a){return a.operator||a.name||"Power line";},
+    meta:function(a){var kv=osmKv(a);return (kv?kv+" kV":"line")+(a.cables?" · "+a.cables+"c":"");}
+  },
+  osm_subs: {
+    name:"OSM Substations", color:"#ffb020", on:false, geom:"point", role:"interconnect",
+    url:"__OSM__", osmTag:'["power"="substation"]', voltColor:true,
+    label:function(a){return a.name||"Substation";},
+    meta:function(a){var kv=osmKv(a);return (kv?kv+" kV":"")+(a.substation?" · "+a.substation:"");}
+  },
+  osm_plants: {
+    name:"OSM Plants", color:"#38d9c4", on:false, geom:"point", role:"generation",
+    url:"__OSM__", osmTag:'["power"="plant"]', plantColor:true,
+    label:function(a){return a.name||"Power plant";},
+    meta:function(a){return (a["plant:source"]||"")+(a["plant:output:electricity"]?" · "+a["plant:output:electricity"]:"");}
+  },
+  eia_plants: {
+    name:"EIA Plants (MW)", color:"#E5B93C", on:false, geom:"bubble", role:"generation",
+    url:"__EIA__", eia:true,
+    label:function(a){return a.plantName||"Plant";},
+    meta:function(a){return (a.mw?Math.round(a.mw)+" MW · ":"")+(a.techLabel||a.tech||"");}
+  },
+  fiber: {
+    name:"Fiber Routes", color:"#00E0C6", on:false, geom:"line", role:"connectivity",
+    url:"__OSMGEOM__", osmTag:'["communication"="line"]',
+    label:function(a){return a.operator||a.name||"Fiber route";},
+    meta:function(a){return (a["telecom:medium"]==="fibre"?"fibre":(a["telecom:medium"]||"comm line"))+(a.submarine==="yes"?" · submarine":"");}
+  },
+  fiber_cls: {
+    name:"Cable Landings", color:"#00E0C6", on:false, geom:"point", role:"connectivity",
+    url:"__OSM__", osmTag:'["telecom"="cable_landing_station"]',
+    label:function(a){return a.name||"Cable landing station";},
+    meta:function(a){return a.operator||"submarine cable landing";}
+  },
+  backbone: {
+    name:"LH Backbone (InterTubes)", color:"#FF3D9A", on:false, geom:"line", role:"connectivity",
+    url:"__STATIC__", staticFile:"/data/intertubes-backbone.geojson",
+    label:function(a){return a.name||a.link||"Long-haul conduit";},
+    meta:function(a){return (a.owner||a.carriers||"backbone conduit");}
+  },
+  /* ── STATE / REGIONAL OPEN FIBER (add one entry per jurisdiction) ──
+     Each is a public ArcGIS FeatureServer of real fiber-route geometry, queried
+     within the map view via the standard ArcGIS path. To add a state: copy this
+     entry, change name/url/label/meta to that state's service. No national open
+     fiber API exists — this is how you aggregate coverage jurisdiction by jurisdiction. */
+  fiber_ca: {
+    name:"CA Middle-Mile", color:"#00E0C6", on:false, geom:"line", role:"connectivity",
+    url:"https://gis.cdt.ca.gov/arcgis/rest/services/CDT/Middle_Mile_Network/FeatureServer/0",
+    urlAlt:"https://services3.arcgis.com/nJ7f7lPa4gwCsdVA/arcgis/rest/services/Statewide_Middle_Mile_Network/FeatureServer/0",
+    label:function(a){return a.SegmentName||a.RouteName||a.Name||"CA middle-mile route";},
+    meta:function(a){return (a.Status||a.PhaseStatus||"middle-mile fiber")+(a.Miles?" · "+Math.round(a.Miles)+" mi":"");}
+  },
+  subsea: {
+    name:"Submarine Cables", color:"#3DA5FF", on:false, geom:"line", role:"connectivity",
+    url:"__STATIC__", staticFile:"https://map.kmcd.dev/data/all_cables.json",
+    label:function(a){return a.name||"Submarine cable";},
+    meta:function(a){return (a.owners?(""+a.owners).split(",")[0]:"subsea")+(a.rfs_year?" · RFS "+a.rfs_year:"")+(a.length?" · "+a.length:"");}
+  },
+  /* ── GeoDataViewer hosted terrestrial fiber (open GeoJSON, no key) ──
+     NOTE: aggregator data with vague provenance — treat as INDICATIVE corridors
+     for screening, not authoritative route geometry. */
+  ll_backbone: {
+    name:"LH Backbone (GDV)", color:"#FF3D9A", on:false, geom:"line", role:"connectivity",
+    url:"__STATIC__", staticFile:"https://static.geodataviewer.com/datasets/backbone.geojson",
+    label:function(a){return a.name||a.operator||"Backbone segment";},
+    meta:function(a){return a.operator||a.network||"terrestrial backbone";}
+  },
+  fiber_verified: {
+    name:"Fiber Routes (verified)", color:"#00E0C6", on:false, geom:"line", role:"connectivity",
+    url:"__STATIC__", staticFile:"https://static.geodataviewer.com/datasets/fiber-routes-verified.geojson",
+    label:function(a){return a.name||a.operator||"Fiber route";},
+    meta:function(a){return (a.operator||a.carrier||"terrestrial fiber")+" · verified";}
+  },
+  fiber_estimated: {
+    name:"Fiber Routes (est.)", color:"#0E8C82", on:false, geom:"line", role:"connectivity",
+    url:"__STATIC__", staticFile:"https://static.geodataviewer.com/datasets/fiber-routes-estimated.geojson",
+    label:function(a){return a.name||a.operator||"Fiber corridor";},
+    meta:function(a){return (a.operator||a.carrier||"estimated corridor")+" · est.";}
+  },
+  /* ── MARKET / UTILITY CONTEXT (polygons) — NASA-hosted HIFLD energy mirror ──
+     Federal, stable, WGS84, GeoJSON. Pin-drop reports which territory a site falls in. */
+  utility_terr: {
+    name:"Utility Territory", color:"#C99BFF", on:false, geom:"poly", role:"market",
+    url:"https://maps.nccs.nasa.gov/mapping/rest/services/hifld_open/energy/FeatureServer/26",
+    label:function(a){return a.NAME||a.name||"Utility territory";},
+    meta:function(a){return (a.TYPE||a.REGULATED||"retail service territory");}
+  },
+  iso_rto: {
+    name:"ISO / RTO", color:"#7FB2FF", on:false, geom:"poly", role:"market",
+    url:"https://maps.nccs.nasa.gov/mapping/rest/services/hifld_open/energy/FeatureServer/28",
+    label:function(a){return a.NAME||a.name||"ISO/RTO";},
+    meta:function(a){return "independent system operator";}
+  },
+  ba_area: {
+    name:"Balancing Authority", color:"#5FD0C4", on:false, geom:"poly", role:"market",
+    url:"https://maps.nccs.nasa.gov/mapping/rest/services/hifld_open/energy/FeatureServer/23",
+    label:function(a){return a.NAME||a.name||"Balancing authority";},
+    meta:function(a){return "control area / BA";}
+  }
+};
+var ORDER=["substations","transmission","plants","greenfield","datacenters","ev","bess","osm_lines","osm_subs","osm_plants","eia_plants","fiber","fiber_cls","backbone","fiber_ca","subsea","ll_backbone","fiber_verified","fiber_estimated","utility_terr","iso_rto","ba_area"];
+
+/* ---------- EIA technology taxonomy (matches EIA energy_source_code / technology) ---------- */
+var EIA_TECH={
+  "solar":{c:"#E5B93C",label:"Solar"}, "SUN":{c:"#E5B93C",label:"Solar"},
+  "wind":{c:"#4EA3FF",label:"Wind"}, "WND":{c:"#4EA3FF",label:"Wind"},
+  "batteries":{c:"#E24A6B",label:"Storage"}, "MWH":{c:"#E24A6B",label:"Storage"},
+  "hydroelectric":{c:"#5F9BD6",label:"Hydro"}, "WAT":{c:"#5FBF8E",label:"Hydro"},
+  "nuclear":{c:"#5FBF8E",label:"Nuclear"}, "NUC":{c:"#5FBF8E",label:"Nuclear"},
+  "natural gas":{c:"#B07ED6",label:"Gas"}, "NG":{c:"#B07ED6",label:"Gas"},
+  "coal":{c:"#8A8A8A",label:"Coal"}, "BIT":{c:"#8A8A8A",label:"Coal"}, "SUB":{c:"#8A8A8A",label:"Coal"},
+  "petroleum":{c:"#E27A4A",label:"Oil"}, "DFO":{c:"#E27A4A",label:"Oil"},
+  "geothermal":{c:"#B54EB2",label:"Geothermal"}, "GEO":{c:"#B54EB2",label:"Geothermal"},
+  "biomass":{c:"#9BCF4A",label:"Biomass"}, "WDS":{c:"#9BCF4A",label:"Biomass"}
+};
+function eiaTech(row){
+  var t=(row.technology||row["energy_source_code"]||row.energy_source_code||"").toString();
+  var key=t.toLowerCase();
+  return EIA_TECH[key]||EIA_TECH[t]||{c:"#7d8fa3",label:t||"Other"};
+}
+
+/* ---------- Voltage → color (ported from OpenInfraMap style_oim_power.ts, BSD-3) ----------
+   Stepwise color ramp keyed on kV. HVDC and traction get special colors. */
+var VOLT_SCALE=[[0,"#7A7A85"],[10,"#6E97B8"],[25,"#55B555"],[52,"#B59F10"],
+                [132,"#B55D00"],[220,"#C73030"],[310,"#B54EB2"],[550,"#00C1CF"]];
+function voltColor(kv){
+  var v=+kv||0, c=VOLT_SCALE[0][1];
+  for(var i=0;i<VOLT_SCALE.length;i++){ if(v>=VOLT_SCALE[i][0]) c=VOLT_SCALE[i][1]; }
+  return c;
+}
+/* Parse an OSM voltage tag like "138000" or "115000;69000" → highest kV */
+function osmKv(props){
+  var raw=props.voltage||props.voltage_1||""; if(!raw) return 0;
+  var parts=(""+raw).split(";"), max=0;
+  for(var i=0;i<parts.length;i++){ var n=parseFloat(parts[i]); if(n>max) max=n; }
+  return max>1000?max/1000:max; // volts→kV if needed
+}
+/* OSM plant/generator source → label color */
+var PLANT_COLORS={coal:"#555",gas:"#B06A2E",oil:"#B06A2E",diesel:"#B06A2E",
+  nuclear:"#C73030",hydro:"#4E86C7",solar:"#E5B93C",wind:"#5FBF8E",
+  biomass:"#7FA05F",waste:"#8A7A5F",battery:"#6ee76e",geothermal:"#B54EB2"};
+function plantColor(props){
+  var s=(props["plant:source"]||props["generator:source"]||"").toLowerCase();
+  return PLANT_COLORS[s]||"#38d9c4";
+}
+
+/* ---------- Map ---------- */
+var map=L.map("map",{zoomControl:false,minZoom:3,maxZoom:18,worldCopyJump:true}).setView([41.84,-90.19],6); // Clinton, IA
+L.control.zoom({position:"bottomright"}).addTo(map);
+
+/* Dedicated basemap pane, kept BELOW all overlays regardless of add order */
+map.createPane("basePane");
+map.getPane("basePane").style.zIndex=200; // overlayPane is 400, markerPane 600
+map.getPane("basePane").style.pointerEvents="none";
+
+/* Basemaps — switchable for readability. Satellite for site context, light for labels. */
+var ATTR='© OpenStreetMap · © CARTO/Esri · HIFLD/EIA/EPA/OSM';
+function baseTile(url,opts){ opts=opts||{}; opts.pane="basePane"; opts.attribution=ATTR; if(!opts.maxZoom)opts.maxZoom=19; return L.tileLayer(url,opts); }
+var BASEMAPS={
+  dark:{ name:"Dark", layer:baseTile("https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png",{subdomains:"abcd"}) },
+  light:{ name:"Light", layer:baseTile("https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png",{subdomains:"abcd"}) },
+  streets:{ name:"Streets", layer:baseTile("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",{subdomains:"abc"}) },
+  satellite:{ name:"Satellite", layer:baseTile("https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",{}) },
+  hybrid:{ name:"Hybrid", layer:L.layerGroup([
+     baseTile("https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",{}),
+     baseTile("https://{s}.basemaps.cartocdn.com/dark_only_labels/{z}/{x}/{y}{r}.png",{subdomains:"abcd"})
+  ]) }
+};
+var currentBase="dark";
+BASEMAPS.dark.layer.addTo(map);
+function setBasemap(key){
+  if(!BASEMAPS[key]||key===currentBase) return;
+  map.removeLayer(BASEMAPS[currentBase].layer);
+  BASEMAPS[key].layer.addTo(map);
+  currentBase=key;
+  var chips=document.querySelectorAll("#baseSwitch .bchip");
+  for(var i=0;i<chips.length;i++){
+    var b=chips[i].getAttribute("data-b");
+    if(b==="invert") continue; // invert toggle managed separately
+    chips[i].className="bchip"+(b===key?" on":"");
+  }
+}
+window.__setBase=setBasemap;
+
+/* Invert / high-contrast toggle — brightens a dark basemap via CSS filter on the pane.
+   Great when Dark is too muddy but you still want the dark UI aesthetic. */
+var baseInverted=false;
+function toggleInvert(){
+  baseInverted=!baseInverted;
+  var pane=map.getPane("basePane");
+  pane.style.filter=baseInverted?"invert(1) hue-rotate(180deg) brightness(1.05) contrast(.9)":"";
+  var inv=document.querySelector('#baseSwitch [data-b="invert"]');
+  if(inv) inv.className="bchip invtoggle"+(baseInverted?" on":"");
+}
+window.__toggleInvert=toggleInvert;
+
+var groups={}, cache={}, drawnBounds={};
+ORDER.forEach(function(k){ groups[k]=L.layerGroup(); if(LAYERS[k].on) groups[k].addTo(map); });
+
+/* ---------- Status ---------- */
+var stEl=document.getElementById("status"), stTxt=document.getElementById("stTxt");
+function status(msg,loading){ stTxt.textContent=msg; stEl.className=loading?"load":""; }
+
+/* ---------- Fetch: ArcGIS FeatureServer query within current view ----------
+   Walks a fallback chain of endpoints (L2.urls[]), so a dead mirror auto-recovers
+   to the next. This is the reliability layer: HIFLD's official portal was
+   decommissioned 8/25/2025, so grid layers rely on redundant public mirrors. */
+function fetchArc(key,cb){
+  var L2=LAYERS[key], b=map.getBounds();
+  var env=b.getWest()+","+b.getSouth()+","+b.getEast()+","+b.getNorth();
+  var qs="/query?f=geojson&where=1%3D1&outFields=*&returnGeometry=true"+
+    "&geometryType=esriGeometryEnvelope&inSR=4326&outSR=4326&spatialRel=esriSpatialRelIntersects"+
+    "&resultRecordCount=1000&geometry="+encodeURIComponent(env);
+  // Build the ordered list of endpoints to try
+  var chain=[];
+  if(L2.urls&&L2.urls.length){ chain=L2.urls.slice(); }
+  else { if(L2.url)chain.push(L2.url); if(L2.urlAlt)chain.push(L2.urlAlt); }
+  var i=0;
+  function attempt(){
+    if(i>=chain.length){ cb([]); return; }
+    var base=chain[i++];
+    ajax(base+qs,function(err,json){
+      if(err||!json||!json.features||!json.features.length){ attempt(); return; }
+      var feats=json.features.map(function(f){ return {props:f.properties||{}, geom:f.geometry}; });
+      if(L2.urls&&i>1) status("Loaded "+L2.name+" via backup mirror ("+i+"/"+chain.length+")",false);
+      cb(feats);
+    });
+  }
+  attempt();
+}
+
+/* ---------- Fetch: OSM Overpass within view (points or line geometry) ---------- */
+function fetchOSM(key,cb){
+  var L2=LAYERS[key], b=map.getBounds();
+  var bbox=b.getSouth()+","+b.getWest()+","+b.getNorth()+","+b.getEast();
+  var wantGeom=(L2.url==="__OSMGEOM__");
+  var q;
+  if(wantGeom){
+    q="[out:json][timeout:25];(way"+L2.osmTag+"("+bbox+"););out geom 800;";
+  } else {
+    q="[out:json][timeout:25];(node"+L2.osmTag+"("+bbox+");way"+L2.osmTag+"("+bbox+"););out center 600;";
+  }
+  ajax("https://overpass-api.de/api/interpreter?data="+encodeURIComponent(q),function(err,json){
+    if(err||!json){ cb([]); return; }
+    var feats=(json.elements||[]).map(function(e){
+      if(wantGeom&&e.geometry){
+        var coords=e.geometry.map(function(p){return [p.lon,p.lat];});
+        return {props:e.tags||{}, geom:{type:"LineString",coordinates:coords}};
+      }
+      var lat=e.lat||(e.center&&e.center.lat), lon=e.lon||(e.center&&e.center.lon);
+      if(lat==null) return null;
+      return {props:e.tags||{}, geom:{type:"Point",coordinates:[lon,lat]}};
+    }).filter(Boolean);
+    cb(feats);
+  });
+}
+
+/* ---------- Fetch: EIA operating-generator-capacity (Inventory of Operable Generators) ----------
+   Returns generator rows with nameplate MW, technology, lat/lon (when present).
+   Also drives the national technology-breakdown panel. */
+var EIA_STATS=null; // {total_mw, total_count, byTech:{label:{mw,count,color}}}
+function fetchEIA(key,cb){
+  var cfg=window.CLEARSKY_CONFIG||{};
+  var apiKey=cfg.eiaApiKey||(cfg.apiKeys&&cfg.apiKeys.eia)||(window.CS_CONFIG&&window.CS_CONFIG.EIA_API_KEY)||"";
+  if(!apiKey){ status("EIA layer needs an API key (set eiaApiKey in config.js)",false); cb([]); return; }
+  // Pull operable generators nationally; EIA caps rows per call, so request a large page.
+  var base="https://api.eia.gov/v2/electricity/operating-generator-capacity/data/";
+  var params="?api_key="+encodeURIComponent(apiKey)+
+    "&frequency=monthly&data[0]=nameplate-capacity-mw&data[1]=net-summer-capacity-mw"+
+    "&sort[0][column]=period&sort[0][direction]=desc"+
+    "&facets[status][]=OP"+  // operating only
+    "&length=5000";
+  ajax(base+params,function(err,json){
+    if(err||!json||!json.response){ status("EIA request failed",false); cb([]); return; }
+    var rows=json.response.data||[];
+    // Deduplicate to latest period per plant+generator
+    var seen={}, uniq=[];
+    for(var i=0;i<rows.length;i++){
+      var r=rows[i], id=(r.plantid||r.plantId||r.plantCode||"")+"|"+(r.generatorid||r.generatorId||"");
+      if(seen[id]) continue; seen[id]=1; uniq.push(r);
+    }
+    // Build stats + bubble features
+    var stats={total_mw:0,total_count:0,byTech:{}};
+    var feats=[];
+    for(var j=0;j<uniq.length;j++){
+      var row=uniq[j];
+      var mw=parseFloat(row["nameplate-capacity-mw"]||row.nameplateCapacityMw||0)||0;
+      var tech=eiaTech(row);
+      stats.total_mw+=mw; stats.total_count++;
+      if(!stats.byTech[tech.label]) stats.byTech[tech.label]={mw:0,count:0,color:tech.c};
+      stats.byTech[tech.label].mw+=mw; stats.byTech[tech.label].count++;
+      var lat=parseFloat(row.latitude||row.lat), lon=parseFloat(row.longitude||row.lon);
+      if(!isNaN(lat)&&!isNaN(lon)){
+        feats.push({props:{plantName:row.plantName||row.plantid,mw:mw,tech:tech.label,
+          techLabel:tech.label,techColor:tech.c},
+          geom:{type:"Point",coordinates:[lon,lat]}, bubbleMw:mw, bubbleColor:tech.c});
+      }
+    }
+    EIA_STATS=stats;
+    renderEIAPanel(stats);
+    cb(feats);
+  });
+}
+
+/* ---------- Static GeoJSON loader (InterTubes backbone, or any bundled geo) ----------
+   Loads a GeoJSON bundled on the tools host. National — ignores map extent. */
+function fetchStatic(key,cb){
+  var L2=LAYERS[key];
+  ajax(L2.staticFile,function(err,json){
+    if(err||!json){ status("Data not found — "+L2.staticFile,false); cb([]); return; }
+    var raw = json.features ? json.features : (json.length!=null ? json : []);
+    var feats=[];
+    for(var i=0;i<raw.length;i++){ var f=raw[i]; if(!f||!f.geometry) continue;
+      feats.push({props:f.properties||{}, geom:f.geometry}); }
+    cb(feats);
+  });
+}
+
+/* ---------- Greenfield (Land for Sale) sources ---------- */
+function normalizeParcel(f){
+  var g=f.geometry||f.geom, p=f.properties||f.props||{};
+  if(!g||!g.coordinates) return null;
+  var price=(p.price!=null?+p.price:(p.unformattedPrice!=null?+p.unformattedPrice:null));
+  var acres=(p.acres!=null?+p.acres:(p.lotSizeAcres!=null?+p.lotSizeAcres:
+             (p.lotAreaValue!=null&&/acre/i.test(p.lotAreaUnit||"")?+p.lotAreaValue:null)));
+  var ppa=(p.ppa!=null?+p.ppa:(price!=null&&acres&&acres>0?price/acres:null));
+  var props={
+    address:p.address||p.streetAddress||p.name||"Parcel for sale",
+    price:price, acres:acres, ppa:ppa,
+    status:p.status||p.homeStatus||p.statusType||"FOR_SALE",
+    url:p.url||p.detailUrl||""
+  };
+  return {props:props, geom:{type:"Point",coordinates:[+g.coordinates[0],+g.coordinates[1]]},
+          bubbleMw:acres||null, bubbleColor:LAYERS.greenfield.color, parcel:true,
+          pending:/pending/i.test(props.status||"")};
+}
+
+var gfFilter={minAcres:5, maxPpa:0}; // defaults tuned for BESS/compute siting; 0 = no cap
+
+/* Sticky land-layer status — shown in the Land rail (#gfNote) so failures are visible. */
+var gfNote="";
+function gfSetNote(msg){ gfNote=msg||""; var el=document.getElementById("gfNote");
+  if(el){ el.textContent=gfNote; el.title=gfNote; } }
+
+/* Accepts GeoJSON OR raw Apify dataset JSON (array of items with lat/lon fields). */
+function normalizeLandJson(json){
+  var out=[];
+  var raw=json&&json.features?json.features:(json&&json.length!=null?json:[]);
+  for(var i=0;i<raw.length;i++){
+    var f=raw[i]; if(!f) continue;
+    if(f.geometry||f.geom){ var n=normalizeParcel(f); if(n) out.push(n); continue; }
+    var lat=+(f.latitude!=null?f.latitude:(f.lat!=null?f.lat:(f.location&&f.location.lat)));
+    var lon=+(f.longitude!=null?f.longitude:(f.lon!=null?f.lon:(f.lng!=null?f.lng:(f.location&&f.location.lng))));
+    if(isNaN(lat)||isNaN(lon)) continue;
+    var n2=normalizeParcel({geometry:{type:"Point",coordinates:[lon,lat]},properties:{
+      address:f.address||f.title||f.name, price:f.price||f.listPrice||f.unformattedPrice,
+      acres:f.acres||f.acreage||f.lotSizeAcres||f.size, status:f.status,
+      url:f.url||f.detailUrl||f.link }});
+    if(n2) out.push(n2);
+  }
+  return out;
+}
+function gfScreen(feats){
+  var out=[];
+  for(var i=0;i<feats.length;i++){ var p=feats[i].props||{};
+    if(gfFilter.minAcres>0 && !(p.acres>=gfFilter.minAcres)) continue;
+    if(gfFilter.maxPpa>0 && p.ppa!=null && p.ppa>gfFilter.maxPpa) continue;
+    out.push(feats[i]); }
+  return out;
+}
+
+/* Two sources, merged & deduped by listing URL: greenfieldStatic (committed file,
+   recommended) and greenfieldProxy (live serverless). Never fabricates points. */
+function fetchProxy(key,cb){
+  var cfg=window.CLEARSKY_CONFIG||{};
+  var proxy=cfg.greenfieldProxy||(cfg.apiKeys&&cfg.apiKeys.greenfieldProxy)||"";
+  var staticUrl=cfg.greenfieldStatic||"";
+  if(!proxy&&!staticUrl){
+    gfSetNote("not configured — set greenfieldStatic or greenfieldProxy in config.js");
+    cb([]); return;
+  }
+  var merged=[], seen={}, pending=0, notes=[];
+  function add(feats){ for(var i=0;i<feats.length;i++){ var u=(feats[i].props&&feats[i].props.url)||("@"+i+Math.random());
+    if(seen[u]) continue; seen[u]=1; merged.push(feats[i]); } }
+  function done(){ if(--pending>0) return;
+    gfSetNote(merged.length?(merged.length+" listings"+(notes.length?" · "+notes.join(" · "):"")):(notes.join(" · ")||"no listings"));
+    cb(merged); }
+
+  if(staticUrl){
+    pending++;
+    ajax(staticUrl,function(err,json){
+      if(err||!json){ notes.push("static file unreachable ("+staticUrl+")"); }
+      else { var sf=gfScreen(normalizeLandJson(json)); notes.push("static: "+sf.length); add(sf); }
+      done();
+    });
+  }
+  if(proxy){
+    pending++;
+    var b=map.getBounds();
+    var bbox=b.getWest()+","+b.getSouth()+","+b.getEast()+","+b.getNorth();
+    var qs="bbox="+encodeURIComponent(bbox);
+    if(gfFilter.minAcres>0) qs+="&minAcres="+gfFilter.minAcres;
+    if(gfFilter.maxPpa>0) qs+="&maxPpa="+gfFilter.maxPpa;
+    ajax(proxy+(proxy.indexOf("?")>-1?"&":"?")+qs,function(err,json){
+      if(err){ notes.push("proxy error: "+err.message); }
+      else if(json&&json.note){ notes.push("proxy: "+json.note); if(json.features) add(normalizeLandJson(json)); }
+      else if(json){ var pf=normalizeLandJson(json); notes.push("proxy: "+pf.length); add(pf); }
+      done();
+    });
+  }
+}
+
+/* "test" link handler — hits the proxy with debug=1, shows stage counts in #gfNote. */
+function gfTestProxy(){
+  var cfg=window.CLEARSKY_CONFIG||{};
+  var proxy=cfg.greenfieldProxy||(cfg.apiKeys&&cfg.apiKeys.greenfieldProxy)||"";
+  if(!proxy){ gfSetNote("no proxy configured — set greenfieldProxy in config.js"); return; }
+  var b=map.getBounds();
+  var bbox=b.getWest()+","+b.getSouth()+","+b.getEast()+","+b.getNorth();
+  gfSetNote("testing proxy…");
+  ajax(proxy+(proxy.indexOf("?")>-1?"&":"?")+"bbox="+encodeURIComponent(bbox)+"&debug=1",function(err,json){
+    if(err){ gfSetNote("proxy TEST FAILED: "+err.message+" — is api/greenfield.js deployed?"); return; }
+    var d=(json&&json.diag)||{};
+    var n=(json&&json.features&&json.features.length)||0;
+    gfSetNote("proxy OK ["+(d.source||"?")+"] "+n+" feats · counties:"+(d.counties||0)+
+      " listings:"+(d.listings||0)+" geocoded:"+(d.geocoded||0)+(json.note?(" · "+json.note):""));
+    try{ console.log("greenfield proxy diag:",json.diag||json); }catch(e){}
+  });
+}
+
+function ajax(url,cb){
+  var x=new XMLHttpRequest();
+  x.open("GET",url,true); x.timeout=28000;
+  x.onreadystatechange=function(){
+    if(x.readyState!==4) return;
+    if(x.status>=200&&x.status<300){
+      try{ cb(null,JSON.parse(x.responseText)); }catch(e){ cb(e); }
+    } else cb(new Error("HTTP "+x.status));
+  };
+  x.ontimeout=function(){ cb(new Error("timeout")); };
+  x.onerror=function(){ cb(new Error("network")); };
+  x.send();
+}
+
+/* ---------- Render ---------- */
+function featColor(L2,props){
+  if(L2.voltColor){ var kv=osmKv(props); if(kv>0) return voltColor(kv); }
+  if(L2.plantColor){ return plantColor(props); }
+  return L2.color;
+}
+function renderLayer(key,feats){
+  var L2=LAYERS[key], g=groups[key]; g.clearLayers();
+  cache[key]=feats;
+  for(var i=0;i<feats.length;i++){
+    var f=feats[i], gm=f.geom; if(!gm) continue;
+    var col=featColor(L2,f.props);
+    if(gm.type==="Point"){
+      var c=gm.coordinates;
+      if(f.bubbleMw!=null){
+        // Sqrt-scaled bubble (area ~ magnitude). Parcels scale by acreage, plants by MW.
+        var val=f.bubbleMw, r=f.parcel?Math.max(5,Math.min(22,Math.sqrt(val)*1.7))
+                                       :Math.max(3,Math.min(26,Math.sqrt(val)*0.55));
+        var bc=f.bubbleColor||col;
+        L.circleMarker([c[1],c[0]],{radius:r,color:bc,weight:f.parcel?1.6:1,
+          fillColor:bc,fillOpacity:f.pending?.1:(f.parcel?.28:.4),
+          dashArray:f.pending?"3,3":null,opacity:f.pending?.55:1})
+          .bindPopup(popup(L2,f.props,bc)).addTo(g);
+      } else {
+        L.circleMarker([c[1],c[0]],{radius:L2.geom==="point"?5:4,color:col,weight:1.5,
+          fillColor:col,fillOpacity:.65}).bindPopup(popup(L2,f.props,col)).addTo(g);
+      }
+    } else if(gm.type==="LineString"||gm.type==="MultiLineString"){
+      var lines=gm.type==="LineString"?[gm.coordinates]:gm.coordinates;
+      // weight scales with voltage for the OIM look
+      var kv=osmKv(f.props), w=kv>=220?2.6:kv>=110?2.0:1.6;
+      for(var j=0;j<lines.length;j++){
+        var latlngs=lines[j].map(function(p){return [p[1],p[0]];});
+        L.polyline(latlngs,{color:col,weight:w,opacity:.75}).bindPopup(popup(L2,f.props,col)).addTo(g);
+      }
+    } else if(gm.type==="Polygon"||gm.type==="MultiPolygon"){
+      var polys=gm.type==="Polygon"?[gm.coordinates]:gm.coordinates;
+      for(var p=0;p<polys.length;p++){
+        var rings=polys[p].map(function(ring){return ring.map(function(pt){return [pt[1],pt[0]];});});
+        L.polygon(rings,{color:col,weight:1.2,opacity:.6,fillColor:col,fillOpacity:.08})
+          .bindPopup(popup(L2,f.props,col)).addTo(g);
+      }
+    }
+  }
+}
+function popup(L2,a,col){
+  col=col||L2.color;
+  var link=(a&&a.url)?'<div class="pp-r"><a href="'+esc(a.url)+'" target="_blank" rel="noopener" style="color:'+col+'">view listing ↗</a></div>':"";
+  return '<div class="pp-t" style="color:'+col+'">'+esc(L2.label(a))+'</div>'+
+         '<div class="pp-r">'+esc(L2.meta(a)||"")+'</div>'+link;
+}
+
+/* ---------- EIA national technology-breakdown panel (image-2 style) ---------- */
+function renderEIAPanel(stats){
+  var el=document.getElementById("eiaPanel");
+  if(!stats||!stats.total_count){ el.style.display="none"; return; }
+  // sort techs by capacity desc
+  var techs=[];
+  for(var k in stats.byTech){ if(stats.byTech.hasOwnProperty(k)) techs.push([k,stats.byTech[k]]); }
+  techs.sort(function(a,b){return b[1].mw-a[1].mw;});
+  var gw=(stats.total_mw/1000).toFixed(1);
+  var h='<div class="eia-h"><div class="big">'+gw+' GW</div>'+
+        '<div class="sub">'+stats.total_count.toLocaleString()+' operable generators · EIA-860M</div></div>';
+  for(var i=0;i<techs.length;i++){
+    var name=techs[i][0], d=techs[i][1];
+    h+='<div class="eia-t"><span class="sw" style="background:'+d.color+'"></span>'+
+       '<span class="nm">'+esc(name)+'</span>'+
+       '<span class="val"><b>'+d.count.toLocaleString()+'</b> · '+(d.mw/1000).toFixed(1)+' GW</span></div>';
+  }
+  el.innerHTML=h; el.style.display="block";
+}
+function esc(s){ s=(s==null?"":""+s); return s.replace(/[&<>]/g,function(c){return {"&":"&amp;","<":"&lt;",">":"&gt;"}[c];}); }
+
+/* ---------- Load visible layers on move ---------- */
+var loadTimer;
+function loadVisible(){
+  if(map.getZoom()<5){ status("Zoom in to load grid features",false); return; }
+  var todo=ORDER.filter(function(k){return LAYERS[k].on;});
+  if(!todo.length){ status("No layers active",false); return; }
+  var pending=todo.length, any=false;
+  status("Loading "+todo.length+" layer"+(todo.length>1?"s":"")+"…",true);
+  todo.forEach(function(k){
+    var isOSM=(LAYERS[k].url==="__OSM__"||LAYERS[k].url==="__OSMGEOM__");
+    var fn=LAYERS[k].url==="__STATIC__"?fetchStatic:
+           (LAYERS[k].url==="__EIA__"?fetchEIA:
+           (LAYERS[k].url==="__PROXY__"?fetchProxy:(isOSM?fetchOSM:fetchArc)));
+    fn(k,function(feats){
+      renderLayer(k,feats); if(feats.length) any=true;
+      updateRailCounts();
+      if(--pending===0){
+        status(any?"Loaded · "+countAll()+" features in view":"No features in this view (data coverage varies)",false);
+        if(pinLatLng) analyze(pinLatLng);
+      }
+    });
+  });
+}
+function debounceLoad(){ clearTimeout(loadTimer); loadTimer=setTimeout(loadVisible,550); }
+map.on("moveend",debounceLoad);
+
+function countAll(){ var n=0; ORDER.forEach(function(k){ if(cache[k])n+=cache[k].length;}); return n; }
+
+/* ---------- Layer rail UI ---------- */
+var layersEl=document.getElementById("layers");
+/* Category grouping by layer role */
+var CATS=[
+  {key:"interconnect", name:"Grid · Interconnect"},
+  {key:"generation",   name:"Generation"},
+  {key:"connectivity", name:"Fiber · Connectivity"},
+  {key:"market",       name:"Market · Utility"},
+  {key:"land",         name:"Land · Site Control"},
+  {key:"load",         name:"Load · Demand"}
+];
+var catCollapsed={generation:true, connectivity:true, market:true, land:false, load:true}; // interconnect + land open by default
+function buildRail(){
+  layersEl.innerHTML="";
+  CATS.forEach(function(cat){
+    var keys=ORDER.filter(function(k){return (LAYERS[k].role||"other")===cat.key;});
+    if(!keys.length) return;
+    var hdr=document.createElement("div");
+    hdr.className="cat-h"+(catCollapsed[cat.key]?" collapsed":"");
+    hdr.innerHTML='<span class="car">▼</span><span class="cnm">'+cat.name+'</span>'+
+                  '<span class="con" data-con="'+cat.key+'"></span>';
+    var body=document.createElement("div");
+    body.className="cat-body"+(catCollapsed[cat.key]?" collapsed":"");
+    body.setAttribute("data-body",cat.key);
+    hdr.onclick=function(){
+      catCollapsed[cat.key]=!catCollapsed[cat.key];
+      hdr.className="cat-h"+(catCollapsed[cat.key]?" collapsed":"");
+      body.className="cat-body"+(catCollapsed[cat.key]?" collapsed":"");
+    };
+    layersEl.appendChild(hdr);
+    keys.forEach(function(k){
+      var L2=LAYERS[k];
+      var el=document.createElement("div");
+      el.className="lyr"+(L2.on?"":" off");
+      el.setAttribute("data-lyr",k);
+      el.innerHTML='<span class="sw" style="background:'+L2.color+'"></span>'+
+        '<span class="nm">'+L2.name+'</span><span class="st" data-c="'+k+'">—</span>'+
+        '<span class="tick"></span>';
+      el.onclick=function(){
+        L2.on=!L2.on;
+        el.className="lyr"+(L2.on?"":" off");
+        if(L2.on){ groups[k].addTo(map); loadVisible(); }
+        else { map.removeLayer(groups[k]); }
+        updateRailCounts();
+      };
+      body.appendChild(el);
+    });
+    /* Land screening controls — minAcres kills residential-lot noise; maxPpa caps $/acre. */
+    if(cat.key==="land"){
+      var fbox=document.createElement("div");
+      fbox.style.cssText="padding:6px 14px 8px;font:10px var(--mono);color:var(--muted)";
+      fbox.innerHTML=
+        '<div style="display:flex;gap:6px;align-items:center">'+
+        '<span>≥</span><input id="gfMinAc" type="number" min="0" step="1" value="'+gfFilter.minAcres+'" '+
+          'style="width:42px;background:#0d1420;border:1px solid var(--line);border-radius:4px;'+
+          'color:var(--txt);font:10px var(--mono);padding:2px 4px" title="Minimum acres">'+
+        '<span>ac</span><span style="margin-left:6px">≤$</span>'+
+        '<input id="gfMaxPpa" type="number" min="0" step="1000" value="'+(gfFilter.maxPpa||"")+'" placeholder="any" '+
+          'style="width:56px;background:#0d1420;border:1px solid var(--line);border-radius:4px;'+
+          'color:var(--txt);font:10px var(--mono);padding:2px 4px" title="Max price per acre">'+
+        '<span>/ac</span>'+
+        '<span id="gfApply" style="margin-left:auto;color:var(--amp);cursor:pointer">apply</span>'+
+        '<span id="gfTest" style="color:var(--amp);cursor:pointer" title="Test the /api/greenfield proxy end-to-end">test</span>'+
+        '</div>'+
+        '<div id="gfNote" style="margin-top:4px;color:var(--muted);white-space:normal;line-height:1.4">'+esc(gfNote||"")+'</div>';
+      body.appendChild(fbox);
+      setTimeout(function(){
+        var ap=document.getElementById("gfApply");
+        if(ap) ap.onclick=function(){
+          var ma=parseFloat(document.getElementById("gfMinAc").value); gfFilter.minAcres=isNaN(ma)?0:ma;
+          var mp=parseFloat(document.getElementById("gfMaxPpa").value); gfFilter.maxPpa=isNaN(mp)?0:mp;
+          drawnBounds.greenfield=null;
+          if(LAYERS.greenfield.on) loadVisible(); else gfSetNote("filters set — enable Land for Sale layer");
+        };
+        var ts=document.getElementById("gfTest");
+        if(ts) ts.onclick=gfTestProxy;
+        gfSetNote(gfNote);
+      },0);
+    }
+    layersEl.appendChild(body);
+  });
+  updateRailCounts();
+}
+/* Filter layers by name */
+(function wireFilter(){
+  var inp=document.getElementById("lyrFilter"), clr=document.getElementById("lyrFilterClear");
+  if(!inp) return;
+  function apply(){
+    var q=(inp.value||"").toLowerCase().trim();
+    clr.style.display=q?"block":"none";
+    CATS.forEach(function(cat){
+      var body=layersEl.querySelector('[data-body="'+cat.key+'"]');
+      var hdr=body&&body.previousSibling;
+      if(!body) return;
+      var rows=body.querySelectorAll(".lyr"), anyShown=false;
+      for(var i=0;i<rows.length;i++){
+        var nm=rows[i].querySelector(".nm").textContent.toLowerCase();
+        var show=!q||nm.indexOf(q)>=0;
+        rows[i].className=rows[i].className.replace(" hidden","")+(show?"":" hidden");
+        if(show) anyShown=true;
+      }
+      // while filtering, force-expand matching categories; hide empty ones
+      if(q){
+        body.className="cat-body"+(anyShown?"":" collapsed");
+        if(hdr&&hdr.className) hdr.style.display=anyShown?"":"none";
+      } else {
+        body.className="cat-body"+(catCollapsed[cat.key]?" collapsed":"");
+        if(hdr) hdr.style.display="";
+      }
+    });
+  }
+  inp.addEventListener("input",apply);
+  clr.onclick=function(){ inp.value=""; apply(); inp.focus(); };
+})();
+function updateRailCounts(){
+  var active=0, byCat={};
+  ORDER.forEach(function(k){
+    var s=layersEl.querySelector('[data-c="'+k+'"]');
+    if(s) s.textContent=cache[k]?cache[k].length:(LAYERS[k].on?"…":"off");
+    if(LAYERS[k].on){ active++; var r=LAYERS[k].role||"other"; byCat[r]=(byCat[r]||0)+1; }
+  });
+  CATS.forEach(function(cat){
+    var c=layersEl.querySelector('[data-con="'+cat.key+'"]');
+    if(c) c.textContent=byCat[cat.key]?byCat[cat.key]+" on":"";
+  });
+  var rc=document.getElementById("railCnt"); if(rc) rc.textContent=active+"/"+ORDER.length;
+}
+
+/* ---------- Pin + proximity analysis ---------- */
+var pinLatLng=null, pinMarker=null, pinMode=true;
+var pinBtn=document.getElementById("pinBtn");
+pinBtn.onclick=function(){ pinMode=!pinMode; pinBtn.className="modechip"+(pinMode?" on":"");
+  document.getElementById("map").className=pinMode?"pin-drop":""; };
+document.getElementById("map").className="pin-drop";
+
+map.on("click",function(e){ if(pinMode) dropPin(e.latlng); });
+
+function dropPin(ll){
+  pinLatLng=ll;
+  if(pinMarker) map.removeLayer(pinMarker);
+  pinMarker=L.marker(ll,{icon:L.divIcon({className:"",html:
+    '<div style="width:22px;height:22px;margin:-11px 0 0 -11px;border-radius:50%;'+
+    'background:rgba(255,176,32,.18);border:2px solid #ffb020;box-shadow:0 0 0 6px rgba(255,176,32,.08)">'+
+    '<div style="width:6px;height:6px;border-radius:50%;background:#ffb020;margin:6px auto"></div></div>',
+    iconSize:[0,0]})}).addTo(map);
+  openPanel(); analyze(ll);
+}
+
+function haversine(a,b,c,d){
+  var R=6371,dLat=(c-a)*Math.PI/180,dLon=(d-b)*Math.PI/180;
+  var s=Math.sin(dLat/2)*Math.sin(dLat/2)+Math.cos(a*Math.PI/180)*Math.cos(c*Math.PI/180)*Math.sin(dLon/2)*Math.sin(dLon/2);
+  return R*2*Math.atan2(Math.sqrt(s),Math.sqrt(1-s));
+}
+function ptToSeg(p,v,w){ // km distance point→segment, all [lat,lng]
+  var toXY=function(ll){return [ll[1]*Math.cos(p[0]*Math.PI/180)*111.32, ll[0]*110.57];};
+  var P=toXY(p),A=toXY(v),B=toXY(w);
+  var dx=B[0]-A[0],dy=B[1]-A[1], l2=dx*dx+dy*dy;
+  var t= l2? ((P[0]-A[0])*dx+(P[1]-A[1])*dy)/l2 : 0; t=Math.max(0,Math.min(1,t));
+  var cx=A[0]+t*dx, cy=A[1]+t*dy;
+  return Math.sqrt((P[0]-cx)*(P[0]-cx)+(P[1]-cy)*(P[1]-cy));
+}
+function nearestPoint(ll,feats,L2){
+  var best=null,bd=1e9;
+  (feats||[]).forEach(function(f){
+    if(!f.geom||f.geom.type!=="Point")return;
+    var c=f.geom.coordinates, d=haversine(ll.lat,ll.lng,c[1],c[0]);
+    if(d<bd){bd=d;best=f;}
+  });
+  return best?{f:best,km:bd}:null;
+}
+function nearestLine(ll,feats){
+  var bd=1e9, bestProps=null;
+  (feats||[]).forEach(function(f){
+    if(!f.geom)return;
+    var lines=f.geom.type==="LineString"?[f.geom.coordinates]:
+              (f.geom.type==="MultiLineString"?f.geom.coordinates:null);
+    if(!lines)return;
+    for(var j=0;j<lines.length;j++){var pts=lines[j];
+      for(var k=1;k<pts.length;k++){
+        var d=ptToSeg([ll.lat,ll.lng],[pts[k-1][1],pts[k-1][0]],[pts[k][1],pts[k][0]]);
+        if(d<bd){bd=d;bestProps=f.props;}
+      }}
+  });
+  return bestProps?{km:bd,props:bestProps}:null;
+}
+function within(ll,feats,km){
+  var n=0; (feats||[]).forEach(function(f){ if(f.geom&&f.geom.type==="Point"){
+    var c=f.geom.coordinates; if(haversine(ll.lat,ll.lng,c[1],c[0])<=km)n++; }}); return n;
+}
+/* ray-casting point-in-ring; lng=x, lat=y */
+function pointInRing(x,y,ring){
+  var inside=false;
+  for(var i=0,j=ring.length-1;i<ring.length;j=i++){
+    var xi=ring[i][0],yi=ring[i][1],xj=ring[j][0],yj=ring[j][1];
+    if(((yi>y)!==(yj>y))&&(x<(xj-xi)*(y-yi)/(yj-yi)+xi)) inside=!inside;
+  }
+  return inside;
+}
+function containingFeature(ll,feats){
+  var x=ll.lng,y=ll.lat;
+  var arr=feats||[];
+  for(var i=0;i<arr.length;i++){
+    var gm=arr[i].geom; if(!gm) continue;
+    var polys=gm.type==="Polygon"?[gm.coordinates]:(gm.type==="MultiPolygon"?gm.coordinates:null);
+    if(!polys) continue;
+    for(var p=0;p<polys.length;p++){
+      var outer=polys[p][0]; if(outer&&pointInRing(x,y,outer)) return arr[i];
+    }
+  }
+  return null;
+}
+
+function analyze(ll){
+  var sub=nearestPoint(ll,cache.substations,LAYERS.substations);
+  if(sub) sub.src="substations";
+  var subOsm=nearestPoint(ll,cache.osm_subs,LAYERS.osm_subs);
+  if(subOsm&&(!sub||subOsm.km<sub.km)){ sub=subOsm; sub.src="osm_subs"; } // OSM independent fallback/refiner
+  var tx=nearestLine(ll,cache.transmission);
+  var plant=nearestPoint(ll,cache.plants,LAYERS.plants);
+  var dcN=within(ll,cache.datacenters,40);
+  var evN=within(ll,cache.ev,15);
+  var parcel=nearestPoint(ll,cache.greenfield,LAYERS.greenfield);
+  var parcelN=within(ll,cache.greenfield,25);
+  /* Nearest DEVELOPABLE parcel: >= the screening threshold (min 5 ac). */
+  var devMin=Math.max(5,gfFilter.minAcres||0);
+  var devFeats=(cache.greenfield||[]).filter(function(f){return f.props&&f.props.acres>=devMin;});
+  var devParcel=nearestPoint(ll,devFeats,LAYERS.greenfield);
+  /* In-view land market stats: median $/ac and median size across loaded listings. */
+  function median(arr){ if(!arr.length)return null; arr.sort(function(a,b){return a-b;});
+    var m=Math.floor(arr.length/2); return arr.length%2?arr[m]:(arr[m-1]+arr[m])/2; }
+  var ppas=[],sizes=[];
+  (cache.greenfield||[]).forEach(function(f){ var p=f.props||{};
+    if(p.ppa!=null&&isFinite(p.ppa))ppas.push(p.ppa);
+    else if(p.price!=null&&p.acres>0)ppas.push(p.price/p.acres);
+    if(p.acres!=null)sizes.push(p.acres); });
+  var medPpa=median(ppas), medAc=median(sizes);
+  var fiberSets=[cache.fiber_verified,cache.ll_backbone,cache.fiber_ca,cache.fiber,cache.fiber_estimated,cache.subsea];
+  var fiber=null;
+  for(var fi=0;fi<fiberSets.length;fi++){
+    var cand=nearestLine(ll,fiberSets[fi]);
+    if(cand&&(!fiber||cand.km<fiber.km)) fiber=cand;
+  }
+
+  // interconnect score: closer substation + higher-voltage nearby line = better
+  var subKm=sub?sub.km:99;
+  var txKm=tx?tx.km:99;
+  var txV=tx?(+(tx.props.VOLTAGE||tx.props.VOLT_CLASS||0)):0;
+  var s1=Math.max(0,100-subKm*14);         // <7km strong
+  var s2=Math.max(0,100-txKm*20);          // <5km strong
+  var s3=txV>=230?100:txV>=115?78:txV>=69?55:txV>0?35:45;
+  var score=Math.round(s1*0.42+s2*0.33+s3*0.25);
+  score=Math.max(1,Math.min(100,score));
+  var band=score>=70?"var(--ok)":score>=45?"var(--warn)":"var(--bad)";
+  var verdict=score>=70?"Strong interconnect proximity":score>=45?"Workable — verify hosting capacity":"Constrained — distance to grid is a cost driver";
+
+  var h='';
+  h+='<div class="coord">'+ll.lat.toFixed(5)+', '+ll.lng.toFixed(5)+
+     '  ·  <span style="color:var(--amp);cursor:pointer" id="copyc">copy</span></div>';
+
+  h+='<div class="sec">Interconnect Score</div>';
+  h+='<div class="score"><span class="n" style="color:'+band+'">'+score+'</span><span class="lab">/ 100</span></div>';
+  h+='<div class="bar"><span style="width:'+score+'%;background:'+band+'"></span></div>';
+  h+='<div class="hint" style="margin:6px 0 2px;color:'+band+'">'+verdict+'</div>';
+
+  h+='<div class="sec">Nearest Infrastructure</div>';
+  var subL=sub?LAYERS[sub.src||"substations"]:LAYERS.substations;
+  h+=infoRow(LAYERS.substations.color, sub?subL.label(sub.f.props):"No substation in view",
+        sub?(subL.meta(sub.f.props)||"")+(sub.src==="osm_subs"?" · OSM":""):"widen the map / enable layer", sub?fmtKm(sub.km):"—");
+  h+=infoRow(LAYERS.transmission.color, tx?"Transmission line":"No line in view",
+        tx?((txV?txV+" kV":(tx.props.VOLT_CLASS||"HV"))):"enable transmission layer", tx?fmtKm(tx.km):"—");
+  h+=infoRow(LAYERS.plants.color, plant?LAYERS.plants.label(plant.f.props):"No plant in view",
+        plant?LAYERS.plants.meta(plant.f.props):"", plant?fmtKm(plant.km):"—");
+
+  h+='<div class="sec">Load Context</div>';
+  h+=infoRow(LAYERS.datacenters.color,"Data centers","within 40 km"+(LAYERS.datacenters.on?"":" · layer off"),String(dcN));
+  h+=infoRow(LAYERS.ev.color,"EV charging sites","within 15 km"+(LAYERS.ev.on?"":" · layer off"),String(evN));
+
+  h+='<div class="sec">Land / Site Control</div>';
+  if(parcel){
+    if(devParcel){
+      var dp=devParcel.f.props, dm=[];
+      if(dp.acres!=null) dm.push(Number(dp.acres).toLocaleString()+" ac");
+      if(dp.price!=null) dm.push("$"+Number(dp.price).toLocaleString());
+      var dpp=(dp.ppa!=null?dp.ppa:(dp.price!=null&&dp.acres>0?dp.price/dp.acres:null));
+      if(dpp!=null&&isFinite(dpp)) dm.push("$"+Math.round(dpp).toLocaleString()+"/ac");
+      h+=infoRow(LAYERS.greenfield.color, "Developable ≥"+devMin+" ac: "+(dp.address||"parcel"),
+            dm.join(" · ")||"listing", fmtKm(devParcel.km));
+      if(dp.url) h+='<div class="hint" style="margin:2px 0 0"><a href="'+esc(dp.url)+'" target="_blank" rel="noopener" style="color:'+LAYERS.greenfield.color+'">Open listing ↗</a></div>';
+    } else {
+      h+=infoRow(LAYERS.greenfield.color,"Developable ≥"+devMin+" ac","none in view — widen map or lower min-acres filter","—");
+    }
+    var pp=parcel.f.props;
+    if(!devParcel||parcel.f!==devParcel.f){
+      var pmeta=[];
+      if(pp.price!=null) pmeta.push("$"+Number(pp.price).toLocaleString());
+      if(pp.acres!=null) pmeta.push(Number(pp.acres).toLocaleString()+" ac");
+      h+=infoRow(LAYERS.greenfield.color, "Nearest any: "+(pp.address||"parcel"),
+            pmeta.join(" · ")||(pp.status||"listing"), fmtKm(parcel.km));
+    }
+    h+=infoRow(LAYERS.greenfield.color,"Listings nearby","for-sale parcels within 25 km"+(LAYERS.greenfield.on?"":" · layer off"),String(parcelN));
+    if(medPpa!=null){
+      h+=infoRow(LAYERS.greenfield.color,"Market in view",
+            "median $"+Math.round(medPpa).toLocaleString()+"/ac"+(medAc!=null?" · median "+(medAc<10?medAc.toFixed(1):Math.round(medAc))+" ac":""),
+            String((cache.greenfield||[]).length));
+    }
+    var ref=devParcel||parcel;
+    var lv=ref.km<=1?"On/adjacent to a for-sale parcel — site control is actionable":
+           ref.km<=8?"For-sale land near this point — assemble against grid proximity":
+           "No close listings — off-market outreach or wider search needed";
+    h+='<div class="hint" style="margin:2px 0 0;color:var(--muted)">'+lv+'. Land data is live from your sources (LandSearch/Land.com) — verify acreage, zoning, and title before acting.</div>';
+  } else {
+    h+=infoRow(LAYERS.greenfield.color,"Land for sale",
+          LAYERS.greenfield.on?"no listings in view (check min-acres filter)":"enable Land for Sale layer","—");
+  }
+
+  h+='<div class="sec">Connectivity</div>';
+  h+=infoRow(LAYERS.fiber.color, fiber?"Fiber route":"No fiber in view",
+        fiber?"nearest backbone"+(LAYERS.fiber.on?"":" · layer off"):"enable Fiber Routes layer",
+        fiber?fmtKm(fiber.km):"—");
+  h+='<div id="bbRow"></div>'; // live FCC broadband-at-point, filled async
+  if(fiber){
+    var fv=fiber.km<=2?"On-net — minimal lateral build":fiber.km<=8?"Near backbone — modest lateral":"Fiber build is a cost driver";
+    h+='<div class="hint" style="margin:2px 0 0;color:var(--muted)">'+fv+'. OSM fiber coverage is partial (backbones/submarine); absence isn\'t proof of no fiber.</div>';
+  }
+
+  // Market / utility context via point-in-polygon
+  var terr=containingFeature(ll,cache.utility_terr);
+  var iso=containingFeature(ll,cache.iso_rto);
+  var ba=containingFeature(ll,cache.ba_area);
+  if(terr||iso||ba||LAYERS.utility_terr.on||LAYERS.iso_rto.on||LAYERS.ba_area.on){
+    h+='<div class="sec">Market / Utility</div>';
+    h+=infoRow(LAYERS.utility_terr.color,"Serving utility",
+          terr?LAYERS.utility_terr.label(terr.props):(LAYERS.utility_terr.on?"none at this point":"enable Utility Territory"),
+          terr?"↳":"—");
+    h+=infoRow(LAYERS.iso_rto.color,"ISO / RTO",
+          iso?LAYERS.iso_rto.label(iso.props):(LAYERS.iso_rto.on?"outside ISO (bilateral)":"enable ISO / RTO"),
+          iso?"↳":"—");
+    h+=infoRow(LAYERS.ba_area.color,"Balancing authority",
+          ba?LAYERS.ba_area.label(ba.props):(LAYERS.ba_area.on?"—":"enable Balancing Authority"),
+          ba?"↳":"—");
+  }
+
+  h+='<div class="sec">Notes</div>';
+  h+='<div class="hint">Score weights substation distance (42%), transmission distance (33%), and voltage class (25%). '+
+     'Coverage depends on active layers and map extent — enable a layer and it feeds the score automatically. '+
+     'Public data (HIFLD / OSM); confirm hosting capacity with the utility before siting.</div>';
+
+  document.getElementById("pBody").innerHTML=h;
+  var cc=document.getElementById("copyc");
+  if(cc) cc.onclick=function(){ copy(ll.lat.toFixed(6)+","+ll.lng.toFixed(6)); cc.textContent="copied"; };
+  fetchBroadbandAtPoint(ll); // live FCC service check, fills #bbRow async
+}
+
+/* ---------- Live broadband-at-point (broadbandmap.com, FCC-sourced) ----------
+   Free demo key required (June 2026+). Set fccBbKey in config.js. Fills #bbRow. */
+function fetchBroadbandAtPoint(ll){
+  var row=document.getElementById("bbRow"); if(!row) return;
+  var cfg=window.CLEARSKY_CONFIG||{};
+  var key=cfg.fccBbKey||(cfg.apiKeys&&cfg.apiKeys.broadband)||"";
+  if(!key){
+    row.innerHTML=infoRow("#00E0C6","Live fiber service","set fccBbKey in config.js for live check","—");
+    return;
+  }
+  row.innerHTML=infoRow("#00E0C6","Live fiber service","checking FCC data…","…");
+  var url="https://broadbandmap.com/api/v1/location/internet?service_type=business&lat="+
+    encodeURIComponent(ll.lat.toFixed(5))+"&lng="+encodeURIComponent(ll.lng.toFixed(5));
+  var x=new XMLHttpRequest();
+  x.open("GET",url,true); x.timeout=15000;
+  x.setRequestHeader("Authorization","Bearer "+key);
+  x.onreadystatechange=function(){
+    if(x.readyState!==4) return;
+    if(x.status>=200&&x.status<300){
+      try{
+        var d=JSON.parse(x.responseText), provs=d.providers||[];
+        var fiberP=[]; for(var i=0;i<provs.length;i++){ if((provs[i].technology||"")==="Fiber") fiberP.push(provs[i]); }
+        if(fiberP.length){
+          var best=fiberP[0];
+          for(var j=1;j<fiberP.length;j++){ if((fiberP[j].max_download_mbps||0)>(best.max_download_mbps||0)) best=fiberP[j]; }
+          var spd=best.max_download_mbps?(best.max_download_mbps>=1000?(best.max_download_mbps/1000)+"G":best.max_download_mbps+"M"):"";
+          row.innerHTML=infoRow("#00E0C6","Live fiber service",
+            fiberP.length+" fiber ISP"+(fiberP.length>1?"s":"")+" · "+esc(best.name)+(spd?" "+spd:""),"✓ FIBER");
+        } else if(provs.length){
+          row.innerHTML=infoRow("#7d8fa3","Live fiber service",provs.length+" ISP(s), no fiber at this cell","—");
+        } else {
+          row.innerHTML=infoRow("#7d8fa3","Live fiber service","no reported service at this cell","—");
+        }
+      }catch(e){ row.innerHTML=infoRow("#7d8fa3","Live fiber service","parse error","—"); }
+    } else if(x.status===401){ row.innerHTML=infoRow("#ff5c3a","Live fiber service","invalid FCC API key","—"); }
+    else if(x.status===429){ row.innerHTML=infoRow("#ffb020","Live fiber service","rate limit reached — try later","—"); }
+    else { row.innerHTML=infoRow("#7d8fa3","Live fiber service","lookup unavailable","—"); }
+  };
+  x.ontimeout=function(){ row.innerHTML=infoRow("#7d8fa3","Live fiber service","timeout","—"); };
+  x.onerror=function(){ row.innerHTML=infoRow("#7d8fa3","Live fiber service","network error","—"); };
+  x.send();
+}
+function infoRow(color,nm,meta,dist){
+  return '<div class="row"><span class="ic" style="background:'+color+'"></span>'+
+    '<div class="main"><div class="nm">'+esc(nm)+'</div><div class="meta">'+esc(meta)+'</div></div>'+
+    '<div class="dist">'+esc(dist)+'</div></div>';
+}
+function fmtKm(km){ return km<1?Math.round(km*1000)+" m":km.toFixed(1)+" km"; }
+function copy(t){ try{var i=document.createElement("textarea");i.value=t;document.body.appendChild(i);i.select();document.execCommand("copy");document.body.removeChild(i);}catch(e){} }
+
+/* ---------- Panel ---------- */
+var panel=document.getElementById("panel");
+function openPanel(){ panel.className="open"; }
+document.getElementById("pClose").onclick=function(){ panel.className=""; };
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   Zip Radius Report — enter a ZIP + radius (25/50/100 mi), get a list of
+   land-for-sale (clickable listing links) and substations, sorted by distance.
+   Reuses the same public data sources as the map layers (ArcGIS substations,
+   greenfield proxy/static). ES5 only.
+   ═══════════════════════════════════════════════════════════════════════════ */
+(function(){
+  var wrap=document.getElementById("zipModalWrap");
+  var modal=document.getElementById("zipModal");
+  var inp=document.getElementById("zipInput");
+  var errEl=document.getElementById("zipErr");
+  var goBtn=document.getElementById("zipGo");
+  var radRow=document.getElementById("zipRadRow");
+  var rep=document.getElementById("zipReport");
+  var zrTitle=document.getElementById("zrTitle");
+  var zrSub=document.getElementById("zrSub");
+  var zrBody=document.getElementById("zrBody");
+  var csvBtn=document.getElementById("zrCsv");
+  var pdfBtn=document.getElementById("zrPdf");
+  var chosenMi=50;
+  var zipLayer=L.layerGroup(); // radius circle + result markers live here
+  var lastReport=null; // {zip,place,lat,lon,mi,subs,land} — set on render, used by export
+
+  csvBtn.addEventListener("click",function(){ if(lastReport) exportCsv(lastReport); });
+  pdfBtn.addEventListener("click",function(){ if(lastReport) exportPdf(lastReport); });
+
+  function openModal(){ errEl.textContent=""; wrap.className="on"; setTimeout(function(){inp.focus();},50); }
+  function closeModal(){ wrap.className=""; }
+  document.getElementById("zipChip").addEventListener("click",openModal);
+  document.getElementById("zipModalClose").addEventListener("click",closeModal);
+  wrap.addEventListener("click",function(e){ if(e.target===wrap) closeModal(); });
+  document.getElementById("zrClose").addEventListener("click",function(){
+    rep.className=""; if(map.hasLayer(zipLayer)) map.removeLayer(zipLayer);
+  });
+
+  radRow.addEventListener("click",function(e){
+    var t=e.target; while(t&&t!==radRow&&!t.getAttribute("data-mi")) t=t.parentNode;
+    if(!t||t===radRow) return;
+    chosenMi=parseInt(t.getAttribute("data-mi"),10);
+    var kids=radRow.getElementsByClassName("zm-rad");
+    for(var i=0;i<kids.length;i++) kids[i].className="zm-rad"+(kids[i]===t?" on":"");
+  });
+  inp.addEventListener("keydown",function(e){ if(e.key==="Enter"){ e.preventDefault(); run(); } });
+  goBtn.addEventListener("click",run);
+
+  /* Haversine distance in miles */
+  function distMi(lat1,lon1,lat2,lon2){
+    var R=3958.8, toR=Math.PI/180;
+    var dLat=(lat2-lat1)*toR, dLon=(lon2-lon1)*toR;
+    var a=Math.sin(dLat/2)*Math.sin(dLat/2)+
+          Math.cos(lat1*toR)*Math.cos(lat2*toR)*Math.sin(dLon/2)*Math.sin(dLon/2);
+    return R*2*Math.atan2(Math.sqrt(a),Math.sqrt(1-a));
+  }
+  /* Degree box padding for a given radius (lat is ~69 mi/deg; lon scaled by cos) */
+  function bboxFor(lat,lon,mi){
+    var dLat=mi/69.0;
+    var dLon=mi/(69.0*Math.max(0.15,Math.cos(lat*Math.PI/180)));
+    return { w:lon-dLon, s:lat-dLat, e:lon+dLon, n:lat+dLat };
+  }
+  function fmtMoney(v){
+    if(v==null||isNaN(v)) return "—";
+    return "$"+Math.round(v).toString().replace(/\B(?=(\d{3})+(?!\d))/g,",");
+  }
+
+  function esc(s){ return String(s==null?"":s).replace(/[&<>"]/g,function(c){
+    return {"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;"}[c]; }); }
+
+  function run(){
+    var zip=(inp.value||"").trim();
+    if(!/^\d{5}$/.test(zip)){ errEl.textContent="Enter a valid 5-digit ZIP code."; return; }
+    errEl.textContent=""; goBtn.disabled=true; goBtn.textContent="Locating ZIP…";
+
+    /* Geocode the ZIP via Nominatim (US, postalcode). */
+    ajax("https://nominatim.openstreetmap.org/search?format=json&limit=1&countrycodes=us&postalcode="+
+      encodeURIComponent(zip),function(err,res){
+      if(err||!res||!res.length){
+        goBtn.disabled=false; goBtn.textContent="Run Report";
+        errEl.textContent="Couldn't locate that ZIP. Try another."; return;
+      }
+      var r=res[0], lat=+r.lat, lon=+r.lon;
+      var place=(r.display_name||zip).split(",").slice(0,2).join(",").trim();
+      closeModal(); goBtn.disabled=false; goBtn.textContent="Run Report";
+      buildReport(zip,place,lat,lon,chosenMi);
+    });
+  }
+
+  function buildReport(zip,place,lat,lon,mi){
+    zrTitle.textContent=zip+" · "+mi+" mi";
+    zrSub.textContent="Loading… "+place;
+    zrBody.innerHTML='<div class="zr-loading">Fetching substations and land listings…</div>';
+    rep.className="open";
+    lastReport=null; csvBtn.disabled=true; pdfBtn.disabled=true;
+
+    /* Reset the map view + result layer, drop a center pin + radius ring. */
+    zipLayer.clearLayers();
+    if(!map.hasLayer(zipLayer)) zipLayer.addTo(map);
+    var meters=mi*1609.34;
+    L.circle([lat,lon],{radius:meters,color:"#ffb020",weight:1.5,opacity:.7,
+      fillColor:"#ffb020",fillOpacity:.05,dashArray:"5,6"}).addTo(zipLayer);
+    L.circleMarker([lat,lon],{radius:6,color:"#fff",weight:2,fillColor:"#ffb020",fillOpacity:1})
+      .bindPopup("ZIP "+zip+"<br>"+esc(place)).addTo(zipLayer);
+    // fit map to the ring
+    var bb=bboxFor(lat,lon,mi);
+    map.fitBounds([[bb.s,bb.w],[bb.n,bb.e]],{padding:[30,30]});
+
+    var state={subs:null, land:null};
+    fetchSubsInRadius(lat,lon,mi,function(subs){ state.subs=subs; maybeRender(); });
+    fetchLandInRadius(lat,lon,mi,function(land){ state.land=land; maybeRender(); });
+
+    function maybeRender(){
+      if(state.subs===null||state.land===null) return;
+      render(zip,place,lat,lon,mi,state.subs,state.land);
+    }
+  }
+
+  /* Substations: query the same ArcGIS chain used by the map layer, by envelope,
+     then distance-filter to the radius. Falls back through mirrors. */
+  function fetchSubsInRadius(lat,lon,mi,cb){
+    var L2=LAYERS.substations;
+    var chain=(L2.urls&&L2.urls.length)?L2.urls.slice():(L2.url?[L2.url]:[]);
+    var bb=bboxFor(lat,lon,mi);
+    var env=bb.w+","+bb.s+","+bb.e+","+bb.n;
+    var qs="/query?f=geojson&where=1%3D1&outFields=*&returnGeometry=true"+
+      "&geometryType=esriGeometryEnvelope&inSR=4326&outSR=4326&spatialRel=esriSpatialRelIntersects"+
+      "&resultRecordCount=2000&geometry="+encodeURIComponent(env);
+    var i=0;
+    function attempt(){
+      if(i>=chain.length){ cb([]); return; }
+      var base=chain[i++];
+      ajax(base+qs,function(err,json){
+        if(err||!json||!json.features||!json.features.length){ attempt(); return; }
+        var out=[];
+        for(var k=0;k<json.features.length;k++){
+          var f=json.features[k], g=f.geometry; if(!g||!g.coordinates) continue;
+          var la=g.coordinates[1], lo=g.coordinates[0];
+          var d=distMi(lat,lon,la,lo);
+          if(d>mi) continue;
+          var a=f.properties||{};
+          out.push({ name:L2.label(a), meta:L2.meta(a), lat:la, lon:lo, dist:d });
+        }
+        out.sort(function(a,b){return a.dist-b.dist;});
+        cb(out);
+      });
+    }
+    attempt();
+  }
+
+  /* Land: reuse greenfield proxy/static exactly like the map layer, scoped to the
+     radius bbox, then distance-filter. Honors the same minAcres/maxPpa filters. */
+  function fetchLandInRadius(lat,lon,mi,cb){
+    var cfg=window.CLEARSKY_CONFIG||{};
+    var proxy=cfg.greenfieldProxy||(cfg.apiKeys&&cfg.apiKeys.greenfieldProxy)||"";
+    var staticUrl=cfg.greenfieldStatic||"";
+    var bb=bboxFor(lat,lon,mi);
+    if(!proxy&&!staticUrl){ cb([]); return; }
+
+    var merged=[], seen={}, pending=0;
+    function add(feats){ for(var i=0;i<feats.length;i++){
+      var p=feats[i].props||{}, u=p.url||("@"+i+Math.random());
+      if(seen[u]) continue; seen[u]=1;
+      var g=feats[i].geom; if(!g||!g.coordinates) continue;
+      var la=g.coordinates[1], lo=g.coordinates[0];
+      var d=distMi(lat,lon,la,lo);
+      if(d>mi) continue;
+      merged.push({ address:p.address, price:p.price, acres:p.acres, ppa:p.ppa,
+        status:p.status, url:p.url, lat:la, lon:lo, dist:d });
+    } }
+    function done(){ if(--pending>0) return;
+      merged.sort(function(a,b){return a.dist-b.dist;}); cb(merged); }
+
+    if(staticUrl){
+      pending++;
+      ajax(staticUrl,function(err,json){
+        if(!err&&json){ add(gfScreen(normalizeLandJson(json))); } done();
+      });
+    }
+    if(proxy){
+      pending++;
+      var qs="bbox="+encodeURIComponent(bb.w+","+bb.s+","+bb.e+","+bb.n);
+      if(gfFilter.minAcres>0) qs+="&minAcres="+gfFilter.minAcres;
+      if(gfFilter.maxPpa>0) qs+="&maxPpa="+gfFilter.maxPpa;
+      ajax(proxy+(proxy.indexOf("?")>-1?"&":"?")+qs,function(err,json){
+        if(!err&&json&&json.features){ add(gfScreen(normalizeLandJson(json))); } done();
+      });
+    }
+  }
+
+  function render(zip,place,lat,lon,mi,subs,land){
+    zrSub.textContent=place+"  ·  "+land.length+" land · "+subs.length+" substations";
+    var h="";
+
+    /* ── Land for sale ── */
+    h+='<div class="zr-sec"><span>Land for Sale</span><span class="cnt">'+land.length+'</span></div>';
+    if(!land.length){
+      var cfg=window.CLEARSKY_CONFIG||{};
+      var configured=(cfg.greenfieldProxy||cfg.greenfieldStatic);
+      h+='<div class="zr-empty">'+(configured
+        ? "No listings found in this radius (try a wider radius or loosen the Land filters)."
+        : "Land source not configured — set greenfieldStatic or greenfieldProxy in config.js.")+'</div>';
+    } else {
+      for(var i=0;i<land.length;i++){
+        var L2=land[i];
+        var acresTxt=(L2.acres!=null?(Math.round(L2.acres*10)/10+" ac"):"— ac");
+        var priceTxt=fmtMoney(L2.price);
+        var ppaTxt=(L2.ppa!=null?" · "+fmtMoney(L2.ppa)+"/ac":"");
+        var pend=(/pending/i.test(L2.status||"")?' · <span style="color:var(--warn)">pending</span>':"");
+        var link=L2.url?('<a class="lnk" href="'+esc(L2.url)+'" target="_blank" rel="noopener" onclick="event.stopPropagation()">view listing ↗</a>'):"";
+        h+='<div class="zr-item" data-lat="'+L2.lat+'" data-lon="'+L2.lon+'">'+
+             '<div class="r1"><span class="nm">'+esc(L2.address||"Parcel for sale")+'</span>'+
+             '<span class="di">'+L2.dist.toFixed(1)+' mi</span></div>'+
+             '<div class="r2">'+priceTxt+' · '+acresTxt+ppaTxt+pend+'</div>'+
+             (link?'<div class="r2">'+link+'</div>':"")+
+           '</div>';
+      }
+    }
+
+    /* ── Substations ── */
+    h+='<div class="zr-sec"><span>Substations</span><span class="cnt">'+subs.length+'</span></div>';
+    if(!subs.length){
+      h+='<div class="zr-empty">No substations returned for this area.</div>';
+    } else {
+      for(var s=0;s<subs.length;s++){
+        var S=subs[s];
+        h+='<div class="zr-item" data-lat="'+S.lat+'" data-lon="'+S.lon+'">'+
+             '<div class="r1"><span class="nm">'+esc(S.name)+'</span>'+
+             '<span class="di">'+S.dist.toFixed(1)+' mi</span></div>'+
+             (S.meta?'<div class="r2">'+esc(S.meta)+'</div>':"")+
+           '</div>';
+      }
+    }
+    zrBody.innerHTML=h;
+
+    /* Drop result markers on the map + wire list→map clicks. */
+    for(var li=0;li<land.length;li++){
+      (function(P){
+        L.circleMarker([P.lat,P.lon],{radius:6,color:"#6ee76e",weight:1.5,fillColor:"#6ee76e",fillOpacity:.5})
+          .bindPopup('<b>'+esc(P.address||"Parcel")+'</b><br>'+fmtMoney(P.price)+
+            (P.acres!=null?" · "+(Math.round(P.acres*10)/10)+" ac":"")+
+            (P.url?'<br><a href="'+esc(P.url)+'" target="_blank" rel="noopener">view listing ↗</a>':""))
+          .addTo(zipLayer);
+      })(land[li]);
+    }
+    for(var si=0;si<subs.length;si++){
+      (function(S){
+        L.circleMarker([S.lat,S.lon],{radius:5,color:"#ffb020",weight:1.5,fillColor:"#ffb020",fillOpacity:.65})
+          .bindPopup('<b>'+esc(S.name)+'</b>'+(S.meta?'<br>'+esc(S.meta):""))
+          .addTo(zipLayer);
+      })(subs[si]);
+    }
+    var items=zrBody.getElementsByClassName("zr-item");
+    for(var it=0;it<items.length;it++){
+      items[it].addEventListener("click",function(){
+        var la=parseFloat(this.getAttribute("data-lat")), lo=parseFloat(this.getAttribute("data-lon"));
+        if(!isNaN(la)&&!isNaN(lo)) map.setView([la,lo],13);
+      });
+    }
+
+    /* Retain for export + enable the buttons. */
+    lastReport={ zip:zip, place:place, lat:lat, lon:lon, mi:mi, subs:subs, land:land };
+    csvBtn.disabled=false; pdfBtn.disabled=false;
+  }
+
+  /* ── Export: CSV (opens in Excel/Sheets) ── */
+  function csvCell(v){
+    if(v==null) return "";
+    var s=String(v);
+    return /[",\n]/.test(s) ? '"'+s.replace(/"/g,'""')+'"' : s;
+  }
+  function exportCsv(R){
+    var rows=[];
+    rows.push(["ClearSky-OMEGA Grid Atlas — Zip Radius Report"]);
+    rows.push(["ZIP",R.zip,"Area",R.place,"Radius (mi)",R.mi,"Generated",new Date().toLocaleString()]);
+    rows.push([]);
+    rows.push(["LAND FOR SALE ("+R.land.length+")"]);
+    rows.push(["Distance (mi)","Address","Price","Acres","$/Acre","Status","Listing URL"]);
+    for(var i=0;i<R.land.length;i++){ var L2=R.land[i];
+      rows.push([ L2.dist.toFixed(1), L2.address||"", (L2.price!=null?L2.price:""),
+        (L2.acres!=null?L2.acres:""), (L2.ppa!=null?Math.round(L2.ppa):""),
+        L2.status||"", L2.url||"" ]);
+    }
+    rows.push([]);
+    rows.push(["SUBSTATIONS ("+R.subs.length+")"]);
+    rows.push(["Distance (mi)","Name","Detail","Lat","Lon"]);
+    for(var s=0;s<R.subs.length;s++){ var S=R.subs[s];
+      rows.push([ S.dist.toFixed(1), S.name||"", S.meta||"", S.lat, S.lon ]);
+    }
+    var csv=rows.map(function(r){ return r.map(csvCell).join(","); }).join("\r\n");
+    download(csv,"text/csv;charset=utf-8","grid-atlas-"+R.zip+"-"+R.mi+"mi.csv");
+  }
+  function download(text,mime,fname){
+    var blob=new Blob(["\ufeff"+text],{type:mime});
+    var url=URL.createObjectURL(blob);
+    var a=document.createElement("a");
+    a.href=url; a.download=fname;
+    document.body.appendChild(a); a.click();
+    setTimeout(function(){ document.body.removeChild(a); URL.revokeObjectURL(url); },400);
+  }
+
+  /* ── Export: PDF (via a clean print window → browser "Save as PDF") ── */
+  function exportPdf(R){
+    var w=window.open("","_blank");
+    if(!w){ alert("Pop-up blocked — allow pop-ups to export the PDF."); return; }
+    function row(cells,tag){ tag=tag||"td";
+      return "<tr>"+cells.map(function(c){ return "<"+tag+">"+esc(c==null?"":c)+"</"+tag+">"; }).join("")+"</tr>"; }
+    var landRows="", i;
+    for(i=0;i<R.land.length;i++){ var L2=R.land[i];
+      var link=L2.url?('<a href="'+esc(L2.url)+'">'+esc(L2.url)+'</a>'):"";
+      landRows+='<tr><td>'+L2.dist.toFixed(1)+'</td><td>'+esc(L2.address||"")+'</td><td>'+
+        fmtMoney(L2.price)+'</td><td>'+(L2.acres!=null?Math.round(L2.acres*10)/10:"—")+'</td><td>'+
+        (L2.ppa!=null?fmtMoney(L2.ppa):"—")+'</td><td>'+esc(L2.status||"")+'</td><td class="u">'+link+'</td></tr>';
+    }
+    var subRows="";
+    for(i=0;i<R.subs.length;i++){ var S=R.subs[i];
+      subRows+=row([S.dist.toFixed(1), S.name||"", S.meta||""]);
+    }
+    var html='<!doctype html><html><head><meta charset="utf-8"><title>Grid Atlas · '+esc(R.zip)+' · '+R.mi+'mi</title>'+
+      '<style>'+
+      'body{font-family:-apple-system,Segoe UI,Roboto,Arial,sans-serif;color:#111;margin:32px;font-size:12px}'+
+      'h1{font-size:18px;margin:0 0 2px}h2{font-size:13px;margin:22px 0 6px;border-bottom:2px solid #ffb020;padding-bottom:3px}'+
+      '.meta{color:#555;font-size:11px;margin-bottom:4px}'+
+      'table{border-collapse:collapse;width:100%;margin-top:4px}'+
+      'th,td{border:1px solid #ddd;padding:5px 7px;text-align:left;vertical-align:top}'+
+      'th{background:#f4f4f4;font-size:10px;text-transform:uppercase;letter-spacing:.04em}'+
+      'td.u a{color:#1155cc;word-break:break-all;font-size:10px}'+
+      '.foot{margin-top:20px;color:#888;font-size:10px}'+
+      '@media print{body{margin:14mm}a{color:#1155cc}}'+
+      '</style></head><body>'+
+      '<h1>Grid Atlas — Zip Radius Report</h1>'+
+      '<div class="meta"><b>ZIP '+esc(R.zip)+'</b> · '+esc(R.place)+' · '+R.mi+' mi radius · '+
+        new Date().toLocaleString()+'</div>'+
+      '<h2>Land for Sale ('+R.land.length+')</h2>'+
+      (R.land.length?('<table><thead><tr><th>Dist (mi)</th><th>Address</th><th>Price</th><th>Acres</th><th>$/Ac</th><th>Status</th><th>Listing</th></tr></thead><tbody>'+landRows+'</tbody></table>')
+                    :'<div class="meta">No listings in this radius.</div>')+
+      '<h2>Substations ('+R.subs.length+')</h2>'+
+      (R.subs.length?('<table><thead><tr><th>Dist (mi)</th><th>Name</th><th>Detail</th></tr></thead><tbody>'+subRows+'</tbody></table>')
+                    :'<div class="meta">No substations returned.</div>')+
+      '<div class="foot">ClearSky-OMEGA · Grid Atlas · public data (ArcGIS/HIFLD substations, LandSearch/Land.com listings). Distances are straight-line from ZIP centroid.</div>'+
+      '</body></html>';
+    w.document.open(); w.document.write(html); w.document.close();
+    setTimeout(function(){ try{ w.focus(); w.print(); }catch(e){} },350);
+  }
+})();
+
+/* ---------- Geocode search (OSM Nominatim) ---------- */
+var q=document.getElementById("q");
+q.addEventListener("keydown",function(e){
+  if(e.key!=="Enter")return;
+  var t=q.value.trim(); if(!t)return;
+  status("Searching…",true);
+  ajax("https://nominatim.openstreetmap.org/search?format=json&limit=1&q="+encodeURIComponent(t),
+    function(err,res){
+      if(err||!res||!res.length){ status("No match for that search",false); return; }
+      var r=res[0]; map.setView([+r.lat,+r.lon],12);
+      status("Found: "+(r.display_name||t).split(",")[0],false);
+    });
+});
+
+/* ---------- Boot ---------- */
+/* ---------- Boot ---------- */
+(function buildLegend(){
+  var labels=["<10","10","25","52","132","220","310","550+"];
+  var el=document.getElementById("voltLegend"), h="";
+  for(var i=0;i<VOLT_SCALE.length;i++){
+    h+='<div style="display:flex;align-items:center;gap:8px;padding:4px 12px">'+
+       '<span style="width:16px;height:4px;border-radius:2px;background:'+VOLT_SCALE[i][1]+'"></span>'+
+       '<span style="font-family:var(--mono);font-size:10px;color:var(--muted)">'+labels[i]+' kV</span></div>';
+  }
+  h+='<div style="display:flex;align-items:center;gap:8px;padding:4px 12px 10px">'+
+     '<span style="width:16px;height:4px;border-radius:2px;background:#4E01B5"></span>'+
+     '<span style="font-family:var(--mono);font-size:10px;color:var(--muted)">HVDC</span></div>';
+  el.innerHTML=h;
+})();
+
+buildRail(); updateRailCounts();
+map.whenReady(function(){
+  setTimeout(function(){ map.invalidateSize(); },200);
+  setTimeout(loadVisible,400);
+});
+window.addEventListener("resize",function(){ map.invalidateSize(); });
+
+})();
+</script>
+</body>
+</html>
