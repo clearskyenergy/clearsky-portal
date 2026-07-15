@@ -427,6 +427,33 @@ body{font-family:'DM Sans',sans-serif;background:var(--cs-bg);color:var(--cs-tex
 <script>
 /* Route the Run button to the investor model. Falls back to legacy underwriting. */
 (function(){
+  /* Route "Platform" and logo back to the TENANT portal, never the admin host (tools.csebuilders.com). */
+  function tenantHome(){
+    try{
+      var org=new URLSearchParams(location.search).get('org');
+      if(!org){
+        var m=/[?&]org=([^&]+)/.exec(document.referrer||'');
+        if(m) org=decodeURIComponent(m[1]);
+      }
+      if(!org && document.referrer){
+        var h=new URL(document.referrer).hostname;
+        if(/\.clearskyomega\.com$/.test(h)) return new URL(document.referrer).origin+'/';
+      }
+      if(org) return 'https://'+org+'.clearskyomega.com/';
+    }catch(e){}
+    return null; /* unknown tenant: leave links inert rather than exposing admin host */
+  }
+  function fixLinks(){
+    var home=tenantHome();
+    ['tb-back-link','tb-logo-link'].forEach(function(id){
+      var el=document.getElementById(id);
+      if(!el) return;
+      if(home){ el.setAttribute('href',home); }
+      else { el.removeAttribute('href'); el.style.cursor='default'; }
+    });
+  }
+  if(document.readyState==='loading') document.addEventListener('DOMContentLoaded',fixLinks); else fixLinks();
+
   function wire(){
     var b=document.getElementById('btn-run');
     if(b){ var nb=b.cloneNode(true); b.parentNode.replaceChild(nb,b);
