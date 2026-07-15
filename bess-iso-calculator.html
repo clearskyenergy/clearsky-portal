@@ -1,0 +1,680 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>BESS ISO Calculator</title>
+<style>
+  :root{
+    --ink:#0d1b2a; --ink2:#1b2a3a; --paper:#f6f4ee; --panel:#ffffff;
+    --line:#d9d3c4; --line2:#e8e3d6;
+    --amp:#e8551f;         /* signal orange - discharge */
+    --amp-soft:#fbe4d8;
+    --volt:#1f7a5a;        /* revenue green */
+    --volt-soft:#dcefe6;
+    --wire:#2f4a63;        /* deep steel */
+    --muted:#5f6b78;
+    --grid-a:#7b8794;
+    --warn:#b8621b;
+    --mono:'DM Mono','SFMono-Regular',ui-monospace,Menlo,Consolas,monospace;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0}
+  body{
+    background:var(--paper); color:var(--ink);
+    font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;
+    font-size:15px; line-height:1.45; -webkit-font-smoothing:antialiased;
+  }
+  a{color:var(--wire)}
+  .wrap{max-width:1180px;margin:0 auto;padding:0 20px 80px}
+
+  /* ---- masthead ---- */
+  header.mast{
+    border-bottom:2px solid var(--ink);
+    padding:26px 0 18px; margin-bottom:26px;
+  }
+  .mast-row{display:flex;align-items:flex-end;justify-content:space-between;gap:20px;flex-wrap:wrap}
+  .brandmark{display:flex;align-items:center;gap:14px}
+  .glyph{
+    width:46px;height:46px;flex:0 0 46px;border-radius:9px;
+    background:var(--ink); position:relative; overflow:hidden;
+  }
+  .glyph:before{
+    content:"";position:absolute;left:9px;right:9px;bottom:10px;height:3px;background:var(--amp);
+  }
+  .glyph i{position:absolute;bottom:13px;width:5px;background:var(--volt);border-radius:1px}
+  .glyph i:nth-child(1){left:11px;height:12px}
+  .glyph i:nth-child(2){left:19px;height:20px}
+  .glyph i:nth-child(3){left:27px;height:15px}
+  .glyph i:nth-child(4){left:35px;height:24px;background:var(--amp)}
+  h1{font-size:23px;letter-spacing:-.02em;margin:0;font-weight:800}
+  h1 span{color:var(--muted);font-weight:500}
+  .sub{font-size:12.5px;color:var(--muted);margin-top:2px;letter-spacing:.02em}
+  .asof{font-family:var(--mono);font-size:11px;color:var(--muted);text-align:right;line-height:1.6}
+  .asof b{color:var(--ink);font-weight:600}
+
+  /* ---- layout ---- */
+  .cols{display:grid;grid-template-columns:1fr 1fr;gap:22px}
+  @media(max-width:880px){.cols{grid-template-columns:1fr}}
+
+  .card{
+    background:var(--panel);border:1px solid var(--line);border-radius:14px;
+    padding:20px 20px 22px;
+  }
+  .card + .card{margin-top:22px}
+  .eyebrow{
+    font-family:var(--mono);font-size:10.5px;letter-spacing:.16em;text-transform:uppercase;
+    color:var(--amp);font-weight:600;margin:0 0 3px;display:flex;align-items:center;gap:8px
+  }
+  .eyebrow .n{
+    display:inline-flex;align-items:center;justify-content:center;
+    width:18px;height:18px;border:1.5px solid var(--amp);border-radius:5px;
+    font-size:10px;color:var(--amp)
+  }
+  h2{font-size:16px;margin:0 0 14px;letter-spacing:-.01em;font-weight:700}
+
+  label{display:block;font-size:12px;font-weight:600;color:var(--ink2);margin:0 0 5px}
+  .hint{font-weight:400;color:var(--muted);font-size:11px}
+  .field{margin-bottom:15px}
+  input[type=number],select,input[type=text]{
+    width:100%;padding:9px 11px;border:1px solid var(--line);border-radius:8px;
+    font-size:14px;font-family:var(--mono);background:#fff;color:var(--ink)
+  }
+  select{font-family:'Inter',sans-serif;font-size:13.5px;cursor:pointer}
+  input:focus,select:focus{outline:2px solid var(--wire);outline-offset:-1px;border-color:var(--wire)}
+  .inline{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+  .inline3{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+
+  /* segmented toggle */
+  .seg{display:flex;border:1px solid var(--line);border-radius:9px;overflow:hidden;background:#fff}
+  .seg button{
+    flex:1;border:0;background:transparent;padding:10px 8px;font-size:13px;font-weight:600;
+    cursor:pointer;color:var(--muted);font-family:inherit;letter-spacing:.01em;transition:.12s
+  }
+  .seg button.on{background:var(--ink);color:#fff}
+  .seg button:not(.on):hover{background:var(--paper)}
+
+  .rangewrap{display:flex;align-items:center;gap:12px}
+  input[type=range]{flex:1;accent-color:var(--amp)}
+  .rangeval{font-family:var(--mono);font-size:14px;font-weight:600;min-width:66px;text-align:right}
+
+  .spec{
+    display:grid;grid-template-columns:repeat(3,1fr);gap:1px;
+    background:var(--line2);border:1px solid var(--line2);border-radius:10px;overflow:hidden;margin-top:4px
+  }
+  .spec div{background:#fff;padding:10px 12px}
+  .spec .k{font-size:10px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);font-family:var(--mono)}
+  .spec .v{font-size:16px;font-weight:700;font-family:var(--mono);margin-top:1px}
+  .spec .v small{font-size:11px;color:var(--muted);font-weight:500}
+
+  /* revenue stream rows */
+  .stream{border-top:1px solid var(--line2);padding:12px 0}
+  .stream:first-of-type{border-top:0}
+  .stream-head{display:flex;align-items:center;justify-content:space-between;gap:10px}
+  .stream-name{font-size:13px;font-weight:600;display:flex;align-items:center;gap:9px}
+  .dot{width:9px;height:9px;border-radius:50%;flex:0 0 9px}
+  .stream-val{font-family:var(--mono);font-size:14px;font-weight:700}
+  .stream-note{font-size:11px;color:var(--muted);margin-top:3px;padding-left:18px;line-height:1.4}
+  .toggle-mini{
+    font-size:11px;color:var(--wire);cursor:pointer;user-select:none;font-weight:600;
+    display:inline-flex;align-items:center;gap:4px
+  }
+  .cb{width:15px;height:15px;accent-color:var(--volt);cursor:pointer;vertical-align:-2px}
+
+  /* result rail */
+  .rail{position:sticky;top:16px}
+  .headline{
+    background:var(--ink);color:#fff;border-radius:14px;padding:22px 22px 20px;margin-bottom:16px;
+    position:relative;overflow:hidden
+  }
+  .headline:after{content:"";position:absolute;left:0;right:0;bottom:0;height:4px;
+    background:linear-gradient(90deg,var(--amp),var(--volt))}
+  .headline .lbl{font-family:var(--mono);font-size:10.5px;letter-spacing:.14em;text-transform:uppercase;color:#9fb0c0}
+  .big{font-size:40px;font-weight:800;letter-spacing:-.03em;line-height:1;margin:8px 0 2px;font-variant-numeric:tabular-nums}
+  .big small{font-size:18px;color:#9fb0c0;font-weight:600}
+  .perunit{font-family:var(--mono);font-size:12px;color:#c3d0dc}
+  .chips{display:flex;gap:8px;margin-top:14px;flex-wrap:wrap}
+  .chip{background:rgba(255,255,255,.09);border-radius:7px;padding:7px 10px;font-size:11px;line-height:1.3}
+  .chip b{font-family:var(--mono);font-size:13px;display:block;margin-top:1px}
+
+  /* stacked bar */
+  .barwrap{margin:6px 0 4px}
+  .bar{display:flex;height:30px;border-radius:7px;overflow:hidden;border:1px solid var(--line)}
+  .bar span{transition:width .25s}
+  .legend{display:flex;flex-wrap:wrap;gap:10px 16px;margin-top:12px}
+  .legend div{font-size:11.5px;display:flex;align-items:center;gap:6px;color:var(--ink2)}
+  .legend b{font-family:var(--mono);margin-left:2px}
+
+  .roi{border-top:1px dashed var(--line);margin-top:16px;padding-top:16px}
+  .roi.hide{display:none}
+  .roi-grid{display:grid;grid-template-columns:1fr 1fr;gap:1px;background:var(--line2);border-radius:10px;overflow:hidden;border:1px solid var(--line2)}
+  .roi-grid div{background:#fff;padding:12px 13px}
+  .roi-grid .k{font-size:10px;text-transform:uppercase;letter-spacing:.07em;color:var(--muted);font-family:var(--mono)}
+  .roi-grid .v{font-size:19px;font-weight:700;font-family:var(--mono);margin-top:2px}
+  .roi-grid .v.good{color:var(--volt)} .roi-grid .v.warn{color:var(--warn)}
+
+  .foot{font-size:11px;color:var(--muted);line-height:1.5;margin-top:20px;border-top:1px solid var(--line);padding-top:14px}
+  .foot b{color:var(--ink2)}
+  details{margin-top:8px}
+  summary{cursor:pointer;font-weight:600;color:var(--wire);font-size:11.5px}
+  .disc{background:var(--amp-soft);border:1px solid #f0c3ad;color:#7a3311;border-radius:8px;
+    padding:8px 11px;font-size:11px;line-height:1.45;margin-top:12px}
+
+  .oem-add{display:flex;gap:8px;margin-top:8px}
+  .oem-add input{flex:1}
+  .btn{border:1px solid var(--wire);background:#fff;color:var(--wire);border-radius:8px;
+    padding:9px 14px;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit;white-space:nowrap}
+  .btn:hover{background:var(--wire);color:#fff}
+  .src{display:inline-block;font-family:var(--mono);font-size:10px;background:var(--paper);
+    border:1px solid var(--line);border-radius:5px;padding:1px 6px;color:var(--muted);margin-left:6px}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header class="mast">
+    <div class="mast-row">
+      <div class="brandmark">
+        <div class="glyph"><i></i><i></i><i></i><i></i></div>
+        <div>
+          <h1>BESS ISO Calculator</h1>
+          <div class="sub">Set the power rating &middot; auto-size energy &middot; stack the revenue &middot; optional ROI</div>
+        </div>
+      </div>
+      <div class="asof">
+        REV BENCHMARKS <b>2026</b><br>
+        SOURCE: MODO ENERGY, NREL, CAISO<br>
+        UPDATED <b>JUL 2026</b>
+      </div>
+    </div>
+  </header>
+
+  <div class="cols">
+    <!-- ================= LEFT: INPUTS ================= -->
+    <div>
+      <!-- 1. System -->
+      <div class="card">
+        <p class="eyebrow"><span class="n">1</span> System</p>
+        <h2>Size the asset</h2>
+
+        <div class="field">
+          <label>Deployment <span class="hint">where the meter sits</span></label>
+          <div class="seg" id="segDeploy">
+            <button data-v="ftm" class="on">Front-of-Meter (ISO)</button>
+            <button data-v="btm">Behind-the-Meter (C&amp;I)</button>
+          </div>
+        </div>
+
+        <div class="field" id="isoField">
+          <label>ISO / RTO market</label>
+          <select id="iso">
+            <option value="ercot">ERCOT (Texas) &mdash; energy-only</option>
+            <option value="caiso">CAISO (California) &mdash; RA + arbitrage</option>
+            <option value="pjm" selected>PJM (Mid-Atlantic) &mdash; regulation + capacity</option>
+            <option value="miso">MISO (Midwest) &mdash; capacity + arbitrage</option>
+            <option value="spp">SPP (Central) &mdash; RA + arbitrage</option>
+            <option value="nyiso">NYISO (New York) &mdash; ICAP + Index credit</option>
+            <option value="isone">ISO-NE (New England) &mdash; FCM + arbitrage</option>
+          </select>
+        </div>
+
+        <div class="field">
+          <label>Power rating <span class="hint">MW AC &mdash; the number you sell to the grid</span></label>
+          <div class="rangewrap">
+            <input type="range" id="mwRange" min="0.1" max="20" step="0.1" value="5">
+            <input type="number" id="mw" value="5" step="0.1" min="0.05" style="max-width:96px">
+          </div>
+        </div>
+
+        <div class="field">
+          <label>Duration <span class="hint">hours at rated power &rarr; drives MWh</span></label>
+          <div class="rangewrap">
+            <input type="range" id="durRange" min="0.5" max="8" step="0.5" value="2">
+            <span class="rangeval" id="durVal">2.0 h</span>
+          </div>
+        </div>
+
+        <div class="spec">
+          <div><div class="k">Power</div><div class="v" id="sPow">5.0 <small>MW</small></div></div>
+          <div><div class="k">Energy</div><div class="v" id="sEne">10.0 <small>MWh</small></div></div>
+          <div><div class="k">C-rate</div><div class="v" id="sC">0.50 <small>C</small></div></div>
+        </div>
+      </div>
+
+      <!-- 2. Hardware -->
+      <div class="card">
+        <p class="eyebrow"><span class="n">2</span> Hardware</p>
+        <h2>BESS solution / OEM</h2>
+        <div class="field">
+          <label>Product line <span class="hint">informs default duration &amp; round-trip</span></label>
+          <select id="oem"></select>
+        </div>
+        <div class="field" style="margin-bottom:6px">
+          <label>Round-trip efficiency <span class="hint">AC-AC, after losses</span></label>
+          <div class="rangewrap">
+            <input type="range" id="rteRange" min="80" max="94" step="0.5" value="88">
+            <span class="rangeval" id="rteVal">88%</span>
+          </div>
+        </div>
+        <details>
+          <summary>Add your own OEM / model</summary>
+          <div class="oem-add">
+            <input type="text" id="oemName" placeholder="e.g. Gotion GRID 5068">
+            <button class="btn" id="oemAdd">Add</button>
+          </div>
+          <p class="stream-note" style="padding-left:0;margin-top:8px">
+            Sourcing OEMs through <b>RexelUSA</b> and <b>City Electric Supply</b>: search their
+            energy-storage / switchgear catalogs, or ask a counter rep for the manufacturer line card.
+            Both distribute containerized LFP systems (Gotion, and others) plus the PCS and switchgear
+            around them. Add the model here to label your pro forma &mdash; specs stay editable above.
+          </p>
+        </details>
+      </div>
+
+      <!-- 3. Revenue streams -->
+      <div class="card">
+        <p class="eyebrow"><span class="n">3</span> Revenue</p>
+        <h2 id="revTitle">Revenue streams</h2>
+        <div id="streams"></div>
+        <div class="field" style="margin:16px 0 0">
+          <label>Availability / uptime <span class="hint">de-rates every stream</span></label>
+          <div class="rangewrap">
+            <input type="range" id="availRange" min="80" max="99" step="1" value="95">
+            <span class="rangeval" id="availVal">95%</span>
+          </div>
+        </div>
+        <div class="disc" id="mktDisc"></div>
+      </div>
+
+      <!-- 4. ROI (optional) -->
+      <div class="card">
+        <p class="eyebrow"><span class="n">4</span> ROI <span style="color:var(--muted);font-weight:400;letter-spacing:0;text-transform:none">&mdash; optional</span></p>
+        <h2>Cost inputs</h2>
+        <div class="inline">
+          <div class="field">
+            <label>System cost <span class="hint">$ total, hardware</span></label>
+            <input type="number" id="sysCost" placeholder="optional" step="1000">
+          </div>
+          <div class="field">
+            <label>Install / EPC <span class="hint">$ total</span></label>
+            <input type="number" id="installCost" placeholder="optional" step="1000">
+          </div>
+        </div>
+        <p class="stream-note" style="padding-left:0;margin-top:-4px">
+          Leave blank to keep this a pure revenue model. Fill either field to unlock payback &amp; gross yield.
+        </p>
+      </div>
+
+    </div>
+
+    <!-- ================= RIGHT: RESULTS ================= -->
+    <div>
+      <div class="rail">
+        <div class="headline">
+          <div class="lbl">Annual gross revenue &mdash; Year 1</div>
+          <div class="big" id="annBig">$0<small></small></div>
+          <div class="perunit" id="perUnit"></div>
+          <div class="chips">
+            <div class="chip">Per MW / yr<b id="chipMw">$0</b></div>
+            <div class="chip">Per MWh / yr<b id="chipMwh">$0</b></div>
+            <div class="chip">$/kW-month<b id="chipKwmo">$0</b></div>
+          </div>
+        </div>
+
+        <div class="card">
+          <p class="eyebrow">Stack</p>
+          <h2 style="margin-bottom:12px">Revenue composition</h2>
+          <div class="barwrap"><div class="bar" id="bar"></div></div>
+          <div class="legend" id="legend"></div>
+
+          <div class="roi hide" id="roiBox">
+            <p class="eyebrow" style="color:var(--volt)">Returns</p>
+            <div class="roi-grid">
+              <div><div class="k">Total capex</div><div class="v" id="roiCap">&mdash;</div></div>
+              <div><div class="k">$ / kWh installed</div><div class="v" id="roiPerKwh">&mdash;</div></div>
+              <div><div class="k">Simple payback</div><div class="v" id="roiPay">&mdash;</div></div>
+              <div><div class="k">Gross yield / yr</div><div class="v" id="roiYield">&mdash;</div></div>
+            </div>
+            <p class="stream-note" style="padding-left:0;margin-top:10px">
+              Simple payback = capex &divide; Year-1 gross revenue. It ignores degradation, O&amp;M,
+              augmentation, charging cost, financing, and tax credits &mdash; a screening number, not an IRR.
+            </p>
+          </div>
+
+          <div class="foot">
+            <b>How the numbers are built.</b> Every stream is a per-unit benchmark &times; your size &times;
+            availability. FTM streams draw on 2026 Modo Energy per-MW / $/kW-month figures; BTM uses
+            demand-charge and arbitrage-spread economics. These are planning benchmarks with wide real-world
+            spread &mdash; node, duration, cycling limits, and offtake terms move them materially.
+            <details>
+              <summary>Benchmark notes &amp; assumptions</summary>
+              <div id="notes" style="margin-top:8px;color:var(--muted)"></div>
+            </details>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+/* ---------------- data ---------------- */
+
+/* FTM per-MW-year revenue benchmarks (2026 planning ranges, USD).
+   base = mid case at reference duration; arbScale flags streams that scale w/ duration. */
+var ISO = {
+  ercot: {name:"ERCOT", refDur:2, note:"Energy-only. No capacity market. Scarcity pricing + AS. 2026 is a cyclical low vs ~$16/kW-mo in 2023; data-center load growth is the upside.",
+    streams:[
+      {id:"arb", name:"Energy arbitrage", base:22000, dur:true,  on:true},
+      {id:"as",  name:"Ancillary services (RRS/ECRS/Reg)", base:14000, dur:false, on:true}
+    ]},
+  caiso:{name:"CAISO", refDur:4, note:"~91% of revenue now from arbitrage. Resource Adequacy adds a contracted floor (full-stack ~ $14.83/kW-mo). Slice-of-Day rewards longer duration.",
+    streams:[
+      {id:"arb", name:"Energy arbitrage (TB spread)", base:30000, dur:true, on:true},
+      {id:"ra",  name:"Resource Adequacy (capacity)", base:60000, dur:true, on:true},
+      {id:"as",  name:"Ancillary services", base:6000, dur:false, on:true}
+    ]},
+  pjm:{name:"PJM", refDur:4, note:"Regulation-dominated today (a thin-fleet premium expected to compress). Capacity ~ $55-60k/MW-yr at 4h / 50% ELCC. Arbitrage growing with data-center load.",
+    streams:[
+      {id:"reg", name:"Regulation (RegD)", base:90000, dur:false, on:true},
+      {id:"cap", name:"Capacity (RPM, 4h @50% ELCC)", base:57000, dur:true, on:true},
+      {id:"arb", name:"Energy arbitrage", base:18000, dur:true, on:true}
+    ]},
+  miso:{name:"MISO", refDur:4, note:"Blends capacity accreditation and real-time arbitrage. Deep interconnection queue. Revenues thinner than PJM/ERCOT peaks.",
+    streams:[
+      {id:"cap", name:"Capacity (PRA)", base:38000, dur:true, on:true},
+      {id:"arb", name:"Energy arbitrage", base:20000, dur:true, on:true},
+      {id:"as",  name:"Ancillary services", base:8000, dur:false, on:true}
+    ]},
+  spp:{name:"SPP", refDur:4, note:"Bilateral RA / capacity plus arbitrage. Large queue, still-maturing storage participation.",
+    streams:[
+      {id:"cap", name:"Capacity / RA (bilateral)", base:34000, dur:true, on:true},
+      {id:"arb", name:"Energy arbitrage", base:18000, dur:true, on:true},
+      {id:"as",  name:"Ancillary services", base:9000, dur:false, on:true}
+    ]},
+  nyiso:{name:"NYISO", refDur:4, note:"ICAP capacity + NY state Index Storage Credit (a contract-for-differences floor). Small fleet, strong per-MW policy support.",
+    streams:[
+      {id:"icap",name:"ICAP capacity", base:55000, dur:true, on:true},
+      {id:"idx", name:"Index Storage Credit (state)", base:40000, dur:true, on:true},
+      {id:"arb", name:"Energy arbitrage", base:20000, dur:true, on:true},
+      {id:"as",  name:"Ancillary services", base:9000, dur:false, on:true}
+    ]},
+  isone:{name:"ISO-NE", refDur:4, note:"Forward Capacity Market + arbitrage + reserves. Smallest fleet; policy-supported per MW.",
+    streams:[
+      {id:"fcm", name:"Forward Capacity Market", base:42000, dur:true, on:true},
+      {id:"arb", name:"Energy arbitrage", base:19000, dur:true, on:true},
+      {id:"as",  name:"Ancillary services (reserves)", base:9000, dur:false, on:true}
+    ]}
+};
+
+/* BTM streams are user-parameterized (rates), computed live */
+var BTM_NOTE = "Behind-the-meter value is site-specific. Demand-charge reduction is the dominant stream (often 30-70% of a C&I bill); arbitrage needs a peak/off-peak spread above round-trip losses. Enter your site's rates below.";
+
+/* OEM presets: default duration, default RTE. From the uploaded datasheets. */
+var OEMS = [
+  {id:"awg5", name:"Aspen Woods 20AWG5MW (2.58MW / 5,015kWh)", dur:2, rte:88},
+  {id:"g5068",name:"Gotion GRID 5068 (20ft, 5,068kWh)", dur:2, rte:90},
+  {id:"g4608",name:"Gotion GRID 4608 (20ft, 4,608kWh)", dur:2, rte:89},
+  {id:"g2703",name:"Gotion GRID 2703 (air-cooled, 2,703kWh)", dur:2, rte:87},
+  {id:"edge760",name:"Gotion EDGE 760 (C&I, 760kWh)", dur:2, rte:88},
+  {id:"edge220",name:"Gotion EDGE 220 (C&I cabinet, 220kWh)", dur:2, rte:88},
+  {id:"generic",name:"Generic containerized LFP (4h)", dur:4, rte:88}
+];
+
+/* ---------------- state ---------------- */
+var state = {
+  deploy:"ftm", iso:"pjm", mw:5, dur:2, rte:88, avail:95, oem:"awg5",
+  streamOn:{}, btm:{dcRate:18, dcRed:70, spread:0.12, cycles:300, srvKwYr:40}
+};
+
+/* ---------------- helpers ---------------- */
+function $(id){return document.getElementById(id);}
+function fmt(n){
+  if(!isFinite(n)) return "$0";
+  var neg=n<0; n=Math.abs(Math.round(n));
+  var s=n.toLocaleString('en-US');
+  return (neg?"-$":"$")+s;
+}
+function fmtK(n){ // compact for big headline
+  if(n>=1e6) return "$"+(n/1e6).toFixed(n>=1e7?1:2)+"M";
+  if(n>=1e3) return "$"+(n/1e3).toFixed(0)+"k";
+  return "$"+Math.round(n);
+}
+var COLORS={arb:"#e8551f",as:"#2f4a63",reg:"#7b5cff",cap:"#1f7a5a",ra:"#1f7a5a",
+  icap:"#1f7a5a",fcm:"#1f7a5a",idx:"#c99700",dc:"#e8551f",btmarb:"#2f4a63",srv:"#1f7a5a"};
+
+/* ---------------- compute ---------------- */
+function currentStreams(){
+  var mw=state.mw, dur=state.dur, av=state.avail/100, rte=state.rte/100;
+  var out=[];
+  if(state.deploy==="ftm"){
+    var iso=ISO[state.iso];
+    iso.streams.forEach(function(s){
+      var perMw=s.base;
+      if(s.dur){ perMw = s.base * (dur/iso.refDur); } // duration-scaled streams
+      var val = perMw * mw * av;
+      var on = state.streamOn[s.id]!==false;
+      out.push({id:s.id,name:s.name,val:val,on:on,color:COLORS[s.id]||"#888"});
+    });
+  } else {
+    var b=state.btm, kw=mw*1000, mwh=mw*dur;
+    // demand charge reduction: kW shaved * $/kW-mo * 12
+    var dcVal = kw*(b.dcRed/100) * b.dcRate * 12 * av;
+    // arbitrage: cycles/yr * usable MWh * spread($/kWh) * rte
+    var arbVal = b.cycles * (mwh*1000) * b.spread * rte * av;
+    // grid services (opt-in, $/kW-yr)
+    var srvVal = kw * b.srvKwYr * av;
+    out.push({id:"dc",name:"Demand-charge reduction",val:dcVal,on:state.streamOn.dc!==false,color:COLORS.dc});
+    out.push({id:"btmarb",name:"Energy arbitrage (ToU)",val:arbVal,on:state.streamOn.btmarb!==false,color:COLORS.btmarb});
+    out.push({id:"srv",name:"Grid services / DR",val:srvVal,on:state.streamOn.srv===true,color:COLORS.srv});
+  }
+  return out;
+}
+
+/* ---------------- render ---------------- */
+function renderStreams(){
+  var wrap=$("streams"); wrap.innerHTML="";
+  var streams=currentStreams();
+  streams.forEach(function(s){
+    var row=document.createElement("div"); row.className="stream";
+    var noteHtml = state.deploy==="ftm" ? "" :
+      '<div class="stream-note" id="note-'+s.id+'"></div>';
+    row.innerHTML =
+      '<div class="stream-head">'+
+        '<div class="stream-name"><span class="dot" style="background:'+s.color+'"></span>'+
+          '<input type="checkbox" class="cb" data-sid="'+s.id+'" '+(s.on?"checked":"")+'> '+s.name+
+        '</div>'+
+        '<div class="stream-val" id="sv-'+s.id+'">'+fmt(s.val)+'</div>'+
+      '</div>';
+    wrap.appendChild(row);
+  });
+
+  // BTM parameter inputs injected under the block
+  if(state.deploy==="btm"){
+    var b=state.btm;
+    var p=document.createElement("div");
+    p.style.marginTop="14px";
+    p.innerHTML=
+      '<div class="inline"><div class="field"><label>Demand charge <span class="hint">$/kW-mo</span></label>'+
+        '<input type="number" id="dcRate" value="'+b.dcRate+'" step="0.5"></div>'+
+      '<div class="field"><label>Peak shaved <span class="hint">% of MW</span></label>'+
+        '<input type="number" id="dcRed" value="'+b.dcRed+'" step="5" max="100"></div></div>'+
+      '<div class="inline"><div class="field"><label>ToU spread <span class="hint">$/kWh peak-offpeak</span></label>'+
+        '<input type="number" id="spread" value="'+b.spread+'" step="0.01"></div>'+
+      '<div class="field"><label>Cycles / yr <span class="hint">full equivalent</span></label>'+
+        '<input type="number" id="cycles" value="'+b.cycles+'" step="10"></div></div>'+
+      '<div class="field"><label>Grid services <span class="hint">$/kW-yr, if enrolled (tick stream above)</span></label>'+
+        '<input type="number" id="srvKwYr" value="'+b.srvKwYr+'" step="5" style="max-width:140px"></div>';
+    wrap.appendChild(p);
+    ["dcRate","dcRed","spread","cycles","srvKwYr"].forEach(function(k){
+      $(k).addEventListener("input",function(){ state.btm[k]=parseFloat(this.value)||0; recompute(); });
+    });
+  }
+
+  // wire checkboxes
+  var cbs=wrap.querySelectorAll(".cb");
+  for(var i=0;i<cbs.length;i++){
+    cbs[i].addEventListener("change",function(){
+      state.streamOn[this.getAttribute("data-sid")]=this.checked; recompute();
+    });
+  }
+}
+
+function recompute(){
+  var streams=currentStreams();
+  var total=0;
+  streams.forEach(function(s){
+    var el=$("sv-"+s.id);
+    if(el) el.textContent=fmt(s.val)+(s.on?"":" ·off");
+    if(el) el.style.opacity=s.on?1:.4;
+    if(s.on) total+=s.val;
+  });
+
+  var mw=state.mw, mwh=state.mw*state.dur;
+  // headline
+  $("annBig").innerHTML = fmtK(total)+'<small> / yr</small>';
+  $("perUnit").textContent = fmt(total)+" gross, Year 1";
+  $("chipMw").textContent = fmt(mw>0?total/mw:0);
+  $("chipMwh").textContent = fmt(mwh>0?total/mwh:0);
+  $("chipKwmo").textContent = "$"+(mw>0?(total/(mw*1000)/12):0).toFixed(2);
+
+  // bar + legend
+  var bar=$("bar"); bar.innerHTML="";
+  var legend=$("legend"); legend.innerHTML="";
+  var onStreams=streams.filter(function(s){return s.on && s.val>0;});
+  onStreams.forEach(function(s){
+    var pct= total>0 ? (s.val/total*100) : 0;
+    var span=document.createElement("span");
+    span.style.width=pct+"%"; span.style.background=s.color;
+    span.title=s.name+" "+pct.toFixed(0)+"%";
+    bar.appendChild(span);
+    var l=document.createElement("div");
+    l.innerHTML='<span class="dot" style="background:'+s.color+'"></span>'+s.name+
+      ' <b>'+pct.toFixed(0)+'%</b>';
+    legend.appendChild(l);
+  });
+  if(onStreams.length===0){ bar.innerHTML='<span style="width:100%;background:var(--line)"></span>'; }
+
+  // ROI
+  var cap=(parseFloat($("sysCost").value)||0)+(parseFloat($("installCost").value)||0);
+  var roi=$("roiBox");
+  if(cap>0){
+    roi.classList.remove("hide");
+    $("roiCap").textContent=fmt(cap);
+    var perKwh = mwh>0 ? cap/(mwh*1000) : 0;
+    $("roiPerKwh").textContent="$"+perKwh.toFixed(0);
+    var pay = total>0 ? cap/total : 0;
+    var payEl=$("roiPay");
+    payEl.textContent = total>0 ? pay.toFixed(1)+" yr" : "—";
+    payEl.className="v "+(pay<=7?"good":"warn");
+    var yield_ = cap>0 ? total/cap*100 : 0;
+    var yEl=$("roiYield");
+    yEl.textContent=yield_.toFixed(1)+"%";
+    yEl.className="v "+(yield_>=14?"good":"warn");
+  } else { roi.classList.add("hide"); }
+
+  // notes
+  var note = state.deploy==="ftm" ? ISO[state.iso].note : BTM_NOTE;
+  $("notes").innerHTML = "<b>"+(state.deploy==="ftm"?ISO[state.iso].name:"Behind-the-meter")+".</b> "+note+
+    " Duration-scaled streams (capacity, RA, arbitrage) flex with your hours vs the market reference duration. "+
+    "Regulation & most ancillary products are power products — flat with duration.";
+  $("mktDisc").innerHTML = state.deploy==="ftm"
+    ? "<b>"+ISO[state.iso].name+"</b> &mdash; "+ISO[state.iso].note
+    : "<b>Site-specific.</b> "+BTM_NOTE;
+}
+
+/* ---------------- spec + iso field ---------------- */
+function renderSpec(){
+  $("sPow").innerHTML=state.mw.toFixed(1)+' <small>MW</small>';
+  $("sEne").innerHTML=(state.mw*state.dur).toFixed(1)+' <small>MWh</small>';
+  $("sC").innerHTML=(state.dur>0?(1/state.dur):0).toFixed(2)+' <small>C</small>';
+  $("durVal").textContent=state.dur.toFixed(1)+" h";
+  $("isoField").style.display = state.deploy==="ftm" ? "block":"none";
+  $("revTitle").textContent = state.deploy==="ftm"
+    ? ISO[state.iso].name+" revenue streams" : "C&I revenue streams";
+}
+
+/* ---------------- wire up ---------------- */
+function buildOemSelect(){
+  var sel=$("oem"); sel.innerHTML="";
+  OEMS.forEach(function(o){
+    var opt=document.createElement("option");
+    opt.value=o.id; opt.textContent=o.name;
+    if(o.id===state.oem) opt.selected=true;
+    sel.appendChild(opt);
+  });
+}
+
+function initSeg(){
+  var seg=$("segDeploy");
+  var btns=seg.querySelectorAll("button");
+  for(var i=0;i<btns.length;i++){
+    btns[i].addEventListener("click",function(){
+      for(var j=0;j<btns.length;j++) btns[j].classList.remove("on");
+      this.classList.add("on");
+      state.deploy=this.getAttribute("data-v");
+      state.streamOn={}; // reset stream toggles on mode switch
+      renderSpec(); renderStreams(); recompute();
+    });
+  }
+}
+
+function bindRange(rangeId,numId,key,valId,fmtFn,after){
+  var r=$(rangeId);
+  r.addEventListener("input",function(){
+    state[key]=parseFloat(this.value);
+    if(numId&&$(numId)) $(numId).value=this.value;
+    if(valId) $(valId).textContent=fmtFn(state[key]);
+    if(after) after();
+    renderSpec(); recompute();
+  });
+  if(numId){
+    $(numId).addEventListener("input",function(){
+      var v=parseFloat(this.value)||0; state[key]=v;
+      if(v>=parseFloat(r.min)&&v<=parseFloat(r.max)) r.value=v;
+      renderSpec(); recompute();
+    });
+  }
+}
+
+window.addEventListener("DOMContentLoaded",function(){
+  buildOemSelect();
+  initSeg();
+
+  $("iso").addEventListener("change",function(){
+    state.iso=this.value; state.streamOn={};
+    renderSpec(); renderStreams(); recompute();
+  });
+
+  bindRange("mwRange","mw","mw");
+  bindRange("durRange",null,"dur","durVal",function(v){return v.toFixed(1)+" h";});
+  bindRange("rteRange",null,"rte","rteVal",function(v){return v+"%";});
+  bindRange("availRange",null,"avail","availVal",function(v){return v+"%";});
+
+  $("oem").addEventListener("change",function(){
+    var o=OEMS.filter(function(x){return x.id===this.value;}.bind(this))[0];
+    state.oem=this.value;
+    if(o){
+      state.dur=o.dur; state.rte=o.rte;
+      $("durRange").value=o.dur; $("rteRange").value=o.rte;
+      $("rteVal").textContent=o.rte+"%";
+    }
+    renderSpec(); recompute();
+  });
+
+  $("oemAdd").addEventListener("click",function(){
+    var name=$("oemName").value.trim(); if(!name) return;
+    var id="u"+Date.now();
+    OEMS.push({id:id,name:name+" (custom)",dur:state.dur,rte:state.rte});
+    state.oem=id; buildOemSelect(); $("oemName").value="";
+  });
+
+  ["sysCost","installCost"].forEach(function(k){
+    $(k).addEventListener("input",recompute);
+  });
+
+  renderSpec(); renderStreams(); recompute();
+});
+</script>
+</body>
+</html>
