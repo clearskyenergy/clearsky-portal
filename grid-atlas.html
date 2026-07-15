@@ -434,7 +434,7 @@
 (function(){
 "use strict";
 /* Build tag — check window.GRID_ATLAS_BUILD in the console to confirm which version is live. */
-window.GRID_ATLAS_BUILD = "2026-07-15-platform-nav-tenant-fix-v5";
+window.GRID_ATLAS_BUILD = "2026-07-15-platform-nav-clearskyomega-v6";
 
 function fail(msg){
   var s=document.getElementById("stTxt"), b=document.getElementById("status");
@@ -457,62 +457,53 @@ window.onerror=function(m){ fail("Error: "+m); };
     }
   }catch(e){}
 })();
-/* Rewrite logo + "← Platform" to the tenant portal (client dashboard) the user is in.
-   Grid Atlas is served from tools.csebuilders.com AND cloned onto tenant subdomains
-   (e.g. nextnrg.csebuilders.com), so the button must resolve the RIGHT client index.
+/* Route "← Platform" and logo back to the TENANT portal (client dashboard), never the
+   admin host (tools.csebuilders.com). Tenant portals live on *.clearskyomega.com.
 
    Resolution priority (first hit wins):
-     1) Current hostname — if we're already on <tenant>.csebuilders.com, the dashboard
-        is that same host's root. This is the most reliable signal and handles the
-        common case of the tool being opened directly on a client subdomain.
-     2) window.OMEGA_WORKSPACE.slug/orgId — explicit workspace context if config set it.
-     3) OMEGATools.orgFromUrl() → brand map — resolved org/email-domain.
-     4) document.referrer subdomain — where the user navigated from (unreliable; last).
-   Falls back to the shared tool host only if nothing resolves. */
-function gaTenantPortalUrl(){
-  var BRAND={"nextnrg.com":"nextnrg","solela.com":"solela","chileasing.com":"chileasing",
-    "spatco.com":"spatco","ogisolar.com":"ogisolar"};
-  var RESERVED={tools:1,www:1,"":1}; // subdomains that are NOT tenant slugs
-  var slug=null;
-
-  // 1) Current hostname — if served from a tenant subdomain, use it directly.
+     1) Current hostname — if we're already on <tenant>.clearskyomega.com, that host's
+        root IS the client dashboard.
+     2) The portal that launched this tool (document.referrer host on clearskyomega.com).
+     3) ?org= param (or org= in the referrer) — may be an email domain like "sunesol.com";
+        take only the first label → sunesol.clearskyomega.com.
+   If the tenant can't be resolved, links are left INERT rather than exposing the admin
+   host. */
+function gaTenantHome(){
   try{
+    /* 1) Current hostname — served directly from a tenant subdomain. */
     var host=(location.hostname||"").toLowerCase();
-    if(/\.csebuilders\.com$/.test(host)){
-      var sub=host.split(".")[0];
-      if(sub && !RESERVED[sub]) slug=sub;
+    if(/\.clearskyomega\.com$/i.test(host) && host!=="tools.csebuilders.com"){
+      return location.origin+"/";
     }
-  }catch(e0){}
-
-  // 2) Explicit workspace context from config.js, if present.
-  if(!slug){
-    try{
-      var ws=window.OMEGA_WORKSPACE||{};
-      var cand=(ws.slug||ws.orgSlug||ws.orgId||"").toString().toLowerCase();
-      if(cand){ slug=BRAND[cand]||(RESERVED[cand]?null:cand); }
-    }catch(e1){}
-  }
-
-  // 3) Resolved org (email domain) → brand map.
-  if(!slug){
-    try{ var org=((window.OMEGATools&&OMEGATools.orgFromUrl?OMEGATools.orgFromUrl(""):"")||"").toLowerCase();
-         if(BRAND[org]) slug=BRAND[org]; }catch(e2){}
-  }
-
-  // 4) Referrer subdomain — last resort (often empty on new-tab / cross-origin).
-  if(!slug&&document.referrer){
-    try{ var h=new URL(document.referrer).hostname.toLowerCase();
-      if(/\.csebuilders\.com$/.test(h)){ var rsub=h.split(".")[0]; if(rsub&&!RESERVED[rsub]) slug=rsub; } }catch(e3){}
-  }
-
-  // Tenant dashboard is the portal index at the subdomain root; shared host otherwise.
-  return slug?("https://"+slug+".csebuilders.com/"):"https://tools.csebuilders.com/";
+    /* 2) The portal that launched this tool. Its host IS the tenant. */
+    if(document.referrer){
+      var ru=new URL(document.referrer);
+      if(/\.clearskyomega\.com$/i.test(ru.hostname) && ru.hostname!=="tools.csebuilders.com"){
+        return ru.origin+"/";
+      }
+    }
+    /* 3) Fallback: build subdomain from a BARE slug. org may be an email domain
+          like "sunesol.com" — take only the first label. */
+    var org=new URLSearchParams(location.search).get("org");
+    if(!org){ var m=/[?&]org=([^&]+)/.exec(document.referrer||""); if(m) org=decodeURIComponent(m[1]); }
+    if(org){
+      var slug=org.trim().toLowerCase().split(".")[0].replace(/[^a-z0-9-]/g,"");
+      if(slug) return "https://"+slug+".clearskyomega.com/";
+    }
+  }catch(e){}
+  return null; /* unknown tenant: leave links inert rather than exposing admin host */
 }
 (function wireNav(){
-  var url=gaTenantPortalUrl();
-  var back=document.getElementById("tb-back-link"), logo=document.getElementById("tb-logo-link");
-  if(back) back.setAttribute("href",url);
-  if(logo) logo.setAttribute("href",url);
+  function fixLinks(){
+    var home=gaTenantHome();
+    ["tb-back-link","tb-logo-link"].forEach(function(id){
+      var el=document.getElementById(id);
+      if(!el) return;
+      if(home){ el.setAttribute("href",home); }
+      else { el.removeAttribute("href"); el.style.cursor="default"; }
+    });
+  }
+  if(document.readyState==="loading") document.addEventListener("DOMContentLoaded",fixLinks); else fixLinks();
 })();
 
 /* ---------- Layer registry: real public ArcGIS/HIFLD + open endpoints ---------- */
