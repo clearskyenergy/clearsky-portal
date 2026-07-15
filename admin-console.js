@@ -43,7 +43,8 @@ var ACCESS = {
   //    EDIT THESE: swap for your real partner domains. Add/remove freely.
   'amperagecapital.com':   { role:'collaborator', label:'Amperage Capital' },   // example partner
   'moleculesystems.com':   { role:'collaborator', label:'Molecule Systems' },    // example partner
-  'ogisolar.com':          { role:'collaborator', label:'OGI Solar' }
+  'ogisolar.com':          { role:'collaborator', label:'OGI Solar' },
+  'sunesol.com':           { role:'collaborator', label:'SUNE Solar' }
   // 'yourpartner.com':    { role:'collaborator', label:'Partner Name' },
 };
 
@@ -119,12 +120,26 @@ function showApp(user){
 
 /* ══════════ GOOGLE / EMAIL AUTH (same pattern as portal) ══════════ */
 function signInWithGoogle(){
-  justSignedIn = true;
-  var btn = document.getElementById('google-signin-btn');
-  btn.disabled = true; btn.textContent = 'Signing in…';
   var provider = new firebase.auth.GoogleAuthProvider();
   if (CFG.allowedDomain && CFG.allowedDomain.length) provider.setCustomParameters({ hd: CFG.allowedDomain });
-  auth.signInWithPopup(provider)['catch'](function(err){
+  var btn = document.getElementById('google-signin-btn');
+  btn.disabled = true; btn.textContent = 'Signing in…';
+  justSignedIn = true;
+  auth.signInWithPopup(provider).then(function(cred){
+    // Pre-check the resolved Google identity's domain BEFORE it becomes a
+    // lingering auth session. Without this, any Google account can create an
+    // orphaned Firebase auth user even though onAuthStateChanged will reject
+    // it a moment later. Sign out immediately if the domain isn't provisioned.
+    var email = (cred && cred.user && cred.user.email) || '';
+    if (!isAllowed(email)){
+      auth.signOut();
+      justSignedIn = false;
+      showAuthErr('No access is provisioned for ' + (domainOf(email)||'this domain') + '. Contact ClearSky to be added.');
+      btn.disabled = false;
+      btn.textContent = 'Sign in with Google';
+    }
+  })['catch'](function(err){
+    justSignedIn = false;
     showAuthErr(err.message);
     btn.disabled = false;
     btn.textContent = 'Sign in with Google';
