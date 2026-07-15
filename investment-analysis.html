@@ -430,16 +430,21 @@ body{font-family:'DM Sans',sans-serif;background:var(--cs-bg);color:var(--cs-tex
   /* Route "Platform" and logo back to the TENANT portal, never the admin host (tools.csebuilders.com). */
   function tenantHome(){
     try{
+      /* 1) Best source: the portal that launched this tool. Its host IS the tenant. */
+      if(document.referrer){
+        var ru=new URL(document.referrer);
+        if(/\.clearskyomega\.com$/i.test(ru.hostname) && ru.hostname!=='tools.csebuilders.com'){
+          return ru.origin+'/';
+        }
+      }
+      /* 2) Fallback: build subdomain from a BARE slug. The org param may be an
+            email domain like "sunesol.com" — take only the first label. */
       var org=new URLSearchParams(location.search).get('org');
-      if(!org){
-        var m=/[?&]org=([^&]+)/.exec(document.referrer||'');
-        if(m) org=decodeURIComponent(m[1]);
+      if(!org){ var m=/[?&]org=([^&]+)/.exec(document.referrer||''); if(m) org=decodeURIComponent(m[1]); }
+      if(org){
+        var slug=org.trim().toLowerCase().split('.')[0].replace(/[^a-z0-9-]/g,'');
+        if(slug) return 'https://'+slug+'.clearskyomega.com/';
       }
-      if(!org && document.referrer){
-        var h=new URL(document.referrer).hostname;
-        if(/\.clearskyomega\.com$/.test(h)) return new URL(document.referrer).origin+'/';
-      }
-      if(org) return 'https://'+org+'.clearskyomega.com/';
     }catch(e){}
     return null; /* unknown tenant: leave links inert rather than exposing admin host */
   }
