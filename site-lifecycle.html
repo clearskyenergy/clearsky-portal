@@ -1,0 +1,1291 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ClearSky OMEGA — Site Lifecycle Console</title>
+<style>
+/* ===== ES5-only, no build step. OMEGA dark-navy topbar theme ===== */
+* { box-sizing: border-box; }
+html, body { margin:0; padding:0; height:100%; }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  color:#1b2733; background:#eef1f4; font-size:14px;
+}
+a { color:#1461d2; text-decoration:none; cursor:pointer; }
+a:hover { text-decoration:underline; }
+
+/* Topbar */
+.tb { display:flex; align-items:center; height:52px; background:#0e1b33; color:#fff; padding:0 16px; position:sticky; top:0; z-index:50; }
+.tb-omega { height:26px; margin-right:9px; }
+.tb-logo-txt { font-weight:700; font-size:17px; letter-spacing:.3px; }
+.tb-logo-txt span { color:#4da3ff; }
+.tb-sep { width:1px; height:24px; background:#2a3c5c; margin:0 16px; }
+.tb-ws { font-size:13px; color:#9fb4d6; }
+.tb-ws b { color:#fff; }
+.tb-right { margin-left:auto; display:flex; align-items:center; gap:14px; font-size:12px; color:#9fb4d6; }
+.tb-badge { background:#123; border:1px solid #2a3c5c; color:#8fc0ff; padding:3px 9px; border-radius:20px; font-size:11px; font-weight:600; letter-spacing:.4px; }
+.tb-user { width:28px; height:28px; border-radius:50%; background:#2a3c5c; display:flex; align-items:center; justify-content:center; color:#cfe0ff; font-weight:700; font-size:12px; }
+
+/* Nav tabs */
+.nav { display:flex; background:#12233f; padding:0 8px; }
+.nav a { color:#a9bcd8; padding:11px 16px; font-size:13px; font-weight:600; border-bottom:3px solid transparent; }
+.nav a.on { color:#fff; border-bottom-color:#4da3ff; background:#0e1b33; }
+
+/* Layout */
+.wrap { padding:18px; max-width:1500px; margin:0 auto; }
+.row { display:flex; gap:18px; align-items:flex-start; }
+.col { flex:1; min-width:0; }
+
+/* Cards */
+.card { background:#fff; border:1px solid #dde3ea; border-radius:10px; box-shadow:0 1px 2px rgba(16,30,54,.05); }
+.card-h { padding:13px 16px; border-bottom:1px solid #edf1f5; display:flex; align-items:center; gap:10px; }
+.card-h h3 { margin:0; font-size:14px; font-weight:700; }
+.card-h .sub { font-size:12px; color:#7b8794; font-weight:400; }
+.card-b { padding:16px; }
+
+/* Buttons */
+.btn { display:inline-flex; align-items:center; gap:6px; border:1px solid #cbd4de; background:#fff; color:#1b2733; padding:7px 13px; border-radius:7px; font-size:13px; font-weight:600; cursor:pointer; }
+.btn:hover { background:#f4f7fa; }
+.btn.pri { background:#1461d2; border-color:#1461d2; color:#fff; }
+.btn.pri:hover { background:#0f4fae; }
+.btn.dark { background:#0e1b33; border-color:#0e1b33; color:#fff; }
+.btn.sm { padding:4px 9px; font-size:12px; }
+.btn.ghost { border-color:transparent; background:transparent; color:#1461d2; }
+
+/* Pipeline path (Sitetracker-style chevrons) */
+.path { display:flex; border-radius:7px; overflow:hidden; border:1px solid #d5dde6; margin-bottom:16px; }
+.path .st { flex:1; position:relative; padding:10px 8px 10px 22px; font-size:12px; font-weight:600; text-align:center; background:#eef2f6; color:#5b6b7c; cursor:pointer; white-space:nowrap; }
+.path .st:after { content:""; position:absolute; right:-11px; top:0; width:0; height:0; border-top:20px solid transparent; border-bottom:20px solid transparent; border-left:11px solid #eef2f6; z-index:2; }
+.path .st:before { content:""; position:absolute; right:-13px; top:0; width:0; height:0; border-top:20px solid transparent; border-bottom:20px solid transparent; border-left:11px solid #d5dde6; z-index:1; }
+.path .st.done { background:#5a76c9; color:#fff; }
+.path .st.done:after { border-left-color:#5a76c9; }
+.path .st.cur { background:#0e1b33; color:#fff; }
+.path .st.cur:after { border-left-color:#0e1b33; }
+.path .st:last-child:after, .path .st:last-child:before { display:none; }
+
+/* Tables */
+table { width:100%; border-collapse:collapse; font-size:13px; }
+th { text-align:left; font-size:11px; text-transform:uppercase; letter-spacing:.4px; color:#7b8794; padding:8px 10px; border-bottom:1px solid #e4e9ef; font-weight:700; }
+td { padding:9px 10px; border-bottom:1px solid #eef2f6; vertical-align:middle; }
+tr:hover td { background:#f8fafc; }
+.tbl-wrap { overflow:auto; }
+
+/* Detail grid */
+.dl { display:grid; grid-template-columns:1fr 1fr; gap:12px 20px; }
+.dl .fld label { display:block; font-size:11px; color:#7b8794; text-transform:uppercase; letter-spacing:.4px; margin-bottom:3px; }
+.dl .fld .val { font-size:13px; color:#1b2733; }
+.section-h { font-size:12px; font-weight:700; color:#3a4a5c; margin:18px 0 8px; padding-bottom:5px; border-bottom:1px solid #edf1f5; display:flex; align-items:center; gap:6px; }
+
+/* Badges/pills */
+.pill { display:inline-block; padding:2px 9px; border-radius:20px; font-size:11px; font-weight:600; }
+.pill.blue { background:#e3efff; color:#1461d2; }
+.pill.green { background:#e2f5ea; color:#137a44; }
+.pill.amber { background:#fff2d9; color:#9a6800; }
+.pill.red { background:#fde3e3; color:#b42323; }
+.pill.gray { background:#eceff3; color:#5b6b7c; }
+.risk { width:14px; height:14px; border-radius:3px; display:inline-block; vertical-align:middle; }
+
+/* Inputs */
+input, select, textarea { font-family:inherit; font-size:13px; padding:8px 10px; border:1px solid #cbd4de; border-radius:7px; width:100%; background:#fff; }
+input:focus, select:focus, textarea:focus { outline:none; border-color:#1461d2; box-shadow:0 0 0 3px rgba(20,97,210,.12); }
+label.f { display:block; font-size:11px; color:#7b8794; text-transform:uppercase; letter-spacing:.4px; margin:0 0 4px; }
+.form-row { margin-bottom:13px; }
+
+/* Modal */
+.ov { position:fixed; inset:0; background:rgba(14,27,51,.5); display:none; align-items:flex-start; justify-content:center; z-index:100; padding:40px 16px; overflow:auto; }
+.ov.on { display:flex; }
+.modal { background:#fff; border-radius:12px; width:100%; max-width:560px; box-shadow:0 20px 60px rgba(0,0,0,.3); }
+.modal-h { padding:16px 20px; border-bottom:1px solid #edf1f5; display:flex; align-items:center; }
+.modal-h h3 { margin:0; font-size:16px; }
+.modal-h .x { margin-left:auto; cursor:pointer; color:#7b8794; font-size:20px; line-height:1; }
+.modal-b { padding:20px; }
+.modal-f { padding:14px 20px; border-top:1px solid #edf1f5; display:flex; gap:10px; justify-content:flex-end; }
+
+/* Sub-tabs */
+.subtabs { display:flex; gap:2px; border-bottom:1px solid #e4e9ef; margin-bottom:16px; }
+.subtabs a { padding:9px 15px; font-size:13px; font-weight:600; color:#5b6b7c; border-bottom:2px solid transparent; }
+.subtabs a.on { color:#1461d2; border-bottom-color:#1461d2; }
+
+/* KPI strip */
+.kpis { display:flex; gap:14px; margin-bottom:18px; }
+.kpi { flex:1; background:#fff; border:1px solid #dde3ea; border-radius:10px; padding:14px 16px; }
+.kpi .n { font-size:26px; font-weight:800; color:#0e1b33; }
+.kpi .l { font-size:11px; text-transform:uppercase; letter-spacing:.5px; color:#7b8794; margin-top:2px; }
+
+/* Map placeholder */
+.map { border-radius:8px; overflow:hidden; border:1px solid #dde3ea; background:#dfe6ec; position:relative; height:230px; }
+.map .mtag { position:absolute; left:10px; top:10px; background:rgba(255,255,255,.9); padding:4px 10px; border-radius:6px; font-size:11px; font-weight:600; }
+
+.muted { color:#7b8794; }
+.empty { text-align:center; padding:40px 20px; color:#98a4b2; font-size:13px; }
+.flex { display:flex; align-items:center; gap:10px; }
+.spacer { flex:1; }
+.small { font-size:12px; }
+.tag-src { font-size:10px; padding:1px 6px; border-radius:4px; font-weight:700; letter-spacing:.3px; }
+.tag-src.repo { background:#e3efff; color:#1461d2; }
+.tag-src.monday { background:#ffe6d6; color:#c8531a; }
+.toast { position:fixed; bottom:22px; right:22px; background:#0e1b33; color:#fff; padding:12px 18px; border-radius:9px; font-size:13px; box-shadow:0 8px 30px rgba(0,0,0,.3); z-index:200; display:none; }
+.toast.on { display:block; }
+.loading { padding:40px; text-align:center; color:#7b8794; }
+.ent-lock { background:#fff7e6; border:1px solid #f0d492; border-radius:8px; padding:10px 14px; font-size:12px; color:#8a6400; margin-bottom:16px; }
+</style>
+</head>
+<body>
+
+<div class="tb">
+  <img src="/clearsky-omega-mark-white.png" alt="OMEGA" class="tb-omega">
+  <span class="tb-logo-txt">Clear<span>Sky</span> OMEGA</span>
+  <div class="tb-sep"></div>
+  <span class="tb-ws">Site Lifecycle Console &nbsp;·&nbsp; <b id="wsName">Loading…</b></span>
+  <div class="tb-right">
+    <button id="syncBtn" class="btn sm" style="background:#12233f;border-color:#2a3c5c;color:#cfe0ff" onclick="UI.openSync()">⟳ Sync to CRM</button>
+    <span class="tb-badge">ENTERPRISE</span>
+    <span id="userEmail">—</span>
+    <div class="tb-user" id="userInitial">?</div>
+  </div>
+</div>
+
+<div class="nav" id="nav">
+  <a data-mod="sites" class="on">Sites &amp; Candidates</a>
+  <a data-mod="leases">Leases</a>
+  <a data-mod="assets">Assets &amp; Inventory</a>
+  <a data-mod="permits">Permits</a>
+  <a data-mod="settings" style="margin-left:auto">⚙ Settings</a>
+</div>
+
+<div class="wrap" id="app">
+  <div class="loading">Connecting to workspace…</div>
+</div>
+
+<!-- Modal -->
+<div class="ov" id="ov">
+  <div class="modal">
+    <div class="modal-h"><h3 id="ovTitle">—</h3><span class="x" onclick="UI.closeModal()">&times;</span></div>
+    <div class="modal-b" id="ovBody"></div>
+    <div class="modal-f" id="ovFoot"></div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<!-- Firebase compat v8 -->
+<!-- ClearSky config (Firebase + Maps keys). Optional: inline fallback exists. -->
+<script src="/config.js"></script>
+<!-- Firebase compat v8 -->
+<script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+<script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-auth.js"></script>
+<script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-firestore.js"></script>
+
+<script>
+/* ============================================================
+   ClearSky OMEGA — Site Lifecycle Console
+   Enterprise-only. Namespace: slc_*
+   ES5-only, no build step. Firebase compat v8.
+   ============================================================ */
+(function () {
+  "use strict";
+
+  window.onerror = function(msg){
+    var app = document.getElementById("app");
+    if(app && app.querySelector(".loading")){
+      app.innerHTML = '<div class="card"><div class="card-b"><h3>Something went wrong</h3><p class="muted small">'+String(msg)+'</p><p class="muted small">If this persists, it\'s usually a Firebase config issue — check the console.</p></div></div>';
+    }
+    return false;
+  };
+
+  /* ---- Firebase config: shared clearsky-portal project ----
+     Matches the Solela/SPATCO convention: prefer window.CLEARSKY_CONFIG
+     (loaded from /config.js in the repo). Falls back to the inline values
+     below if config.js isn't present, so the tool works either way. ---- */
+  var CSCONFIG = (typeof window !== "undefined" && window.CLEARSKY_CONFIG) ? window.CLEARSKY_CONFIG : null;
+
+  var FB = (CSCONFIG && CSCONFIG.firebase) ? CSCONFIG.firebase : {
+    apiKey: "AIzaSyABoM1lgOYUnd5ZadaoTMhYmA9cHa8Tyo0",
+    authDomain: "clearsky-portal.firebaseapp.com",
+    projectId: "clearsky-portal",
+    storageBucket: "clearsky-portal.firebasestorage.app",
+    messagingSenderId: "742134484347",
+    appId: "1:742134484347:web:ab0f95fd221536158481de"
+  };
+
+  /* Google Maps key — from config.js if present, else the shared key. */
+  var MAPS_KEY = (CSCONFIG && CSCONFIG.googleMapsKey) ? CSCONFIG.googleMapsKey : "AIzaSyC0roZ_qMwtbVzqRLtNx9nrCeaGqrE1sNs";
+
+  /* ---- Enterprise workspaces (email domain -> config) ----
+     Only these domains may load this deluxe tool. Others are locked out. */
+  var WORKSPACES = {
+    "nextnrg.com":     { orgId: "nextnrg",   name: "NextNRG",          enterprise: true },
+    "csebuilders.com": { orgId: "clearsky",  name: "ClearSky (Admin)", enterprise: true },
+    "clearsky-usa.com":{ orgId: "clearsky",  name: "ClearSky (Admin)", enterprise: true }
+  };
+
+  /* ---- AHJ tool link (stubbed — separate non-enterprise offering) ---- */
+  var AHJ_TOOL_URL = "https://ahj.csebuilders.com"; // TODO: live when AHJ tool ships
+
+  /* ---- Monday.com link stub ---- */
+  var MONDAY_BASE = "https://monday.com/boards/"; // project.mondayBoardId appended
+
+  /* ---- CRM sync: secure serverless proxy endpoint ----
+     The proxy holds each customer's CRM credentials server-side. The browser
+     NEVER stores or reads the token. Settings UI sends credentials to the proxy
+     (action:"save_credentials"); Firestore only holds non-secret metadata. ---- */
+  var CRM_PROXY_URL = "https://tools.csebuilders.com/api/crm-sync"; // TODO: your serverless route
+
+  /* Supported CRMs and the credential fields each needs.
+     'secret:true' fields are sent to the proxy and never persisted client-side. */
+  var CRM_PROVIDERS = {
+    monday: { label:"Monday.com", fields:[
+      { key:"apiToken", label:"API Token", secret:true, ph:"eyJhbGci…" }
+    ], note:"Create a token in Monday → Admin → API." },
+    salesforce: { label:"Salesforce", fields:[
+      { key:"instanceUrl", label:"Instance URL", ph:"https://yourco.my.salesforce.com" },
+      { key:"clientId", label:"Consumer Key", secret:true },
+      { key:"clientSecret", label:"Consumer Secret", secret:true },
+      { key:"refreshToken", label:"Refresh Token", secret:true }
+    ], note:"From a Connected App (OAuth). Tokens are stored server-side only." },
+    hubspot: { label:"HubSpot", fields:[
+      { key:"accessToken", label:"Private App Token", secret:true, ph:"pat-na1-…" }
+    ], note:"Create a Private App in HubSpot → Settings → Integrations." },
+    zoho: { label:"Zoho CRM", fields:[
+      { key:"dataCenter", label:"Data Center", ph:"com / eu / in / com.au" },
+      { key:"clientId", label:"Client ID", secret:true },
+      { key:"clientSecret", label:"Client Secret", secret:true },
+      { key:"refreshToken", label:"Refresh Token", secret:true }
+    ], note:"From a Self Client in Zoho API Console." }
+  };
+
+  /* OMEGA fields available to map, per record type. */
+  var CRM_FIELDS = {
+    candidates: ["name","stage","siteType","viability","landlord","city","address","description"],
+    leases:     ["name","number","type","status","landlordCompany","commence","end","termMonths","rent"],
+    assets:     ["name","item","serial","status","category","installDate","qty"],
+    permits:    ["name","type","stage","status","risk","ahjName","agency","issuanceForecast","cost","program"]
+  };
+
+  /* ---- Pipeline definitions ---- */
+  var CAND_STAGES  = ["New","Cultivate","In Evaluation","Future Opportunity","Dead","Selected"];
+  var PERMIT_STAGES= ["Not Started","Submitted","In Progress","Cancelled","Received"];
+
+  var db, auth, USER = null, WS = null;
+  var STATE = { mod: "sites", sel: {}, cache: {} };
+
+  /* ================= util ================= */
+  function $(id){ return document.getElementById(id); }
+  function el(tag, cls, html){ var e=document.createElement(tag); if(cls)e.className=cls; if(html!=null)e.innerHTML=html; return e; }
+  function esc(s){ if(s==null)return ""; return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;"); }
+  function money(n){ if(n==null||n==="")return "—"; var x=Number(n); if(isNaN(x))return esc(n); return "$"+x.toLocaleString(undefined,{maximumFractionDigits:0}); }
+  function fmtDate(d){ if(!d)return "—"; if(d.toDate) d=d.toDate(); var dt=new Date(d); if(isNaN(dt))return esc(d); return (dt.getMonth()+1)+"/"+dt.getDate()+"/"+dt.getFullYear(); }
+  function uid(p){ return (p||"id")+"_"+Date.now().toString(36)+"_"+Math.random().toString(36).slice(2,7); }
+  function toast(msg){ var t=$("toast"); t.textContent=msg; t.className="toast on"; setTimeout(function(){ t.className="toast"; },2600); }
+  function coll(name){ return db.collection("slc_"+name); } // slc_candidates, slc_leases, slc_assets, slc_permits, slc_projects
+
+  var DEMO = false; // set true when Firebase is unavailable / key is placeholder
+
+  /* ================= boot ================= */
+  function boot(){
+    var keyMissing = !FB.apiKey || FB.apiKey.indexOf("PLACEHOLDER") !== -1;
+    if (typeof firebase === "undefined" || keyMissing) {
+      return startDemo(keyMissing ? "config" : "sdk");
+    }
+    try {
+      firebase.initializeApp(FB);
+      db = firebase.firestore();
+      auth = firebase.auth();
+    } catch (e) {
+      return startDemo("init");
+    }
+    auth.onAuthStateChanged(function(u){
+      if(!u){
+        auth.signInAnonymously().catch(function(){ startDemo("auth"); });
+        return;
+      }
+      onUser(u);
+    }, function(){ startDemo("auth"); });
+  }
+
+  /* Demo mode: in-memory Firestore shim so the console is fully usable
+     without a live backend (preview, blocked CDN, or placeholder key). */
+  function startDemo(reason){
+    DEMO = true;
+    db = makeMemDb();
+    var banner = { config:"Demo mode — add your Firebase web apiKey to go live.",
+                   sdk:"Demo mode — Firebase SDK didn't load (offline or CDN blocked).",
+                   init:"Demo mode — Firebase failed to initialize.",
+                   auth:"Demo mode — sign-in unavailable." }[reason] || "Demo mode.";
+    STATE.demoBanner = banner;
+    // simulate an enterprise user
+    onUser({ email:"demo@nextnrg.com" });
+  }
+
+  /* Minimal in-memory Firestore-compatible shim (only the calls this tool uses). */
+  function makeMemDb(){
+    var store = {}; // { collName: { docId: data } }
+    function collection(name){
+      store[name] = store[name] || {};
+      return {
+        _name:name,
+        doc:function(id){ id = id || uid("doc"); return docRef(name,id); },
+        where:function(f,op,val){ return query(name,[[f,op,val]]); },
+        limit:function(){ return query(name,[]); },
+        get:function(){ return query(name,[]).get(); }
+      };
+    }
+    function docRef(name,id){
+      return {
+        id:id,
+        set:function(obj){ store[name][id]=clone(obj); return Promise.resolve(); },
+        update:function(patch){ var d=store[name][id]||{}; for(var k in patch) d[k]=patch[k]; store[name][id]=d; return Promise.resolve(); },
+        get:function(){ var d=store[name][id]; return Promise.resolve({ exists:!!d, id:id, data:function(){return clone(d);} }); }
+      };
+    }
+    function query(name, conds){
+      return {
+        where:function(f,op,val){ return query(name, conds.concat([[f,op,val]])); },
+        limit:function(){ return this; },
+        get:function(){
+          var out=[]; var bag=store[name]||{};
+          for(var id in bag){
+            var row=bag[id], ok=true;
+            for(var i=0;i<conds.length;i++){ var c=conds[i]; if(c[1]==="=="&&row[c[0]]!==c[2]){ ok=false; break; } }
+            if(ok) out.push({ id:id, data:(function(r){return function(){return clone(r);};})(row) });
+          }
+          return Promise.resolve({ empty:out.length===0, size:out.length, forEach:function(cb){ out.forEach(cb); } });
+        }
+      };
+    }
+    function batch(){
+      var ops=[];
+      return { set:function(ref,obj){ ops.push(function(){ ref.set(obj); }); },
+               commit:function(){ ops.forEach(function(f){f();}); return Promise.resolve(); } };
+    }
+    function clone(o){ return o==null?o:JSON.parse(JSON.stringify(o)); }
+    return { collection:collection, batch:batch };
+  }
+
+  function onUser(u){
+    USER = u;
+    var email = u.email || "demo@nextnrg.com"; // anon fallback demo domain
+    var domain = email.split("@")[1] || "";
+    WS = WORKSPACES[domain];
+    if(!WS){
+      // not an enterprise domain -> lock out
+      renderLockout(email);
+      return;
+    }
+    if(!WS.enterprise){ renderLockout(email); return; }
+    $("wsName").textContent = WS.name + (DEMO ? " · DEMO" : "");
+    $("userEmail").textContent = email;
+    $("userInitial").textContent = (email[0]||"?").toUpperCase();
+    bindNav();
+    seedIfEmpty().then(function(){ render(); }).catch(function(e){
+      $("app").innerHTML='<div class="card"><div class="card-b"><h3>Couldn\'t load data</h3><p class="muted small">'+esc(String(e&&e.message||e))+'</p></div></div>';
+    });
+  }
+
+  function renderNoAuth(){
+    $("app").innerHTML = '<div class="card"><div class="card-b"><h3>Sign-in required</h3><p class="muted">This console requires an authenticated enterprise account. Anonymous access is unavailable.</p></div></div>';
+  }
+  function renderLockout(email){
+    $("wsName").textContent = "Access Restricted";
+    $("userEmail").textContent = email;
+    $("app").innerHTML =
+      '<div class="card"><div class="card-b" style="text-align:center;padding:50px 20px">'
+      + '<div style="font-size:40px">🔒</div>'
+      + '<h3 style="margin:12px 0 6px">Enterprise Console</h3>'
+      + '<p class="muted">The Site Lifecycle Console is a deluxe offering available to enterprise accounts only.</p>'
+      + '<p class="muted small">Your domain (<b>'+esc(email.split("@")[1]||"")+'</b>) is not provisioned for this tool.</p>'
+      + '<p style="margin-top:18px"><a class="btn" href="'+AHJ_TOOL_URL+'" target="_blank">Explore the AHJ Lookup tool →</a></p>'
+      + '</div></div>';
+  }
+
+  function bindNav(){
+    var links = $("nav").getElementsByTagName("a");
+    for(var i=0;i<links.length;i++){
+      (function(a){
+        a.onclick=function(){
+          for(var j=0;j<links.length;j++) links[j].className="";
+          a.className="on";
+          STATE.mod=a.getAttribute("data-mod");
+          STATE.sel={};
+          render();
+        };
+      })(links[i]);
+    }
+  }
+
+  /* ================= seed demo data (first run only) ================= */
+  function seedIfEmpty(){
+    var org = WS.orgId;
+    return coll("projects").where("orgId","==",org).limit(1).get().then(function(s){
+      if(!s.empty) return;
+      var batch = db.batch();
+      // demo projects: one from repo/editor, one linked to Monday
+      var p1 = coll("projects").doc(uid("prj"));
+      batch.set(p1, { orgId:org, name:"Winnipeg BESS — Fort St", source:"repo", editorProjectId:"editor_wpg_001", address:"252 Fort St, Winnipeg", createdAt:Date.now() });
+      var p2 = coll("projects").doc(uid("prj"));
+      batch.set(p2, { orgId:org, name:"NYC Fiber Node — Bondi", source:"monday", mondayBoardId:"7712345001", address:"33 Council St", createdAt:Date.now() });
+
+      var c1 = coll("candidates").doc(uid("cand"));
+      batch.set(c1, { orgId:org, name:"WPG Cand 1", stage:"New", projectId:p1.id, siteType:"Rooftop", viability:"Med",
+        landlord:"Maple Leaf Enterprises", leaseType:"Lease", address:"252 Fort St", city:"Winnipeg", county:"", primary:false,
+        description:"5K sqft, pre-leveled", lat:49.888, lng:-97.135, createdAt:Date.now() });
+      var c2 = coll("candidates").doc(uid("cand"));
+      batch.set(c2, { orgId:org, name:"Bondi Junction Site", stage:"In Evaluation", projectId:p2.id, siteType:"Ground",
+        viability:"High", landlord:"Waverley Holdings", leaseType:"Ground", address:"33 Council St", city:"Bondi Junction",
+        description:"Macro tower colo", lat:-33.891, lng:151.247, createdAt:Date.now() });
+
+      var l1 = coll("leases").doc(uid("lease"));
+      batch.set(l1, { orgId:org, name:"Lease - 388-0110", number:"388-0110", type:"Ground", status:"Active",
+        projectId:p1.id, siteName:"Fort St", landlordCompany:"Maple Leaf Enterprises", ownership:"Third Party",
+        commence:"2017-12-28", end:"2027-12-28", termMonths:120, rent:4200, description:"Ground Lease - Fort St", createdAt:Date.now() });
+
+      var a1 = coll("assets").doc(uid("asset"));
+      batch.set(a1, { orgId:org, projectId:p1.id, name:"Gotion BESS Rack 01", item:"Gotion 5MWh Container", serial:"GTN-WPG-001",
+        status:"Installed", installDate:"2025-04-14", qty:1, category:"BESS", createdAt:Date.now() });
+      var a2 = coll("assets").doc(uid("asset"));
+      batch.set(a2, { orgId:org, projectId:p1.id, name:"Armada Galleon Node", item:"Edge Compute Node", serial:"ARM-WPG-014",
+        status:"Received", installDate:"", qty:2, category:"Compute", createdAt:Date.now() });
+      var a3 = coll("assets").doc(uid("asset"));
+      batch.set(a3, { orgId:org, projectId:p2.id, name:"Autel DCFC", item:"Autel 240kW DCFC", serial:"AUT-NYC-003",
+        status:"Installed", installDate:"2025-03-11", qty:1, category:"EV", createdAt:Date.now() });
+
+      var pm1 = coll("permits").doc(uid("permit"));
+      batch.set(pm1, { orgId:org, name:"PT-00006", projectId:p1.id, stage:"In Progress", type:"Utility Interconnect",
+        status:"In Progress", risk:"high", issuanceForecast:"2026-07-28", agency:"ComEd", agencyContact:"permits@comed.com",
+        program:"IL Storage Rebate", cost:1850, expiration:"", ahjName:"City of Winnipeg", createdAt:Date.now() });
+      var pm2 = coll("permits").doc(uid("permit"));
+      batch.set(pm2, { orgId:org, name:"PT-00011", projectId:p2.id, stage:"Submitted", type:"Building",
+        status:"Submitted", risk:"amber", issuanceForecast:"2026-08-15", agency:"Waverley Council", agencyContact:"",
+        program:"NYC Fiber Deployment", cost:920, expiration:"", ahjName:"Waverley Council", createdAt:Date.now() });
+
+      batch.commit();
+      return new Promise(function(r){ setTimeout(r,700); });
+    });
+  }
+
+  /* ================= data loaders ================= */
+  function loadProjects(){
+    if(STATE.cache.projects) return Promise.resolve(STATE.cache.projects);
+    return coll("projects").where("orgId","==",WS.orgId).get().then(function(s){
+      var arr=[]; s.forEach(function(d){ var o=d.data(); o.id=d.id; arr.push(o); });
+      STATE.cache.projects=arr; return arr;
+    });
+  }
+  function loadColl(name){
+    return coll(name).where("orgId","==",WS.orgId).get().then(function(s){
+      var arr=[]; s.forEach(function(d){ var o=d.data(); o.id=d.id; arr.push(o); });
+      arr.sort(function(a,b){ return (b.createdAt||0)-(a.createdAt||0); });
+      return arr;
+    });
+  }
+  function projName(id){ var p=(STATE.cache.projects||[]).filter(function(x){return x.id===id;})[0]; return p?p.name:"—"; }
+  function projObj(id){ return (STATE.cache.projects||[]).filter(function(x){return x.id===id;})[0]; }
+
+  /* ================= render dispatch ================= */
+  function render(){
+    $("app").innerHTML='<div class="loading">Loading '+STATE.mod+'…</div>';
+    loadProjects().then(function(){
+      if(STATE.mod==="sites")   renderSites();
+      else if(STATE.mod==="leases") renderLeases();
+      else if(STATE.mod==="assets") renderAssets();
+      else if(STATE.mod==="permits")renderPermits();
+      else if(STATE.mod==="settings")renderSettings();
+    });
+  }
+
+  function entLockBanner(txt){
+    return '<div class="ent-lock">★ Enterprise module — '+txt+'</div>';
+  }
+
+  function projSourcePill(p){
+    if(!p) return '';
+    if(p.source==="monday") return '<span class="tag-src monday">MONDAY</span>';
+    return '<span class="tag-src repo">EDITOR</span>';
+  }
+
+  /* ---------------- SITES & CANDIDATES ---------------- */
+  function renderSites(){
+    loadColl("candidates").then(function(cands){
+      STATE.cache.candidates=cands;
+      var app=$("app");
+      var counts={}; CAND_STAGES.forEach(function(s){counts[s]=0;});
+      cands.forEach(function(c){ if(counts[c.stage]!=null)counts[c.stage]++; });
+
+      var h='';
+      h+=entLockBanner("Manage site candidates, approvals & drawings across your portfolio.");
+      h+='<div class="kpis">'
+        + kpi(cands.length,"Total Candidates")
+        + kpi(counts["In Evaluation"],"In Evaluation")
+        + kpi(counts["Selected"],"Selected")
+        + kpi((STATE.cache.projects||[]).length,"Linked Projects")
+        + '</div>';
+
+      h+='<div class="card"><div class="card-h"><h3>Site Candidates</h3><span class="sub">Pipeline & evaluation</span>'
+        + '<div class="spacer"></div>'
+        + '<button class="btn pri sm" onclick="UI.newCandidate()">+ New Candidate</button></div>'
+        + '<div class="card-b"><div class="tbl-wrap"><table><thead><tr>'
+        + '<th>Candidate</th><th>Project</th><th>Stage</th><th>Site Type</th><th>Viability</th><th>Landlord</th><th>City</th><th></th>'
+        + '</tr></thead><tbody id="candRows"></tbody></table></div>';
+      if(!cands.length) h+='<div class="empty">No candidates yet. Create one to start the pipeline.</div>';
+      h+='</div></div>';
+      app.innerHTML=h;
+
+      var tb=$("candRows");
+      cands.forEach(function(c){
+        var p=projObj(c.projectId);
+        var tr=el("tr");
+        tr.innerHTML='<td><a onclick="UI.openCandidate(\''+c.id+'\')"><b>'+esc(c.name)+'</b></a></td>'
+          +'<td>'+esc(projName(c.projectId))+' '+projSourcePill(p)+'</td>'
+          +'<td>'+stagePill(c.stage)+'</td>'
+          +'<td>'+esc(c.siteType||"—")+'</td>'
+          +'<td>'+viaPill(c.viability)+'</td>'
+          +'<td>'+esc(c.landlord||"—")+'</td>'
+          +'<td>'+esc(c.city||"—")+'</td>'
+          +'<td style="text-align:right"><button class="btn ghost sm" onclick="UI.openCandidate(\''+c.id+'\')">Open →</button></td>';
+        tb.appendChild(tr);
+      });
+    });
+  }
+
+  function stagePill(s){
+    var m={"New":"blue","Cultivate":"blue","In Evaluation":"amber","Future Opportunity":"gray","Dead":"red","Selected":"green"};
+    return '<span class="pill '+(m[s]||"gray")+'">'+esc(s||"—")+'</span>';
+  }
+  function viaPill(v){ var m={High:"green",Med:"amber",Low:"red"}; return v?'<span class="pill '+(m[v]||"gray")+'">'+esc(v)+'</span>':"—"; }
+  function kpi(n,l){ return '<div class="kpi"><div class="n">'+(n||0)+'</div><div class="l">'+esc(l)+'</div></div>'; }
+
+  function openCandidate(id){
+    var c=(STATE.cache.candidates||[]).filter(function(x){return x.id===id;})[0];
+    if(!c)return;
+    STATE.sel.candidate=c;
+    var p=projObj(c.projectId);
+    var app=$("app");
+    var evalRows = ["10 Project Start","20 Site Survey","30 Site Survey Form","40 Zoning Due Diligence",
+      "50 Permitting Due Diligence","60 Financial Analysis Complete","70 Letter of Intent Signed","80 Project Complete"];
+
+    var h='<a class="btn sm" onclick="UI.back()">← Back to Candidates</a>';
+    // Pipeline path
+    h+='<div class="card" style="margin-top:12px"><div class="card-h"><h3>'+esc(c.name)+'</h3>'
+      +'<span class="sub">Candidate</span><div class="spacer"></div>'
+      +'<button class="btn sm" onclick="UI.editCandidate(\''+c.id+'\')">Edit</button>'
+      +'<button class="btn pri sm" onclick="UI.markComplete(\'candidate\',\''+c.id+'\')">✓ Mark Status Complete</button></div>';
+    h+='<div class="card-b">';
+    h+='<div class="path">';
+    var ci=CAND_STAGES.indexOf(c.stage);
+    CAND_STAGES.forEach(function(s,i){
+      var cl = i<ci?"done":(i===ci?"cur":"");
+      h+='<div class="st '+cl+'" onclick="UI.setStage(\'candidate\',\''+c.id+'\',\''+s+'\')">'+esc(s)+'</div>';
+    });
+    h+='</div>';
+
+    h+='<div class="row">';
+    // left: eval schedule
+    h+='<div class="col"><div class="section-h">Evaluation Schedule</div>'
+      +'<div class="tbl-wrap"><table><thead><tr><th>Milestone</th><th>Forecast</th><th>Actual</th><th>Owner</th></tr></thead><tbody>';
+    evalRows.forEach(function(r){
+      h+='<tr><td><a>'+esc(r)+'</a></td><td class="muted">(F)</td><td class="muted">(A)</td><td class="small">Site Acquisition</td></tr>';
+    });
+    h+='</tbody></table></div></div>';
+    // right: details
+    h+='<div class="col" style="max-width:420px"><div class="section-h">Details</div><div class="dl">';
+    h+=fld("Candidate Name",c.name)+fld("Site",c.address||"—");
+    h+=fld("Stage",c.stage)+fld("Primary Candidate",c.primary?"Yes":"No");
+    h+='</div>';
+    h+='<div class="section-h">Candidate Details</div><div class="dl">';
+    h+=fld("Viability",c.viability)+fld("Landlord",c.landlord);
+    h+=fld("Site Type",c.siteType)+fld("Lease Type",c.leaseType);
+    h+=fld2("Description",c.description);
+    h+='</div>';
+    h+='<div class="section-h">Location</div><div class="dl">';
+    h+=fld("Street Address",c.address)+fld("City",c.city);
+    h+=fld("County",c.county)+fld("Lat / Lng",(c.lat!=null?c.lat+", "+c.lng:"—"));
+    h+='</div>';
+    h+='<div class="section-h">Linked Project</div>';
+    h+='<div class="flex"><span>'+esc(projName(c.projectId))+'</span>'+projSourcePill(p);
+    if(p&&p.source==="monday"&&p.mondayBoardId) h+=' <a class="btn ghost sm" target="_blank" href="'+MONDAY_BASE+esc(p.mondayBoardId)+'">Open in Monday ↗</a>';
+    if(p&&p.source==="repo"&&p.editorProjectId) h+=' <span class="small muted">editor: '+esc(p.editorProjectId)+'</span>';
+    h+='</div>';
+    h+='</div>'; // right col
+    h+='</div>'; // row
+
+    // Embedded map
+    h+='<div class="section-h">Embedded Map</div>';
+    h+='<div class="map"><div class="mtag">Satellite · '+esc(c.city||"site")+'</div>'
+      + mapImg(c.lat,c.lng) + '</div>';
+    h+='</div></div>';
+    app.innerHTML=h;
+  }
+
+  function mapImg(lat,lng){
+    if(lat==null||lng==null) return '<div class="empty">No coordinates set</div>';
+    // Static Maps stub (cleaner reframe than WebGL capture per your editor notes).
+    var url="https://maps.googleapis.com/maps/api/staticmap?center="+lat+","+lng+"&zoom=18&size=900x230&maptype=satellite&markers=color:blue%7C"+lat+","+lng+"&key="+MAPS_KEY;
+    return '<img src="'+url+'" style="width:100%;height:100%;object-fit:cover" alt="map" onerror="this.style.display=\'none\';this.parentNode.innerHTML+=\'<div class=&quot;empty&quot;>Map key not configured (lat '+lat+', lng '+lng+')</div>\'">';
+  }
+
+  function fld(l,v){ return '<div class="fld"><label>'+esc(l)+'</label><div class="val">'+esc(v||"—")+'</div></div>'; }
+  function fld2(l,v){ return '<div class="fld" style="grid-column:1/3"><label>'+esc(l)+'</label><div class="val">'+esc(v||"—")+'</div></div>'; }
+
+  /* ---------------- LEASES ---------------- */
+  function renderLeases(){
+    loadColl("leases").then(function(rows){
+      STATE.cache.leases=rows;
+      var active=rows.filter(function(r){return r.status==="Active";}).length;
+      var h=entLockBanner("Centralized visibility & management of all leases across the portfolio.");
+      h+='<div class="kpis">'+kpi(rows.length,"Total Leases")+kpi(active,"Active")
+        +kpi(rows.filter(function(r){return expiringSoon(r.end);}).length,"Expiring < 12mo")
+        +kpi(money(sum(rows,"rent"))+"/mo","Monthly Rent")+'</div>';
+      h+='<div class="card"><div class="card-h"><h3>Leases</h3><span class="sub">Portfolio</span><div class="spacer"></div>'
+        +'<button class="btn pri sm" onclick="UI.newLease()">+ New Lease</button></div>'
+        +'<div class="card-b"><div class="tbl-wrap"><table><thead><tr>'
+        +'<th>Lease</th><th>Project</th><th>Type</th><th>Status</th><th>Landlord</th><th>Commence</th><th>End</th><th>Rent</th><th></th>'
+        +'</tr></thead><tbody>';
+      rows.forEach(function(r){
+        var p=projObj(r.projectId);
+        h+='<tr><td><a onclick="UI.openLease(\''+r.id+'\')"><b>'+esc(r.name)+'</b></a></td>'
+          +'<td>'+esc(projName(r.projectId))+' '+projSourcePill(p)+'</td>'
+          +'<td>'+esc(r.type||"—")+'</td>'
+          +'<td>'+(r.status==="Active"?'<span class="pill green">Active</span>':'<span class="pill gray">'+esc(r.status||"—")+'</span>')+'</td>'
+          +'<td>'+esc(r.landlordCompany||"—")+'</td>'
+          +'<td>'+fmtDate(r.commence)+'</td>'
+          +'<td>'+(expiringSoon(r.end)?'<span class="pill amber">'+fmtDate(r.end)+'</span>':fmtDate(r.end))+'</td>'
+          +'<td>'+money(r.rent)+'</td>'
+          +'<td style="text-align:right"><button class="btn ghost sm" onclick="UI.openLease(\''+r.id+'\')">Open →</button></td></tr>';
+      });
+      h+='</tbody></table></div>';
+      if(!rows.length) h+='<div class="empty">No leases yet.</div>';
+      h+='</div></div>';
+      $("app").innerHTML=h;
+    });
+  }
+  function expiringSoon(d){ if(!d)return false; var dt=new Date(d); if(isNaN(dt))return false; var mo=(dt-new Date())/(1000*3600*24*30); return mo>=0&&mo<=12; }
+  function sum(rows,k){ var t=0; rows.forEach(function(r){ var v=Number(r[k]); if(!isNaN(v))t+=v; }); return t; }
+
+  function openLease(id){
+    var r=(STATE.cache.leases||[]).filter(function(x){return x.id===id;})[0]; if(!r)return;
+    var p=projObj(r.projectId);
+    var h='<a class="btn sm" onclick="UI.back()">← Back to Leases</a>';
+    h+='<div class="card" style="margin-top:12px"><div class="card-h"><h3>'+esc(r.name)+'</h3><span class="sub">Lease</span>'
+      +'<div class="spacer"></div>'
+      +'<button class="btn sm" onclick="UI.genDoc(\''+r.id+'\')">Generate Document</button>'
+      +'<button class="btn sm" onclick="UI.editLease(\''+r.id+'\')">Edit</button></div>';
+    h+='<div class="card-b"><div class="subtabs"><a class="on">Details</a><a>Critical Dates</a><a>Payment Terms</a><a>Files</a><a>Signature Status</a></div>';
+    h+='<div class="section-h">Lease Details</div><div class="dl">';
+    h+=fld("Lease Name",r.name)+fld("Status",r.status);
+    h+=fld("Lease Number",r.number)+fld("Lease Type",r.type);
+    h+=fld2("Description",r.description);
+    h+=fld("Landlord Company",r.landlordCompany)+fld("Ownership Type",r.ownership);
+    h+='</div>';
+    h+='<div class="section-h">Dates</div><div class="dl">';
+    h+=fld("Commencement Date",fmtDate(r.commence))+fld("End Date",fmtDate(r.end));
+    h+=fld("Lease Term (Months)",r.termMonths)+fld("Monthly Rent",money(r.rent));
+    h+='</div>';
+    h+='<div class="section-h">Linked Project</div><div class="flex"><span>'+esc(projName(r.projectId))+'</span>'+projSourcePill(p);
+    if(p&&p.source==="monday"&&p.mondayBoardId) h+=' <a class="btn ghost sm" target="_blank" href="'+MONDAY_BASE+esc(p.mondayBoardId)+'">Open in Monday ↗</a>';
+    h+='</div></div></div>';
+    $("app").innerHTML=h;
+  }
+
+  /* ---------------- ASSETS & INVENTORY ---------------- */
+  function renderAssets(){
+    loadColl("assets").then(function(rows){
+      STATE.cache.assets=rows;
+      var installed=rows.filter(function(r){return r.status==="Installed";}).length;
+      var h=entLockBanner("Every asset deployed across your portfolio, with serial tracking & lifecycle activities.");
+      h+='<div class="kpis">'+kpi(rows.length,"Asset Records")+kpi(installed,"Installed")
+        +kpi(rows.filter(function(r){return r.status==="Received";}).length,"In Inventory")
+        +kpi(sum(rows,"qty"),"Total Units")+'</div>';
+      h+='<div class="card"><div class="card-h"><h3>Tenant Ground Equipment</h3><span class="sub">'+rows.length+' records</span>'
+        +'<div class="spacer"></div>'
+        +'<button class="btn sm" onclick="UI.scanAsset()">⌸ Scan Barcode</button>'
+        +'<button class="btn pri sm" onclick="UI.newAsset()">+ New Asset</button></div>';
+      h+='<div class="row" style="padding:0 16px 16px">';
+      // table col
+      h+='<div class="col"><div class="tbl-wrap"><table><thead><tr>'
+        +'<th>Field Asset Name</th><th>Item</th><th>Serial</th><th>Status</th><th>Install Date</th><th>Qty</th><th>Project</th><th></th>'
+        +'</tr></thead><tbody>';
+      rows.forEach(function(r){
+        var p=projObj(r.projectId);
+        h+='<tr><td><a onclick="UI.openAsset(\''+r.id+'\')">'+esc(r.name)+'</a></td>'
+          +'<td>'+esc(r.item||"—")+'</td><td class="small">'+esc(r.serial||"—")+'</td>'
+          +'<td>'+assetStatus(r.status)+'</td><td>'+fmtDate(r.installDate)+'</td>'
+          +'<td>'+esc(r.qty||1)+'</td><td class="small">'+esc(projName(r.projectId))+' '+projSourcePill(p)+'</td>'
+          +'<td style="text-align:right"><button class="btn ghost sm" onclick="UI.assetAction(\''+r.id+'\')">Actions ▾</button></td></tr>';
+      });
+      h+='</tbody></table></div>';
+      if(!rows.length) h+='<div class="empty">No assets yet.</div>';
+      h+='</div>';
+      // map col
+      h+='<div class="col" style="max-width:320px"><div class="map"><div class="mtag">Satellite</div>'+mapImg(-33.891,151.247)+'</div>'
+        +'<div class="small muted" style="margin-top:8px">Assets are geo-anchored to their linked site. Barcode scan & serial tracking keep inventory accurate; receipt / install / uninstall / maintenance are logged per record.</div></div>';
+      h+='</div></div>';
+      $("app").innerHTML=h;
+    });
+  }
+  function assetStatus(s){ var m={Installed:"green",Received:"blue",Uninstalled:"gray",Maintenance:"amber"}; return '<span class="pill '+(m[s]||"gray")+'">'+esc(s||"—")+'</span>'; }
+
+  function openAsset(id){
+    var r=(STATE.cache.assets||[]).filter(function(x){return x.id===id;})[0]; if(!r)return;
+    var p=projObj(r.projectId);
+    var h='<a class="btn sm" onclick="UI.back()">← Back to Assets</a>';
+    h+='<div class="card" style="margin-top:12px"><div class="card-h"><h3>'+esc(r.name)+'</h3><span class="sub">Field Asset</span>'
+      +'<div class="spacer"></div><button class="btn sm" onclick="UI.editAsset(\''+r.id+'\')">Edit</button></div>';
+    h+='<div class="card-b"><div class="dl">';
+    h+=fld("Item",r.item)+fld("Serial",r.serial);
+    h+=fld("Status",r.status)+fld("Category",r.category);
+    h+=fld("Install Date",fmtDate(r.installDate))+fld("Quantity",r.qty);
+    h+=fld("Linked Project",projName(r.projectId))+fld("Source",p?(p.source==="monday"?"Monday.com":"Editor / Repo"):"—");
+    h+='</div>';
+    h+='<div class="section-h">Lifecycle Activities</div><div class="flex">';
+    ["Receipt","Install","Uninstall","Maintenance"].forEach(function(a){
+      h+='<button class="btn sm" onclick="UI.logActivity(\''+r.id+'\',\''+a+'\')">'+a+'</button>';
+    });
+    h+='</div></div></div>';
+    $("app").innerHTML=h;
+  }
+
+  /* ---------------- PERMITS ---------------- */
+  function renderPermits(){
+    loadColl("permits").then(function(rows){
+      STATE.cache.permits=rows;
+      var h=entLockBanner("Manage permits from submission to approval, with AHJ linkage & forecast accuracy.");
+      h+='<div class="kpis">'+kpi(rows.length,"Permits")
+        +kpi(rows.filter(function(r){return r.stage==="In Progress";}).length,"In Progress")
+        +kpi(rows.filter(function(r){return r.stage==="Received";}).length,"Received")
+        +kpi(rows.filter(function(r){return r.risk==="high";}).length,"At Risk")+'</div>';
+      h+='<div class="card"><div class="card-h"><h3>Permit Tracker</h3><span class="sub">Submission → approval</span>'
+        +'<div class="spacer"></div>'
+        +'<a class="btn sm" target="_blank" href="'+AHJ_TOOL_URL+'">AHJ Lookup ↗</a>'
+        +'<button class="btn pri sm" onclick="UI.newPermit()">+ New Permit</button></div>';
+      h+='<div class="card-b"><div class="tbl-wrap"><table><thead><tr>'
+        +'<th>Risk</th><th>Permit</th><th>Project</th><th>Type</th><th>Stage</th><th>Issuance Forecast</th><th>AHJ / Agency</th><th>Cost</th><th></th>'
+        +'</tr></thead><tbody>';
+      rows.forEach(function(r){
+        var p=projObj(r.projectId);
+        h+='<tr><td>'+riskBox(r.risk)+'</td>'
+          +'<td><a onclick="UI.openPermit(\''+r.id+'\')"><b>'+esc(r.name)+'</b></a></td>'
+          +'<td>'+esc(projName(r.projectId))+' '+projSourcePill(p)+'</td>'
+          +'<td>'+esc(r.type||"—")+'</td>'
+          +'<td>'+permitStage(r.stage)+'</td>'
+          +'<td>'+fmtDate(r.issuanceForecast)+'</td>'
+          +'<td>'+esc(r.ahjName||r.agency||"—")+'</td>'
+          +'<td>'+money(r.cost)+'</td>'
+          +'<td style="text-align:right"><button class="btn ghost sm" onclick="UI.openPermit(\''+r.id+'\')">Open →</button></td></tr>';
+      });
+      h+='</tbody></table></div>';
+      if(!rows.length) h+='<div class="empty">No permits yet.</div>';
+      h+='</div></div>';
+      $("app").innerHTML=h;
+    });
+  }
+  function riskBox(r){ var m={high:"#c0392b",amber:"#e08a1e",low:"#27ae60"}; return '<span class="risk" style="background:'+(m[r]||"#c9d2dc")+'"></span>'; }
+  function permitStage(s){ var m={"Received":"green","In Progress":"blue","Submitted":"amber","Cancelled":"red","Not Started":"gray"}; return '<span class="pill '+(m[s]||"gray")+'">'+esc(s||"—")+'</span>'; }
+
+  function openPermit(id){
+    var r=(STATE.cache.permits||[]).filter(function(x){return x.id===id;})[0]; if(!r)return;
+    var p=projObj(r.projectId);
+    var h='<a class="btn sm" onclick="UI.back()">← Back to Permits</a>';
+    h+='<div class="card" style="margin-top:12px"><div class="card-h"><h3>'+esc(r.name)+'</h3><span class="sub">Permit</span>'
+      +'<div class="spacer"></div>'
+      +'<button class="btn sm" onclick="UI.editPermit(\''+r.id+'\')">Edit</button>'
+      +'<button class="btn pri sm" onclick="UI.markComplete(\'permit\',\''+r.id+'\')">✓ Mark Status Complete</button></div>';
+    h+='<div class="card-b">';
+    h+='<div class="flex" style="margin-bottom:10px">'+riskBox(r.risk)+'<span class="small muted">Project Risk</span>'
+      +'<div class="spacer"></div><span class="small muted">Permit Issuance Forecast: <b>'+fmtDate(r.issuanceForecast)+'</b></span></div>';
+    h+='<div class="path">';
+    var pi=PERMIT_STAGES.indexOf(r.stage);
+    PERMIT_STAGES.forEach(function(s,i){
+      var cl=i<pi?"done":(i===pi?"cur":"");
+      h+='<div class="st '+cl+'" onclick="UI.setStage(\'permit\',\''+r.id+'\',\''+s+'\')">'+esc(s)+'</div>';
+    });
+    h+='</div>';
+    h+='<div class="row"><div class="col">';
+    h+='<div class="section-h">Schedule</div>';
+    var pr=["10 Project Start","20 Ready to Permit","30 Permit Submit","40 Municipality Review","50 Permit Approval","60 Permit Received","70 Upload Permit","80 Approve Permit"];
+    h+='<div class="tbl-wrap"><table><thead><tr><th>Milestone</th><th>Date</th><th>Owner</th></tr></thead><tbody>';
+    pr.forEach(function(x){ h+='<tr><td><a>'+esc(x)+'</a></td><td class="muted">(F)</td><td class="small">Project Mgr</td></tr>'; });
+    h+='</tbody></table></div></div>';
+    h+='<div class="col" style="max-width:420px"><div class="section-h">Details</div><div class="dl">';
+    h+=fld("Permit Name",r.name)+fld("Issuance Forecast",fmtDate(r.issuanceForecast));
+    h+=fld("Permit Type",r.type)+fld("Status",r.status);
+    h+=fld("Program",r.program)+fld("Currency","USD");
+    h+='</div><div class="section-h">Data</div><div class="dl">';
+    h+=fld("Permit Cost",money(r.cost))+fld("Expiration",fmtDate(r.expiration));
+    h+='</div><div class="section-h">AHJ / Permit Agency</div><div class="dl">';
+    h+=fld("AHJ",r.ahjName)+fld("Agency",r.agency);
+    h+=fld2("Agency Contact",r.agencyContact);
+    h+='</div>';
+    h+='<div style="margin-top:10px"><a class="btn sm" target="_blank" href="'+AHJ_TOOL_URL+'?ahj='+encodeURIComponent(r.ahjName||"")+'">Open AHJ record ↗</a></div>';
+    h+='<div class="section-h">Linked Project</div><div class="flex"><span>'+esc(projName(r.projectId))+'</span>'+projSourcePill(p);
+    if(p&&p.source==="monday"&&p.mondayBoardId) h+=' <a class="btn ghost sm" target="_blank" href="'+MONDAY_BASE+esc(p.mondayBoardId)+'">Open in Monday ↗</a>';
+    h+='</div></div></div></div></div>';
+    $("app").innerHTML=h;
+  }
+
+  /* ================= create / edit modals ================= */
+  function projectSelectHtml(sel){
+    var opts='';
+    (STATE.cache.projects||[]).forEach(function(p){
+      opts+='<option value="'+p.id+'"'+(sel===p.id?" selected":"")+'>'+esc(p.name)+' ['+(p.source==="monday"?"Monday":"Editor")+']</option>';
+    });
+    return '<select id="f_projectId">'+opts+'<option value="__new_monday">+ New project → link to Monday.com…</option></select>';
+  }
+
+  function openModal(title, bodyHtml, saveFn){
+    $("ovTitle").textContent=title;
+    $("ovBody").innerHTML=bodyHtml;
+    $("ovFoot").innerHTML='';
+    var cancel=el("button","btn","Cancel"); cancel.onclick=closeModal;
+    var save=el("button","btn pri","Save"); save.onclick=saveFn;
+    $("ovFoot").appendChild(cancel); $("ovFoot").appendChild(save);
+    $("ov").className="ov on";
+  }
+  function closeModal(){ $("ov").className="ov"; }
+  function frow(label,inner){ return '<div class="form-row"><label class="f">'+esc(label)+'</label>'+inner+'</div>'; }
+  function gval(id){ var e=$(id); return e?e.value:""; }
+
+  function resolveProject(){
+    // handles "+ New project → Monday" choice inline
+    var pid=gval("f_projectId");
+    if(pid==="__new_monday"){
+      var nm=prompt("New project name:"); if(!nm) return Promise.resolve(null);
+      var board=prompt("Monday.com board ID (optional):")||"";
+      var doc=coll("projects").doc(uid("prj"));
+      var obj={ orgId:WS.orgId, name:nm, source:"monday", mondayBoardId:board, createdAt:Date.now() };
+      return doc.set(obj).then(function(){ obj.id=doc.id; STATE.cache.projects.push(obj); return doc.id; });
+    }
+    return Promise.resolve(pid);
+  }
+
+  /* ---- Candidate ---- */
+  function newCandidate(){
+    var body=frow("Candidate Name",'<input id="f_name" placeholder="WPG Cand 2">')
+      +frow("Project",projectSelectHtml())
+      +'<div class="row"><div class="col">'+frow("Site Type",'<select id="f_siteType"><option>Rooftop</option><option>Ground</option><option>Tower</option><option>Greenfield</option></select>')
+      +'</div><div class="col">'+frow("Viability",'<select id="f_viability"><option>High</option><option>Med</option><option>Low</option></select>')+'</div></div>'
+      +frow("Landlord",'<input id="f_landlord">')
+      +'<div class="row"><div class="col">'+frow("City",'<input id="f_city">')+'</div><div class="col">'+frow("Address",'<input id="f_address">')+'</div></div>'
+      +frow("Description",'<textarea id="f_description" rows="2"></textarea>');
+    openModal("New Candidate", body, function(){
+      var name=gval("f_name"); if(!name){ toast("Name required"); return; }
+      resolveProject().then(function(pid){
+        var doc=coll("candidates").doc(uid("cand"));
+        doc.set({ orgId:WS.orgId, name:name, stage:"New", projectId:pid,
+          siteType:gval("f_siteType"), viability:gval("f_viability"), landlord:gval("f_landlord"),
+          city:gval("f_city"), address:gval("f_address"), description:gval("f_description"),
+          leaseType:"Lease", primary:false, createdAt:Date.now() }).then(function(){
+          closeModal(); toast("Candidate created"); render();
+        });
+      });
+    });
+  }
+
+  /* ---- Lease ---- */
+  function newLease(){
+    var body=frow("Lease Name",'<input id="f_name" placeholder="Lease - 388-0111">')
+      +frow("Project",projectSelectHtml())
+      +'<div class="row"><div class="col">'+frow("Lease Number",'<input id="f_number">')+'</div>'
+      +'<div class="col">'+frow("Type",'<select id="f_type"><option>Ground</option><option>Rooftop</option><option>Tower</option></select>')+'</div></div>'
+      +frow("Landlord Company",'<input id="f_landlordCompany">')
+      +'<div class="row"><div class="col">'+frow("Commence Date",'<input id="f_commence" type="date">')+'</div>'
+      +'<div class="col">'+frow("End Date",'<input id="f_end" type="date">')+'</div></div>'
+      +'<div class="row"><div class="col">'+frow("Term (months)",'<input id="f_termMonths" type="number">')+'</div>'
+      +'<div class="col">'+frow("Monthly Rent ($)",'<input id="f_rent" type="number">')+'</div></div>';
+    openModal("New Lease", body, function(){
+      var name=gval("f_name"); if(!name){ toast("Name required"); return; }
+      resolveProject().then(function(pid){
+        coll("leases").doc(uid("lease")).set({ orgId:WS.orgId, name:name, projectId:pid,
+          number:gval("f_number"), type:gval("f_type"), status:"Active", landlordCompany:gval("f_landlordCompany"),
+          ownership:"Third Party", commence:gval("f_commence"), end:gval("f_end"),
+          termMonths:Number(gval("f_termMonths"))||null, rent:Number(gval("f_rent"))||null, createdAt:Date.now() })
+        .then(function(){ closeModal(); toast("Lease created"); render(); });
+      });
+    });
+  }
+
+  /* ---- Asset ---- */
+  function newAsset(){
+    var body=frow("Field Asset Name",'<input id="f_name">')
+      +frow("Project",projectSelectHtml())
+      +frow("Item",'<input id="f_item">')
+      +'<div class="row"><div class="col">'+frow("Serial",'<input id="f_serial">')+'</div>'
+      +'<div class="col">'+frow("Category",'<select id="f_category"><option>BESS</option><option>Compute</option><option>EV</option><option>Network</option><option>Other</option></select>')+'</div></div>'
+      +'<div class="row"><div class="col">'+frow("Status",'<select id="f_status"><option>Received</option><option>Installed</option><option>Uninstalled</option><option>Maintenance</option></select>')+'</div>'
+      +'<div class="col">'+frow("Quantity",'<input id="f_qty" type="number" value="1">')+'</div></div>'
+      +frow("Install Date",'<input id="f_installDate" type="date">');
+    openModal("New Asset", body, function(){
+      var name=gval("f_name"); if(!name){ toast("Name required"); return; }
+      resolveProject().then(function(pid){
+        coll("assets").doc(uid("asset")).set({ orgId:WS.orgId, name:name, projectId:pid,
+          item:gval("f_item"), serial:gval("f_serial"), category:gval("f_category"),
+          status:gval("f_status"), qty:Number(gval("f_qty"))||1, installDate:gval("f_installDate"), createdAt:Date.now() })
+        .then(function(){ closeModal(); toast("Asset created"); render(); });
+      });
+    });
+  }
+  function scanAsset(){
+    var s=prompt("Scan or enter serial / barcode:"); if(!s)return;
+    var found=(STATE.cache.assets||[]).filter(function(a){return (a.serial||"").toLowerCase()===s.toLowerCase();})[0];
+    if(found){ toast("Matched: "+found.name); openAsset(found.id); }
+    else { toast("No match — creating new"); newAsset(); setTimeout(function(){ if($("f_serial"))$("f_serial").value=s; },50); }
+  }
+
+  /* ---- Permit ---- */
+  function newPermit(){
+    var body=frow("Permit Name",'<input id="f_name" placeholder="PT-00012">')
+      +frow("Project",projectSelectHtml())
+      +'<div class="row"><div class="col">'+frow("Type",'<select id="f_type"><option>Building</option><option>Utility Interconnect</option><option>Electrical</option><option>Zoning</option></select>')+'</div>'
+      +'<div class="col">'+frow("Risk",'<select id="f_risk"><option value="low">Low</option><option value="amber">Medium</option><option value="high">High</option></select>')+'</div></div>'
+      +'<div class="row"><div class="col">'+frow("AHJ",'<input id="f_ahjName" placeholder="City of…">')+'</div>'
+      +'<div class="col">'+frow("Agency",'<input id="f_agency">')+'</div></div>'
+      +'<div class="row"><div class="col">'+frow("Issuance Forecast",'<input id="f_issuanceForecast" type="date">')+'</div>'
+      +'<div class="col">'+frow("Cost ($)",'<input id="f_cost" type="number">')+'</div></div>'
+      +frow("Program",'<input id="f_program">');
+    openModal("New Permit", body, function(){
+      var name=gval("f_name"); if(!name){ toast("Name required"); return; }
+      resolveProject().then(function(pid){
+        coll("permits").doc(uid("permit")).set({ orgId:WS.orgId, name:name, projectId:pid,
+          type:gval("f_type"), risk:gval("f_risk"), ahjName:gval("f_ahjName"), agency:gval("f_agency"),
+          stage:"Submitted", status:"Submitted", issuanceForecast:gval("f_issuanceForecast"),
+          cost:Number(gval("f_cost"))||null, program:gval("f_program"), createdAt:Date.now() })
+        .then(function(){ closeModal(); toast("Permit created"); render(); });
+      });
+    });
+  }
+
+  /* ================= stage / status mutations ================= */
+  function setStage(kind, id, stage){
+    var name = kind==="candidate"?"candidates":"permits";
+    var patch = { stage:stage };
+    if(kind==="permit") patch.status=stage;
+    coll(name).doc(id).update(patch).then(function(){
+      toast("Stage → "+stage);
+      // refresh cache object then re-open
+      var arr=STATE.cache[kind==="candidate"?"candidates":"permits"]||[];
+      arr.forEach(function(o){ if(o.id===id){ o.stage=stage; if(kind==="permit")o.status=stage; }});
+      if(kind==="candidate") openCandidate(id); else openPermit(id);
+    });
+  }
+  function markComplete(kind,id){
+    var last = kind==="candidate"?"Selected":"Received";
+    setStage(kind,id,last);
+  }
+
+  function genDoc(id){ toast("Doc generation queued (stub) — wire to Doc Gen template"); }
+  function logActivity(id,a){ toast(a+" logged (stub) — writes to slc_asset_activity"); }
+  function assetAction(id){ openAsset(id); }
+  function editCandidate(id){ toast("Edit stub — reuse newCandidate() prefilled"); }
+  function editLease(id){ toast("Edit stub"); }
+  function editAsset(id){ toast("Edit stub"); }
+  function editPermit(id){ toast("Edit stub"); }
+
+  /* ================= CRM SYNC (multi-provider) =================
+     Security model:
+       - Firestore (slc_crm_config/{orgId}) holds NON-secret metadata only:
+         which provider is active, whether creds are configured, board/object
+         targets, and field->column mappings.
+       - Actual CRM credentials/tokens are POSTed to the serverless proxy
+         (action:"save_credentials") and stored SERVER-SIDE only. The browser
+         and Firestore never persist the secret.
+       - Sync (action:"sync") sends records + mapping; proxy uses the stored
+         creds to push into the customer's CRM. */
+
+  function crmConfigRef(){ return coll("crm_config").doc(WS.orgId); }
+
+  function loadCrmConfig(){
+    if(STATE.cache.crmConfig) return Promise.resolve(STATE.cache.crmConfig);
+    return crmConfigRef().get().then(function(d){
+      var cfg = d.exists ? d.data() : { orgId:WS.orgId, provider:"", credsConfigured:false, target:{}, columns:{} };
+      STATE.cache.crmConfig = cfg;
+      return cfg;
+    });
+  }
+
+  function crmReady(cfg){
+    return !!(cfg && cfg.provider && cfg.credsConfigured);
+  }
+
+  /* ---------------- SETTINGS PAGE ---------------- */
+  function renderSettings(){
+    loadCrmConfig().then(function(cfg){
+      cfg.target = cfg.target || {}; cfg.columns = cfg.columns || {};
+      var prov = cfg.provider || "";
+      var h = entLockBanner("Connect your CRM and map how OMEGA records flow into it.");
+
+      // provider picker
+      h+='<div class="card"><div class="card-h"><h3>CRM Integration</h3><span class="sub">Choose your CRM &amp; connect securely</span>';
+      h+='<div class="spacer"></div>';
+      if(crmReady(cfg)) h+='<span class="pill green">Connected: '+esc(CRM_PROVIDERS[prov]?CRM_PROVIDERS[prov].label:prov)+'</span>';
+      else h+='<span class="pill gray">Not connected</span>';
+      h+='</div><div class="card-b">';
+
+      h+='<label class="f">CRM Provider</label>';
+      h+='<div class="flex" style="flex-wrap:wrap;gap:8px;margin-bottom:8px">';
+      var pk;
+      for(pk in CRM_PROVIDERS){
+        var on = pk===prov;
+        h+='<button class="btn'+(on?' dark':'')+'" onclick="UI.crmPickProvider(\''+pk+'\')">'+esc(CRM_PROVIDERS[pk].label)+'</button>';
+      }
+      h+='</div>';
+
+      if(prov && CRM_PROVIDERS[prov]){
+        var P = CRM_PROVIDERS[prov];
+        h+='<div class="section-h">Credentials — '+esc(P.label)+'</div>';
+        h+='<div class="ent-lock" style="background:#eef7ff;border-color:#bcdcff;color:#1461d2">🔒 Credentials are sent to your secure server and stored server-side. They are never saved in the browser or database.</div>';
+        h+='<p class="small muted">'+esc(P.note||"")+'</p>';
+        P.fields.forEach(function(fd){
+          var val = (fd.secret ? "" : ((cfg.target && cfg.target[fd.key]) || ""));
+          var ph = fd.ph ? ' placeholder="'+esc(fd.ph)+'"' : '';
+          var type = fd.secret ? ' type="password" autocomplete="new-password"' : '';
+          var hint = fd.secret ? ' <span class="small muted">(write-only — leave blank to keep existing)</span>' : '';
+          h+='<div class="form-row"><label class="f">'+esc(fd.label)+hint+'</label><input id="crm_'+esc(fd.key)+'"'+type+ph+' value="'+esc(val)+'"></div>';
+        });
+        h+='<div class="flex"><button class="btn pri" onclick="UI.crmSaveCreds(\''+prov+'\')">Save &amp; Connect</button>';
+        if(crmReady(cfg)) h+='<button class="btn" onclick="UI.crmTest()">Test Connection</button>';
+        h+='<button class="btn" onclick="UI.crmDisconnect()">Disconnect</button></div>';
+      } else {
+        h+='<p class="muted">Select a provider above to enter credentials.</p>';
+      }
+      h+='</div></div>';
+
+      // field mapping (only once a provider is chosen)
+      if(prov){
+        h+='<div class="card" style="margin-top:16px"><div class="card-h"><h3>Field Mapping</h3><span class="sub">OMEGA field → your CRM field/column</span></div><div class="card-b">';
+        h+='<p class="small muted" style="margin-top:0">For each record type, set the CRM target (board/object) and map fields. For Monday use column IDs; for Salesforce/HubSpot/Zoho use API field names.</p>';
+        h+='<div class="subtabs" id="mapTabs">';
+        [["candidates","Candidates"],["leases","Leases"],["assets","Assets"],["permits","Permits"]].forEach(function(t,i){
+          h+='<a data-t="'+t[0]+'"'+(i===0?' class="on"':'')+'>'+t[1]+'</a>';
+        });
+        h+='</div><div id="mapPane"></div>';
+        h+='<div style="margin-top:14px"><button class="btn pri" onclick="UI.crmSaveMapping()">Save Mapping</button></div>';
+        h+='</div></div>';
+      }
+
+      $("app").innerHTML=h;
+
+      if(prov){
+        var tabs=$("mapTabs").getElementsByTagName("a");
+        function paintMap(type){
+          cfg.target=cfg.target||{}; cfg.columns=cfg.columns||{};
+          cfg.columns[type]=cfg.columns[type]||{};
+          var targetLabel = prov==="monday" ? "Board ID" : "Object / Pipeline";
+          var m='';
+          m+=frow(targetLabel, '<input id="map_target_'+type+'" value="'+esc((cfg.target[type]||""))+'" placeholder="'+(prov==="monday"?"7712345001":"e.g. Site__c")+'">');
+          m+='<div class="section-h">Field → CRM target</div>';
+          CRM_FIELDS[type].forEach(function(f){
+            m+='<div class="row" style="align-items:center;margin-bottom:8px"><div class="col" style="max-width:150px"><span class="small"><b>'+esc(f)+'</b></span></div>'
+              +'<div class="col"><input id="map_col_'+type+'_'+f+'" value="'+esc(cfg.columns[type][f]||"")+'" placeholder="'+(prov==="monday"?"column id":"CRM field name")+' (blank = skip)"></div></div>';
+          });
+          $("mapPane").innerHTML=m;
+        }
+        for(var i=0;i<tabs.length;i++){
+          (function(a){ a.onclick=function(){
+            for(var j=0;j<tabs.length;j++) tabs[j].className="";
+            a.className="on"; paintMap(a.getAttribute("data-t"));
+          };})(tabs[i]);
+        }
+        paintMap("candidates");
+      }
+    });
+  }
+
+  function crmPickProvider(pk){
+    loadCrmConfig().then(function(cfg){
+      cfg.provider=pk; STATE.cache.crmConfig=cfg;
+      // persist provider choice (non-secret) immediately
+      crmConfigRef().set(cfg).then(function(){ renderSettings(); });
+    });
+  }
+
+  function crmSaveCreds(prov){
+    var P=CRM_PROVIDERS[prov]; if(!P) return;
+    var creds={}, target={};
+    P.fields.forEach(function(fd){
+      var e=$("crm_"+fd.key); if(!e) return;
+      var v=e.value.trim();
+      if(fd.secret){ if(v) creds[fd.key]=v; }        // secrets → proxy only
+      else { if(v) target[fd.key]=v; }               // non-secret → firestore ok
+    });
+
+    if(DEMO){
+      var cfgD=STATE.cache.crmConfig||{}; cfgD.provider=prov; cfgD.credsConfigured=true;
+      cfgD.target=cfgD.target||{}; for(var k in target) cfgD.target[k]=target[k];
+      STATE.cache.crmConfig=cfgD;
+      crmConfigRef().set(cfgD).then(function(){ toast("Connected (demo)"); renderSettings(); });
+      return;
+    }
+
+    toast("Connecting…");
+    fetch(CRM_PROXY_URL, {
+      method:"POST", headers:{ "Content-Type":"application/json" },
+      body: JSON.stringify({ action:"save_credentials", orgId:WS.orgId, provider:prov, credentials:creds, target:target, user:(USER&&USER.email)||"" })
+    }).then(function(r){ return r.json(); }).then(function(res){
+      if(res && res.ok){
+        var cfg=STATE.cache.crmConfig||{}; cfg.provider=prov; cfg.credsConfigured=true;
+        cfg.target=cfg.target||{}; for(var k in target) cfg.target[k]=target[k];
+        STATE.cache.crmConfig=cfg;
+        // Firestore stores metadata only (no secrets)
+        crmConfigRef().set(cfg).then(function(){ toast("Connected"); renderSettings(); });
+      } else {
+        toast("Connect failed: "+((res&&res.error)||"unknown"));
+      }
+    }).catch(function(e){ toast("Connect failed: "+String(e&&e.message||e)); });
+  }
+
+  function crmTest(){
+    if(DEMO){ toast("Connection OK (demo)"); return; }
+    toast("Testing…");
+    fetch(CRM_PROXY_URL, { method:"POST", headers:{ "Content-Type":"application/json" },
+      body: JSON.stringify({ action:"test", orgId:WS.orgId }) })
+      .then(function(r){ return r.json(); })
+      .then(function(res){ toast(res&&res.ok ? "Connection OK":"Failed: "+((res&&res.error)||"")); })
+      .catch(function(e){ toast("Failed: "+String(e&&e.message||e)); });
+  }
+
+  function crmDisconnect(){
+    if(!confirm("Disconnect CRM? Stored credentials will be cleared from the server.")) return;
+    var cfg=STATE.cache.crmConfig||{};
+    function finish(){ cfg.credsConfigured=false; STATE.cache.crmConfig=cfg; crmConfigRef().set(cfg).then(function(){ toast("Disconnected"); renderSettings(); }); }
+    if(DEMO){ finish(); return; }
+    fetch(CRM_PROXY_URL, { method:"POST", headers:{ "Content-Type":"application/json" },
+      body: JSON.stringify({ action:"delete_credentials", orgId:WS.orgId }) })
+      .then(function(){ finish(); }).catch(function(){ finish(); });
+  }
+
+  function crmSaveMapping(){
+    var cfg=STATE.cache.crmConfig||{}; cfg.target=cfg.target||{}; cfg.columns=cfg.columns||{};
+    var types=["candidates","leases","assets","permits"];
+    // read whichever pane is currently painted plus preserve others already in cfg
+    types.forEach(function(type){
+      var t=$("map_target_"+type); if(t) cfg.target[type]=t.value.trim();
+      cfg.columns[type]=cfg.columns[type]||{};
+      CRM_FIELDS[type].forEach(function(f){
+        var e=$("map_col_"+type+"_"+f); if(e) cfg.columns[type][f]=e.value.trim();
+      });
+    });
+    cfg.orgId=WS.orgId; cfg.updatedAt=Date.now();
+    crmConfigRef().set(cfg).then(function(){ STATE.cache.crmConfig=cfg; toast("Mapping saved"); });
+  }
+
+  /* ---------------- SYNC (button in topbar) ---------------- */
+  function gatherSyncPayload(){
+    return Promise.all([
+      loadColl("candidates"), loadColl("leases"), loadColl("assets"), loadColl("permits")
+    ]).then(function(res){
+      var types = { candidates:res[0], leases:res[1], assets:res[2], permits:res[3] };
+      var out = { candidates:[], leases:[], assets:[], permits:[] };
+      var t;
+      for(t in types){
+        types[t].forEach(function(r){
+          var p = projObj(r.projectId);
+          if(p && p.source==="monday" && p.mondayBoardId){ out[t].push(r); }
+        });
+      }
+      return out;
+    });
+  }
+
+  function openSync(){
+    loadCrmConfig().then(function(cfg){
+      if(!crmReady(cfg)){
+        openModal("Sync to CRM",
+          '<p class="muted">No CRM is connected yet. Go to <b>Settings</b> to choose a provider and connect securely.</p>',
+          function(){ closeModal(); STATE.mod="settings"; setNavActive("settings"); render(); });
+        // relabel save button
+        $("ovFoot").innerHTML='';
+        var c=el("button","btn","Close"); c.onclick=closeModal;
+        var g=el("button","btn pri","Open Settings"); g.onclick=function(){ closeModal(); STATE.mod="settings"; setNavActive("settings"); render(); };
+        $("ovFoot").appendChild(c); $("ovFoot").appendChild(g);
+        return;
+      }
+      gatherSyncPayload().then(function(payload){
+        var total=payload.candidates.length+payload.leases.length+payload.assets.length+payload.permits.length;
+        var provLabel=CRM_PROVIDERS[cfg.provider]?CRM_PROVIDERS[cfg.provider].label:cfg.provider;
+        var body='<p class="small muted" style="margin-top:0">Pushing records linked to <b>CRM-mapped projects</b> to <b>'+esc(provLabel)+'</b>.</p>';
+        body+='<div class="dl" style="margin:12px 0">';
+        body+='<div class="fld"><label>Candidates</label><div class="val">'+payload.candidates.length+'</div></div>';
+        body+='<div class="fld"><label>Leases</label><div class="val">'+payload.leases.length+'</div></div>';
+        body+='<div class="fld"><label>Assets</label><div class="val">'+payload.assets.length+'</div></div>';
+        body+='<div class="fld"><label>Permits</label><div class="val">'+payload.permits.length+'</div></div>';
+        body+='</div>';
+        body+='<div class="ent-lock" style="background:#e2f5ea;border-color:#a8dcc0;color:#137a44">✓ Connected to '+esc(provLabel)+'. '+total+' record(s) ready.</div>';
+        $("ovTitle").textContent="Sync to CRM";
+        $("ovBody").innerHTML=body;
+        $("ovFoot").innerHTML='';
+        var cancel=el("button","btn","Close"); cancel.onclick=closeModal;
+        var go=el("button","btn pri","⟳ Sync "+total+" record(s)");
+        go.disabled=total===0; if(go.disabled) go.style.opacity="0.5";
+        go.onclick=function(){ runSync(cfg,payload); };
+        $("ovFoot").appendChild(cancel); $("ovFoot").appendChild(go);
+        $("ov").className="ov on";
+      });
+    });
+  }
+
+  function runSync(cfg,payload){
+    var jobs=[]; var types=["candidates","leases","assets","permits"];
+    types.forEach(function(type){
+      var target=(cfg.target&&cfg.target[type])||"";
+      var colMap=(cfg.columns&&cfg.columns[type])||{};
+      payload[type].forEach(function(rec){
+        var fields={};
+        CRM_FIELDS[type].forEach(function(f){
+          var cid=colMap[f];
+          if(cid && rec[f]!=null && rec[f]!=="") fields[cid]=String(rec[f]);
+        });
+        jobs.push({ type:type, target:target, itemName:String(rec.name||rec.id), fields:fields, omegaId:rec.id });
+      });
+    });
+    if(!jobs.length){ toast("Nothing to sync"); return; }
+
+    $("ovBody").innerHTML='<div class="loading">Syncing '+jobs.length+' record(s) to '+esc(CRM_PROVIDERS[cfg.provider]?CRM_PROVIDERS[cfg.provider].label:cfg.provider)+'…</div>';
+    $("ovFoot").innerHTML='';
+
+    if(DEMO){
+      setTimeout(function(){
+        $("ovBody").innerHTML='<div class="ent-lock" style="background:#e2f5ea;border-color:#a8dcc0;color:#137a44">✓ Demo: '+jobs.length+' record(s) would sync. Connect the live proxy to perform the real push.</div>';
+        var d=el("button","btn pri","Done"); d.onclick=closeModal; $("ovFoot").appendChild(d);
+      },800);
+      return;
+    }
+
+    fetch(CRM_PROXY_URL, { method:"POST", headers:{ "Content-Type":"application/json" },
+      body: JSON.stringify({ action:"sync", orgId:WS.orgId, provider:cfg.provider, user:(USER&&USER.email)||"", jobs:jobs }) })
+    .then(function(r){ return r.json(); }).then(function(res){
+      var ok=(res&&res.created)||0, fail=(res&&res.failed)||0;
+      var msg=fail? '⚠ '+ok+' synced, '+fail+' failed. '+esc((res&&res.error)||"") : '✓ '+ok+' record(s) synced.';
+      var cls=fail? 'background:#fff7e6;border-color:#f0d492;color:#8a6400':'background:#e2f5ea;border-color:#a8dcc0;color:#137a44';
+      $("ovBody").innerHTML='<div class="ent-lock" style="'+cls+'">'+msg+'</div>';
+      var d=el("button","btn pri","Done"); d.onclick=closeModal; $("ovFoot").appendChild(d);
+      toast(fail?"Completed with errors":"Sync complete");
+    }).catch(function(e){
+      $("ovBody").innerHTML='<div class="ent-lock">✕ Sync failed: '+esc(String(e&&e.message||e))+'<br><span class="small">Check the serverless proxy is deployed and CRM_PROXY_URL is correct.</span></div>';
+      var d=el("button","btn","Close"); d.onclick=closeModal; $("ovFoot").appendChild(d);
+    });
+  }
+
+  function setNavActive(mod){
+    var links=$("nav").getElementsByTagName("a");
+    for(var i=0;i<links.length;i++) links[i].className = (links[i].getAttribute("data-mod")===mod?"on":"");
+  }
+
+  function back(){ render(); }
+
+  /* ================= expose ================= */
+  window.UI = {
+    openCandidate:openCandidate, newCandidate:newCandidate, editCandidate:editCandidate,
+    openLease:openLease, newLease:newLease, editLease:editLease, genDoc:genDoc,
+    openAsset:openAsset, newAsset:newAsset, editAsset:editAsset, scanAsset:scanAsset, assetAction:assetAction, logActivity:logActivity,
+    openPermit:openPermit, newPermit:newPermit, editPermit:editPermit,
+    setStage:setStage, markComplete:markComplete, back:back, closeModal:closeModal,
+    openSync:openSync,
+    crmPickProvider:crmPickProvider, crmSaveCreds:crmSaveCreds, crmTest:crmTest,
+    crmDisconnect:crmDisconnect, crmSaveMapping:crmSaveMapping
+  };
+
+  boot();
+})();
+</script>
+</body>
+</html>
