@@ -158,7 +158,12 @@
     { key:'spatco_ev', name:'EV / Project Estimate', category:'sales',
       desc:'SPATCO-format EV charger & project install estimates with AI scope.',
       file:'/spatco-ev-estimate.html', tier:TIER.ALL, orgs:['spatco.com'],
-      icon:'M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8zM14 2v6h6M9 13h6M9 17h6M9 9h1' }
+      icon:'M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8zM14 2v6h6M9 13h6M9 17h6M9 9h1' },
+
+    { key:'sitelifecycle', name:'Site Lifecycle Console', category:'permitting',
+      desc:'Sites, leases, assets & permits in one enterprise console — with CRM sync.',
+      file:'/site-lifecycle.html', badge:'new', tier:TIER.DELUXE, custom:true, savesData:true,
+      icon:'M3 21h18M5 21V7l8-4v18M19 21V11l-6-4M9 9v.01M9 12v.01M9 15v.01M9 18v.01' }
   ];
 
   /* ══════════════════════════════════════════════════════════════════

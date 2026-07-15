@@ -172,8 +172,8 @@ label.f { display:block; font-size:11px; color:#7b8794; text-transform:uppercase
 <!-- Firebase compat v8 -->
 <!-- ClearSky config (Firebase + Maps keys). Optional: inline fallback exists. -->
 <script src="/config.js"></script>
-<!-- Shared tier/entitlement helper -->
-<script src="/entitlements.js"></script>
+<!-- Shared tool registry + tier system (single source of truth) -->
+<script src="https://tools.csebuilders.com/omega-tools.js"></script>
 <!-- Firebase compat v8 -->
 <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
 <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-auth.js"></script>
@@ -220,7 +220,13 @@ label.f { display:block; font-size:11px; color:#7b8794; text-transform:uppercase
      email domain, matching userOrg() in the Firestore rules.
 
      This tool's app id (for entitlement checks): */
-  var APP_ID = "site-lifecycle";
+  /* This tool's key in omega-tools.js (the ONE registry). Gating reads
+     the tool's tier from there — no separate entitlement system. */
+  var APP_KEY = "sitelifecycle";
+
+  /* Tier labels for display, matching omega-tools.js TIER (0-3). */
+  var TIER_LABEL = { 0:"OMEGA (All)", 1:"OMEGA Core", 2:"OMEGA Performance", 3:"Enterprise · Alpha & Omega" };
+  function tierName(n){ return TIER_LABEL[n] != null ? TIER_LABEL[n] : ("Tier "+n); }
 
   /* Admin domains: may set any org's tier in the omega_orgs doc. */
   var ADMIN_DOMAINS = { "csebuilders.com": true, "clearsky-usa.com": true };
@@ -323,7 +329,7 @@ label.f { display:block; font-size:11px; color:#7b8794; text-transform:uppercase
                    auth:"Demo mode — sign-in unavailable." }[reason] || "Demo mode.";
     STATE.demoBanner = banner;
     // simulate an enterprise user
-    onUser({ email:"demo@nextnrg.com" });
+    onUser({ email:"admin@csebuilders.com" });
   }
 
   /* Minimal in-memory Firestore-compatible shim (only the calls this tool uses). */
@@ -371,40 +377,47 @@ label.f { display:block; font-size:11px; color:#7b8794; text-transform:uppercase
     return { collection:collection, batch:batch };
   }
 
-  var ENT = window.OMEGAEntitlements;
-  if(!ENT){
-    ENT = {
-      TIERS:{ "core":{label:"OMEGA Core"}, "performance":{label:"OMEGA Performance"}, "alpha-omega":{label:"Enterprise (Alpha & Omega)"} },
-      normTier:function(t){ t=(t||"core").toString().toLowerCase().replace(/\s+/g,"-"); return (t==="enterprise"||t==="alpha-&-omega")?"alpha-omega":((t==="performance"||t==="alpha-omega")?t:"core"); },
-      tierFromConfig:function(){ var c=window.CLEARSKY_CONFIG; return c&&c.tier?this.normTier(c.tier):null; },
-      canOpenApp:function(o,a){ return false; },
-      marketplaceApps:function(){ return []; }
-    };
-  }
-  var ORG = null; // resolved { orgId, tier, apps[], isAdmin }
+  /* Single source of truth: omega-tools.js registry. */
+  var OT = window.OMEGATools;
+  var ORG = null; // resolved { orgId, tierLevel, unlockedTools[], requiredTools[], customToolUrls{}, isAdmin }
 
   function omegaOrgRef(orgId){ return db.collection("omega_orgs").doc(orgId); }
 
+  /* Build a workspace object shaped exactly like the portals use, so
+     OMEGATools.isUnlocked / isVisible work unchanged. */
+  function workspaceOf(org){
+    return {
+      orgId: org.orgId,
+      tierLevel: org.tierLevel,
+      unlockedTools: org.unlockedTools || [],
+      requiredTools: org.requiredTools || [],
+      customToolUrls: org.customToolUrls || {}
+    };
+  }
+
+  function canOpenThisApp(org){
+    if(!OT){ return org.tierLevel >= 2; } // fallback if registry didn't load: Deluxe+
+    var tool = OT.byKey(APP_KEY);
+    if(!tool){ return org.tierLevel >= 2; }
+    return OT.isUnlocked(tool, workspaceOf(org));
+  }
+
   function onUser(u){
     USER = u;
-    var email = u.email || "demo@nextnrg.com";
+    var email = u.email || "admin@csebuilders.com";
     var domain = (email.split("@")[1] || "").toLowerCase();
     if(!domain){ renderNoAuth(); return; }
 
     $("userEmail").textContent = email;
     $("userInitial").textContent = (email[0]||"?").toUpperCase();
 
-    // Resolve org entitlement: prefer Firestore omega_orgs doc (admin-controlled),
-    // fall back to tier declared in config.js.
     resolveOrg(domain, email).then(function(org){
       ORG = org;
       WS = { orgId: org.orgId, name: (COMPANY || org.orgId) };
       $("wsName").textContent = WS.name + (DEMO ? " · DEMO" : "");
-      var tb=$("tierBadge"); if(tb){ tb.textContent = (ENT.TIERS[org.tier]?ENT.TIERS[org.tier].label:org.tier).toUpperCase(); }
+      var tb=$("tierBadge"); if(tb){ tb.textContent = tierName(org.tierLevel).toUpperCase(); }
 
-      // Entitlement gate: can this org open THIS app?
-      var orgEnt = { tier: org.tier, apps: org.apps };
-      if(!ENT.canOpenApp(orgEnt, APP_ID)){
+      if(!canOpenThisApp(org)){
         renderUpgrade(org, email);
         return;
       }
@@ -415,26 +428,46 @@ label.f { display:block; font-size:11px; color:#7b8794; text-transform:uppercase
     });
   }
 
+  /* Resolve org tier. Source of truth = Firestore omega_orgs/{domain}, which
+     stores tierLevel (0-3) + unlockedTools[]. config.js may declare a tier as
+     a fallback. Admins are treated as Enterprise (tier 3). */
+  function cfgTierLevel(){
+    var c = window.CLEARSKY_CONFIG;
+    if(!c) return null;
+    // accept numeric tier, or named tier, from config.js
+    if(typeof c.tierLevel === "number") return c.tierLevel;
+    if(typeof c.tier === "number") return c.tier;
+    if(typeof c.tier === "string"){
+      var t = c.tier.toLowerCase();
+      if(t.indexOf("enter")===0 || t.indexOf("alpha")===0) return 3;
+      if(t.indexOf("perf")===0 || t==="deluxe") return 2;
+      if(t==="core" || t==="standard") return 1;
+    }
+    return null;
+  }
+
   function resolveOrg(domain, email){
     var isAdmin = !!ADMIN_DOMAINS[domain];
-    var configTier = ENT.tierFromConfig(); // from config.js if set
-    // In demo mode, simulate a Performance org that has picked this app,
-    // so the tool is explorable. Admins are always alpha-omega.
+    var cfgTier = cfgTierLevel();
+
     if(DEMO){
-      var t = isAdmin ? "alpha-omega" : (configTier || "performance");
-      var apps = t==="performance" ? [APP_ID] : [];
-      return Promise.resolve({ orgId:domain, tier:t, apps:apps, isAdmin:isAdmin });
+      // Explorable in demo: admins are Enterprise; others get Performance (2)
+      // with this app explicitly unlocked so you can click through it.
+      var lvl = isAdmin ? 3 : (cfgTier != null ? cfgTier : 2);
+      var unlocked = (lvl < 2) ? [] : [APP_KEY];
+      return Promise.resolve({ orgId:domain, tierLevel:lvl, unlockedTools:unlocked, requiredTools:[], customToolUrls:{}, isAdmin:isAdmin });
     }
+
     return omegaOrgRef(domain).get().then(function(d){
       if(d.exists){
-        var data=d.data();
-        return { orgId:domain, tier:ENT.normTier(data.tier||configTier||"core"), apps:data.apps||[], isAdmin:isAdmin };
+        var data = d.data();
+        var lvl = (typeof data.tierLevel === "number") ? data.tierLevel : (cfgTier != null ? cfgTier : 1);
+        return { orgId:domain, tierLevel:lvl, unlockedTools:data.unlockedTools||[], requiredTools:data.requiredTools||[], customToolUrls:data.customToolUrls||{}, isAdmin:isAdmin };
       }
-      // No org doc yet. Admins get full access; others fall back to config.js
-      // tier (declaration) but with NO marketplace picks until admin sets them.
-      return { orgId:domain, tier:(isAdmin?"alpha-omega":ENT.normTier(configTier||"core")), apps:[], isAdmin:isAdmin };
+      // No org doc: admins = Enterprise; others = config.js tier or Core(1).
+      return { orgId:domain, tierLevel:(isAdmin?3:(cfgTier!=null?cfgTier:1)), unlockedTools:[], requiredTools:[], customToolUrls:{}, isAdmin:isAdmin };
     }).catch(function(){
-      return { orgId:domain, tier:(isAdmin?"alpha-omega":ENT.normTier(configTier||"core")), apps:[], isAdmin:isAdmin };
+      return { orgId:domain, tierLevel:(isAdmin?3:(cfgTier!=null?cfgTier:1)), unlockedTools:[], requiredTools:[], customToolUrls:{}, isAdmin:isAdmin };
     });
   }
 
@@ -443,14 +476,13 @@ label.f { display:block; font-size:11px; color:#7b8794; text-transform:uppercase
   }
 
   function renderUpgrade(org, email){
-    var tierLabel = ENT.TIERS[org.tier] ? ENT.TIERS[org.tier].label : org.tier;
     $("app").innerHTML =
       '<div class="card"><div class="card-b" style="text-align:center;padding:50px 20px">'
       + '<div style="font-size:40px">🔒</div>'
       + '<h3 style="margin:12px 0 6px">Site Lifecycle Console</h3>'
       + '<p class="muted">This is an <b>OMEGA Performance</b> &amp; <b>Enterprise</b> app.</p>'
-      + '<p class="muted small">Your plan (<b>'+esc(tierLabel)+'</b>) doesn\'t include it yet. '
-      + 'Performance accounts can add it as one of their marketplace apps; Enterprise includes it automatically.</p>'
+      + '<p class="muted small">Your plan (<b>'+esc(tierName(org.tierLevel))+'</b>) doesn\'t include it yet. '
+      + 'Performance &amp; Enterprise accounts unlock it; it can also be added to your account individually.</p>'
       + '<p class="muted small">Contact ClearSky to add this app to <b>'+esc(org.orgId)+'</b>.</p>'
       + '</div></div>';
   }
@@ -1069,19 +1101,31 @@ label.f { display:block; font-size:11px; color:#7b8794; text-transform:uppercase
       var prov = cfg.provider || "";
       var h = entLockBanner("Connect your CRM and map how OMEGA records flow into it.");
 
-      // ---- ADMIN: tier & app entitlement management (admins only) ----
+      // ---- ADMIN: tier management (admins only) ----
       if(ORG && ORG.isAdmin){
-        h+='<div class="card" style="margin-bottom:16px;border-color:#0e1b33"><div class="card-h" style="background:#0e1b33;color:#fff;border-radius:10px 10px 0 0"><h3 style="color:#fff">⚙ Platform Admin — Org Tiers</h3><span class="sub" style="color:#9fb4d6">Set any org\'s tier &amp; marketplace apps</span></div><div class="card-b">';
-        h+='<p class="small muted" style="margin-top:0">Enter an org domain, choose its tier, and (for Performance) select up to 5 marketplace apps. Saved to <code>omega_orgs/{domain}</code>. Only admin domains can write this.</p>';
+        h+='<div class="card" style="margin-bottom:16px;border-color:#0e1b33"><div class="card-h" style="background:#0e1b33;color:#fff;border-radius:10px 10px 0 0"><h3 style="color:#fff">⚙ Platform Admin — Org Tiers</h3><span class="sub" style="color:#9fb4d6">Set any org\'s tier level &amp; per-app unlocks</span></div><div class="card-b">';
+        h+='<p class="small muted" style="margin-top:0">Set an org\'s tier level (matches omega-tools.js). Optionally unlock specific apps above their tier. Saved to <code>omega_orgs/{domain}</code> as <code>tierLevel</code> + <code>unlockedTools[]</code>. Only admins can write this.</p>';
         h+=frow("Org domain", '<input id="adm_org" placeholder="acmesolar.com">');
-        h+=frow("Tier", '<select id="adm_tier" onchange="UI.admTierChange()">'
-          +'<option value="core">OMEGA Core (Tier 1)</option>'
-          +'<option value="performance">OMEGA Performance (Tier 2)</option>'
-          +'<option value="alpha-omega">Enterprise · Alpha &amp; Omega (Tier 3)</option>'
+        h+=frow("Tier level", '<select id="adm_tier" onchange="UI.admTierChange()">'
+          +'<option value="1">OMEGA Core (Tier 1 / Standard)</option>'
+          +'<option value="2">OMEGA Performance (Tier 2 / Deluxe)</option>'
+          +'<option value="3">Enterprise · Alpha &amp; Omega (Tier 3)</option>'
           +'</select>');
-        h+='<div id="adm_apps_wrap" style="display:none"><div class="section-h">Marketplace apps (pick up to 5) <span id="adm_pickcount" class="small muted"></span></div><div id="adm_apps" class="flex" style="flex-wrap:wrap;gap:8px"></div></div>';
+        h+='<div id="adm_apps_wrap"><div class="section-h">Extra app unlocks <span class="small muted">(unlock specific apps above this org\'s tier)</span></div><div id="adm_apps" class="flex" style="flex-wrap:wrap;gap:8px"></div></div>';
         h+='<div class="flex" style="margin-top:12px"><button class="btn" onclick="UI.admLoad()">Load Org</button><button class="btn pri" onclick="UI.admSave()">Save Tier</button></div>';
         h+='<div id="adm_msg" class="small muted" style="margin-top:8px"></div>';
+
+        // ---- TEST / PREVIEW AS TIER ----
+        h+='<div class="section-h" style="margin-top:22px">🧪 Test / Preview as a Tier</div>';
+        h+='<p class="small muted" style="margin-top:0">Preview the tool exactly as a customer on each tier would see it — without logging out. Use this to verify gating end-to-end.</p>';
+        h+='<div class="flex" style="flex-wrap:wrap;gap:8px">';
+        h+='<button class="btn sm" onclick="UI.admTestAs(\'core\')">Preview as Core (Tier 1)</button>';
+        h+='<button class="btn sm" onclick="UI.admTestAs(\'perf\')">Preview as Performance (Tier 2)</button>';
+        h+='<button class="btn sm" onclick="UI.admTestAs(\'core-unlocked\')">Preview as Core + this app unlocked</button>';
+        h+='<button class="btn sm" onclick="UI.admTestAs(\'ent\')">Preview as Enterprise (Tier 3)</button>';
+        h+='</div>';
+        h+='<p class="small muted" style="margin-top:8px">Core (Tier 1) shows the upgrade screen — correct, this app is Deluxe/Tier 2. The others open the full tool. "Core + unlocked" tests the per-app unlock override.</p>';
+
         h+='</div></div>';
       }
 
@@ -1165,48 +1209,35 @@ label.f { display:block; font-size:11px; color:#7b8794; text-transform:uppercase
   }
 
   /* ---------------- ADMIN: org tier management ---------------- */
-  var ADM = { picks: [] };
+  var ADM = { unlocked: [] };
 
   function admInitPanel(){
-    // prefill with the current admin's own org for convenience
     if($("adm_org") && !$("adm_org").value) $("adm_org").value = "";
     admTierChange();
   }
 
   function admTierChange(){
-    var tier = $("adm_tier") ? $("adm_tier").value : "core";
-    var wrap = $("adm_apps_wrap");
-    if(!wrap) return;
-    if(tier === "performance"){
-      wrap.style.display = "block";
-      admRenderApps();
-    } else {
-      wrap.style.display = "none";
-    }
+    // Extra-unlock list is always available (unlock any tool above tier).
+    admRenderApps();
   }
 
   function admRenderApps(){
     var box = $("adm_apps"); if(!box) return;
-    var mkt = ENT.marketplaceApps();
+    var tools = OT ? OT.all() : [];
     var h='';
-    mkt.forEach(function(a){
-      var on = admHasPick(a.id);
-      h+='<button class="btn sm'+(on?' dark':'')+'" onclick="UI.admTogglePick(\''+a.id+'\')">'+(on?'✓ ':'')+esc(a.name)+'</button>';
+    tools.forEach(function(t){
+      if(t.soon) return; // can't unlock a not-yet-live tool
+      var on = admHasUnlock(t.key);
+      h+='<button class="btn sm'+(on?' dark':'')+'" onclick="UI.admToggleUnlock(\''+t.key+'\')">'+(on?'✓ ':'')+esc(t.name)+'</button>';
     });
-    box.innerHTML=h;
-    var pc=$("adm_pickcount");
-    if(pc) pc.textContent = "— "+ADM.picks.length+" / 5 selected";
+    box.innerHTML=h || '<span class="small muted">Tool registry not loaded.</span>';
   }
 
-  function admHasPick(id){ for(var i=0;i<ADM.picks.length;i++) if(ADM.picks[i]===id) return true; return false; }
+  function admHasUnlock(k){ for(var i=0;i<ADM.unlocked.length;i++) if(ADM.unlocked[i]===k) return true; return false; }
 
-  function admTogglePick(id){
-    if(admHasPick(id)){
-      ADM.picks = ADM.picks.filter(function(x){ return x!==id; });
-    } else {
-      if(ADM.picks.length >= 5){ toast("Performance is limited to 5 apps"); return; }
-      ADM.picks.push(id);
-    }
+  function admToggleUnlock(k){
+    if(admHasUnlock(k)) ADM.unlocked = ADM.unlocked.filter(function(x){ return x!==k; });
+    else ADM.unlocked.push(k);
     admRenderApps();
   }
 
@@ -1217,27 +1248,81 @@ label.f { display:block; font-size:11px; color:#7b8794; text-transform:uppercase
     omegaOrgRef(org).get().then(function(d){
       if(d.exists){
         var data=d.data();
-        $("adm_tier").value = ENT.normTier(data.tier||"core");
-        ADM.picks = (data.apps||[]).slice(0,5);
-        $("adm_msg").innerHTML='Loaded. Current tier: <b>'+esc(ENT.TIERS[ENT.normTier(data.tier)]?ENT.TIERS[ENT.normTier(data.tier)].label:data.tier)+'</b>';
+        var lvl = (typeof data.tierLevel==="number") ? data.tierLevel : 1;
+        $("adm_tier").value = String(lvl);
+        ADM.unlocked = (data.unlockedTools||[]).slice();
+        $("adm_msg").innerHTML='Loaded. Current tier: <b>'+esc(tierName(lvl))+'</b>'+(ADM.unlocked.length?(' · '+ADM.unlocked.length+' extra unlock(s)'):'');
       } else {
-        $("adm_tier").value="core"; ADM.picks=[];
+        $("adm_tier").value="1"; ADM.unlocked=[];
         $("adm_msg").textContent="No record yet — will be created on save.";
       }
-      admTierChange();
+      admRenderApps();
     }).catch(function(e){ $("adm_msg").textContent="Load failed: "+String(e&&e.message||e); });
   }
 
   function admSave(){
     var org=($("adm_org").value||"").trim().toLowerCase();
     if(!org){ toast("Enter an org domain"); return; }
-    var tier=$("adm_tier").value;
-    var doc={ orgId:org, tier:tier, apps:(tier==="performance"?ADM.picks.slice(0,5):[]), updatedAt:Date.now(), updatedBy:(USER&&USER.email)||"" };
+    var lvl=parseInt($("adm_tier").value,10); if(isNaN(lvl)) lvl=1;
+    var doc={ orgId:org, tierLevel:lvl, unlockedTools:ADM.unlocked.slice(), updatedAt:Date.now(), updatedBy:(USER&&USER.email)||"" };
     $("adm_msg").textContent="Saving…";
     omegaOrgRef(org).set(doc).then(function(){
-      $("adm_msg").innerHTML='✓ Saved. <b>'+esc(org)+'</b> is now <b>'+esc(ENT.TIERS[ENT.normTier(tier)].label)+'</b>'+(tier==="performance"?(' with '+doc.apps.length+' app(s)'):'')+'.';
+      $("adm_msg").innerHTML='✓ Saved. <b>'+esc(org)+'</b> is now <b>'+esc(tierName(lvl))+'</b>'+(ADM.unlocked.length?(' with '+ADM.unlocked.length+' extra unlock(s)'):'')+'.';
       toast("Tier saved for "+org);
     }).catch(function(e){ $("adm_msg").textContent="Save failed: "+String(e&&e.message||e); });
+  }
+
+  /* ---- TEST / PREVIEW AS TIER ----
+     Swaps ORG for a simulated one and re-runs the REAL gate + render.
+     Non-destructive — no Firestore writes. */
+  var REAL_ORG = null;
+
+  function admTestAs(mode){
+    if(!REAL_ORG) REAL_ORG = ORG;
+    var sim;
+    if(mode==="core")               sim={ orgId:"preview-core.test",     tierLevel:1, unlockedTools:[],        requiredTools:[], customToolUrls:{}, isAdmin:false };
+    else if(mode==="perf")          sim={ orgId:"preview-perf.test",     tierLevel:2, unlockedTools:[],        requiredTools:[], customToolUrls:{}, isAdmin:false };
+    else if(mode==="core-unlocked") sim={ orgId:"preview-unlock.test",   tierLevel:1, unlockedTools:[APP_KEY], requiredTools:[], customToolUrls:{}, isAdmin:false };
+    else                            sim={ orgId:"preview-ent.test",      tierLevel:3, unlockedTools:[],        requiredTools:[], customToolUrls:{}, isAdmin:false };
+
+    ORG = sim;
+    WS = { orgId: sim.orgId, name: "PREVIEW" };
+    $("wsName").textContent = "PREVIEW MODE";
+    var tb=$("tierBadge"); if(tb) tb.textContent = tierName(sim.tierLevel).toUpperCase();
+
+    showPreviewBar(sim);
+    if(!canOpenThisApp(sim)){
+      renderUpgrade(sim, "preview@"+sim.orgId);
+    } else {
+      bindNav();
+      STATE.mod="sites"; setNavActive("sites");
+      seedIfEmpty().then(function(){ render(); reAddPreviewBar(); });
+    }
+  }
+
+  function showPreviewBar(sim){
+    var bar=$("previewBar");
+    if(!bar){
+      bar=el("div"); bar.id="previewBar";
+      bar.style.cssText="position:fixed;bottom:0;left:0;right:0;background:#8a2be2;color:#fff;padding:10px 18px;display:flex;align-items:center;gap:14px;z-index:300;font-size:13px;box-shadow:0 -4px 20px rgba(0,0,0,.25)";
+      document.body.appendChild(bar);
+    }
+    var note = (sim.tierLevel===1 && sim.unlockedTools.indexOf(APP_KEY)>=0) ? '(app individually unlocked) ' : '';
+    bar.innerHTML='🧪 <b>Preview mode</b> — viewing as <b>'+esc(tierName(sim.tierLevel))+'</b> '+note
+      +'<span style="flex:1"></span>'
+      +'<button onclick="UI.admExitPreview()" style="background:#fff;color:#8a2be2;border:none;padding:6px 14px;border-radius:6px;font-weight:700;cursor:pointer">Exit preview →</button>';
+    bar.style.display="flex";
+  }
+  function reAddPreviewBar(){ var b=$("previewBar"); if(b) b.style.display="flex"; }
+
+  function admExitPreview(){
+    ORG = REAL_ORG; REAL_ORG=null;
+    WS = { orgId: ORG.orgId, name: (COMPANY||ORG.orgId) };
+    $("wsName").textContent = WS.name + (DEMO?" · DEMO":"");
+    var tb=$("tierBadge"); if(tb) tb.textContent=tierName(ORG.tierLevel).toUpperCase();
+    var b=$("previewBar"); if(b) b.style.display="none";
+    bindNav();
+    STATE.mod="settings"; setNavActive("settings"); render();
   }
 
   function crmPickProvider(pk){
@@ -1432,7 +1517,8 @@ label.f { display:block; font-size:11px; color:#7b8794; text-transform:uppercase
     openSync:openSync,
     crmPickProvider:crmPickProvider, crmSaveCreds:crmSaveCreds, crmTest:crmTest,
     crmDisconnect:crmDisconnect, crmSaveMapping:crmSaveMapping,
-    admTierChange:admTierChange, admTogglePick:admTogglePick, admLoad:admLoad, admSave:admSave
+    admTierChange:admTierChange, admToggleUnlock:admToggleUnlock, admLoad:admLoad, admSave:admSave,
+    admTestAs:admTestAs, admExitPreview:admExitPreview
   };
 
   boot();
