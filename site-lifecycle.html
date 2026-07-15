@@ -140,7 +140,7 @@ label.f { display:block; font-size:11px; color:#7b8794; text-transform:uppercase
   <span class="tb-ws">Site Lifecycle Console &nbsp;·&nbsp; <b id="wsName">Loading…</b></span>
   <div class="tb-right">
     <button id="syncBtn" class="btn sm" style="background:#12233f;border-color:#2a3c5c;color:#cfe0ff" onclick="UI.openSync()">⟳ Sync to CRM</button>
-    <span class="tb-badge">ENTERPRISE</span>
+    <span class="tb-badge" id="tierBadge">—</span>
     <span id="userEmail">—</span>
     <div class="tb-user" id="userInitial">?</div>
   </div>
@@ -172,6 +172,8 @@ label.f { display:block; font-size:11px; color:#7b8794; text-transform:uppercase
 <!-- Firebase compat v8 -->
 <!-- ClearSky config (Firebase + Maps keys). Optional: inline fallback exists. -->
 <script src="/config.js"></script>
+<!-- Shared tier/entitlement helper -->
+<script src="/entitlements.js"></script>
 <!-- Firebase compat v8 -->
 <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
 <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-auth.js"></script>
@@ -212,13 +214,19 @@ label.f { display:block; font-size:11px; color:#7b8794; text-transform:uppercase
   /* Google Maps key — from config.js if present, else the shared key. */
   var MAPS_KEY = (CSCONFIG && CSCONFIG.googleMapsKey) ? CSCONFIG.googleMapsKey : "AIzaSyC0roZ_qMwtbVzqRLtNx9nrCeaGqrE1sNs";
 
-  /* ---- Enterprise workspaces (email domain -> config) ----
-     Only these domains may load this deluxe tool. Others are locked out. */
-  var WORKSPACES = {
-    "nextnrg.com":     { orgId: "nextnrg",   name: "NextNRG",          enterprise: true },
-    "csebuilders.com": { orgId: "clearsky",  name: "ClearSky (Admin)", enterprise: true },
-    "clearsky-usa.com":{ orgId: "clearsky",  name: "ClearSky (Admin)", enterprise: true }
-  };
+  /* ---- Platform identity ----
+     No hardcoded tenant list — any provisioned org (repo has config.js
+     with a tier) can use tools they're entitled to. orgId is the FULL
+     email domain, matching userOrg() in the Firestore rules.
+
+     This tool's app id (for entitlement checks): */
+  var APP_ID = "site-lifecycle";
+
+  /* Admin domains: may set any org's tier in the omega_orgs doc. */
+  var ADMIN_DOMAINS = { "csebuilders.com": true, "clearsky-usa.com": true };
+
+  /* Company display name comes from config.js if present. */
+  var COMPANY = (CSCONFIG && CSCONFIG.companyName) ? CSCONFIG.companyName : "ClearSky OMEGA";
 
   /* ---- AHJ tool link (stubbed — separate non-enterprise offering) ---- */
   var AHJ_TOOL_URL = "https://ahj.csebuilders.com"; // TODO: live when AHJ tool ships
@@ -363,39 +371,87 @@ label.f { display:block; font-size:11px; color:#7b8794; text-transform:uppercase
     return { collection:collection, batch:batch };
   }
 
+  var ENT = window.OMEGAEntitlements;
+  if(!ENT){
+    ENT = {
+      TIERS:{ "core":{label:"OMEGA Core"}, "performance":{label:"OMEGA Performance"}, "alpha-omega":{label:"Enterprise (Alpha & Omega)"} },
+      normTier:function(t){ t=(t||"core").toString().toLowerCase().replace(/\s+/g,"-"); return (t==="enterprise"||t==="alpha-&-omega")?"alpha-omega":((t==="performance"||t==="alpha-omega")?t:"core"); },
+      tierFromConfig:function(){ var c=window.CLEARSKY_CONFIG; return c&&c.tier?this.normTier(c.tier):null; },
+      canOpenApp:function(o,a){ return false; },
+      marketplaceApps:function(){ return []; }
+    };
+  }
+  var ORG = null; // resolved { orgId, tier, apps[], isAdmin }
+
+  function omegaOrgRef(orgId){ return db.collection("omega_orgs").doc(orgId); }
+
   function onUser(u){
     USER = u;
-    var email = u.email || "demo@nextnrg.com"; // anon fallback demo domain
-    var domain = email.split("@")[1] || "";
-    WS = WORKSPACES[domain];
-    if(!WS){
-      // not an enterprise domain -> lock out
-      renderLockout(email);
-      return;
-    }
-    if(!WS.enterprise){ renderLockout(email); return; }
-    $("wsName").textContent = WS.name + (DEMO ? " · DEMO" : "");
+    var email = u.email || "demo@nextnrg.com";
+    var domain = (email.split("@")[1] || "").toLowerCase();
+    if(!domain){ renderNoAuth(); return; }
+
     $("userEmail").textContent = email;
     $("userInitial").textContent = (email[0]||"?").toUpperCase();
-    bindNav();
-    seedIfEmpty().then(function(){ render(); }).catch(function(e){
-      $("app").innerHTML='<div class="card"><div class="card-b"><h3>Couldn\'t load data</h3><p class="muted small">'+esc(String(e&&e.message||e))+'</p></div></div>';
+
+    // Resolve org entitlement: prefer Firestore omega_orgs doc (admin-controlled),
+    // fall back to tier declared in config.js.
+    resolveOrg(domain, email).then(function(org){
+      ORG = org;
+      WS = { orgId: org.orgId, name: (COMPANY || org.orgId) };
+      $("wsName").textContent = WS.name + (DEMO ? " · DEMO" : "");
+      var tb=$("tierBadge"); if(tb){ tb.textContent = (ENT.TIERS[org.tier]?ENT.TIERS[org.tier].label:org.tier).toUpperCase(); }
+
+      // Entitlement gate: can this org open THIS app?
+      var orgEnt = { tier: org.tier, apps: org.apps };
+      if(!ENT.canOpenApp(orgEnt, APP_ID)){
+        renderUpgrade(org, email);
+        return;
+      }
+      bindNav();
+      seedIfEmpty().then(function(){ render(); }).catch(function(e){
+        $("app").innerHTML='<div class="card"><div class="card-b"><h3>Couldn\'t load data</h3><p class="muted small">'+esc(String(e&&e.message||e))+'</p></div></div>';
+      });
+    });
+  }
+
+  function resolveOrg(domain, email){
+    var isAdmin = !!ADMIN_DOMAINS[domain];
+    var configTier = ENT.tierFromConfig(); // from config.js if set
+    // In demo mode, simulate a Performance org that has picked this app,
+    // so the tool is explorable. Admins are always alpha-omega.
+    if(DEMO){
+      var t = isAdmin ? "alpha-omega" : (configTier || "performance");
+      var apps = t==="performance" ? [APP_ID] : [];
+      return Promise.resolve({ orgId:domain, tier:t, apps:apps, isAdmin:isAdmin });
+    }
+    return omegaOrgRef(domain).get().then(function(d){
+      if(d.exists){
+        var data=d.data();
+        return { orgId:domain, tier:ENT.normTier(data.tier||configTier||"core"), apps:data.apps||[], isAdmin:isAdmin };
+      }
+      // No org doc yet. Admins get full access; others fall back to config.js
+      // tier (declaration) but with NO marketplace picks until admin sets them.
+      return { orgId:domain, tier:(isAdmin?"alpha-omega":ENT.normTier(configTier||"core")), apps:[], isAdmin:isAdmin };
+    }).catch(function(){
+      return { orgId:domain, tier:(isAdmin?"alpha-omega":ENT.normTier(configTier||"core")), apps:[], isAdmin:isAdmin };
     });
   }
 
   function renderNoAuth(){
-    $("app").innerHTML = '<div class="card"><div class="card-b"><h3>Sign-in required</h3><p class="muted">This console requires an authenticated enterprise account. Anonymous access is unavailable.</p></div></div>';
+    $("app").innerHTML = '<div class="card"><div class="card-b"><h3>Sign-in required</h3><p class="muted">This console requires an authenticated account.</p></div></div>';
   }
-  function renderLockout(email){
-    $("wsName").textContent = "Access Restricted";
-    $("userEmail").textContent = email;
+
+  function renderUpgrade(org, email){
+    var tierLabel = ENT.TIERS[org.tier] ? ENT.TIERS[org.tier].label : org.tier;
     $("app").innerHTML =
       '<div class="card"><div class="card-b" style="text-align:center;padding:50px 20px">'
       + '<div style="font-size:40px">🔒</div>'
-      + '<h3 style="margin:12px 0 6px">Enterprise Console</h3>'
-      + '<p class="muted">The Site Lifecycle Console is a deluxe offering available to enterprise accounts only.</p>'
-      + '<p class="muted small">Your domain (<b>'+esc(email.split("@")[1]||"")+'</b>) is not provisioned for this tool.</p>'
-      + '<p style="margin-top:18px"><a class="btn" href="'+AHJ_TOOL_URL+'" target="_blank">Explore the AHJ Lookup tool →</a></p>'
+      + '<h3 style="margin:12px 0 6px">Site Lifecycle Console</h3>'
+      + '<p class="muted">This is an <b>OMEGA Performance</b> &amp; <b>Enterprise</b> app.</p>'
+      + '<p class="muted small">Your plan (<b>'+esc(tierLabel)+'</b>) doesn\'t include it yet. '
+      + 'Performance accounts can add it as one of their marketplace apps; Enterprise includes it automatically.</p>'
+      + '<p class="muted small">Contact ClearSky to add this app to <b>'+esc(org.orgId)+'</b>.</p>'
       + '</div></div>';
   }
 
@@ -1013,6 +1069,22 @@ label.f { display:block; font-size:11px; color:#7b8794; text-transform:uppercase
       var prov = cfg.provider || "";
       var h = entLockBanner("Connect your CRM and map how OMEGA records flow into it.");
 
+      // ---- ADMIN: tier & app entitlement management (admins only) ----
+      if(ORG && ORG.isAdmin){
+        h+='<div class="card" style="margin-bottom:16px;border-color:#0e1b33"><div class="card-h" style="background:#0e1b33;color:#fff;border-radius:10px 10px 0 0"><h3 style="color:#fff">⚙ Platform Admin — Org Tiers</h3><span class="sub" style="color:#9fb4d6">Set any org\'s tier &amp; marketplace apps</span></div><div class="card-b">';
+        h+='<p class="small muted" style="margin-top:0">Enter an org domain, choose its tier, and (for Performance) select up to 5 marketplace apps. Saved to <code>omega_orgs/{domain}</code>. Only admin domains can write this.</p>';
+        h+=frow("Org domain", '<input id="adm_org" placeholder="acmesolar.com">');
+        h+=frow("Tier", '<select id="adm_tier" onchange="UI.admTierChange()">'
+          +'<option value="core">OMEGA Core (Tier 1)</option>'
+          +'<option value="performance">OMEGA Performance (Tier 2)</option>'
+          +'<option value="alpha-omega">Enterprise · Alpha &amp; Omega (Tier 3)</option>'
+          +'</select>');
+        h+='<div id="adm_apps_wrap" style="display:none"><div class="section-h">Marketplace apps (pick up to 5) <span id="adm_pickcount" class="small muted"></span></div><div id="adm_apps" class="flex" style="flex-wrap:wrap;gap:8px"></div></div>';
+        h+='<div class="flex" style="margin-top:12px"><button class="btn" onclick="UI.admLoad()">Load Org</button><button class="btn pri" onclick="UI.admSave()">Save Tier</button></div>';
+        h+='<div id="adm_msg" class="small muted" style="margin-top:8px"></div>';
+        h+='</div></div>';
+      }
+
       // provider picker
       h+='<div class="card"><div class="card-h"><h3>CRM Integration</h3><span class="sub">Choose your CRM &amp; connect securely</span>';
       h+='<div class="spacer"></div>';
@@ -1087,7 +1159,85 @@ label.f { display:block; font-size:11px; color:#7b8794; text-transform:uppercase
         }
         paintMap("candidates");
       }
+
+      if(ORG && ORG.isAdmin){ admInitPanel(); }
     });
+  }
+
+  /* ---------------- ADMIN: org tier management ---------------- */
+  var ADM = { picks: [] };
+
+  function admInitPanel(){
+    // prefill with the current admin's own org for convenience
+    if($("adm_org") && !$("adm_org").value) $("adm_org").value = "";
+    admTierChange();
+  }
+
+  function admTierChange(){
+    var tier = $("adm_tier") ? $("adm_tier").value : "core";
+    var wrap = $("adm_apps_wrap");
+    if(!wrap) return;
+    if(tier === "performance"){
+      wrap.style.display = "block";
+      admRenderApps();
+    } else {
+      wrap.style.display = "none";
+    }
+  }
+
+  function admRenderApps(){
+    var box = $("adm_apps"); if(!box) return;
+    var mkt = ENT.marketplaceApps();
+    var h='';
+    mkt.forEach(function(a){
+      var on = admHasPick(a.id);
+      h+='<button class="btn sm'+(on?' dark':'')+'" onclick="UI.admTogglePick(\''+a.id+'\')">'+(on?'✓ ':'')+esc(a.name)+'</button>';
+    });
+    box.innerHTML=h;
+    var pc=$("adm_pickcount");
+    if(pc) pc.textContent = "— "+ADM.picks.length+" / 5 selected";
+  }
+
+  function admHasPick(id){ for(var i=0;i<ADM.picks.length;i++) if(ADM.picks[i]===id) return true; return false; }
+
+  function admTogglePick(id){
+    if(admHasPick(id)){
+      ADM.picks = ADM.picks.filter(function(x){ return x!==id; });
+    } else {
+      if(ADM.picks.length >= 5){ toast("Performance is limited to 5 apps"); return; }
+      ADM.picks.push(id);
+    }
+    admRenderApps();
+  }
+
+  function admLoad(){
+    var org=($("adm_org").value||"").trim().toLowerCase();
+    if(!org){ toast("Enter an org domain"); return; }
+    $("adm_msg").textContent="Loading "+org+"…";
+    omegaOrgRef(org).get().then(function(d){
+      if(d.exists){
+        var data=d.data();
+        $("adm_tier").value = ENT.normTier(data.tier||"core");
+        ADM.picks = (data.apps||[]).slice(0,5);
+        $("adm_msg").innerHTML='Loaded. Current tier: <b>'+esc(ENT.TIERS[ENT.normTier(data.tier)]?ENT.TIERS[ENT.normTier(data.tier)].label:data.tier)+'</b>';
+      } else {
+        $("adm_tier").value="core"; ADM.picks=[];
+        $("adm_msg").textContent="No record yet — will be created on save.";
+      }
+      admTierChange();
+    }).catch(function(e){ $("adm_msg").textContent="Load failed: "+String(e&&e.message||e); });
+  }
+
+  function admSave(){
+    var org=($("adm_org").value||"").trim().toLowerCase();
+    if(!org){ toast("Enter an org domain"); return; }
+    var tier=$("adm_tier").value;
+    var doc={ orgId:org, tier:tier, apps:(tier==="performance"?ADM.picks.slice(0,5):[]), updatedAt:Date.now(), updatedBy:(USER&&USER.email)||"" };
+    $("adm_msg").textContent="Saving…";
+    omegaOrgRef(org).set(doc).then(function(){
+      $("adm_msg").innerHTML='✓ Saved. <b>'+esc(org)+'</b> is now <b>'+esc(ENT.TIERS[ENT.normTier(tier)].label)+'</b>'+(tier==="performance"?(' with '+doc.apps.length+' app(s)'):'')+'.';
+      toast("Tier saved for "+org);
+    }).catch(function(e){ $("adm_msg").textContent="Save failed: "+String(e&&e.message||e); });
   }
 
   function crmPickProvider(pk){
@@ -1281,7 +1431,8 @@ label.f { display:block; font-size:11px; color:#7b8794; text-transform:uppercase
     setStage:setStage, markComplete:markComplete, back:back, closeModal:closeModal,
     openSync:openSync,
     crmPickProvider:crmPickProvider, crmSaveCreds:crmSaveCreds, crmTest:crmTest,
-    crmDisconnect:crmDisconnect, crmSaveMapping:crmSaveMapping
+    crmDisconnect:crmDisconnect, crmSaveMapping:crmSaveMapping,
+    admTierChange:admTierChange, admTogglePick:admTogglePick, admLoad:admLoad, admSave:admSave
   };
 
   boot();
