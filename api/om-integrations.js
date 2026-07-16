@@ -247,7 +247,7 @@ module.exports = async (req, res) => {
 /* Recompute hasTelemetry/connectedCount on the status doc so the
    tools' gate and the cron query stay accurate. */
 async function recomputeFlags(orgId) {
-  const CAT = require("./_catalog.js"); // small shared map of provider->feeds
+  const CAT = require("./catalog.js"); // small shared map of provider->feeds
   const d = await statusRef(orgId).get();
   const providers = d.exists ? (d.data().providers || {}) : {};
   let telemetry = 0, total = 0;
