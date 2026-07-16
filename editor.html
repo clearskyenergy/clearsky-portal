@@ -22327,10 +22327,16 @@ async function sendToPermitCreator() {
       const name = document.getElementById('pname')?.value.trim() || 'Untitled';
       const address = document.getElementById('addr-in')?.value.trim() || '';
       const mapState = {};
-      if (window._gmap) {
-        const c = _gmap.getCenter();
-        mapState.lat = c.lat(); mapState.lng = c.lng();
-        mapState.zoom = _gmap.getZoom();
+      try {
+        if (window._gmap && typeof _gmap.getCenter === 'function') {
+          const c = _gmap.getCenter();
+          if (c && typeof c.lat === 'function') {
+            mapState.lat = c.lat(); mapState.lng = c.lng();
+            mapState.zoom = _gmap.getZoom();
+          }
+        }
+      } catch (mapErr) {
+        console.warn('mapState skipped:', mapErr.message);
       }
       const payload = {
         name, address,
