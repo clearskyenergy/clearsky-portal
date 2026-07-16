@@ -195,6 +195,23 @@
       return null;
     },
 
+    /* Resolve an array of pinned KEYS to the matching tool objects, in stable
+       catalog order. This is the dashboard's source of truth for "My
+       Applications": if the customer pinned a tool, it renders — we do NOT
+       re-filter through isUnlocked() here, because a pin is an explicit user
+       choice and the tool was already unlocked when they added it. Visibility
+       (tool.orgs) is still honored so client-specific tools never leak across
+       tenants. Unknown keys (stale pins for removed tools) are skipped. */
+    pinnedTools: function (keys, workspace) {
+      var out = [];
+      if (!keys || !keys.length) return out;
+      for (var i = 0; i < this._tools.length; i++) {
+        var t = this._tools[i];
+        if (keys.indexOf(t.key) >= 0 && this.isVisible(t, workspace)) out.push(t);
+      }
+      return out;
+    },
+
     /* ── TOOL HOST ──
        The ONE deployment that hosts every shared tool .html. All portals
        (admin + every client) link here, so a tool fix ships once. Set this
