@@ -7,6 +7,8 @@
     "build": "echo 'Static site - no build needed'",
     "start": "serve public"
   },
-  "dependencies": {},
+  "dependencies": {
+    "firebase-admin": "^12.7.0"
+  },
   "devDependencies": {}
 }
