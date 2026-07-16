@@ -1,0 +1,973 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ClearSky OMEGA — SLA &amp; Contractual Intelligence</title>
+<style>
+/* ===== ES5-only, no build step. OMEGA dark-navy topbar theme ===== */
+* { box-sizing: border-box; }
+html, body { margin:0; padding:0; height:100%; }
+body { font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif; color:#1b2733; background:#eef1f4; font-size:14px; }
+a { color:#1461d2; text-decoration:none; cursor:pointer; }
+a:hover { text-decoration:underline; }
+
+.tb { display:flex; align-items:center; height:52px; background:#0e1b33; color:#fff; padding:0 16px; position:sticky; top:0; z-index:50; }
+.tb-omega { height:26px; margin-right:9px; }
+.tb-logo-txt { font-weight:700; font-size:17px; letter-spacing:.3px; }
+.tb-logo-txt span { color:#4da3ff; }
+.tb-sep { width:1px; height:24px; background:#2a3c5c; margin:0 16px; }
+.tb-ws { font-size:13px; color:#9fb4d6; }
+.tb-ws b { color:#fff; }
+.tb-right { margin-left:auto; display:flex; align-items:center; gap:14px; font-size:12px; color:#9fb4d6; }
+.tb-badge { background:#123; border:1px solid #2a3c5c; color:#8fc0ff; padding:3px 9px; border-radius:20px; font-size:11px; font-weight:600; letter-spacing:.4px; }
+.tb-user { width:28px; height:28px; border-radius:50%; background:#2a3c5c; display:flex; align-items:center; justify-content:center; color:#cfe0ff; font-weight:700; font-size:12px; }
+
+.nav { display:flex; background:#12233f; padding:0 8px; flex-wrap:wrap; }
+.nav a { color:#a9bcd8; padding:11px 15px; font-size:13px; font-weight:600; border-bottom:3px solid transparent; }
+.nav a.on { color:#fff; border-bottom-color:#4da3ff; background:#0e1b33; }
+
+.wrap { padding:18px; max-width:1500px; margin:0 auto; }
+.row { display:flex; gap:18px; align-items:flex-start; }
+.col { flex:1; min-width:0; }
+
+.card { background:#fff; border:1px solid #dde3ea; border-radius:10px; box-shadow:0 1px 2px rgba(16,30,54,.05); margin-bottom:18px; }
+.card-h { padding:13px 16px; border-bottom:1px solid #edf1f5; display:flex; align-items:center; gap:10px; }
+.card-h h3 { margin:0; font-size:14px; font-weight:700; }
+.card-h .sub { font-size:12px; color:#7b8794; font-weight:400; }
+.card-b { padding:16px; }
+
+.btn { display:inline-flex; align-items:center; gap:6px; border:1px solid #cbd4de; background:#fff; color:#1b2733; padding:7px 13px; border-radius:7px; font-size:13px; font-weight:600; cursor:pointer; }
+.btn:hover { background:#f4f7fa; }
+.btn.pri { background:#1461d2; border-color:#1461d2; color:#fff; }
+.btn.pri:hover { background:#0f4fae; }
+.btn.dark { background:#0e1b33; border-color:#0e1b33; color:#fff; }
+.btn.sm { padding:4px 9px; font-size:12px; }
+.btn.ghost { border-color:transparent; background:transparent; color:#1461d2; }
+.btn.danger { background:#b42323; border-color:#b42323; color:#fff; }
+
+.path { display:flex; border-radius:7px; overflow:hidden; border:1px solid #d5dde6; margin-bottom:16px; }
+.path .st { flex:1; position:relative; padding:10px 8px 10px 22px; font-size:12px; font-weight:600; text-align:center; background:#eef2f6; color:#5b6b7c; cursor:pointer; white-space:nowrap; }
+.path .st:after { content:""; position:absolute; right:-11px; top:0; width:0; height:0; border-top:20px solid transparent; border-bottom:20px solid transparent; border-left:11px solid #eef2f6; z-index:2; }
+.path .st:before { content:""; position:absolute; right:-13px; top:0; width:0; height:0; border-top:20px solid transparent; border-bottom:20px solid transparent; border-left:11px solid #d5dde6; z-index:1; }
+.path .st.done { background:#5a76c9; color:#fff; }
+.path .st.done:after { border-left-color:#5a76c9; }
+.path .st.cur { background:#0e1b33; color:#fff; }
+.path .st.cur:after { border-left-color:#0e1b33; }
+.path .st:last-child:after, .path .st:last-child:before { display:none; }
+
+table { width:100%; border-collapse:collapse; font-size:13px; }
+th { text-align:left; font-size:11px; text-transform:uppercase; letter-spacing:.4px; color:#7b8794; padding:8px 10px; border-bottom:1px solid #e4e9ef; font-weight:700; }
+td { padding:9px 10px; border-bottom:1px solid #eef2f6; vertical-align:middle; }
+tr:hover td { background:#f8fafc; }
+.tbl-wrap { overflow:auto; }
+
+.dl { display:grid; grid-template-columns:1fr 1fr; gap:12px 20px; }
+.dl .fld label { display:block; font-size:11px; color:#7b8794; text-transform:uppercase; letter-spacing:.4px; margin-bottom:3px; }
+.dl .fld .val { font-size:13px; color:#1b2733; }
+.section-h { font-size:12px; font-weight:700; color:#3a4a5c; margin:18px 0 8px; padding-bottom:5px; border-bottom:1px solid #edf1f5; display:flex; align-items:center; gap:6px; }
+
+.pill { display:inline-block; padding:2px 9px; border-radius:20px; font-size:11px; font-weight:600; }
+.pill.blue { background:#e3efff; color:#1461d2; }
+.pill.green { background:#e2f5ea; color:#137a44; }
+.pill.amber { background:#fff2d9; color:#9a6800; }
+.pill.red { background:#fde3e3; color:#b42323; }
+.pill.gray { background:#eceff3; color:#5b6b7c; }
+.pill.purple { background:#efe6ff; color:#6b3fd4; }
+
+input, select, textarea { font-family:inherit; font-size:13px; padding:8px 10px; border:1px solid #cbd4de; border-radius:7px; width:100%; background:#fff; }
+input:focus, select:focus, textarea:focus { outline:none; border-color:#1461d2; box-shadow:0 0 0 3px rgba(20,97,210,.12); }
+label.f { display:block; font-size:11px; color:#7b8794; text-transform:uppercase; letter-spacing:.4px; margin:0 0 4px; }
+.form-row { margin-bottom:13px; }
+.form-2 { display:grid; grid-template-columns:1fr 1fr; gap:13px; }
+.form-3 { display:grid; grid-template-columns:1fr 1fr 1fr; gap:13px; }
+.chk { display:flex; align-items:center; gap:8px; font-size:13px; padding:6px 0; }
+.chk input { width:auto; }
+
+.ov { position:fixed; inset:0; background:rgba(14,27,51,.5); display:none; align-items:flex-start; justify-content:center; z-index:100; padding:40px 16px; overflow:auto; }
+.ov.on { display:flex; }
+.modal { background:#fff; border-radius:12px; width:100%; max-width:620px; box-shadow:0 20px 60px rgba(0,0,0,.3); }
+.modal-h { padding:16px 20px; border-bottom:1px solid #edf1f5; display:flex; align-items:center; }
+.modal-h h3 { margin:0; font-size:16px; }
+.modal-h .x { margin-left:auto; cursor:pointer; color:#7b8794; font-size:20px; line-height:1; }
+.modal-b { padding:20px; }
+.modal-f { padding:14px 20px; border-top:1px solid #edf1f5; display:flex; gap:10px; justify-content:flex-end; }
+
+.subtabs { display:flex; gap:2px; border-bottom:1px solid #e4e9ef; margin-bottom:16px; flex-wrap:wrap; }
+.subtabs a { padding:9px 15px; font-size:13px; font-weight:600; color:#5b6b7c; border-bottom:2px solid transparent; }
+.subtabs a.on { color:#1461d2; border-bottom-color:#1461d2; }
+
+.kpis { display:flex; gap:14px; margin-bottom:18px; flex-wrap:wrap; }
+.kpi { flex:1; min-width:150px; background:#fff; border:1px solid #dde3ea; border-radius:10px; padding:14px 16px; }
+.kpi .n { font-size:26px; font-weight:800; color:#0e1b33; }
+.kpi .n.good { color:#137a44; } .kpi .n.warn { color:#9a6800; } .kpi .n.bad { color:#b42323; }
+.kpi .l { font-size:11px; text-transform:uppercase; letter-spacing:.5px; color:#7b8794; margin-top:2px; }
+.kpi .d { font-size:11px; margin-top:3px; font-weight:600; }
+.kpi .d.up { color:#137a44; } .kpi .d.down { color:#b42323; }
+
+.bar { height:10px; border-radius:6px; background:#eceff3; overflow:hidden; position:relative; }
+.bar > span { display:block; height:100%; border-radius:6px; }
+.bar .thr { position:absolute; top:-3px; bottom:-3px; width:2px; background:#0e1b33; }
+
+/* Availability waterfall */
+.wf { display:flex; flex-direction:column; gap:6px; }
+.wf .step { display:flex; align-items:center; gap:10px; font-size:13px; }
+.wf .step .lbl { width:230px; color:#3a4a5c; }
+.wf .step .track { flex:1; height:22px; background:#f4f7fa; border-radius:5px; position:relative; overflow:hidden; }
+.wf .step .fillb { position:absolute; top:0; bottom:0; border-radius:5px; }
+.wf .step .num { width:80px; text-align:right; font-variant-numeric:tabular-nums; font-weight:600; }
+.wf .step.credit .fillb { background:#c8dcff; }
+.wf .step.debit .fillb { background:#f4c4c4; }
+.wf .step.result .fillb { background:#a9dcc0; }
+
+.muted { color:#7b8794; }
+.empty { text-align:center; padding:40px 20px; color:#98a4b2; font-size:13px; }
+.flex { display:flex; align-items:center; gap:10px; }
+.spacer { flex:1; }
+.small { font-size:12px; }
+.tag-src { font-size:10px; padding:1px 6px; border-radius:4px; font-weight:700; letter-spacing:.3px; }
+.tag-src.repo { background:#e3efff; color:#1461d2; }
+.tag-src.monday { background:#ffe6d6; color:#c8531a; }
+.toast { position:fixed; bottom:22px; right:22px; background:#0e1b33; color:#fff; padding:12px 18px; border-radius:9px; font-size:13px; box-shadow:0 8px 30px rgba(0,0,0,.3); z-index:200; display:none; }
+.toast.on { display:block; }
+.loading { padding:40px; text-align:center; color:#7b8794; }
+.info-lock { background:#e8f0fb; border:1px solid #b9d3f2; border-radius:8px; padding:10px 14px; font-size:12px; color:#1461d2; margin-bottom:16px; }
+.warn-lock { background:#fff7e6; border:1px solid #f0d492; border-radius:8px; padding:10px 14px; font-size:12px; color:#8a6400; margin-bottom:16px; }
+.crit-lock { background:#fde3e3; border:1px solid #f0b3b3; border-radius:8px; padding:10px 14px; font-size:12px; color:#b42323; margin-bottom:16px; }
+.ok-lock { background:#e2f5ea; border:1px solid #a8dcc0; border-radius:8px; padding:10px 14px; font-size:12px; color:#137a44; margin-bottom:16px; }
+
+.dot { width:9px; height:9px; border-radius:50%; display:inline-block; vertical-align:middle; margin-right:5px; }
+.dot.ok { background:#137a44; } .dot.risk { background:#e08600; } .dot.breach { background:#b42323; }
+
+/* gauge ring */
+.gauge { position:relative; width:120px; height:120px; }
+.gauge svg { transform:rotate(-90deg); }
+.gauge .lab { position:absolute; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center; }
+.gauge .lab .big { font-size:24px; font-weight:800; }
+.gauge .lab .sm { font-size:10px; color:#7b8794; text-transform:uppercase; letter-spacing:.4px; }
+
+.tl { position:relative; padding-left:22px; }
+.tl:before { content:""; position:absolute; left:6px; top:4px; bottom:4px; width:2px; background:#e4e9ef; }
+.tl .ev { position:relative; padding:0 0 14px 0; }
+.tl .ev:before { content:""; position:absolute; left:-19px; top:3px; width:10px; height:10px; border-radius:50%; background:#1461d2; border:2px solid #fff; box-shadow:0 0 0 1px #cbd4de; }
+.tl .ev.brc:before { background:#b42323; }
+.tl .ev .t { font-size:11px; color:#98a4b2; }
+.tl .ev .m { font-size:13px; }
+
+.widget { border:1px dashed #b9d3f2; border-radius:10px; padding:14px 16px; background:#f7fafe; }
+.widget .wh { font-size:11px; text-transform:uppercase; letter-spacing:.5px; color:#1461d2; font-weight:700; margin-bottom:8px; }
+code { background:#eef2f6; padding:1px 5px; border-radius:4px; font-size:12px; }
+</style>
+</head>
+<body>
+
+<div class="tb">
+  <img src="/clearsky-omega-mark-white.png" alt="OMEGA" class="tb-omega">
+  <span class="tb-logo-txt">Clear<span>Sky</span> OMEGA</span>
+  <div class="tb-sep"></div>
+  <span class="tb-ws">SLA &amp; Contractual Intelligence &nbsp;·&nbsp; <b id="wsName">Loading…</b></span>
+  <div class="tb-right">
+    <button id="certBtn" class="btn sm" style="background:#12233f;border-color:#2a3c5c;color:#cfe0ff" onclick="UI.openCert()">⤓ Compliance Certificate</button>
+    <span class="tb-badge" id="tierBadge">—</span>
+    <span id="userEmail">—</span>
+    <div class="tb-user" id="userInitial">?</div>
+  </div>
+</div>
+
+<div class="nav" id="nav">
+  <a data-mod="obligations" class="on">Obligations</a>
+  <a data-mod="contracts">Contracts &amp; Terms</a>
+  <a data-mod="availability">Availability Engine</a>
+  <a data-mod="alerts">Early Warning</a>
+  <a data-mod="ledger">Breach Ledger</a>
+  <a data-mod="settings" style="margin-left:auto">⚙ Settings</a>
+</div>
+
+<div class="wrap" id="app"><div class="loading">Connecting to workspace…</div></div>
+
+<div class="ov" id="ov">
+  <div class="modal">
+    <div class="modal-h"><h3 id="ovTitle">—</h3><span class="x" onclick="UI.closeModal()">&times;</span></div>
+    <div class="modal-b" id="ovBody"></div>
+    <div class="modal-f" id="ovFoot"></div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script src="/config.js"></script>
+<script src="https://tools.csebuilders.com/omega-tools.js"></script>
+<script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+<script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-auth.js"></script>
+<script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-firestore.js"></script>
+
+<script>
+/* ============================================================
+   ClearSky OMEGA — SLA & Contractual Intelligence Console
+   Turns raw uptime into CONTRACTUAL availability:
+     · contract terms (PPA / O&M agreement) as data
+     · exclusion rules (force majeure, grid/utility outage,
+       curtailment, serial defect, scheduled maintenance)
+     · guaranteed-availability calc w/ credits & liquidated damages
+     · early-warning obligation clocks
+     · immutable-style breach ledger = compliance proof
+   Namespace: sla_*  ·  ES5-only, no build step.  Firebase compat v8.
+   ============================================================ */
+(function () {
+  "use strict";
+
+  window.onerror = function(msg){
+    var app = document.getElementById("app");
+    if(app && app.querySelector(".loading")){
+      app.innerHTML = '<div class="card"><div class="card-b"><h3>Something went wrong</h3><p class="muted small">'+String(msg)+'</p></div></div>';
+    }
+    return false;
+  };
+
+  var CSCONFIG = (typeof window !== "undefined" && window.CLEARSKY_CONFIG) ? window.CLEARSKY_CONFIG : null;
+  var FB = (CSCONFIG && CSCONFIG.firebase) ? CSCONFIG.firebase : {
+    apiKey: "AIzaSyABoM1lgOYUnd5ZadaoTMhYmA9cHa8Tyo0",
+    authDomain: "clearsky-portal.firebaseapp.com",
+    projectId: "clearsky-portal",
+    storageBucket: "clearsky-portal.firebasestorage.app",
+    messagingSenderId: "742134484347",
+    appId: "1:742134484347:web:ab0f95fd221536158481de"
+  };
+
+  var APP_KEY = "slaintel";
+  var TIER_LABEL = { 0:"OMEGA (All)", 1:"OMEGA Core", 2:"OMEGA Performance", 3:"Enterprise · Alpha & Omega" };
+  function tierName(n){ return TIER_LABEL[n] != null ? TIER_LABEL[n] : ("Tier "+n); }
+  var ADMIN_DOMAINS = { "csebuilders.com": true, "clearsky-usa.com": true };
+  var COMPANY = (CSCONFIG && CSCONFIG.companyName) ? CSCONFIG.companyName : "ClearSky OMEGA";
+
+  /* Alert delivery uses the same secure proxy the O&M console defines. */
+  var ALERT_PROXY_URL = "https://tools.csebuilders.com/api/om-integrations";
+
+  /* ---- Contract vocabulary ----
+     Availability basis: how the guarantee is measured. */
+  var AVAIL_BASIS = {
+    time:   "Time-based (uptime hours ÷ available hours)",
+    energy: "Energy-based (delivered ÷ expected, weather-adjusted)",
+    peak:   "Peak-hours weighted (dispatch/on-peak windows only)"
+  };
+
+  /* Standard exclusions the industry writes into PPAs / O&M agreements.
+     Each is a switch on the contract; when ON, downtime attributable to
+     that cause is EXCLUDED from the availability denominator (i.e. it
+     doesn't count against the guarantee). */
+  var EXCLUSIONS = [
+    { key:"forceMajeure",  label:"Force Majeure",              hint:"Named weather events, disasters, acts of God" },
+    { key:"gridOutage",    label:"Grid / Utility Outage",      hint:"Upstream utility loss, interconnection down" },
+    { key:"curtailment",   label:"Utility / ISO Curtailment",  hint:"Ordered dispatch-down, negative pricing curtail" },
+    { key:"schedMaint",    label:"Scheduled Maintenance",      hint:"Pre-notified PM windows within cap" },
+    { key:"serialDefect",  label:"Serial Defect / Warranty",   hint:"OEM defect under warranty remediation" },
+    { key:"ownerCause",    label:"Owner-Caused / Site Access",  hint:"Owner delays, denied site access, load side" }
+  ];
+
+  var LD_TYPES = {
+    none:      "None (best-efforts)",
+    perPoint:  "$ per availability point below guarantee",
+    perMwh:    "$ per MWh of lost energy",
+    revShare:  "% of lost revenue (make-whole)"
+  };
+
+  var CLOCK_STAGES = ["Detected","Acknowledged","Responding","Restored","Cured"];
+
+  var db, auth, USER = null, WS = null;
+  var STATE = { mod:"obligations", sel:{}, cache:{} };
+
+  /* ================= util ================= */
+  function $(id){ return document.getElementById(id); }
+  function el(t,c,h){ var e=document.createElement(t); if(c)e.className=c; if(h!=null)e.innerHTML=h; return e; }
+  function esc(s){ if(s==null)return ""; return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;"); }
+  function money(n){ if(n==null||n==="")return "—"; var x=Number(n); if(isNaN(x))return esc(n); return "$"+x.toLocaleString(undefined,{maximumFractionDigits:0}); }
+  function pct(n,d){ if(n==null)return "—"; return (Number(n)).toFixed(d==null?2:d)+"%"; }
+  function num(v,d){ var x=Number(v); return isNaN(x)?(d||0):x; }
+  function fmtDate(d){ if(!d)return "—"; if(d.toDate)d=d.toDate(); var dt=new Date(d); if(isNaN(dt))return esc(d); return (dt.getMonth()+1)+"/"+dt.getDate()+"/"+dt.getFullYear(); }
+  function fmtDT(ms){ if(!ms)return "—"; var dt=new Date(ms); if(isNaN(dt))return "—"; return (dt.getMonth()+1)+"/"+dt.getDate()+" "+("0"+dt.getHours()).slice(-2)+":"+("0"+dt.getMinutes()).slice(-2); }
+  function ago(ms){ if(!ms)return "—"; var s=(Date.now()-ms)/1000; if(s<60)return "just now"; if(s<3600)return Math.floor(s/60)+"m ago"; if(s<86400)return Math.floor(s/3600)+"h ago"; return Math.floor(s/86400)+"d ago"; }
+  function inHrs(ms){ if(ms<=0)return "now"; var h=ms/3600000; if(h<1)return Math.round(h*60)+"m"; if(h<48)return h.toFixed(1)+"h"; return (h/24).toFixed(1)+"d"; }
+  function uid(p){ return (p||"id")+"_"+Date.now().toString(36)+"_"+Math.random().toString(36).slice(2,7); }
+  function toast(m){ var t=$("toast"); t.textContent=m; t.className="toast on"; setTimeout(function(){ t.className="toast"; },2600); }
+  function coll(name){ return db.collection("sla_"+name); } // sla_contracts, sla_events, sla_breaches
+  function DEMOon(){ return DEMO; }
+
+  var DEMO = false;
+
+  /* ================= boot ================= */
+  function boot(){
+    var keyMissing = !FB.apiKey || FB.apiKey.indexOf("PLACEHOLDER") !== -1;
+    if (typeof firebase === "undefined" || keyMissing) return startDemo(keyMissing ? "config" : "sdk");
+    try { firebase.initializeApp(FB); db=firebase.firestore(); auth=firebase.auth(); }
+    catch(e){ return startDemo("init"); }
+    auth.onAuthStateChanged(function(u){
+      if(!u){ auth.signInAnonymously().catch(function(){ startDemo("auth"); }); return; }
+      onUser(u);
+    }, function(){ startDemo("auth"); });
+  }
+  function startDemo(reason){ DEMO=true; db=makeMemDb(); onUser({ email:"admin@csebuilders.com" }); }
+
+  function makeMemDb(){
+    var store={};
+    function collection(name){ store[name]=store[name]||{};
+      return { _name:name, doc:function(id){ id=id||uid("doc"); return docRef(name,id); },
+        where:function(f,op,v){ return query(name,[[f,op,v]]); }, limit:function(){ return query(name,[]); }, get:function(){ return query(name,[]).get(); } }; }
+    function docRef(name,id){ return { id:id,
+      set:function(o){ store[name][id]=clone(o); return Promise.resolve(); },
+      update:function(p){ var d=store[name][id]||{}; for(var k in p)d[k]=p[k]; store[name][id]=d; return Promise.resolve(); },
+      get:function(){ var d=store[name][id]; return Promise.resolve({ exists:!!d, id:id, data:function(){return clone(d);} }); } }; }
+    function query(name,conds){ return { where:function(f,op,v){ return query(name,conds.concat([[f,op,v]])); }, limit:function(){ return this; },
+      get:function(){ var out=[],bag=store[name]||{}; for(var id in bag){ var r=bag[id],ok=true;
+        for(var i=0;i<conds.length;i++){ var c=conds[i]; if(c[1]==="=="&&r[c[0]]!==c[2]){ ok=false; break; } }
+        if(ok) out.push({ id:id, data:(function(x){return function(){return clone(x);};})(r) }); }
+        return Promise.resolve({ empty:out.length===0, size:out.length, forEach:function(cb){ out.forEach(cb); } }); } }; }
+    function batch(){ var ops=[]; return { set:function(r,o){ ops.push(function(){ r.set(o); }); }, update:function(r,o){ ops.push(function(){ r.update(o); }); }, commit:function(){ ops.forEach(function(f){f();}); return Promise.resolve(); } }; }
+    function clone(o){ return o==null?o:JSON.parse(JSON.stringify(o)); }
+    return { collection:collection, batch:batch };
+  }
+
+  var OT = window.OMEGATools; var ORG = null;
+  function omegaOrgRef(orgId){ return db.collection("omega_orgs").doc(orgId); }
+  function workspaceOf(o){ return { orgId:o.orgId, tierLevel:o.tierLevel, unlockedTools:o.unlockedTools||[], requiredTools:o.requiredTools||[], customToolUrls:o.customToolUrls||{} }; }
+  function canOpenThisApp(o){ if(!OT)return o.tierLevel>=2; var t=OT.byKey(APP_KEY); if(!t)return o.tierLevel>=2; return OT.isUnlocked(t, workspaceOf(o)); }
+
+  function onUser(u){
+    USER=u; var email=u.email||"admin@csebuilders.com"; var domain=(email.split("@")[1]||"").toLowerCase();
+    if(!domain){ renderNoAuth(); return; }
+    $("userEmail").textContent=email; $("userInitial").textContent=(email[0]||"?").toUpperCase();
+    resolveOrg(domain,email).then(function(org){
+      ORG=org; WS={ orgId:org.orgId, name:(COMPANY||org.orgId) };
+      $("wsName").textContent=WS.name+(DEMO?" · DEMO":"");
+      var tb=$("tierBadge"); if(tb)tb.textContent=tierName(org.tierLevel).toUpperCase();
+      if(!canOpenThisApp(org)){ renderUpgrade(org); return; }
+      bindNav();
+      seedIfEmpty().then(function(){ render(); }).catch(function(e){ $("app").innerHTML='<div class="card"><div class="card-b"><h3>Couldn\'t load data</h3><p class="muted small">'+esc(String(e&&e.message||e))+'</p></div></div>'; });
+    });
+  }
+  function cfgTierLevel(){ var c=window.CLEARSKY_CONFIG; if(!c)return null;
+    if(typeof c.tierLevel==="number")return c.tierLevel; if(typeof c.tier==="number")return c.tier;
+    if(typeof c.tier==="string"){ var t=c.tier.toLowerCase(); if(t.indexOf("enter")===0||t.indexOf("alpha")===0)return 3; if(t.indexOf("perf")===0||t==="deluxe")return 2; if(t==="core"||t==="standard")return 1; } return null; }
+  function resolveOrg(domain,email){ var isAdmin=!!ADMIN_DOMAINS[domain]; var cfgTier=cfgTierLevel();
+    if(DEMO){ var lvl=isAdmin?3:(cfgTier!=null?cfgTier:2); var unl=(lvl<2)?[]:[APP_KEY]; return Promise.resolve({ orgId:domain, tierLevel:lvl, unlockedTools:unl, requiredTools:[], customToolUrls:{}, isAdmin:isAdmin }); }
+    return omegaOrgRef(domain).get().then(function(d){ if(d.exists){ var data=d.data(); var lvl=(typeof data.tierLevel==="number")?data.tierLevel:(cfgTier!=null?cfgTier:1);
+      return { orgId:domain, tierLevel:lvl, unlockedTools:data.unlockedTools||[], requiredTools:data.requiredTools||[], customToolUrls:data.customToolUrls||{}, isAdmin:isAdmin }; }
+      return { orgId:domain, tierLevel:(isAdmin?3:(cfgTier!=null?cfgTier:1)), unlockedTools:[], requiredTools:[], customToolUrls:{}, isAdmin:isAdmin };
+    }).catch(function(){ return { orgId:domain, tierLevel:(isAdmin?3:(cfgTier!=null?cfgTier:1)), unlockedTools:[], requiredTools:[], customToolUrls:{}, isAdmin:isAdmin }; });
+  }
+  function renderNoAuth(){ $("app").innerHTML='<div class="card"><div class="card-b"><h3>Sign-in required</h3><p class="muted">This console requires an authenticated account.</p></div></div>'; }
+  function renderUpgrade(org){ $("app").innerHTML='<div class="card"><div class="card-b" style="text-align:center;padding:50px 20px"><div style="font-size:40px">🔒</div><h3 style="margin:12px 0 6px">SLA &amp; Contractual Intelligence</h3><p class="muted">This is an <b>OMEGA Performance</b> &amp; <b>Enterprise</b> app.</p><p class="muted small">Your plan (<b>'+esc(tierName(org.tierLevel))+'</b>) doesn\'t include it yet.</p><p class="muted small">Contact ClearSky to add this app to <b>'+esc(org.orgId)+'</b>.</p></div></div>'; }
+  function bindNav(){ var links=$("nav").getElementsByTagName("a"); for(var i=0;i<links.length;i++){ (function(a){ a.onclick=function(){ for(var j=0;j<links.length;j++)links[j].className=""; a.className="on"; STATE.mod=a.getAttribute("data-mod"); STATE.sel={}; render(); }; })(links[i]); } }
+
+  /* ================= seed ================= */
+  function seedIfEmpty(){
+    var org=WS.orgId;
+    return coll("contracts").where("orgId","==",org).limit(1).get().then(function(s){
+      if(!s.empty) return;
+      var batch=db.batch(); var now=Date.now(), D=86400000, H=3600000;
+
+      /* Each contract binds an SLA to a site/project. availableHours in the
+         period, then downtime events tagged by cause. The engine below computes
+         contractual availability by excluding qualifying causes. */
+      function C(o){ var ref=coll("contracts").doc(uid("ctr")); o.orgId=org; o.createdAt=Date.now(); batch.set(ref,o); return ref; }
+
+      var c1=C({ name:"Claremont BESS — O&M Agreement", siteName:"Claremont BESS — Berkeley", source:"repo", editorProjectId:"editor_clrmnt_001",
+        counterparty:"Amperage Capital", agreementType:"O&M Agreement", basis:"energy",
+        guarantee:98.0, measureWindow:"Trailing 12 months", periodHours:730, ppaRate:0.148, capKw:802,
+        exclusions:{ forceMajeure:true, gridOutage:true, curtailment:true, schedMaint:true, serialDefect:true, ownerCause:true },
+        schedMaintCapHrs:24, ldType:"perPoint", ldRate:5000, ldCapPct:12,
+        expectedMwh:118, rawUptimeHrs:702, availableHrs:730 });
+      var c2=C({ name:"Winnipeg BESS — PPA Availability", siteName:"Winnipeg BESS — Fort St", source:"repo", editorProjectId:"editor_wpg_001",
+        counterparty:"Manitoba Hydro", agreementType:"PPA", basis:"time",
+        guarantee:97.0, measureWindow:"Monthly", periodHours:730, ppaRate:0.092, capKw:1200,
+        exclusions:{ forceMajeure:true, gridOutage:true, curtailment:false, schedMaint:true, serialDefect:false, ownerCause:true },
+        schedMaintCapHrs:16, ldType:"perMwh", ldRate:180, ldCapPct:10,
+        expectedMwh:96, rawUptimeHrs:723, availableHrs:730 });
+      var c3=C({ name:"Bondi — O&M Agreement (99%)", siteName:"Bondi Junction — Macro Colo", source:"monday", mondayBoardId:"7712345001",
+        counterparty:"Waverley Holdings", agreementType:"O&M Agreement", basis:"peak",
+        guarantee:99.0, measureWindow:"Monthly", periodHours:730, ppaRate:0.210, capKw:640,
+        exclusions:{ forceMajeure:true, gridOutage:true, curtailment:true, schedMaint:true, serialDefect:false, ownerCause:false },
+        schedMaintCapHrs:8, ldType:"revShare", ldRate:100, ldCapPct:15,
+        expectedMwh:88, rawUptimeHrs:688, availableHrs:730 });
+      var c4=C({ name:"OGI Solar — O&M Agreement", siteName:"OGI Solar — Cedar Rapids", source:"repo", editorProjectId:"editor_ogi_014",
+        counterparty:"OGI Solar", agreementType:"O&M Agreement", basis:"energy",
+        guarantee:97.5, measureWindow:"Trailing 12 months", periodHours:730, ppaRate:0.071, capKw:2100,
+        exclusions:{ forceMajeure:true, gridOutage:true, curtailment:true, schedMaint:true, serialDefect:true, ownerCause:true },
+        schedMaintCapHrs:40, ldType:"perPoint", ldRate:3000, ldCapPct:10,
+        expectedMwh:240, rawUptimeHrs:719, availableHrs:730 });
+
+      /* Downtime events, tagged by cause → the engine decides if excludable. */
+      function E(o){ var ref=coll("events").doc(uid("evt")); o.orgId=org; o.createdAt=Date.now(); batch.set(ref,o); return ref; }
+      // Claremont: 28h down = 16h thermal (counts), 8h grid (excluded), 4h sched (excluded, under cap)
+      E({ contractId:c1.id, cause:"equipment", hrs:16, note:"BESS rack 2 thermal derate", start:now-9*D, end:now-8*D+8*H, mwh:6, status:"open" });
+      E({ contractId:c1.id, cause:"gridOutage", hrs:8, note:"PG&E upstream feeder trip", start:now-6*D, end:now-6*D+8*H, mwh:3, status:"resolved" });
+      E({ contractId:c1.id, cause:"schedMaint", hrs:4, note:"Quarterly PM (notified)", start:now-3*D, end:now-3*D+4*H, mwh:0, status:"resolved" });
+      // Winnipeg: 7h down = all comms (counts) — but small
+      E({ contractId:c2.id, cause:"equipment", hrs:7, note:"Comms gateway packet loss", start:now-5*D, end:now-5*D+7*H, mwh:1, status:"resolved" });
+      // Bondi: 42h down = 30h inverter (counts), 8h grid (excluded), 4h sched (4h under 8 cap, excluded)
+      E({ contractId:c3.id, cause:"equipment", hrs:30, note:"Inverter 3 offline — zero export", start:now-2*D, end:now-1*D+6*H, mwh:14, status:"open" });
+      E({ contractId:c3.id, cause:"gridOutage", hrs:8, note:"Ausgrid planned outage", start:now-10*D, end:now-10*D+8*H, mwh:4, status:"resolved" });
+      E({ contractId:c3.id, cause:"schedMaint", hrs:4, note:"Monthly PM", start:now-7*D, end:now-7*D+4*H, mwh:0, status:"resolved" });
+      // OGI: 11h = 5h PV (counts) + 6h curtailment (excluded)
+      E({ contractId:c4.id, cause:"equipment", hrs:5, note:"String 14 underperformance", start:now-6*D, end:now-6*D+5*H, mwh:2, status:"resolved" });
+      E({ contractId:c4.id, cause:"curtailment", hrs:6, note:"Alliant negative-price curtail", start:now-4*D, end:now-4*D+6*H, mwh:0, status:"resolved" });
+
+      /* one historical breach on the ledger for proof-of-record demo */
+      var b1=coll("breaches").doc(uid("brc")); batch.set(b1,{ orgId:org, contractId:c3.id, siteName:"Bondi Junction — Macro Colo",
+        period:"2026-05", guaranteeAt:99.0, achievedAt:97.9, shortfall:1.1, ldType:"revShare", ldAmount:1848,
+        status:"Acknowledged", openedAt:now-38*D, note:"May shortfall — inverter serial issue, LD invoiced",
+        log:[{t:now-38*D,m:"Period closed at 97.9% vs 99.0% guarantee"},{t:now-37*D,m:"Owner notified, LD calculated at $1,848"},{t:now-30*D,m:"Owner acknowledged; credit applied to June invoice"}], createdAt:Date.now() });
+
+      batch.commit();
+      return new Promise(function(r){ setTimeout(r,700); });
+    });
+  }
+
+  /* ================= loaders ================= */
+  function loadColl(name){
+    if(STATE.cache[name]) return Promise.resolve(STATE.cache[name]);
+    return coll(name).where("orgId","==",WS.orgId).get().then(function(s){
+      var arr=[]; s.forEach(function(d){ var o=d.data(); o.id=d.id; arr.push(o); });
+      arr.sort(function(a,b){ return (b.createdAt||0)-(a.createdAt||0); });
+      STATE.cache[name]=arr; return arr;
+    });
+  }
+  function invalidate(n){ delete STATE.cache[n]; }
+  function contractObj(id){ return (STATE.cache.contracts||[]).filter(function(x){return x.id===id;})[0]; }
+  function eventsFor(id){ return (STATE.cache.events||[]).filter(function(e){return e.contractId===id;}); }
+
+  /* ============================================================
+     THE ENGINE — contractual availability
+     raw availability   = rawUptimeHrs / availableHrs
+     excluded downtime  = sum of event.hrs whose cause is excluded by the
+                          contract (sched-maint only up to its cap)
+     adjusted denom     = availableHrs − excludedHrs
+     contractual avail  = (availableHrs − countedDown) / adjustedDenom
+     ...i.e. excluded causes are removed from BOTH numerator downtime and
+     the denominator, which is how PPAs define "guaranteed availability".
+     ============================================================ */
+  function computeAvailability(c){
+    var evs=eventsFor(c.id);
+    var availHrs=num(c.availableHrs, num(c.periodHours,730));
+    var totalDown=0, excludedHrs=0, countedDown=0;
+    var schedUsed=0, schedCap=num(c.schedMaintCapHrs,0);
+    var breakdown=[]; // {cause,label,hrs,excluded}
+    var byCause={};
+    evs.forEach(function(e){
+      var hrs=num(e.hrs); totalDown+=hrs;
+      var causeKey=e.cause;
+      var isExclKey = (causeKey!=="equipment") && c.exclusions && c.exclusions[causeKey];
+      var excludedThis=0;
+      if(isExclKey){
+        if(causeKey==="schedMaint"){
+          // only exclude up to the cap; overflow counts against guarantee
+          var room=Math.max(0, schedCap - schedUsed);
+          excludedThis=Math.min(hrs, room); schedUsed+=excludedThis;
+        } else { excludedThis=hrs; }
+      }
+      excludedHrs+=excludedThis;
+      countedDown+=(hrs-excludedThis);
+      byCause[causeKey]=byCause[causeKey]||{ hrs:0, excl:0 };
+      byCause[causeKey].hrs+=hrs; byCause[causeKey].excl+=excludedThis;
+    });
+    var rawAvail = availHrs>0 ? ((availHrs-totalDown)/availHrs*100) : 0;
+    var adjDenom = Math.max(1, availHrs-excludedHrs);
+    var contractualAvail = ((availHrs-excludedHrs-countedDown)/adjDenom)*100;
+    // guard
+    if(contractualAvail>100)contractualAvail=100; if(contractualAvail<0)contractualAvail=0;
+    var guarantee=num(c.guarantee);
+    var shortfall=Math.max(0, guarantee-contractualAvail);
+    var meets = contractualAvail>=guarantee;
+
+    // liquidated damages
+    var ld=computeLD(c, shortfall, countedDown, evs);
+
+    return { availHrs:availHrs, totalDown:totalDown, excludedHrs:excludedHrs, countedDown:countedDown,
+      rawAvail:rawAvail, contractualAvail:contractualAvail, adjDenom:adjDenom, guarantee:guarantee,
+      shortfall:shortfall, meets:meets, byCause:byCause, ld:ld, schedUsed:schedUsed, schedCap:schedCap };
+  }
+  function computeLD(c, shortfall, countedDownHrs, evs){
+    var type=c.ldType||"none"; if(type==="none"||shortfall<=0) return { type:type, amount:0, capped:false, cap:0 };
+    var amount=0;
+    if(type==="perPoint"){ amount=shortfall*num(c.ldRate); }
+    else if(type==="perMwh"){ var lostMwh=0; evs.forEach(function(e){ // only counted causes contribute
+        var causeKey=e.cause; var excl=(causeKey!=="equipment")&&c.exclusions&&c.exclusions[causeKey];
+        if(!excl) lostMwh+=num(e.mwh); }); amount=lostMwh*num(c.ldRate); }
+    else if(type==="revShare"){ var lostRev=0; evs.forEach(function(e){ var causeKey=e.cause; var excl=(causeKey!=="equipment")&&c.exclusions&&c.exclusions[causeKey];
+        if(!excl) lostRev+=num(e.mwh)*1000*num(c.ppaRate); }); amount=lostRev*(num(c.ldRate)/100); }
+    // cap as % of annual contract value proxy = expectedMwh*12*rate... use monthly rev * capPct as guardrail
+    var monthlyRev=num(c.expectedMwh)*1000*num(c.ppaRate);
+    var cap = monthlyRev * (num(c.ldCapPct,100)/100);
+    var capped=false; if(cap>0 && amount>cap){ amount=cap; capped=true; }
+    return { type:type, amount:amount, capped:capped, cap:cap };
+  }
+
+  /* status helper */
+  function contractStatus(c){
+    var a=computeAvailability(c);
+    if(!a.meets) return "breach";
+    // at-risk band: within 0.3 points of guarantee, or margin eroding
+    if(a.contractualAvail - a.guarantee <= 0.3) return "risk";
+    return "ok";
+  }
+  function statusPill(st){ var m={ok:["green","Compliant"],risk:["amber","At Risk"],breach:["red","Breach"]}; var x=m[st]||["gray","—"]; return '<span class="pill '+x[0]+'"><span class="dot '+st+'"></span>'+x[1]+'</span>'; }
+  function srcPill(c){ if(!c)return ''; if(c.source==="monday")return '<span class="tag-src monday">MONDAY</span>'; return '<span class="tag-src repo">EDITOR</span>'; }
+  function kpi(n,l,cls,delta){ return '<div class="kpi"><div class="n'+(cls?" "+cls:"")+'">'+(n==null?"—":n)+'</div><div class="l">'+esc(l)+'</div>'+(delta?'<div class="d '+delta.dir+'">'+esc(delta.txt)+'</div>':'')+'</div>'; }
+  function fld(l,v){ return '<div class="fld"><label>'+esc(l)+'</label><div class="val">'+esc(v||"—")+'</div></div>'; }
+  function gaugeRing(val, thr){
+    var r=52, circ=2*Math.PI*r; var v=Math.max(0,Math.min(100,val)); var off=circ*(1-v/100);
+    var color = val>=thr?"#137a44":(val>=thr-2?"#e08600":"#b42323");
+    return '<div class="gauge"><svg width="120" height="120" viewBox="0 0 120 120">'
+      +'<circle cx="60" cy="60" r="'+r+'" fill="none" stroke="#eceff3" stroke-width="12"/>'
+      +'<circle cx="60" cy="60" r="'+r+'" fill="none" stroke="'+color+'" stroke-width="12" stroke-linecap="round" stroke-dasharray="'+circ.toFixed(1)+'" stroke-dashoffset="'+off.toFixed(1)+'"/></svg>'
+      +'<div class="lab"><div class="big" style="color:'+color+'">'+val.toFixed(1)+'%</div><div class="sm">contractual</div></div></div>';
+  }
+
+  /* ================= render dispatch ================= */
+  function render(){
+    $("app").innerHTML='<div class="loading">Loading '+STATE.mod+'…</div>';
+    Promise.all([loadColl("contracts"), loadColl("events"), loadColl("breaches")]).then(function(){
+      if(STATE.mod==="obligations") renderObligations();
+      else if(STATE.mod==="contracts") renderContracts();
+      else if(STATE.mod==="availability") renderAvailability();
+      else if(STATE.mod==="alerts") renderAlerts();
+      else if(STATE.mod==="ledger") renderLedger();
+      else if(STATE.mod==="settings") renderSettings();
+    });
+  }
+  function info(t){ return '<div class="info-lock">◎ '+t+'</div>'; }
+
+  /* ---------------- OBLIGATIONS (dashboard) ---------------- */
+  function renderObligations(){
+    var cs=STATE.cache.contracts||[];
+    var compliant=0, risk=0, breach=0, totalLD=0;
+    cs.forEach(function(c){ var st=contractStatus(c); if(st==="ok")compliant++; else if(st==="risk")risk++; else breach++; totalLD+=computeAvailability(c).ld.amount; });
+    var h=info("Operate against what you're actually contracted to deliver. Availability adjusted to each agreement's exclusions — not raw uptime.");
+    h+='<div class="kpis">'
+      + kpi(cs.length,"Active SLAs")
+      + kpi(compliant,"Compliant","good")
+      + kpi(risk,"At Risk", risk?"warn":"good")
+      + kpi(breach,"In Breach", breach?"bad":"good")
+      + kpi(money(totalLD),"LD Exposure (period)", totalLD>0?"bad":"good")
+      + '</div>';
+
+    h+='<div class="card"><div class="card-h"><h3>Contractual Obligations</h3><span class="sub">Raw uptime vs contract-adjusted availability</span>'
+      + '<div class="spacer"></div><button class="btn pri sm" onclick="UI.newContract()">+ Add SLA</button></div>'
+      + '<div class="card-b"><div class="tbl-wrap"><table><thead><tr>'
+      + '<th>Contract</th><th>Counterparty</th><th>Basis</th><th>Guarantee</th><th>Raw</th><th>Contractual</th><th>Margin</th><th>LD</th><th>Status</th><th></th></tr></thead><tbody>';
+    cs.forEach(function(c){ var a=computeAvailability(c); var st=contractStatus(c); var margin=a.contractualAvail-a.guarantee;
+      h+='<tr><td><a onclick="UI.openContract(\''+c.id+'\')"><b>'+esc(c.name)+'</b></a> '+srcPill(c)+'<div class="small muted">'+esc(c.agreementType)+' · '+esc(c.measureWindow)+'</div></td>'
+        +'<td class="small">'+esc(c.counterparty||"—")+'</td>'
+        +'<td class="small">'+esc((AVAIL_BASIS[c.basis]||c.basis||"").split(" ")[0])+'</td>'
+        +'<td>'+pct(a.guarantee,1)+'</td>'
+        +'<td class="muted">'+pct(a.rawAvail,1)+'</td>'
+        +'<td><b>'+pct(a.contractualAvail,2)+'</b></td>'
+        +'<td>'+(margin>=0?'<span class="pill green">+'+margin.toFixed(2)+'</span>':'<span class="pill red">'+margin.toFixed(2)+'</span>')+'</td>'
+        +'<td>'+(a.ld.amount>0?'<span class="pill red">'+money(a.ld.amount)+'</span>':'<span class="muted">—</span>')+'</td>'
+        +'<td>'+statusPill(st)+'</td>'
+        +'<td style="text-align:right"><button class="btn ghost sm" onclick="UI.openContract(\''+c.id+'\')">Open →</button></td></tr>';
+    });
+    h+='</tbody></table></div>';
+    if(!cs.length) h+='<div class="empty">No SLAs yet. Add one to start tracking contractual availability.</div>';
+    h+='</div></div>';
+
+    /* portal widget */
+    h+='<div class="card"><div class="card-h"><h3>Portal Widget Preview</h3><span class="sub">Compliance datapoint for the tenant dashboard</span></div><div class="card-b"><div class="row">';
+    h+='<div class="col widget"><div class="wh">SLA Compliance · index datapoint</div><div style="font-size:22px;font-weight:800;color:'+(breach?"#b42323":risk?"#9a6800":"#137a44")+'">'+compliant+'/'+cs.length+' compliant</div><div class="small muted">'+breach+' breach · '+risk+' at risk · '+money(totalLD)+' LD exposure</div><div class="small muted" style="margin-top:6px">Feed key: <code>sla_rollup/'+esc(WS.orgId)+'</code></div></div>';
+    h+='<div class="col widget"><div class="wh">Per-contract datapoint</div><div class="small">Publishes <code>{guarantee, contractualAvail, margin, status, ldAmount}</code> joined by <code>projectId</code> — the same project card the editor created shows its live compliance state.</div></div>';
+    h+='</div></div></div>';
+    $("app").innerHTML=h;
+  }
+
+  /* ---------------- CONTRACT DETAIL ---------------- */
+  function openContract(id){
+    var c=contractObj(id); if(!c)return; STATE.sel.contract=c;
+    var a=computeAvailability(c); var st=contractStatus(c); var evs=eventsFor(id);
+    var h='<a class="btn sm" onclick="UI.back()">← Back to Obligations</a>';
+    h+='<div class="card" style="margin-top:12px"><div class="card-h"><h3>'+esc(c.name)+'</h3><span class="sub">'+esc(c.agreementType)+' · '+esc(c.counterparty||"")+'</span>'
+      +'<div class="spacer"></div>'+statusPill(st)
+      +'<button class="btn sm" onclick="UI.editContract(\''+c.id+'\')">Edit Terms</button>'
+      +'<button class="btn pri sm" onclick="UI.newEvent(\''+c.id+'\')">+ Log Downtime</button></div><div class="card-b">';
+
+    h+='<div class="row">';
+    /* gauge + KPIs */
+    h+='<div class="col" style="max-width:150px;text-align:center">'+gaugeRing(a.contractualAvail, a.guarantee)+'<div class="small muted" style="margin-top:6px">guarantee '+pct(a.guarantee,1)+'</div></div>';
+    h+='<div class="col"><div class="kpis" style="margin:0">'
+      + kpi(pct(a.rawAvail,2),"Raw Uptime","")
+      + kpi(pct(a.contractualAvail,2),"Contractual", a.meets?"good":"bad")
+      + kpi(a.excludedHrs.toFixed(1)+"h","Excluded Downtime")
+      + kpi(a.countedDown.toFixed(1)+"h","Counted Downtime", a.countedDown>0?"warn":"good")
+      + '</div>';
+    if(!a.meets) h+='<div class="crit-lock" style="margin-top:12px">⚠ Below guarantee by '+a.shortfall.toFixed(2)+' points. Estimated liquidated damages: <b>'+money(a.ld.amount)+'</b>'+(a.ld.capped?" (capped)":"")+'.</div>';
+    else if(st==="risk") h+='<div class="warn-lock" style="margin-top:12px">◷ Margin is thin ('+(a.contractualAvail-a.guarantee).toFixed(2)+' pts). One more equipment event this period could breach.</div>';
+    else h+='<div class="ok-lock" style="margin-top:12px">✓ Meeting the '+pct(a.guarantee,1)+' guarantee with '+(a.contractualAvail-a.guarantee).toFixed(2)+' pts of margin.</div>';
+    h+='</div></div>';
+
+    /* Availability waterfall — the "why" */
+    h+='<div class="section-h">Availability Waterfall — how raw becomes contractual</div>';
+    h+=availWaterfall(c,a);
+
+    h+='<div class="row">';
+    /* left: downtime events */
+    h+='<div class="col"><div class="section-h">Downtime Events (this period)</div>';
+    h+='<div class="tbl-wrap"><table><thead><tr><th>Cause</th><th>Note</th><th>Hrs</th><th>Treatment</th><th>MWh</th></tr></thead><tbody>';
+    if(!evs.length) h+='<tr><td colspan="5" class="empty">No downtime logged.</td></tr>';
+    evs.forEach(function(e){
+      var causeKey=e.cause; var isExcl=(causeKey!=="equipment")&&c.exclusions&&c.exclusions[causeKey];
+      var treat = (causeKey==="equipment")?'<span class="pill red">Counts</span>'
+        : (isExcl? (causeKey==="schedMaint"?'<span class="pill amber">Excl (cap '+num(c.schedMaintCapHrs)+'h)</span>':'<span class="pill green">Excluded</span>') : '<span class="pill red">Counts</span>');
+      h+='<tr><td>'+causeLabel(causeKey)+'</td><td class="small">'+esc(e.note||"")+'</td><td>'+num(e.hrs)+'</td><td>'+treat+'</td><td>'+num(e.mwh)+'</td></tr>';
+    });
+    h+='</tbody></table></div></div>';
+    /* right: terms */
+    h+='<div class="col" style="max-width:400px"><div class="section-h">Contract Terms</div><div class="dl">';
+    h+=fld("Agreement",c.agreementType)+fld("Counterparty",c.counterparty);
+    h+=fld("Availability Basis",(AVAIL_BASIS[c.basis]||c.basis))+fld("Measurement",c.measureWindow);
+    h+=fld("Guarantee",pct(c.guarantee,1))+fld("Period Hours",num(c.periodHours));
+    h+=fld("Sched-Maint Cap",num(c.schedMaintCapHrs)+" h")+fld("Rate","$"+num(c.ppaRate).toFixed(3)+"/kWh");
+    h+='</div>';
+    h+='<div class="section-h">Liquidated Damages</div><div class="dl">';
+    h+=fld("LD Basis",LD_TYPES[c.ldType]||c.ldType)+fld("LD Rate", c.ldType==="revShare"?num(c.ldRate)+"%":money(c.ldRate));
+    h+=fld("LD Cap",num(c.ldCapPct)+"% monthly rev")+fld("Current Exposure",money(a.ld.amount)+(a.ld.capped?" (capped)":""));
+    h+='</div>';
+    h+='<div class="section-h">Active Exclusions</div><div class="small">';
+    var on=[]; EXCLUSIONS.forEach(function(x){ if(c.exclusions&&c.exclusions[x.key]) on.push(x.label); });
+    h+= on.length? on.map(function(l){return '<span class="pill blue" style="margin:2px">'+esc(l)+'</span>';}).join("") : '<span class="muted">None — raw uptime = contractual</span>';
+    h+='</div>';
+    h+='<div class="section-h">Linked Project</div><div class="flex"><span>'+esc(c.siteName||c.name)+'</span>'+srcPill(c);
+    if(c.source==="repo"&&c.editorProjectId) h+=' <span class="small muted">editor: '+esc(c.editorProjectId)+'</span>';
+    h+='</div>';
+    h+='</div></div>';
+    h+='</div></div>';
+    $("app").innerHTML=h;
+  }
+  function causeLabel(k){ if(k==="equipment")return '<b>Equipment</b>'; var x=EXCLUSIONS.filter(function(e){return e.key===k;})[0]; return esc(x?x.label:k); }
+
+  function availWaterfall(c,a){
+    var W=a.availHrs;
+    function seg(cls,label,hrsTxt){ return '<div class="step '+cls+'"><div class="lbl">'+label+'</div><div class="track"><div class="fillb" style="left:0;right:0"></div></div><div class="num">'+hrsTxt+'</div></div>'; }
+    var h='<div class="wf">';
+    h+='<div class="step"><div class="lbl">Available hours</div><div class="track"><div class="fillb" style="left:0;right:0;background:#dfe7f2"></div></div><div class="num">'+W.toFixed(0)+'h</div></div>';
+    h+='<div class="step debit"><div class="lbl">− Total downtime</div><div class="track"><div class="fillb" style="left:0;width:'+Math.min(100,a.totalDown/W*100)+'%"></div></div><div class="num">'+a.totalDown.toFixed(1)+'h</div></div>';
+    h+='<div class="step credit"><div class="lbl">+ Excluded (per contract)</div><div class="track"><div class="fillb" style="left:0;width:'+Math.min(100,a.excludedHrs/W*100)+'%"></div></div><div class="num">'+a.excludedHrs.toFixed(1)+'h</div></div>';
+    h+='<div class="step debit"><div class="lbl">= Counted downtime</div><div class="track"><div class="fillb" style="left:0;width:'+Math.min(100,a.countedDown/W*100)+'%"></div></div><div class="num">'+a.countedDown.toFixed(1)+'h</div></div>';
+    h+='<div class="step result"><div class="lbl"><b>Contractual availability</b></div><div class="track"><div class="fillb" style="left:0;width:'+Math.min(100,a.contractualAvail)+'%"></div><div style="position:absolute;top:-3px;bottom:-3px;width:2px;background:#0e1b33;left:'+Math.min(100,a.guarantee)+'%"></div></div><div class="num"><b>'+a.contractualAvail.toFixed(2)+'%</b></div></div>';
+    h+='</div>';
+    h+='<div class="small muted" style="margin-top:8px">Black marker = '+pct(a.guarantee,1)+' guarantee. Excluded causes are removed from both downtime and the denominator, per the agreement definition of guaranteed availability.</div>';
+    return h;
+  }
+
+  /* ---------------- CONTRACTS & TERMS ---------------- */
+  function renderContracts(){
+    var cs=STATE.cache.contracts||[];
+    var h=info("SLA logic tied to PPA and O&M agreement terms — encode each guarantee, basis, exclusion set, and liquidated-damages formula once.");
+    h+='<div class="card"><div class="card-h"><h3>Contract Register</h3><span class="sub">The SLA rulebook per site</span>'
+      +'<div class="spacer"></div><button class="btn pri sm" onclick="UI.newContract()">+ Add SLA</button></div>'
+      +'<div class="card-b"><div class="tbl-wrap"><table><thead><tr>'
+      +'<th>Contract</th><th>Type</th><th>Basis</th><th>Guarantee</th><th>Exclusions</th><th>LD</th><th></th></tr></thead><tbody>';
+    cs.forEach(function(c){ var nExcl=0; EXCLUSIONS.forEach(function(x){ if(c.exclusions&&c.exclusions[x.key])nExcl++; });
+      h+='<tr><td><a onclick="UI.openContract(\''+c.id+'\')"><b>'+esc(c.name)+'</b></a></td>'
+        +'<td class="small">'+esc(c.agreementType)+'</td>'
+        +'<td class="small">'+esc((AVAIL_BASIS[c.basis]||"").split(" ")[0])+'</td>'
+        +'<td>'+pct(c.guarantee,1)+'</td>'
+        +'<td>'+nExcl+' of '+EXCLUSIONS.length+'</td>'
+        +'<td class="small">'+esc(LD_TYPES[c.ldType]||c.ldType)+'</td>'
+        +'<td style="text-align:right"><button class="btn ghost sm" onclick="UI.editContract(\''+c.id+'\')">Edit Terms</button></td></tr>';
+    });
+    h+='</tbody></table></div>';
+    if(!cs.length) h+='<div class="empty">No contracts yet.</div>';
+    h+='</div></div>';
+    $("app").innerHTML=h;
+  }
+
+  /* ---------------- AVAILABILITY ENGINE (transparency view) ---------------- */
+  function renderAvailability(){
+    var cs=STATE.cache.contracts||[];
+    var h=info("Availability adjusted to contractual definitions, not just raw uptime. Every exclusion is shown so the number is defensible in an audit.");
+    cs.forEach(function(c){
+      var a=computeAvailability(c);
+      h+='<div class="card"><div class="card-h"><h3>'+esc(c.name)+'</h3><span class="sub">'+esc(AVAIL_BASIS[c.basis]||c.basis)+'</span><div class="spacer"></div>'+statusPill(contractStatus(c))+'<button class="btn ghost sm" onclick="UI.openContract(\''+c.id+'\')">Detail →</button></div><div class="card-b">';
+      h+='<div class="row"><div class="col">'+availWaterfall(c,a)+'</div>';
+      h+='<div class="col" style="max-width:280px"><div class="section-h">By Cause</div><div class="tbl-wrap"><table><thead><tr><th>Cause</th><th>Hrs</th><th>Excl</th></tr></thead><tbody>';
+      var any=false;
+      for(var k in a.byCause){ any=true; var b=a.byCause[k]; h+='<tr><td class="small">'+causeLabel(k)+'</td><td>'+b.hrs.toFixed(1)+'</td><td class="'+(b.excl>0?"":"muted")+'">'+b.excl.toFixed(1)+'</td></tr>'; }
+      if(!any) h+='<tr><td colspan="3" class="muted small">No downtime this period.</td></tr>';
+      h+='</tbody></table></div></div></div>';
+      h+='</div></div>';
+    });
+    if(!cs.length) h+='<div class="empty">No contracts to evaluate.</div>';
+    $("app").innerHTML=h;
+  }
+
+  /* ---------------- EARLY WARNING ---------------- */
+  /* Project the remaining "downtime budget": how many more counted hours can
+     accrue before the guarantee is breached, given exclusions & period hours. */
+  function downtimeBudget(c){
+    var a=computeAvailability(c);
+    // allowed counted downtime for guarantee G on adjusted denom:
+    // contractualAvail = (adjDenom - countedDown)/adjDenom >= G/100
+    // => countedDown <= adjDenom*(1 - G/100)
+    var maxCounted = a.adjDenom*(1 - a.guarantee/100);
+    var remaining = maxCounted - a.countedDown;
+    return { a:a, maxCounted:maxCounted, remaining:remaining };
+  }
+  function renderAlerts(){
+    var cs=STATE.cache.contracts||[]; var evs=STATE.cache.events||[];
+    var breaching=[], atRisk=[];
+    cs.forEach(function(c){ var b=downtimeBudget(c); if(!b.a.meets) breaching.push({c:c,b:b}); else if(b.remaining<=8 || (b.a.contractualAvail-b.a.guarantee)<=0.3) atRisk.push({c:c,b:b}); });
+    // open events approaching duration where they'd tip a contract
+    var openEv=evs.filter(function(e){return e.status==="open";});
+
+    var h=info("Early warning when obligations are at risk of being breached — before the period closes, while there's still time to dispatch.");
+    h+='<div class="kpis">'
+      + kpi(breaching.length,"Breaching Now", breaching.length?"bad":"good")
+      + kpi(atRisk.length,"At Risk", atRisk.length?"warn":"good")
+      + kpi(openEv.length,"Open Downtime Events", openEv.length?"warn":"good")
+      + '</div>';
+
+    if(breaching.length){
+      h+='<div class="card"><div class="card-h"><h3>⚠ Breaching</h3><span class="sub">Below guarantee this period</span></div><div class="card-b">';
+      breaching.forEach(function(x){ var a=x.b.a;
+        h+='<div class="crit-lock" style="display:flex;align-items:center;gap:12px"><div style="flex:1"><b>'+esc(x.c.name)+'</b> — contractual '+pct(a.contractualAvail,2)+' vs '+pct(a.guarantee,1)+' guarantee ('+a.shortfall.toFixed(2)+' pts short). LD exposure '+money(a.ld.amount)+'.</div><button class="btn sm" onclick="UI.openContract(\''+x.c.id+'\')">Open</button><button class="btn sm danger" onclick="UI.escalate(\''+x.c.id+'\')">Escalate</button></div>';
+      });
+      h+='</div></div>';
+    }
+    if(atRisk.length){
+      h+='<div class="card"><div class="card-h"><h3>◷ Early Warning</h3><span class="sub">Downtime budget nearly exhausted</span></div><div class="card-b"><div class="tbl-wrap"><table><thead><tr><th>Contract</th><th>Contractual</th><th>Margin</th><th>Downtime Budget Left</th><th></th></tr></thead><tbody>';
+      atRisk.forEach(function(x){ var a=x.b.a; var rem=Math.max(0,x.b.remaining);
+        h+='<tr><td><a onclick="UI.openContract(\''+x.c.id+'\')"><b>'+esc(x.c.name)+'</b></a></td><td>'+pct(a.contractualAvail,2)+'</td><td><span class="pill amber">+'+(a.contractualAvail-a.guarantee).toFixed(2)+'</span></td><td><b>'+rem.toFixed(1)+'h</b> of counted downtime</td><td style="text-align:right"><button class="btn sm" onclick="UI.escalate(\''+x.c.id+'\')">Alert on-call</button></td></tr>';
+      });
+      h+='</tbody></table></div><div class="small muted" style="margin-top:10px">"Budget left" = counted downtime hours that can still accrue before the guarantee breaches, given this contract\'s exclusions.</div></div></div>';
+    }
+    if(openEv.length){
+      h+='<div class="card"><div class="card-h"><h3>Open Downtime Clocks</h3><span class="sub">Live events accruing against guarantees</span></div><div class="card-b"><div class="tbl-wrap"><table><thead><tr><th>Contract</th><th>Cause</th><th>Note</th><th>Elapsed</th><th>Treatment</th></tr></thead><tbody>';
+      openEv.forEach(function(e){ var c=contractObj(e.contractId); if(!c)return; var causeKey=e.cause; var isExcl=(causeKey!=="equipment")&&c.exclusions&&c.exclusions[causeKey];
+        h+='<tr><td class="small"><a onclick="UI.openContract(\''+c.id+'\')">'+esc(c.name)+'</a></td><td>'+causeLabel(causeKey)+'</td><td class="small">'+esc(e.note||"")+'</td><td>'+num(e.hrs)+'h ('+ago(e.start)+')</td><td>'+(isExcl?'<span class="pill green">Excluded</span>':'<span class="pill red">Counts</span>')+'</td></tr>';
+      });
+      h+='</tbody></table></div></div></div>';
+    }
+    if(!breaching.length && !atRisk.length && !openEv.length) h+='<div class="ok-lock">✓ All obligations comfortably within guarantee. No early warnings.</div>';
+
+    /* alert routing note */
+    h+='<div class="card"><div class="card-h"><h3>Alert Routing</h3><span class="sub">Where breach-risk alerts are delivered</span></div><div class="card-b"><p class="small">Configure Slack / SMS destinations in <a onclick="STATE.mod=\'settings\';render()">Settings</a>. When a contract enters the at-risk band or an open event would tip it, ClearSky posts the alert with the site, shortfall, and remaining downtime budget.</p></div></div>';
+    $("app").innerHTML=h;
+  }
+
+  /* ---------------- BREACH LEDGER ---------------- */
+  function renderLedger(){
+    var brs=STATE.cache.breaches||[]; var cs=STATE.cache.contracts||[];
+    var totalLD=0; brs.forEach(function(b){ totalLD+=num(b.ldAmount); });
+    // add any live breaches not yet on the ledger as candidates
+    var live=[]; cs.forEach(function(c){ var a=computeAvailability(c); if(!a.meets) live.push({c:c,a:a}); });
+    var h=info("Compliance proof baked into the operational record — every shortfall, exclusion decision, and LD calculation is timestamped and audit-ready.");
+    h+='<div class="kpis">'
+      + kpi(brs.length,"Ledger Entries")
+      + kpi(live.length,"Live Breaches", live.length?"bad":"good")
+      + kpi(money(totalLD),"LD Recorded")
+      + '</div>';
+
+    if(live.length){
+      h+='<div class="card"><div class="card-h"><h3>Un-recorded Breaches</h3><span class="sub">Live this period — record to the ledger</span></div><div class="card-b"><div class="tbl-wrap"><table><thead><tr><th>Contract</th><th>Guarantee</th><th>Achieved</th><th>Shortfall</th><th>LD</th><th></th></tr></thead><tbody>';
+      live.forEach(function(x){ var a=x.a;
+        h+='<tr><td><b>'+esc(x.c.name)+'</b></td><td>'+pct(a.guarantee,1)+'</td><td>'+pct(a.contractualAvail,2)+'</td><td><span class="pill red">'+a.shortfall.toFixed(2)+'</span></td><td>'+money(a.ld.amount)+'</td><td style="text-align:right"><button class="btn pri sm" onclick="UI.recordBreach(\''+x.c.id+'\')">Record →</button></td></tr>';
+      });
+      h+='</tbody></table></div></div></div>';
+    }
+
+    h+='<div class="card"><div class="card-h"><h3>Breach Ledger</h3><span class="sub">Immutable audit record</span></div><div class="card-b"><div class="tbl-wrap"><table><thead><tr>'
+      +'<th>Period</th><th>Contract</th><th>Guarantee</th><th>Achieved</th><th>Shortfall</th><th>LD</th><th>Status</th><th></th></tr></thead><tbody>';
+    if(!brs.length) h+='<tr><td colspan="8" class="empty">No breaches recorded. Clean compliance history.</td></tr>';
+    brs.forEach(function(b){
+      h+='<tr><td>'+esc(b.period)+'</td><td class="small">'+esc(b.siteName||"")+'</td><td>'+pct(b.guaranteeAt,1)+'</td><td>'+pct(b.achievedAt,2)+'</td><td><span class="pill red">'+num(b.shortfall).toFixed(2)+'</span></td><td>'+money(b.ldAmount)+'</td><td>'+ledgerStatus(b.status)+'</td><td style="text-align:right"><button class="btn ghost sm" onclick="UI.openBreach(\''+b.id+'\')">View →</button></td></tr>';
+    });
+    h+='</tbody></table></div></div></div>';
+    $("app").innerHTML=h;
+  }
+  function ledgerStatus(s){ var m={"Open":"red","Acknowledged":"amber","Cured":"green","Waived":"gray","Invoiced":"blue"}; return '<span class="pill '+(m[s]||"gray")+'">'+esc(s||"—")+'</span>'; }
+
+  function openBreach(id){
+    var b=(STATE.cache.breaches||[]).filter(function(x){return x.id===id;})[0]; if(!b)return;
+    var h='<a class="btn sm" onclick="UI.back()">← Back to Ledger</a>';
+    h+='<div class="card" style="margin-top:12px"><div class="card-h"><h3>Breach '+esc(b.period)+' · '+esc(b.siteName||"")+'</h3><div class="spacer"></div>'+ledgerStatus(b.status)+'<button class="btn sm" onclick="UI.breachStatus(\''+b.id+'\')">Update Status</button></div><div class="card-b">';
+    h+='<div class="row"><div class="col"><div class="section-h">Audit Trail</div><div class="tl">';
+    var log=(b.log||[]).slice().sort(function(a,c){return a.t-c.t;});
+    if(!log.length) h+='<div class="muted small">No entries.</div>';
+    log.forEach(function(e){ h+='<div class="ev"><div class="t">'+fmtDT(e.t)+'</div><div class="m">'+esc(e.m)+'</div></div>'; });
+    h+='</div><div class="flex" style="margin-top:10px"><input id="brcNote" placeholder="Add audit entry…"><button class="btn" onclick="UI.addBreachNote(\''+b.id+'\')">Log</button></div></div>';
+    h+='<div class="col" style="max-width:340px"><div class="section-h">Determination</div><div class="dl">';
+    h+=fld("Period",b.period)+fld("Guarantee",pct(b.guaranteeAt,1));
+    h+=fld("Achieved",pct(b.achievedAt,2))+fld("Shortfall",num(b.shortfall).toFixed(2)+" pts");
+    h+=fld("LD Basis",LD_TYPES[b.ldType]||b.ldType)+fld("LD Amount",money(b.ldAmount));
+    h+=fld("Opened",fmtDate(b.openedAt))+fld("Status",b.status);
+    h+='</div><div class="section-h">Note</div><p class="small">'+esc(b.note||"—")+'</p></div></div>';
+    h+='</div></div>';
+    $("app").innerHTML=h;
+  }
+
+  /* ---------------- SETTINGS ---------------- */
+  function integConfigRef(){ return db.collection("om_integrations").doc(WS.orgId); }
+  function renderSettings(){
+    integConfigRef().get().then(function(d){
+      var cfg=d.exists?d.data():{ connected:{} };
+      var hasSlack=cfg.connected&&cfg.connected.slack, hasSms=cfg.connected&&cfg.connected.twilio;
+      var h=info("Alert delivery shares the O&M Console's secure integration proxy — credentials stay server-side.");
+      h+='<div class="card"><div class="card-h"><h3>Breach-Risk Alert Routing</h3><span class="sub">Where early warnings are delivered</span></div><div class="card-b"><div class="tbl-wrap"><table><thead><tr><th>Channel</th><th>Status</th><th></th></tr></thead><tbody>';
+      h+='<tr><td><b>Slack</b><div class="small muted">P1 breach & at-risk posts</div></td><td>'+(hasSlack?'<span class="pill green">Connected</span>':'<span class="pill gray">Not connected</span>')+'</td><td style="text-align:right">'+(hasSlack?'<span class="small muted">Managed in O&M Console</span>':'<a class="btn sm" href="https://tools.csebuilders.com" target="_blank">Connect in O&M Console ↗</a>')+'</td></tr>';
+      h+='<tr><td><b>Twilio SMS</b><div class="small muted">On-call escalation</div></td><td>'+(hasSms?'<span class="pill green">Connected</span>':'<span class="pill gray">Not connected</span>')+'</td><td style="text-align:right">'+(hasSms?'<span class="small muted">Managed in O&M Console</span>':'<a class="btn sm" href="https://tools.csebuilders.com" target="_blank">Connect in O&M Console ↗</a>')+'</td></tr>';
+      h+='</tbody></table></div></div></div>';
+      h+='<div class="card"><div class="card-h"><h3>Portal Data Feed</h3><span class="sub">How the portal consumes SLA compliance</span></div><div class="card-b"><p class="small">Each contract publishes <code>{guarantee, contractualAvail, rawAvail, margin, status, ldAmount}</code> under <code>sla_contracts/{id}</code>, plus an aggregate at <code>sla_rollup/'+esc(WS.orgId)+'</code>. Joined to the portal project card by <code>editorProjectId</code> / <code>mondayBoardId</code> — the same identity the editor and O&M Console use.</p></div></div>';
+      $("app").innerHTML=h;
+    });
+  }
+
+  /* ================= mutations ================= */
+  function persist(name,id,patch,then){ coll(name).doc(id).update(patch).then(function(){ invalidate(name); if(then)then(); }).catch(function(){ toast("Save failed"); }); }
+
+  function newContract(){ formContract(null); }
+  function editContract(id){ formContract(contractObj(id)); }
+  function formContract(c){
+    c=c||{};
+    var exc=c.exclusions||{};
+    var body='<div class="form-row"><label class="f">Contract Name</label><input id="c_name" value="'+esc(c.name||"")+'"></div>';
+    body+='<div class="form-2"><div class="form-row"><label class="f">Counterparty</label><input id="c_cp" value="'+esc(c.counterparty||"")+'"></div>';
+    body+='<div class="form-row"><label class="f">Agreement Type</label><select id="c_type"><option'+(c.agreementType==="O&M Agreement"?" selected":"")+'>O&M Agreement</option><option'+(c.agreementType==="PPA"?" selected":"")+'>PPA</option><option'+(c.agreementType==="Tolling"?" selected":"")+'>Tolling</option><option'+(c.agreementType==="Capacity"?" selected":"")+'>Capacity</option></select></div></div>';
+    body+='<div class="form-2"><div class="form-row"><label class="f">Availability Basis</label><select id="c_basis">';
+    for(var bk in AVAIL_BASIS){ body+='<option value="'+bk+'"'+(c.basis===bk?" selected":"")+'>'+esc(AVAIL_BASIS[bk].split(" (")[0])+'</option>'; }
+    body+='</select></div><div class="form-row"><label class="f">Measurement Window</label><input id="c_win" value="'+esc(c.measureWindow||"Monthly")+'"></div></div>';
+    body+='<div class="form-3"><div class="form-row"><label class="f">Guarantee %</label><input id="c_gar" type="number" step="0.1" value="'+num(c.guarantee,97)+'"></div>';
+    body+='<div class="form-row"><label class="f">Period Hours</label><input id="c_ph" type="number" value="'+num(c.periodHours,730)+'"></div>';
+    body+='<div class="form-row"><label class="f">Sched-Maint Cap (h)</label><input id="c_smc" type="number" value="'+num(c.schedMaintCapHrs,24)+'"></div></div>';
+    body+='<div class="form-2"><div class="form-row"><label class="f">Rate $/kWh</label><input id="c_rate" type="number" step="0.001" value="'+num(c.ppaRate,0.1)+'"></div>';
+    body+='<div class="form-row"><label class="f">Expected MWh/period</label><input id="c_exp" type="number" value="'+num(c.expectedMwh,0)+'"></div></div>';
+    body+='<div class="form-3"><div class="form-row"><label class="f">Available Hrs</label><input id="c_ah" type="number" value="'+num(c.availableHrs,730)+'"></div>';
+    body+='<div class="form-row"><label class="f">Raw Uptime Hrs</label><input id="c_ruh" type="number" value="'+num(c.rawUptimeHrs,730)+'"></div>';
+    body+='<div class="form-row"><label class="f">Linked projectId</label><input id="c_pid" value="'+esc(c.editorProjectId||"")+'" placeholder="editor_…"></div></div>';
+    body+='<div class="section-h">Liquidated Damages</div>';
+    body+='<div class="form-3"><div class="form-row"><label class="f">LD Basis</label><select id="c_ldt">';
+    for(var lk in LD_TYPES){ body+='<option value="'+lk+'"'+(c.ldType===lk?" selected":"")+'>'+esc(LD_TYPES[lk])+'</option>'; }
+    body+='</select></div><div class="form-row"><label class="f">LD Rate</label><input id="c_ldr" type="number" value="'+num(c.ldRate,0)+'"></div>';
+    body+='<div class="form-row"><label class="f">LD Cap (% mo rev)</label><input id="c_ldc" type="number" value="'+num(c.ldCapPct,10)+'"></div></div>';
+    body+='<div class="section-h">Exclusions (removed from availability calc)</div>';
+    EXCLUSIONS.forEach(function(x){ body+='<label class="chk"><input type="checkbox" id="c_ex_'+x.key+'"'+(exc[x.key]?" checked":"")+'> <b>'+esc(x.label)+'</b> <span class="muted small">— '+esc(x.hint)+'</span></label>'; });
+    $("ovTitle").textContent=c.id?"Edit Contract Terms":"Add SLA Contract"; $("ovBody").innerHTML=body; $("ovFoot").innerHTML='';
+    var cancel=el("button","btn","Cancel"); cancel.onclick=closeModal;
+    var go=el("button","btn pri","Save"); go.onclick=function(){
+      var exObj={}; EXCLUSIONS.forEach(function(x){ exObj[x.key]=!!($("c_ex_"+x.key)||{}).checked; });
+      var o={ orgId:WS.orgId, name:$("c_name").value||"Untitled SLA", counterparty:$("c_cp").value, agreementType:$("c_type").value,
+        basis:$("c_basis").value, measureWindow:$("c_win").value, guarantee:num($("c_gar").value,97), periodHours:num($("c_ph").value,730),
+        schedMaintCapHrs:num($("c_smc").value,0), ppaRate:num($("c_rate").value,0.1), expectedMwh:num($("c_exp").value,0),
+        availableHrs:num($("c_ah").value,730), rawUptimeHrs:num($("c_ruh").value,730), editorProjectId:$("c_pid").value,
+        source: $("c_pid").value?"repo":(c.source||"repo"), exclusions:exObj,
+        ldType:$("c_ldt").value, ldRate:num($("c_ldr").value,0), ldCapPct:num($("c_ldc").value,10),
+        siteName:c.siteName||$("c_name").value, createdAt:c.createdAt||Date.now() };
+      if(c.mondayBoardId)o.mondayBoardId=c.mondayBoardId;
+      var ref=c.id?coll("contracts").doc(c.id):coll("contracts").doc(uid("ctr"));
+      ref.set(o).then(function(){ invalidate("contracts"); closeModal(); STATE.mod="obligations"; render(); toast("Contract saved"); });
+    };
+    $("ovFoot").appendChild(cancel); $("ovFoot").appendChild(go); $("ov").className="ov on";
+  }
+
+  function newEvent(contractId){
+    var c=contractObj(contractId); if(!c)return;
+    var body='<p class="small muted" style="margin-top:0">Log a downtime event. Its cause determines whether it counts against the guarantee or is excluded per this contract.</p>';
+    body+='<div class="form-row"><label class="f">Cause</label><select id="e_cause"><option value="equipment">Equipment (counts)</option>';
+    EXCLUSIONS.forEach(function(x){ var on=c.exclusions&&c.exclusions[x.key]; body+='<option value="'+x.key+'">'+esc(x.label)+(on?" (excluded here)":" (not excluded here → counts)")+'</option>'; });
+    body+='</select></div>';
+    body+='<div class="form-2"><div class="form-row"><label class="f">Downtime (hrs)</label><input id="e_hrs" type="number" step="0.1" value="1"></div>';
+    body+='<div class="form-row"><label class="f">Energy Lost (MWh)</label><input id="e_mwh" type="number" step="0.1" value="0"></div></div>';
+    body+='<div class="form-row"><label class="f">Note</label><input id="e_note" placeholder="e.g. Inverter 3 fault"></div>';
+    body+='<div class="form-2"><div class="form-row"><label class="f">Status</label><select id="e_status"><option value="open">Open (accruing)</option><option value="resolved">Resolved</option></select></div>';
+    body+='<div class="form-row"><label class="f">Start</label><input id="e_start" type="date"></div></div>';
+    $("ovTitle").textContent="Log Downtime — "+c.name; $("ovBody").innerHTML=body; $("ovFoot").innerHTML='';
+    var cancel=el("button","btn","Cancel"); cancel.onclick=closeModal;
+    var go=el("button","btn pri","Log Event"); go.onclick=function(){
+      var startVal=$("e_start").value; var startMs=startVal?new Date(startVal).getTime():Date.now();
+      var o={ orgId:WS.orgId, contractId:contractId, cause:$("e_cause").value, hrs:num($("e_hrs").value,0),
+        mwh:num($("e_mwh").value,0), note:$("e_note").value, status:$("e_status").value, start:startMs, end:startMs+num($("e_hrs").value,0)*3600000, createdAt:Date.now() };
+      coll("events").doc(uid("evt")).set(o).then(function(){ invalidate("events"); closeModal(); openContract(contractId); toast("Downtime logged"); });
+    };
+    $("ovFoot").appendChild(cancel); $("ovFoot").appendChild(go); $("ov").className="ov on";
+  }
+
+  function recordBreach(contractId){
+    var c=contractObj(contractId); if(!c)return; var a=computeAvailability(c);
+    var period=new Date(); var pStr=period.getFullYear()+"-"+("0"+(period.getMonth()+1)).slice(-2);
+    var o={ orgId:WS.orgId, contractId:contractId, siteName:c.siteName||c.name, period:pStr,
+      guaranteeAt:a.guarantee, achievedAt:a.contractualAvail, shortfall:a.shortfall, ldType:c.ldType, ldAmount:a.ld.amount,
+      status:"Open", openedAt:Date.now(), note:"Auto-recorded from availability engine.",
+      log:[{t:Date.now(),m:"Period recorded: "+a.contractualAvail.toFixed(2)+"% vs "+a.guarantee.toFixed(1)+"% guarantee ("+a.shortfall.toFixed(2)+" pts short)"},
+           {t:Date.now(),m:"LD computed at "+money(a.ld.amount)+" ("+(LD_TYPES[c.ldType]||c.ldType)+")"+(a.ld.capped?" — capped":"")}],
+      createdAt:Date.now() };
+    coll("breaches").doc(uid("brc")).set(o).then(function(){ invalidate("breaches"); STATE.mod="ledger"; render(); toast("Breach recorded to ledger"); });
+  }
+
+  function breachStatus(id){
+    var b=(STATE.cache.breaches||[]).filter(function(x){return x.id===id;})[0]; if(!b)return;
+    var body='<div class="form-row"><label class="f">Status</label><select id="bs_sel">';
+    ["Open","Acknowledged","Invoiced","Cured","Waived"].forEach(function(s){ body+='<option'+(b.status===s?" selected":"")+'>'+s+'</option>'; });
+    body+='</select></div><div class="form-row"><label class="f">Note (added to audit trail)</label><input id="bs_note" placeholder="Optional"></div>';
+    $("ovTitle").textContent="Update Breach Status"; $("ovBody").innerHTML=body; $("ovFoot").innerHTML='';
+    var cancel=el("button","btn","Cancel"); cancel.onclick=closeModal;
+    var go=el("button","btn pri","Update"); go.onclick=function(){
+      var ns=$("bs_sel").value; var note=$("bs_note").value; var log=(b.log||[]).slice();
+      log.push({ t:Date.now(), m:"Status → "+ns+(note?(" · "+note):"") }); b.status=ns; b.log=log;
+      persist("breaches", id, { status:ns, log:log }, function(){ closeModal(); openBreach(id); toast("Status updated"); });
+    };
+    $("ovFoot").appendChild(cancel); $("ovFoot").appendChild(go); $("ov").className="ov on";
+  }
+  function addBreachNote(id){
+    var v=($("brcNote")||{}).value||""; if(!v.trim())return;
+    var b=(STATE.cache.breaches||[]).filter(function(x){return x.id===id;})[0]; if(!b)return;
+    var log=(b.log||[]).slice(); log.push({ t:Date.now(), m:v.trim() }); b.log=log;
+    persist("breaches", id, { log:log }, function(){ openBreach(id); });
+  }
+
+  function escalate(contractId){
+    var c=contractObj(contractId); if(!c)return;
+    if(DEMO){ toast("Demo: alert would post to Slack/SMS on-call"); return; }
+    fetch(ALERT_PROXY_URL,{ method:"POST", headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({ action:"alert", orgId:WS.orgId, kind:"sla_risk", contract:c.name, user:(USER&&USER.email)||"" }) })
+      .then(function(){ toast("On-call notified"); }).catch(function(){ toast("Alert failed — check O&M Console proxy"); });
+  }
+
+  /* ---------------- COMPLIANCE CERTIFICATE ---------------- */
+  function openCert(){
+    var cs=STATE.cache.contracts||[]; var rows='';
+    cs.forEach(function(c){ var a=computeAvailability(c);
+      rows+='<tr><td>'+esc(c.name)+'</td><td>'+pct(a.guarantee,1)+'</td><td>'+pct(a.rawAvail,2)+'</td><td>'+pct(a.contractualAvail,2)+'</td><td>'+(a.meets?'<span class="pill green">Compliant</span>':'<span class="pill red">Breach</span>')+'</td><td>'+money(a.ld.amount)+'</td></tr>'; });
+    var body='<p class="small muted" style="margin-top:0">'+esc(COMPANY)+' · '+esc(WS.orgId)+' · issued '+fmtDate(Date.now())+'</p>';
+    body+='<div class="tbl-wrap"><table><thead><tr><th>Contract</th><th>Guarantee</th><th>Raw</th><th>Contractual</th><th>Status</th><th>LD</th></tr></thead><tbody>'+rows+'</tbody></table></div>';
+    body+='<div class="ok-lock" style="margin-top:12px">✓ Certificate reflects contract-adjusted availability with all exclusion determinations. Export to PDF/XLS or attach to the owner report.</div>';
+    $("ovTitle").textContent="SLA Compliance Certificate"; $("ovBody").innerHTML=body; $("ovFoot").innerHTML='';
+    var c=el("button","btn","Close"); c.onclick=closeModal;
+    var pdf=el("button","btn","⤓ PDF"); pdf.onclick=function(){ toast(DEMO?"Demo: PDF stubbed":"Generating PDF…"); };
+    var xls=el("button","btn pri","⤓ CSV"); xls.onclick=exportCsv;
+    $("ovFoot").appendChild(c); $("ovFoot").appendChild(pdf); $("ovFoot").appendChild(xls); $("ov").className="ov on";
+  }
+  function exportCsv(){
+    var cs=STATE.cache.contracts||[];
+    var lines=["Contract,Counterparty,Type,Basis,Guarantee %,Raw Uptime %,Contractual %,Margin,Excluded Hrs,Counted Hrs,Status,LD $"];
+    cs.forEach(function(c){ var a=computeAvailability(c);
+      lines.push([q(c.name),q(c.counterparty),q(c.agreementType),q(c.basis),a.guarantee,a.rawAvail.toFixed(2),a.contractualAvail.toFixed(2),(a.contractualAvail-a.guarantee).toFixed(2),a.excludedHrs.toFixed(1),a.countedDown.toFixed(1),(a.meets?"Compliant":"Breach"),a.ld.amount.toFixed(0)].join(",")); });
+    function q(x){ x=String(x||""); return /[",]/.test(x)?'"'+x.replace(/"/g,'""')+'"':x; }
+    var blob=new Blob([lines.join("\n")],{type:"text/csv"}); var url=URL.createObjectURL(blob);
+    var a=document.createElement("a"); a.href=url; a.download="sla-compliance-"+WS.orgId+".csv"; document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    toast("CSV exported");
+  }
+
+  function closeModal(){ $("ov").className="ov"; }
+  function back(){ STATE.sel={}; render(); }
+
+  /* ================= expose ================= */
+  window.UI = {
+    openContract:openContract, newContract:newContract, editContract:editContract,
+    newEvent:newEvent, recordBreach:recordBreach, openBreach:openBreach, breachStatus:breachStatus, addBreachNote:addBreachNote,
+    escalate:escalate, openCert:openCert, exportCsv:exportCsv,
+    back:back, closeModal:closeModal
+  };
+  window.STATE = STATE; window.render = render; // for inline settings link
+
+  boot();
+})();
+</script>
+</body>
+</html>

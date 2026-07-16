@@ -1,0 +1,758 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ClearSky OMEGA — Owner Reporting &amp; Audit</title>
+<style>
+/* ===== ES5-only, no build step. OMEGA dark-navy topbar theme ===== */
+* { box-sizing: border-box; }
+html, body { margin:0; padding:0; height:100%; }
+body { font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif; color:#1b2733; background:#eef1f4; font-size:14px; }
+a { color:#1461d2; text-decoration:none; cursor:pointer; }
+a:hover { text-decoration:underline; }
+
+.tb { display:flex; align-items:center; height:52px; background:#0e1b33; color:#fff; padding:0 16px; position:sticky; top:0; z-index:50; }
+.tb-omega { height:26px; margin-right:9px; }
+.tb-logo-txt { font-weight:700; font-size:17px; letter-spacing:.3px; }
+.tb-logo-txt span { color:#4da3ff; }
+.tb-sep { width:1px; height:24px; background:#2a3c5c; margin:0 16px; }
+.tb-ws { font-size:13px; color:#9fb4d6; }
+.tb-ws b { color:#fff; }
+.tb-right { margin-left:auto; display:flex; align-items:center; gap:14px; font-size:12px; color:#9fb4d6; }
+.tb-badge { background:#123; border:1px solid #2a3c5c; color:#8fc0ff; padding:3px 9px; border-radius:20px; font-size:11px; font-weight:600; letter-spacing:.4px; }
+.tb-user { width:28px; height:28px; border-radius:50%; background:#2a3c5c; display:flex; align-items:center; justify-content:center; color:#cfe0ff; font-weight:700; font-size:12px; }
+
+.nav { display:flex; background:#12233f; padding:0 8px; flex-wrap:wrap; }
+.nav a { color:#a9bcd8; padding:11px 15px; font-size:13px; font-weight:600; border-bottom:3px solid transparent; }
+.nav a.on { color:#fff; border-bottom-color:#4da3ff; background:#0e1b33; }
+
+.wrap { padding:18px; max-width:1500px; margin:0 auto; }
+.row { display:flex; gap:18px; align-items:flex-start; }
+.col { flex:1; min-width:0; }
+
+.card { background:#fff; border:1px solid #dde3ea; border-radius:10px; box-shadow:0 1px 2px rgba(16,30,54,.05); margin-bottom:18px; }
+.card-h { padding:13px 16px; border-bottom:1px solid #edf1f5; display:flex; align-items:center; gap:10px; }
+.card-h h3 { margin:0; font-size:14px; font-weight:700; }
+.card-h .sub { font-size:12px; color:#7b8794; font-weight:400; }
+.card-b { padding:16px; }
+
+.btn { display:inline-flex; align-items:center; gap:6px; border:1px solid #cbd4de; background:#fff; color:#1b2733; padding:7px 13px; border-radius:7px; font-size:13px; font-weight:600; cursor:pointer; }
+.btn:hover { background:#f4f7fa; }
+.btn.pri { background:#1461d2; border-color:#1461d2; color:#fff; }
+.btn.pri:hover { background:#0f4fae; }
+.btn.dark { background:#0e1b33; border-color:#0e1b33; color:#fff; }
+.btn.sm { padding:4px 9px; font-size:12px; }
+.btn.ghost { border-color:transparent; background:transparent; color:#1461d2; }
+.btn.ok { background:#137a44; border-color:#137a44; color:#fff; }
+.btn[disabled] { opacity:.5; cursor:default; }
+
+table { width:100%; border-collapse:collapse; font-size:13px; }
+th { text-align:left; font-size:11px; text-transform:uppercase; letter-spacing:.4px; color:#7b8794; padding:8px 10px; border-bottom:1px solid #e4e9ef; font-weight:700; }
+td { padding:9px 10px; border-bottom:1px solid #eef2f6; vertical-align:middle; }
+tr:hover td { background:#f8fafc; }
+.tbl-wrap { overflow:auto; }
+
+.dl { display:grid; grid-template-columns:1fr 1fr; gap:12px 20px; }
+.dl .fld label { display:block; font-size:11px; color:#7b8794; text-transform:uppercase; letter-spacing:.4px; margin-bottom:3px; }
+.dl .fld .val { font-size:13px; color:#1b2733; }
+.section-h { font-size:12px; font-weight:700; color:#3a4a5c; margin:18px 0 8px; padding-bottom:5px; border-bottom:1px solid #edf1f5; display:flex; align-items:center; gap:6px; }
+
+.pill { display:inline-block; padding:2px 9px; border-radius:20px; font-size:11px; font-weight:600; }
+.pill.blue { background:#e3efff; color:#1461d2; }
+.pill.green { background:#e2f5ea; color:#137a44; }
+.pill.amber { background:#fff2d9; color:#9a6800; }
+.pill.red { background:#fde3e3; color:#b42323; }
+.pill.gray { background:#eceff3; color:#5b6b7c; }
+.pill.teal { background:#d9f5f2; color:#0d7d72; }
+.pill.purple { background:#efe6ff; color:#6b3fd4; }
+
+input, select, textarea { font-family:inherit; font-size:13px; padding:8px 10px; border:1px solid #cbd4de; border-radius:7px; width:100%; background:#fff; }
+input:focus, select:focus, textarea:focus { outline:none; border-color:#1461d2; box-shadow:0 0 0 3px rgba(20,97,210,.12); }
+label.f { display:block; font-size:11px; color:#7b8794; text-transform:uppercase; letter-spacing:.4px; margin:0 0 4px; }
+.form-row { margin-bottom:13px; }
+.form-2 { display:grid; grid-template-columns:1fr 1fr; gap:13px; }
+
+.ov { position:fixed; inset:0; background:rgba(14,27,51,.5); display:none; align-items:flex-start; justify-content:center; z-index:100; padding:40px 16px; overflow:auto; }
+.ov.on { display:flex; }
+.modal { background:#fff; border-radius:12px; width:100%; max-width:620px; box-shadow:0 20px 60px rgba(0,0,0,.3); }
+.modal-h { padding:16px 20px; border-bottom:1px solid #edf1f5; display:flex; align-items:center; }
+.modal-h h3 { margin:0; font-size:16px; }
+.modal-h .x { margin-left:auto; cursor:pointer; color:#7b8794; font-size:20px; line-height:1; }
+.modal-b { padding:20px; }
+.modal-f { padding:14px 20px; border-top:1px solid #edf1f5; display:flex; gap:10px; justify-content:flex-end; }
+
+.subtabs { display:flex; gap:2px; border-bottom:1px solid #e4e9ef; margin-bottom:16px; flex-wrap:wrap; }
+.subtabs a { padding:9px 15px; font-size:13px; font-weight:600; color:#5b6b7c; border-bottom:2px solid transparent; }
+.subtabs a.on { color:#1461d2; border-bottom-color:#1461d2; }
+
+.kpis { display:flex; gap:14px; margin-bottom:18px; flex-wrap:wrap; }
+.kpi { flex:1; min-width:150px; background:#fff; border:1px solid #dde3ea; border-radius:10px; padding:14px 16px; }
+.kpi .n { font-size:26px; font-weight:800; color:#0e1b33; }
+.kpi .n.good { color:#137a44; } .kpi .n.warn { color:#9a6800; } .kpi .n.bad { color:#b42323; }
+.kpi .l { font-size:11px; text-transform:uppercase; letter-spacing:.5px; color:#7b8794; margin-top:2px; }
+
+.tl { position:relative; padding-left:22px; }
+.tl:before { content:""; position:absolute; left:6px; top:4px; bottom:4px; width:2px; background:#e4e9ef; }
+.tl .ev { position:relative; padding:0 0 14px 0; }
+.tl .ev:before { content:""; position:absolute; left:-19px; top:3px; width:10px; height:10px; border-radius:50%; background:#1461d2; border:2px solid #fff; box-shadow:0 0 0 1px #cbd4de; }
+.tl .ev.perf:before { background:#e08600; }
+.tl .ev.sla:before { background:#b42323; }
+.tl .ev.svc:before { background:#0d7d72; }
+.tl .ev .t { font-size:11px; color:#98a4b2; }
+.tl .ev .m { font-size:13px; }
+.tl .ev .src { font-size:10px; font-weight:700; letter-spacing:.3px; padding:1px 6px; border-radius:4px; margin-left:6px; }
+.src.perf2 { background:#fff2d9; color:#9a6800; } .src.sla2 { background:#fde3e3; color:#b42323; } .src.svc2 { background:#d9f5f2; color:#0d7d72; }
+
+/* Report preview sheet */
+.sheet { background:#fff; border:1px solid #dde3ea; border-radius:8px; padding:28px; max-width:820px; margin:0 auto; box-shadow:0 2px 14px rgba(16,30,54,.08); }
+.sheet .rh { display:flex; align-items:center; border-bottom:2px solid #0e1b33; padding-bottom:14px; margin-bottom:18px; }
+.sheet .rh .brand { font-size:20px; font-weight:800; color:#0e1b33; }
+.sheet .rh .brand span { color:#1461d2; }
+.sheet .rh .meta { margin-left:auto; text-align:right; font-size:12px; color:#7b8794; }
+.sheet h2 { font-size:16px; margin:20px 0 6px; color:#0e1b33; }
+.sheet .lede { color:#3a4a5c; font-size:13px; }
+.rk { display:flex; gap:16px; margin:14px 0; flex-wrap:wrap; }
+.rk .b { flex:1; min-width:120px; border:1px solid #e4e9ef; border-radius:8px; padding:12px 14px; }
+.rk .b .n { font-size:22px; font-weight:800; }
+.rk .b .l { font-size:10px; text-transform:uppercase; letter-spacing:.4px; color:#7b8794; }
+.attest { border-top:1px solid #e4e9ef; margin-top:22px; padding-top:14px; font-size:11px; color:#7b8794; }
+
+.muted { color:#7b8794; }
+.empty { text-align:center; padding:34px 20px; color:#98a4b2; font-size:13px; }
+.flex { display:flex; align-items:center; gap:10px; }
+.spacer { flex:1; }
+.small { font-size:12px; }
+.toast { position:fixed; bottom:22px; right:22px; background:#0e1b33; color:#fff; padding:12px 18px; border-radius:9px; font-size:13px; box-shadow:0 8px 30px rgba(0,0,0,.3); z-index:200; display:none; }
+.toast.on { display:block; }
+.loading { padding:40px; text-align:center; color:#7b8794; }
+.info-lock { background:#e8f0fb; border:1px solid #b9d3f2; border-radius:8px; padding:10px 14px; font-size:12px; color:#1461d2; margin-bottom:16px; }
+.ok-lock { background:#e2f5ea; border:1px solid #a8dcc0; border-radius:8px; padding:10px 14px; font-size:12px; color:#137a44; margin-bottom:16px; }
+.widget { border:1px dashed #b9d3f2; border-radius:10px; padding:14px 16px; background:#f7fafe; }
+.widget .wh { font-size:11px; text-transform:uppercase; letter-spacing:.5px; color:#1461d2; font-weight:700; margin-bottom:8px; }
+code { background:#eef2f6; padding:1px 5px; border-radius:4px; font-size:12px; }
+.rpt-card { border:1px solid #dde3ea; border-radius:10px; padding:16px; cursor:pointer; transition:border-color .1s; }
+.rpt-card:hover { border-color:#b9d3f2; }
+.rpt-card .ic { font-size:22px; }
+.rpt-card h4 { margin:8px 0 4px; font-size:14px; }
+.rpt-card p { margin:0; font-size:12px; color:#7b8794; }
+</style>
+</head>
+<body>
+
+<div class="tb">
+  <img src="/clearsky-omega-mark-white.png" alt="OMEGA" class="tb-omega">
+  <span class="tb-logo-txt">Clear<span>Sky</span> OMEGA</span>
+  <div class="tb-sep"></div>
+  <span class="tb-ws">Owner Reporting &amp; Audit &nbsp;·&nbsp; <b id="wsName">Loading…</b></span>
+  <div class="tb-right">
+    <button id="genBtn" class="btn sm" style="background:#12233f;border-color:#2a3c5c;color:#cfe0ff" onclick="UI.buildReport('summary')">⤓ Generate Report</button>
+    <span class="tb-badge" id="tierBadge">—</span>
+    <span id="userEmail">—</span>
+    <div class="tb-user" id="userInitial">?</div>
+  </div>
+</div>
+
+<div class="nav" id="nav">
+  <a data-mod="overview" class="on">Overview</a>
+  <a data-mod="reports">Report Builder</a>
+  <a data-mod="availability">SLA &amp; Availability</a>
+  <a data-mod="audit">Audit Trail</a>
+  <a data-mod="owners">Owners</a>
+  <a data-mod="settings" style="margin-left:auto">⚙ Settings</a>
+</div>
+
+<div class="wrap" id="app"><div class="loading">Connecting to workspace…</div></div>
+
+<div class="ov" id="ov">
+  <div class="modal">
+    <div class="modal-h"><h3 id="ovTitle">—</h3><span class="x" onclick="UI.closeModal()">&times;</span></div>
+    <div class="modal-b" id="ovBody"></div>
+    <div class="modal-f" id="ovFoot"></div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script src="/config.js"></script>
+<script src="https://tools.csebuilders.com/omega-tools.js"></script>
+<script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+<script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-auth.js"></script>
+<script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-firestore.js"></script>
+<!-- Export libs (same CDN approach as the editor) -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+
+<script>
+/* ============================================================
+   ClearSky OMEGA — Owner Reporting & Audit Console
+   A CONSUMER of the O&M stack. Reads:
+     · om_sites          (O&M Operations Console)   performance & revenue
+     · sla_contracts/_events/_breaches (SLA Intelligence) contractual avail
+     · fs_calls/_signals (Field Service)            service execution
+   Produces owner-ready SLA / availability reports, one-click PDF + XLSX,
+   and a unified historical audit trail across performance, SLA & service.
+   Namespace (own data): rpt_*   ·  ES5-only.  Firebase compat v8.
+   ============================================================ */
+(function () {
+  "use strict";
+
+  window.onerror = function(msg){
+    var app=document.getElementById("app");
+    if(app && app.querySelector(".loading")){ app.innerHTML='<div class="card"><div class="card-b"><h3>Something went wrong</h3><p class="muted small">'+String(msg)+'</p></div></div>'; }
+    return false;
+  };
+
+  var CSCONFIG=(typeof window!=="undefined"&&window.CLEARSKY_CONFIG)?window.CLEARSKY_CONFIG:null;
+  var FB=(CSCONFIG&&CSCONFIG.firebase)?CSCONFIG.firebase:{
+    apiKey:"AIzaSyABoM1lgOYUnd5ZadaoTMhYmA9cHa8Tyo0", authDomain:"clearsky-portal.firebaseapp.com",
+    projectId:"clearsky-portal", storageBucket:"clearsky-portal.firebasestorage.app",
+    messagingSenderId:"742134484347", appId:"1:742134484347:web:ab0f95fd221536158481de" };
+
+  var APP_KEY="ownerreport";
+  var TIER_LABEL={ 0:"OMEGA (All)",1:"OMEGA Core",2:"OMEGA Performance",3:"Enterprise · Alpha & Omega" };
+  function tierName(n){ return TIER_LABEL[n]!=null?TIER_LABEL[n]:("Tier "+n); }
+  var ADMIN_DOMAINS={ "csebuilders.com":true,"clearsky-usa.com":true };
+  var COMPANY=(CSCONFIG&&CSCONFIG.companyName)?CSCONFIG.companyName:"ClearSky OMEGA";
+
+  var db, auth, USER=null, WS=null;
+  var STATE={ mod:"overview", sel:{}, cache:{} };
+
+  /* ================= util ================= */
+  function $(id){ return document.getElementById(id); }
+  function el(t,c,h){ var e=document.createElement(t); if(c)e.className=c; if(h!=null)e.innerHTML=h; return e; }
+  function esc(s){ if(s==null)return ""; return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;"); }
+  function money(n){ if(n==null||n==="")return "—"; var x=Number(n); if(isNaN(x))return esc(n); return "$"+x.toLocaleString(undefined,{maximumFractionDigits:0}); }
+  function pct(n,d){ if(n==null)return "—"; return (Number(n)).toFixed(d==null?1:d)+"%"; }
+  function num(v,d){ var x=Number(v); return isNaN(x)?(d||0):x; }
+  function fmtDate(d){ if(!d)return "—"; if(d&&d.toDate)d=d.toDate(); var dt=new Date(d); if(isNaN(dt))return esc(d); return (dt.getMonth()+1)+"/"+dt.getDate()+"/"+dt.getFullYear(); }
+  function fmtDT(ms){ if(!ms)return "—"; var dt=new Date(ms); if(isNaN(dt))return "—"; return (dt.getMonth()+1)+"/"+dt.getDate()+" "+("0"+dt.getHours()).slice(-2)+":"+("0"+dt.getMinutes()).slice(-2); }
+  function ago(ms){ if(!ms)return "—"; var s=(Date.now()-ms)/1000; if(s<60)return "just now"; if(s<3600)return Math.floor(s/60)+"m ago"; if(s<86400)return Math.floor(s/3600)+"h ago"; return Math.floor(s/86400)+"d ago"; }
+  function uid(p){ return (p||"id")+"_"+Date.now().toString(36)+"_"+Math.random().toString(36).slice(2,7); }
+  function toast(m){ var t=$("toast"); t.textContent=m; t.className="toast on"; setTimeout(function(){ t.className="toast"; },2600); }
+  function periodLabel(){ var d=new Date(); return d.toLocaleString(undefined,{month:"long",year:"numeric"}); }
+
+  var DEMO=false;
+
+  /* ================= boot ================= */
+  function boot(){
+    var keyMissing=!FB.apiKey||FB.apiKey.indexOf("PLACEHOLDER")!==-1;
+    if(typeof firebase==="undefined"||keyMissing) return startDemo();
+    try{ firebase.initializeApp(FB); db=firebase.firestore(); auth=firebase.auth(); }catch(e){ return startDemo(); }
+    auth.onAuthStateChanged(function(u){ if(!u){ auth.signInAnonymously().catch(function(){ startDemo(); }); return; } onUser(u); }, function(){ startDemo(); });
+  }
+  function startDemo(){ DEMO=true; db=makeMemDb(); onUser({ email:"admin@csebuilders.com" }); }
+
+  function makeMemDb(){
+    var store={};
+    function collection(name){ store[name]=store[name]||{};
+      return { _name:name, doc:function(id){ id=id||uid("doc"); return docRef(name,id); },
+        where:function(f,op,v){ return query(name,[[f,op,v]]); }, limit:function(){ return query(name,[]); }, get:function(){ return query(name,[]).get(); } }; }
+    function docRef(name,id){ return { id:id,
+      set:function(o){ store[name][id]=clone(o); return Promise.resolve(); },
+      update:function(p){ var d=store[name][id]||{}; for(var k in p)d[k]=p[k]; store[name][id]=d; return Promise.resolve(); },
+      get:function(){ var d=store[name][id]; return Promise.resolve({ exists:!!d, id:id, data:function(){return clone(d);} }); } }; }
+    function query(name,conds){ return { where:function(f,op,v){ return query(name,conds.concat([[f,op,v]])); }, limit:function(){ return this; },
+      get:function(){ var out=[],bag=store[name]||{}; for(var id in bag){ var r=bag[id],ok=true;
+        for(var i=0;i<conds.length;i++){ var c=conds[i]; if(c[1]==="=="&&r[c[0]]!==c[2]){ ok=false; break; } }
+        if(ok) out.push({ id:id, data:(function(x){return function(){return clone(x);};})(r) }); }
+        return Promise.resolve({ empty:out.length===0, size:out.length, forEach:function(cb){ out.forEach(cb); } }); } }; }
+    function batch(){ var ops=[]; return { set:function(r,o){ ops.push(function(){ r.set(o); }); }, update:function(r,o){ ops.push(function(){ r.update(o); }); }, commit:function(){ ops.forEach(function(f){f();}); return Promise.resolve(); } }; }
+    function clone(o){ return o==null?o:JSON.parse(JSON.stringify(o)); }
+    return { collection:collection, batch:batch };
+  }
+
+  var OT=window.OMEGATools; var ORG=null;
+  function omegaOrgRef(orgId){ return db.collection("omega_orgs").doc(orgId); }
+  function workspaceOf(o){ return { orgId:o.orgId, tierLevel:o.tierLevel, unlockedTools:o.unlockedTools||[], requiredTools:o.requiredTools||[], customToolUrls:o.customToolUrls||{} }; }
+  function canOpenThisApp(o){ if(!OT)return o.tierLevel>=2; var t=OT.byKey(APP_KEY); if(!t)return o.tierLevel>=2; return OT.isUnlocked(t,workspaceOf(o)); }
+
+  function onUser(u){
+    USER=u; var email=u.email||"admin@csebuilders.com"; var domain=(email.split("@")[1]||"").toLowerCase();
+    if(!domain){ renderNoAuth(); return; }
+    $("userEmail").textContent=email; $("userInitial").textContent=(email[0]||"?").toUpperCase();
+    resolveOrg(domain,email).then(function(org){
+      ORG=org; WS={ orgId:org.orgId, name:(COMPANY||org.orgId) };
+      $("wsName").textContent=WS.name+(DEMO?" · DEMO":"");
+      var tb=$("tierBadge"); if(tb)tb.textContent=tierName(org.tierLevel).toUpperCase();
+      if(!canOpenThisApp(org)){ renderUpgrade(org); return; }
+      bindNav();
+      seedIfEmpty().then(function(){ render(); }).catch(function(e){ $("app").innerHTML='<div class="card"><div class="card-b"><h3>Couldn\'t load data</h3><p class="muted small">'+esc(String(e&&e.message||e))+'</p></div></div>'; });
+    });
+  }
+  function cfgTierLevel(){ var c=window.CLEARSKY_CONFIG; if(!c)return null;
+    if(typeof c.tierLevel==="number")return c.tierLevel; if(typeof c.tier==="number")return c.tier;
+    if(typeof c.tier==="string"){ var t=c.tier.toLowerCase(); if(t.indexOf("enter")===0||t.indexOf("alpha")===0)return 3; if(t.indexOf("perf")===0||t==="deluxe")return 2; if(t==="core"||t==="standard")return 1; } return null; }
+  function resolveOrg(domain){ var isAdmin=!!ADMIN_DOMAINS[domain]; var cfgTier=cfgTierLevel();
+    if(DEMO){ var lvl=isAdmin?3:(cfgTier!=null?cfgTier:2); var unl=(lvl<2)?[]:[APP_KEY]; return Promise.resolve({ orgId:domain, tierLevel:lvl, unlockedTools:unl, requiredTools:[], customToolUrls:{}, isAdmin:isAdmin }); }
+    return omegaOrgRef(domain).get().then(function(d){ if(d.exists){ var data=d.data(); var lvl=(typeof data.tierLevel==="number")?data.tierLevel:(cfgTier!=null?cfgTier:1);
+      return { orgId:domain, tierLevel:lvl, unlockedTools:data.unlockedTools||[], requiredTools:data.requiredTools||[], customToolUrls:data.customToolUrls||{}, isAdmin:isAdmin }; }
+      return { orgId:domain, tierLevel:(isAdmin?3:(cfgTier!=null?cfgTier:1)), unlockedTools:[], requiredTools:[], customToolUrls:{}, isAdmin:isAdmin };
+    }).catch(function(){ return { orgId:domain, tierLevel:(isAdmin?3:(cfgTier!=null?cfgTier:1)), unlockedTools:[], requiredTools:[], customToolUrls:{}, isAdmin:isAdmin }; });
+  }
+  function renderNoAuth(){ $("app").innerHTML='<div class="card"><div class="card-b"><h3>Sign-in required</h3><p class="muted">This console requires an authenticated account.</p></div></div>'; }
+  function renderUpgrade(org){ $("app").innerHTML='<div class="card"><div class="card-b" style="text-align:center;padding:50px 20px"><div style="font-size:40px">🔒</div><h3 style="margin:12px 0 6px">Owner Reporting &amp; Audit</h3><p class="muted">This is an <b>OMEGA Performance</b> &amp; <b>Enterprise</b> app.</p><p class="muted small">Your plan (<b>'+esc(tierName(org.tierLevel))+'</b>) doesn\'t include it yet.</p></div></div>'; }
+  function bindNav(){ var links=$("nav").getElementsByTagName("a"); for(var i=0;i<links.length;i++){ (function(a){ a.onclick=function(){ for(var j=0;j<links.length;j++)links[j].className=""; a.className="on"; STATE.mod=a.getAttribute("data-mod"); STATE.sel={}; render(); }; })(links[i]); } }
+
+  /* ================= seed ================= */
+  /* This tool reads the OTHER tools' namespaces (om_/sla_/fs_). In demo we
+     seed a compatible slice so the report has real numbers to aggregate.
+     It ALSO owns rpt_owners + rpt_reports (generated report history). */
+  function seedIfEmpty(){
+    var org=WS.orgId;
+    return db.collection("om_sites").where("orgId","==",org).limit(1).get().then(function(s){
+      if(!s.empty) return; // the O&M console already seeded; reuse it
+      var batch=db.batch(); var now=Date.now(), D=86400000, H=3600000;
+
+      function ser(base,dips){ var arr=[]; for(var i=0;i<24;i++){ var v=base*(0.85+Math.random()*0.3); if(dips.indexOf(i)>=0)v*=0.35; arr.push(Math.round(v)); } return arr; }
+      var sites=[
+        { name:"Claremont BESS — Berkeley", editorProjectId:"editor_clrmnt_001", source:"repo", utility:"PG&E B-19", capKw:802, tech:"Solar+Storage", contractAvail:98.0, avail:97.3, expectedMwhMo:118, actualMwhMo:109, ppaRate:0.148, monBase:410, dips:[6,7,17], health:"warn" },
+        { name:"Winnipeg BESS — Fort St", editorProjectId:"editor_wpg_001", source:"repo", utility:"Manitoba Hydro", capKw:1200, tech:"Storage", contractAvail:97.0, avail:99.1, expectedMwhMo:96, actualMwhMo:98, ppaRate:0.092, monBase:340, dips:[], health:"good" },
+        { name:"Bondi Junction — Macro Colo", mondayBoardId:"7712345001", source:"monday", utility:"Ausgrid", capKw:640, tech:"Solar+Storage", contractAvail:99.0, avail:94.2, expectedMwhMo:88, actualMwhMo:71, ppaRate:0.210, monBase:300, dips:[3,4,5,12,13], health:"bad" },
+        { name:"OGI Solar — Cedar Rapids", editorProjectId:"editor_ogi_014", source:"repo", utility:"Alliant", capKw:2100, tech:"Solar", contractAvail:97.5, avail:98.6, expectedMwhMo:240, actualMwhMo:236, ppaRate:0.071, monBase:820, dips:[9], health:"good" }
+      ];
+      sites.forEach(function(x){ var ref=db.collection("om_sites").doc(uid("site")); x.orgId=org; x.createdAt=Date.now(); x.series=ser(x.monBase,x.dips); x.lastTelemetry=now-(Math.floor(Math.random()*40)*60000); batch.set(ref,x); });
+
+      // a couple of historical breaches on the SLA ledger for the audit trail
+      var b1=db.collection("sla_breaches").doc(uid("brc")); batch.set(b1,{ orgId:org, siteName:"Bondi Junction — Macro Colo", period:"2026-05", guaranteeAt:99.0, achievedAt:97.9, shortfall:1.1, ldType:"revShare", ldAmount:1848, status:"Acknowledged", openedAt:now-38*D, createdAt:now-38*D, note:"May inverter serial issue" });
+
+      // service history slice (fs_calls) for the audit trail
+      function C(o){ var ref=db.collection("fs_calls").doc(uid("call")); o.orgId=org; o.createdAt=o.createdAt||Date.now(); batch.set(ref,o); }
+      C({ num:"SC-2035", site:"OGI Solar — Cedar Rapids", editorProjectId:"editor_ogi_014", title:"String 14 underperformance", priority:"P3", stage:"Verified", assignedName:"Ari Cohen", assignedKind:"internal", openedAt:now-6*D, completedAt:now-5*D+3*H, verifiedAt:now-5*D+5*H });
+      C({ num:"SC-2030", site:"Winnipeg BESS — Fort St", editorProjectId:"editor_wpg_001", title:"AC disconnect nuisance trip", priority:"P3", stage:"Verified", assignedName:"Dana Whitfield", assignedKind:"internal", openedAt:now-9*D, completedAt:now-8*D+2*H, verifiedAt:now-7*D });
+      C({ num:"SC-2041", site:"Claremont BESS — Berkeley", editorProjectId:"editor_clrmnt_001", title:"BESS rack 2 thermal derate", priority:"P2", stage:"En Route", assignedName:"Rexel Service Team", assignedKind:"vendor", openedAt:now-10*H });
+
+      // owner directory (this tool owns it)
+      function O(o){ var ref=db.collection("rpt_owners").doc(uid("own")); o.orgId=org; o.createdAt=Date.now(); batch.set(ref,o); }
+      O({ name:"Amperage Capital", contact:"Asset Management", email:"am@amperagecapital.com", sites:["Claremont BESS — Berkeley"], cadence:"Monthly" });
+      O({ name:"OGI Solar", contact:"Operations", email:"ops@ogisolar.com", sites:["OGI Solar — Cedar Rapids"], cadence:"Monthly" });
+      O({ name:"Waverley Holdings", contact:"Facilities", email:"facilities@waverley.au", sites:["Bondi Junction — Macro Colo"], cadence:"Quarterly" });
+
+      batch.commit();
+      return new Promise(function(r){ setTimeout(r,700); });
+    });
+  }
+
+  /* ================= cross-tool loaders ================= */
+  function loadRaw(coll){
+    if(STATE.cache[coll]) return Promise.resolve(STATE.cache[coll]);
+    return db.collection(coll).where("orgId","==",WS.orgId).get().then(function(s){
+      var arr=[]; s.forEach(function(d){ var o=d.data(); o.id=d.id; arr.push(o); });
+      STATE.cache[coll]=arr; return arr;
+    }).catch(function(){ STATE.cache[coll]=[]; return []; });
+  }
+  function loadAll(){ return Promise.all([ loadRaw("om_sites"), loadRaw("sla_contracts"), loadRaw("sla_events"), loadRaw("sla_breaches"), loadRaw("fs_calls"), loadRaw("fs_signals"), loadRaw("rpt_owners"), loadRaw("rpt_reports") ]); }
+  function invalidate(n){ delete STATE.cache[n]; }
+
+  /* ===== derived metrics (mirror the source tools' math) ===== */
+  function siteVariance(s){ var exp=num(s.expectedMwhMo),act=num(s.actualMwhMo),rate=num(s.ppaRate);
+    var lostMwh=Math.max(0,exp-act); return { exp:exp,act:act,lostMwh:lostMwh,expRev:exp*1000*rate,actRev:act*1000*rate,lostRev:lostMwh*1000*rate,yieldPct:exp>0?act/exp*100:0 }; }
+  function fleetRollup(){
+    var sites=STATE.cache.om_sites||[]; var expRev=0,actRev=0,lostRev=0,lostMwh=0,availSum=0,capKw=0,breach=0;
+    sites.forEach(function(s){ var v=siteVariance(s); expRev+=v.expRev; actRev+=v.actRev; lostRev+=v.lostRev; lostMwh+=v.lostMwh; availSum+=num(s.avail); capKw+=num(s.capKw); if(num(s.avail)<num(s.contractAvail))breach++; });
+    return { count:sites.length, avgAvail:sites.length?availSum/sites.length:0, expRev:expRev, actRev:actRev, lostRev:lostRev, lostMwh:lostMwh, capKw:capKw, breach:breach };
+  }
+
+  /* ================= render dispatch ================= */
+  function render(){
+    $("app").innerHTML='<div class="loading">Loading '+STATE.mod+'…</div>';
+    loadAll().then(function(){
+      if(STATE.mod==="overview") renderOverview();
+      else if(STATE.mod==="reports") renderReports();
+      else if(STATE.mod==="availability") renderAvailability();
+      else if(STATE.mod==="audit") renderAudit();
+      else if(STATE.mod==="owners") renderOwners();
+      else if(STATE.mod==="settings") renderSettings();
+    });
+  }
+  function info(t){ return '<div class="info-lock">◎ '+t+'</div>'; }
+  function kpi(n,l,cls){ return '<div class="kpi"><div class="n'+(cls?" "+cls:"")+'">'+(n==null?"—":n)+'</div><div class="l">'+esc(l)+'</div></div>'; }
+  function fld(l,v){ return '<div class="fld"><label>'+esc(l)+'</label><div class="val">'+esc(v||"—")+'</div></div>'; }
+
+  /* ---------------- OVERVIEW ---------------- */
+  function renderOverview(){
+    var R=fleetRollup(); var sites=STATE.cache.om_sites||[]; var reports=STATE.cache.rpt_reports||[]; var owners=STATE.cache.rpt_owners||[];
+    var libLoaded = (typeof window.jspdf!=="undefined") && (typeof window.XLSX!=="undefined");
+    var h=info("Turn operations into confidence — SLA &amp; availability reports leaders can stand behind, generated from live O&M, SLA, and field-service data.");
+    h+='<div class="kpis">'
+      + kpi(sites.length,"Sites Reported")
+      + kpi(pct(R.avgAvail),"Fleet Availability", R.avgAvail>=97?"good":"warn")
+      + kpi(R.breach,"SLA Exceptions", R.breach?"bad":"good")
+      + kpi(owners.length,"Owners")
+      + kpi(reports.length,"Reports Issued")
+      + '</div>';
+
+    h+='<div class="card"><div class="card-h"><h3>Quick Generate</h3><span class="sub">One click → PDF + XLSX for '+esc(periodLabel())+'</span></div><div class="card-b"><div class="row">';
+    h+='<div class="col rpt-card" onclick="UI.buildReport(\'summary\')"><div class="ic">📄</div><h4>Monthly O&amp;M Summary</h4><p>Availability, production variance, service log &amp; SLA status.</p></div>';
+    h+='<div class="col rpt-card" onclick="UI.buildReport(\'sla\')"><div class="ic">📑</div><h4>SLA Compliance Certificate</h4><p>Contracted vs achieved availability with exceptions.</p></div>';
+    h+='<div class="col rpt-card" onclick="UI.buildReport(\'audit\')"><div class="ic">🗂️</div><h4>Audit Trail Export</h4><p>Every performance, SLA &amp; service event, timestamped.</p></div>';
+    h+='</div>';
+    if(!libLoaded) h+='<div class="small muted" style="margin-top:12px">PDF/XLSX libraries loading… if they don\'t appear, exports fall back to CSV.</div>';
+    h+='</div></div>';
+
+    // recent reports
+    h+='<div class="card"><div class="card-h"><h3>Recent Reports</h3><span class="sub">Issued history</span></div><div class="card-b"><div class="tbl-wrap"><table><thead><tr><th>Report</th><th>Type</th><th>Period</th><th>Issued</th><th>By</th></tr></thead><tbody>';
+    if(!reports.length) h+='<tr><td colspan="5" class="empty">No reports issued yet. Generate one above.</td></tr>';
+    reports.sort(function(a,b){return (b.createdAt||0)-(a.createdAt||0);}).forEach(function(r){
+      h+='<tr><td><b>'+esc(r.title)+'</b></td><td>'+esc(r.kind)+'</td><td>'+esc(r.period)+'</td><td class="small">'+ago(r.createdAt)+'</td><td class="small muted">'+esc(r.by||"")+'</td></tr>';
+    });
+    h+='</tbody></table></div></div></div>';
+
+    // portal widget
+    h+='<div class="card"><div class="card-h"><h3>Portal Widget Preview</h3><span class="sub">Owner-report status as a dashboard datapoint</span></div><div class="card-b"><div class="row">';
+    h+='<div class="col widget"><div class="wh">Reporting · index datapoint</div><div style="font-size:22px;font-weight:800;color:#137a44">'+reports.length+' issued</div><div class="small muted">last: '+(reports.length?ago(reports[0].createdAt):"—")+' · '+owners.length+' owners on cadence</div><div class="small muted" style="margin-top:6px">Feed key: <code>rpt_rollup/'+esc(WS.orgId)+'</code></div></div>';
+    h+='<div class="col widget"><div class="wh">Per-owner datapoint</div><div class="small">Each owner card shows next report due &amp; last delivered, joined to their sites by <code>projectId</code> — so the portal surfaces "report ready" beside the project.</div></div>';
+    h+='</div></div></div>';
+    $("app").innerHTML=h;
+  }
+
+  /* ---------------- REPORT BUILDER ---------------- */
+  function renderReports(){
+    var owners=STATE.cache.rpt_owners||[]; var sites=STATE.cache.om_sites||[];
+    var h=info("Build a report scoped to a portfolio or a single owner, then export owner-ready PDF and XLSX in one click.");
+    h+='<div class="card"><div class="card-h"><h3>Report Builder</h3><span class="sub">Scope → preview → export</span></div><div class="card-b">';
+    h+='<div class="form-2"><div class="form-row"><label class="f">Report Type</label><select id="rb_kind"><option value="summary">Monthly O&M Summary</option><option value="sla">SLA Compliance Certificate</option><option value="revenue">Revenue Variance Statement</option><option value="audit">Audit Trail Export</option></select></div>';
+    h+='<div class="form-row"><label class="f">Scope</label><select id="rb_scope"><option value="__all">Entire Portfolio</option>';
+    owners.forEach(function(o){ h+='<option value="'+esc(o.id)+'">Owner · '+esc(o.name)+'</option>'; });
+    sites.forEach(function(s){ h+='<option value="site:'+esc(s.editorProjectId||s.mondayBoardId||s.name)+'">Site · '+esc(s.name)+'</option>'; });
+    h+='</select></div></div>';
+    h+='<div class="form-2"><div class="form-row"><label class="f">Period Label</label><input id="rb_period" value="'+esc(periodLabel())+'"></div>';
+    h+='<div class="form-row"><label class="f">Prepared For</label><input id="rb_for" placeholder="Owner / asset manager name"></div></div>';
+    h+='<div class="flex" style="margin-top:6px"><button class="btn" onclick="UI.previewFromBuilder()">Preview</button><button class="btn pri" onclick="UI.exportFromBuilder(\'pdf\')">⤓ PDF</button><button class="btn ok" onclick="UI.exportFromBuilder(\'xlsx\')">⤓ XLSX</button></div>';
+    h+='</div></div>';
+    h+='<div id="previewSlot"></div>';
+    $("app").innerHTML=h;
+  }
+
+  function scopeSites(scope){
+    var sites=STATE.cache.om_sites||[];
+    if(!scope||scope==="__all") return sites;
+    if(scope.indexOf("site:")===0){ var key=scope.slice(5); return sites.filter(function(s){ return (s.editorProjectId===key||s.mondayBoardId===key||s.name===key); }); }
+    // owner id
+    var owner=(STATE.cache.rpt_owners||[]).filter(function(o){return o.id===scope;})[0];
+    if(owner){ var names=owner.sites||[]; return sites.filter(function(s){ return names.indexOf(s.name)>=0; }); }
+    return sites;
+  }
+
+  function previewFromBuilder(){
+    var kind=$("rb_kind").value, scope=$("rb_scope").value, period=$("rb_period").value, forWhom=$("rb_for").value;
+    $("previewSlot").innerHTML=renderSheet(kind, scopeSites(scope), period, forWhom);
+  }
+  function exportFromBuilder(fmt){
+    var kind=$("rb_kind").value, scope=$("rb_scope").value, period=$("rb_period").value, forWhom=$("rb_for").value;
+    doExport(kind, scopeSites(scope), period, forWhom, fmt);
+  }
+
+  /* Build report from a quick action (topbar / overview cards) */
+  function buildReport(kind){
+    STATE.mod="reports"; var links=$("nav").getElementsByTagName("a"); for(var i=0;i<links.length;i++){ links[i].className=(links[i].getAttribute("data-mod")==="reports"?"on":""); }
+    loadAll().then(function(){
+      renderReports();
+      $("rb_kind").value=kind;
+      $("previewSlot").innerHTML=renderSheet(kind, scopeSites("__all"), periodLabel(), "");
+    });
+  }
+
+  /* ---------------- THE REPORT SHEET (HTML preview mirrors the PDF) ---------------- */
+  function renderSheet(kind, sites, period, forWhom){
+    var title = kind==="sla"?"SLA Compliance Certificate":(kind==="revenue"?"Revenue Variance Statement":(kind==="audit"?"Audit Trail Export":"Monthly O&M Summary"));
+    var R=aggScope(sites);
+    var h='<div class="card"><div class="card-h"><h3>Preview — '+esc(title)+'</h3><span class="sub">'+esc(period)+'</span><div class="spacer"></div><button class="btn pri sm" onclick="UI.exportFromBuilder(\'pdf\')">⤓ PDF</button><button class="btn ok sm" onclick="UI.exportFromBuilder(\'xlsx\')">⤓ XLSX</button></div><div class="card-b">';
+    h+='<div class="sheet"><div class="rh"><div class="brand">Clear<span>Sky</span> OMEGA</div><div class="meta">'+esc(COMPANY)+'<br>'+esc(title)+'<br>Period: '+esc(period)+(forWhom?'<br>Prepared for: '+esc(forWhom):'')+'<br>Issued: '+fmtDate(Date.now())+'</div></div>';
+
+    if(kind==="audit"){
+      h+='<h2>Historical Audit Trail</h2><p class="lede">All performance, SLA, and service events across the reporting scope, in chronological order.</p>';
+      var events=buildAuditTrail(sites);
+      h+='<div class="tl" style="margin-top:12px">';
+      events.slice(0,40).forEach(function(e){ h+='<div class="ev '+e.cls+'"><div class="t">'+fmtDT(e.t)+'<span class="src '+e.badge+'">'+e.tag+'</span></div><div class="m">'+esc(e.site)+' — '+esc(e.m)+'</div></div>'; });
+      h+='</div>'; if(events.length>40) h+='<p class="small muted">+ '+(events.length-40)+' more in the XLSX export.</p>';
+    } else {
+      // KPI band
+      h+='<div class="rk">';
+      h+='<div class="b"><div class="n" style="color:'+(R.avgAvail>=97?"#137a44":"#9a6800")+'">'+pct(R.avgAvail)+'</div><div class="l">Availability</div></div>';
+      h+='<div class="b"><div class="n">'+money(R.actRev)+'</div><div class="l">Revenue Delivered</div></div>';
+      h+='<div class="b"><div class="n" style="color:'+(R.lostRev>0?"#b42323":"#137a44")+'">'+money(R.lostRev)+'</div><div class="l">Revenue at Risk</div></div>';
+      h+='<div class="b"><div class="n">'+R.svcCount+'</div><div class="l">Service Events</div></div>';
+      h+='</div>';
+      if(kind==="sla"){
+        h+='<h2>Contractual Availability by Site</h2>';
+        h+='<div class="tbl-wrap"><table><thead><tr><th>Site</th><th>Contracted</th><th>Achieved</th><th>Margin</th><th>Status</th></tr></thead><tbody>';
+        sites.forEach(function(s){ var m=num(s.avail)-num(s.contractAvail);
+          h+='<tr><td>'+esc(s.name)+'</td><td>'+pct(s.contractAvail,1)+'</td><td>'+pct(s.avail,1)+'</td><td>'+(m>=0?'+':'')+m.toFixed(1)+'</td><td>'+(m>=0?'<span class="pill green">Compliant</span>':'<span class="pill red">Exception</span>')+'</td></tr>'; });
+        h+='</tbody></table></div>';
+      } else if(kind==="revenue"){
+        h+='<h2>Revenue Variance by Site</h2>';
+        h+='<div class="tbl-wrap"><table><thead><tr><th>Site</th><th>Expected MWh</th><th>Actual MWh</th><th>Yield</th><th>Expected $</th><th>Actual $</th><th>Variance</th></tr></thead><tbody>';
+        sites.forEach(function(s){ var v=siteVariance(s);
+          h+='<tr><td>'+esc(s.name)+'</td><td>'+v.exp+'</td><td>'+v.act+'</td><td>'+pct(v.yieldPct,0)+'</td><td>'+money(v.expRev)+'</td><td>'+money(v.actRev)+'</td><td>'+(v.lostRev>0?"−"+money(v.lostRev):"on plan")+'</td></tr>'; });
+        h+='</tbody></table></div>';
+      } else { // summary
+        h+='<h2>Portfolio Summary</h2>';
+        h+='<div class="tbl-wrap"><table><thead><tr><th>Site</th><th>Utility</th><th>Availability</th><th>Yield</th><th>Rev at Risk</th><th>Open Service</th></tr></thead><tbody>';
+        sites.forEach(function(s){ var v=siteVariance(s); var open=svcForSite(s).filter(function(c){return c.stage!=="Verified";}).length;
+          h+='<tr><td>'+esc(s.name)+'</td><td>'+esc(s.utility||"")+'</td><td>'+pct(s.avail,1)+'</td><td>'+pct(v.yieldPct,0)+'</td><td>'+(v.lostRev>0?money(v.lostRev):"—")+'</td><td>'+open+'</td></tr>'; });
+        h+='</tbody></table></div>';
+        h+='<h2>Service Activity</h2>';
+        var svc=scopeSvc(sites);
+        h+='<div class="tbl-wrap"><table><thead><tr><th>Call</th><th>Site</th><th>Issue</th><th>Priority</th><th>Status</th><th>Owner</th></tr></thead><tbody>';
+        if(!svc.length) h+='<tr><td colspan="6" class="muted">No service activity this period.</td></tr>';
+        svc.slice(0,12).forEach(function(c){ h+='<tr><td>'+esc(c.num)+'</td><td>'+esc(c.site)+'</td><td>'+esc(c.title)+'</td><td>'+esc(c.priority)+'</td><td>'+esc(c.stage)+'</td><td>'+esc(c.assignedName||"—")+(c.assignedKind==="vendor"?" (V)":"")+'</td></tr>'; });
+        h+='</tbody></table></div>';
+      }
+    }
+    h+='<div class="attest">Prepared by ClearSky OMEGA on behalf of '+esc(COMPANY)+'. Availability figures reflect contract-adjusted definitions where an SLA is on file. This report is generated from timestamped operational records and is suitable for owner review, audit, and renewal.</div>';
+    h+='</div></div></div>';
+    return h;
+  }
+
+  function aggScope(sites){
+    var expRev=0,actRev=0,lostRev=0,availSum=0; sites.forEach(function(s){ var v=siteVariance(s); expRev+=v.expRev; actRev+=v.actRev; lostRev+=v.lostRev; availSum+=num(s.avail); });
+    return { avgAvail:sites.length?availSum/sites.length:0, expRev:expRev, actRev:actRev, lostRev:lostRev, svcCount:scopeSvc(sites).length };
+  }
+  function siteKeys(s){ return [s.editorProjectId, s.mondayBoardId, s.name].filter(Boolean); }
+  function svcForSite(s){ var keys=siteKeys(s); return (STATE.cache.fs_calls||[]).filter(function(c){ return keys.indexOf(c.editorProjectId)>=0 || keys.indexOf(c.site)>=0; }); }
+  function scopeSvc(sites){ var out=[]; sites.forEach(function(s){ svcForSite(s).forEach(function(c){ if(out.indexOf(c)<0)out.push(c); }); }); return out.sort(function(a,b){return (b.openedAt||0)-(a.openedAt||0);}); }
+
+  /* unified audit trail across the three tools */
+  function buildAuditTrail(sites){
+    var events=[];
+    var scope=sites||(STATE.cache.om_sites||[]);
+    var siteNames={}; scope.forEach(function(s){ siteNames[s.name]=true; siteKeys(s).forEach(function(k){ siteNames[k]=true; }); });
+    function inScope(name,key){ return siteNames[name] || (key&&siteNames[key]); }
+    // service calls
+    (STATE.cache.fs_calls||[]).forEach(function(c){ if(!inScope(c.site,c.editorProjectId)) return;
+      if(c.openedAt) events.push({ t:c.openedAt, site:c.site, m:c.num+" opened: "+c.title+" ("+c.priority+")", cls:"svc", badge:"svc2", tag:"SERVICE" });
+      if(c.completedAt) events.push({ t:c.completedAt, site:c.site, m:c.num+" completed by "+(c.assignedName||"crew")+(c.assignedKind==="vendor"?" (vendor)":""), cls:"svc", badge:"svc2", tag:"SERVICE" });
+      if(c.verifiedAt) events.push({ t:c.verifiedAt, site:c.site, m:c.num+" verified & closed — data confirmed", cls:"svc", badge:"svc2", tag:"SERVICE" });
+    });
+    // SLA breaches
+    (STATE.cache.sla_breaches||[]).forEach(function(b){ if(!inScope(b.siteName)) return;
+      events.push({ t:b.openedAt||b.createdAt, site:b.siteName, m:"SLA exception "+b.period+": achieved "+pct(b.achievedAt,1)+" vs "+pct(b.guaranteeAt,1)+" — LD "+money(b.ldAmount), cls:"sla", badge:"sla2", tag:"SLA" });
+    });
+    // performance signals
+    (STATE.cache.fs_signals||[]).forEach(function(sg){ if(!inScope(sg.site,sg.editorProjectId)) return;
+      events.push({ t:sg.raisedAt||sg.createdAt, site:sg.site, m:"Performance signal "+sg.ref+": "+sg.detail+" ("+sg.severity+")", cls:"perf", badge:"perf2", tag:"PERF" });
+    });
+    return events.sort(function(a,b){ return b.t-a.t; });
+  }
+
+  /* ================= EXPORT: real PDF + XLSX ================= */
+  function saveReportRecord(kind, period, forWhom){
+    var title = kind==="sla"?"SLA Compliance Certificate":(kind==="revenue"?"Revenue Variance Statement":(kind==="audit"?"Audit Trail Export":"Monthly O&M Summary"));
+    var rec={ orgId:WS.orgId, kind:kind, title:title, period:period, forWhom:forWhom||"", by:(USER&&USER.email)||"", createdAt:Date.now() };
+    db.collection("rpt_reports").doc(uid("rpt")).set(rec).then(function(){ invalidate("rpt_reports"); });
+  }
+
+  function doExport(kind, sites, period, forWhom, fmt){
+    if(fmt==="pdf") return exportPDF(kind, sites, period, forWhom);
+    if(fmt==="xlsx") return exportXLSX(kind, sites, period, forWhom);
+    exportCSV(kind, sites, period);
+  }
+
+  function exportPDF(kind, sites, period, forWhom){
+    if(typeof window.jspdf==="undefined"){ toast("PDF lib not loaded — using CSV"); return exportCSV(kind,sites,period); }
+    var jsPDF=window.jspdf.jsPDF; var doc=new jsPDF({ unit:"pt", format:"a4" });
+    var title = kind==="sla"?"SLA Compliance Certificate":(kind==="revenue"?"Revenue Variance Statement":(kind==="audit"?"Audit Trail Export":"Monthly O&M Summary"));
+    var M=40, y=48;
+    // header
+    doc.setFontSize(18); doc.setTextColor(14,27,51); doc.text("ClearSky OMEGA", M, y);
+    doc.setFontSize(10); doc.setTextColor(120,135,148);
+    doc.text(COMPANY, 555, y-8, { align:"right" });
+    doc.text(title, 555, y+6, { align:"right" });
+    doc.text("Period: "+period, 555, y+20, { align:"right" });
+    if(forWhom) doc.text("For: "+forWhom, 555, y+34, { align:"right" });
+    doc.setDrawColor(14,27,51); doc.setLineWidth(1.5); doc.line(M, y+16, 555, y+16);
+    y+=44;
+
+    var R=aggScope(sites);
+    if(kind!=="audit"){
+      // KPI row
+      doc.setFontSize(9); doc.setTextColor(120,135,148);
+      var kx=[M, M+130, M+260, M+390];
+      var ks=[["Availability",pct(R.avgAvail)],["Revenue Delivered",money(R.actRev)],["Revenue at Risk",money(R.lostRev)],["Service Events",String(R.svcCount)]];
+      ks.forEach(function(k,i){ doc.setFontSize(9); doc.setTextColor(120,135,148); doc.text(k[0].toUpperCase(), kx[i], y);
+        doc.setFontSize(15); doc.setTextColor(14,27,51); doc.text(k[1], kx[i], y+18); });
+      y+=42;
+    }
+
+    var head, body;
+    if(kind==="sla"){
+      head=[["Site","Contracted","Achieved","Margin","Status"]];
+      body=sites.map(function(s){ var m=num(s.avail)-num(s.contractAvail); return [s.name, pct(s.contractAvail,1), pct(s.avail,1), (m>=0?"+":"")+m.toFixed(1), (m>=0?"Compliant":"Exception")]; });
+    } else if(kind==="revenue"){
+      head=[["Site","Exp MWh","Act MWh","Yield","Expected $","Actual $","Variance"]];
+      body=sites.map(function(s){ var v=siteVariance(s); return [s.name, v.exp, v.act, pct(v.yieldPct,0), money(v.expRev), money(v.actRev), v.lostRev>0?("-"+money(v.lostRev)):"on plan"]; });
+    } else if(kind==="audit"){
+      head=[["When","Type","Site","Event"]];
+      body=buildAuditTrail(sites).map(function(e){ return [fmtDT(e.t), e.tag, e.site, e.m]; });
+    } else {
+      head=[["Site","Utility","Availability","Yield","Rev at Risk","Open Svc"]];
+      body=sites.map(function(s){ var v=siteVariance(s); var open=svcForSite(s).filter(function(c){return c.stage!=="Verified";}).length; return [s.name, s.utility||"", pct(s.avail,1), pct(v.yieldPct,0), v.lostRev>0?money(v.lostRev):"-", open]; });
+    }
+    doc.autoTable({ startY:y, head:head, body:body, margin:{ left:M, right:M }, styles:{ fontSize:8, cellPadding:4 },
+      headStyles:{ fillColor:[14,27,51], textColor:255, fontSize:8 }, alternateRowStyles:{ fillColor:[244,247,250] } });
+
+    // summary service section for the summary report
+    if(kind==="summary"){
+      var svc=scopeSvc(sites);
+      if(svc.length){
+        var yy=doc.lastAutoTable.finalY+18; doc.setFontSize(11); doc.setTextColor(14,27,51); doc.text("Service Activity", M, yy);
+        doc.autoTable({ startY:yy+6, head:[["Call","Site","Issue","Priority","Status","Owner"]],
+          body:svc.slice(0,20).map(function(c){ return [c.num, c.site, c.title, c.priority, c.stage, (c.assignedName||"—")+(c.assignedKind==="vendor"?" (V)":"")]; }),
+          margin:{ left:M, right:M }, styles:{ fontSize:8, cellPadding:4 }, headStyles:{ fillColor:[13,125,114], textColor:255, fontSize:8 } });
+      }
+    }
+    // footer attestation
+    var fy=doc.lastAutoTable?doc.lastAutoTable.finalY+24:y+24; if(fy>780){ doc.addPage(); fy=48; }
+    doc.setFontSize(7.5); doc.setTextColor(120,135,148);
+    var att="Prepared by ClearSky OMEGA on behalf of "+COMPANY+". Availability reflects contract-adjusted definitions where an SLA is on file. Generated "+fmtDT(Date.now())+" from timestamped operational records; suitable for owner review, audit, and renewal.";
+    doc.text(doc.splitTextToSize(att, 515), M, fy);
+
+    doc.save("omega-"+kind+"-"+WS.orgId+"-"+Date.now().toString(36)+".pdf");
+    saveReportRecord(kind, period, forWhom); toast("PDF generated");
+  }
+
+  function exportXLSX(kind, sites, period, forWhom){
+    if(typeof window.XLSX==="undefined"){ toast("XLSX lib not loaded — using CSV"); return exportCSV(kind,sites,period); }
+    var XLSX=window.XLSX; var wb=XLSX.utils.book_new();
+    var R=aggScope(sites);
+    // Summary sheet
+    var summ=[["ClearSky OMEGA — "+(kind.toUpperCase())+" Report"],["Company",COMPANY],["Period",period],["Prepared For",forWhom||""],["Issued",fmtDate(Date.now())],[],
+      ["Fleet Availability",pct(R.avgAvail)],["Revenue Delivered",money(R.actRev)],["Revenue at Risk",money(R.lostRev)],["Service Events",R.svcCount]];
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(summ), "Summary");
+    // Availability sheet
+    var av=[["Site","Utility","Capacity kW","Contracted %","Achieved %","Margin","Expected MWh","Actual MWh","Yield %","Expected $","Actual $","Rev at Risk $"]];
+    sites.forEach(function(s){ var v=siteVariance(s); av.push([s.name, s.utility||"", num(s.capKw), num(s.contractAvail), num(s.avail), (num(s.avail)-num(s.contractAvail)).toFixed(1), v.exp, v.act, v.yieldPct.toFixed(1), v.expRev.toFixed(0), v.actRev.toFixed(0), v.lostRev.toFixed(0)]); });
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(av), "Availability");
+    // Service sheet
+    var sv=[["Call","Site","Issue","Priority","Stage","Owner","Type","Opened","Completed","Verified"]];
+    scopeSvc(sites).forEach(function(c){ sv.push([c.num, c.site, c.title, c.priority, c.stage, c.assignedName||"", c.assignedKind||"", c.openedAt?fmtDT(c.openedAt):"", c.completedAt?fmtDT(c.completedAt):"", c.verifiedAt?fmtDT(c.verifiedAt):""]); });
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(sv), "Service");
+    // Audit sheet
+    var au=[["When","Type","Site","Event"]];
+    buildAuditTrail(sites).forEach(function(e){ au.push([fmtDT(e.t), e.tag, e.site, e.m]); });
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(au), "Audit Trail");
+
+    XLSX.writeFile(wb, "omega-"+kind+"-"+WS.orgId+"-"+Date.now().toString(36)+".xlsx");
+    saveReportRecord(kind, period, forWhom); toast("XLSX generated");
+  }
+
+  function exportCSV(kind, sites, period){
+    var lines=["Site,Utility,Contracted %,Achieved %,Yield %,Expected $,Actual $,Rev at Risk $"];
+    sites.forEach(function(s){ var v=siteVariance(s); function q(x){ x=String(x==null?"":x); return /[",]/.test(x)?'"'+x.replace(/"/g,'""')+'"':x; }
+      lines.push([q(s.name),q(s.utility),num(s.contractAvail),num(s.avail),v.yieldPct.toFixed(1),v.expRev.toFixed(0),v.actRev.toFixed(0),v.lostRev.toFixed(0)].join(",")); });
+    var blob=new Blob([lines.join("\n")],{type:"text/csv"}); var url=URL.createObjectURL(blob);
+    var a=document.createElement("a"); a.href=url; a.download="omega-"+kind+"-"+WS.orgId+".csv"; document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    saveReportRecord(kind, period, ""); toast("CSV exported");
+  }
+
+  /* ---------------- SLA & AVAILABILITY (read-only owner view) ---------------- */
+  function renderAvailability(){
+    var sites=STATE.cache.om_sites||[]; var R=fleetRollup();
+    var h=info("SLA and availability reporting — the owner-facing view of contract-adjusted availability across the portfolio.");
+    h+='<div class="kpis">'
+      + kpi(pct(R.avgAvail),"Fleet Availability", R.avgAvail>=97?"good":"warn")
+      + kpi(sites.length-R.breach,"Compliant Sites","good")
+      + kpi(R.breach,"Exceptions", R.breach?"bad":"good")
+      + kpi(money(R.lostRev),"Revenue at Risk", R.lostRev>0?"bad":"good")
+      + '</div>';
+    h+='<div class="card"><div class="card-h"><h3>Availability &amp; SLA</h3><span class="sub">Owner-ready view</span><div class="spacer"></div><button class="btn pri sm" onclick="UI.buildReport(\'sla\')">⤓ SLA Certificate</button></div><div class="card-b"><div class="tbl-wrap"><table><thead><tr>'
+      +'<th>Site</th><th>Owner</th><th>Contracted</th><th>Achieved</th><th>Margin</th><th>Yield</th><th>Status</th></tr></thead><tbody>';
+    sites.forEach(function(s){ var m=num(s.avail)-num(s.contractAvail); var owner=ownerForSite(s.name);
+      h+='<tr><td><b>'+esc(s.name)+'</b></td><td class="small muted">'+esc(owner?owner.name:"—")+'</td><td>'+pct(s.contractAvail,1)+'</td><td>'+pct(s.avail,1)+'</td>'
+        +'<td>'+(m>=0?'<span class="pill green">+'+m.toFixed(1)+'</span>':'<span class="pill red">'+m.toFixed(1)+'</span>')+'</td>'
+        +'<td>'+pct(siteVariance(s).yieldPct,0)+'</td>'
+        +'<td>'+(m>=0?'<span class="pill green">Compliant</span>':'<span class="pill red">Exception</span>')+'</td></tr>';
+    });
+    h+='</tbody></table></div></div></div>';
+    $("app").innerHTML=h;
+  }
+  function ownerForSite(name){ return (STATE.cache.rpt_owners||[]).filter(function(o){ return (o.sites||[]).indexOf(name)>=0; })[0]; }
+
+  /* ---------------- AUDIT TRAIL ---------------- */
+  function renderAudit(){
+    var events=buildAuditTrail(null);
+    var h=info("Historical audit trail across service and performance events — one chronological record spanning performance signals, SLA exceptions, and field service.");
+    h+='<div class="kpis">'
+      + kpi(events.filter(function(e){return e.tag==="PERF";}).length,"Performance Events","warn")
+      + kpi(events.filter(function(e){return e.tag==="SLA";}).length,"SLA Events", events.filter(function(e){return e.tag==="SLA";}).length?"bad":"good")
+      + kpi(events.filter(function(e){return e.tag==="SERVICE";}).length,"Service Events","teal")
+      + kpi(events.length,"Total")
+      + '</div>';
+    h+='<div class="card"><div class="card-h"><h3>Unified Audit Trail</h3><span class="sub">Performance · SLA · Service</span><div class="spacer"></div><button class="btn pri sm" onclick="UI.buildReport(\'audit\')">⤓ Export</button></div><div class="card-b"><div class="tl">';
+    if(!events.length) h+='<div class="empty">No events recorded.</div>';
+    events.slice(0,60).forEach(function(e){ h+='<div class="ev '+e.cls+'"><div class="t">'+fmtDT(e.t)+'<span class="src '+e.badge+'">'+e.tag+'</span></div><div class="m"><b>'+esc(e.site)+'</b> — '+esc(e.m)+'</div></div>'; });
+    h+='</div>'; if(events.length>60) h+='<div class="small muted">Showing 60 most recent of '+events.length+'. Full history in the export.</div>';
+    h+='</div></div>';
+    $("app").innerHTML=h;
+  }
+
+  /* ---------------- OWNERS ---------------- */
+  function renderOwners(){
+    var owners=STATE.cache.rpt_owners||[];
+    var h=info("Owner directory with report cadence. Each owner scopes a report to just their sites for a clean, owner-ready package.");
+    h+='<div class="card"><div class="card-h"><h3>Owners</h3><span class="sub">Report recipients &amp; cadence</span><div class="spacer"></div><button class="btn pri sm" onclick="UI.newOwner()">+ Add Owner</button></div><div class="card-b"><div class="tbl-wrap"><table><thead><tr>'
+      +'<th>Owner</th><th>Contact</th><th>Sites</th><th>Cadence</th><th></th></tr></thead><tbody>';
+    if(!owners.length) h+='<tr><td colspan="5" class="empty">No owners yet.</td></tr>';
+    owners.forEach(function(o){
+      h+='<tr><td><b>'+esc(o.name)+'</b></td><td class="small">'+esc(o.contact||"")+'<div class="muted">'+esc(o.email||"")+'</div></td><td class="small">'+esc((o.sites||[]).join(", ")||"—")+'</td><td><span class="pill blue">'+esc(o.cadence||"Monthly")+'</span></td>'
+        +'<td style="text-align:right"><button class="btn sm" onclick="UI.ownerReport(\''+o.id+'\')">⤓ Report</button> <button class="btn ghost sm" onclick="UI.editOwner(\''+o.id+'\')">Edit</button></td></tr>';
+    });
+    h+='</tbody></table></div></div></div>';
+    $("app").innerHTML=h;
+  }
+  function ownerReport(id){ STATE.mod="reports"; var links=$("nav").getElementsByTagName("a"); for(var i=0;i<links.length;i++){ links[i].className=(links[i].getAttribute("data-mod")==="reports"?"on":""); }
+    loadAll().then(function(){ renderReports(); $("rb_scope").value=id; $("rb_kind").value="summary"; var o=(STATE.cache.rpt_owners||[]).filter(function(x){return x.id===id;})[0]; if(o)$("rb_for").value=o.name; $("previewSlot").innerHTML=renderSheet("summary", scopeSites(id), periodLabel(), o?o.name:""); }); }
+
+  function newOwner(){ formOwner(null); }
+  function editOwner(id){ formOwner((STATE.cache.rpt_owners||[]).filter(function(x){return x.id===id;})[0]); }
+  function formOwner(o){
+    o=o||{}; var sites=STATE.cache.om_sites||[];
+    var body='<div class="form-2"><div class="form-row"><label class="f">Owner Name</label><input id="o_name" value="'+esc(o.name||"")+'"></div>';
+    body+='<div class="form-row"><label class="f">Cadence</label><select id="o_cad"><option'+(o.cadence==="Monthly"?" selected":"")+'>Monthly</option><option'+(o.cadence==="Quarterly"?" selected":"")+'>Quarterly</option><option'+(o.cadence==="Annual"?" selected":"")+'>Annual</option></select></div></div>';
+    body+='<div class="form-2"><div class="form-row"><label class="f">Contact</label><input id="o_contact" value="'+esc(o.contact||"")+'"></div>';
+    body+='<div class="form-row"><label class="f">Email</label><input id="o_email" value="'+esc(o.email||"")+'"></div></div>';
+    body+='<div class="form-row"><label class="f">Sites</label><div style="max-height:160px;overflow:auto;border:1px solid #e4e9ef;border-radius:7px;padding:8px">';
+    sites.forEach(function(s){ var on=(o.sites||[]).indexOf(s.name)>=0; body+='<label style="display:flex;gap:8px;align-items:center;padding:4px 0"><input type="checkbox" style="width:auto" id="o_site_'+esc(s.id)+'" data-name="'+esc(s.name)+'"'+(on?" checked":"")+'> '+esc(s.name)+'</label>'; });
+    body+='</div></div>';
+    $("ovTitle").textContent=o.id?"Edit Owner":"Add Owner"; $("ovBody").innerHTML=body; $("ovFoot").innerHTML='';
+    var cancel=el("button","btn","Cancel"); cancel.onclick=closeModal;
+    var go=el("button","btn pri","Save"); go.onclick=function(){
+      var chosen=[]; sites.forEach(function(s){ var e=$("o_site_"+s.id); if(e&&e.checked)chosen.push(s.name); });
+      var rec={ orgId:WS.orgId, name:$("o_name").value||"Owner", contact:$("o_contact").value, email:$("o_email").value, cadence:$("o_cad").value, sites:chosen, createdAt:o.createdAt||Date.now() };
+      var ref=o.id?db.collection("rpt_owners").doc(o.id):db.collection("rpt_owners").doc(uid("own"));
+      ref.set(rec).then(function(){ invalidate("rpt_owners"); closeModal(); STATE.mod="owners"; render(); toast("Owner saved"); });
+    };
+    $("ovFoot").appendChild(cancel); $("ovFoot").appendChild(go); $("ov").className="ov on";
+  }
+
+  /* ---------------- SETTINGS ---------------- */
+  function renderSettings(){
+    var h=info("This console reads the O&M, SLA, and Field Service tools' data and turns it into owner-ready documents. No separate integration needed.");
+    h+='<div class="card"><div class="card-h"><h3>Data Sources</h3><span class="sub">What feeds each report</span></div><div class="card-b"><div class="tbl-wrap"><table><thead><tr><th>Source Tool</th><th>Namespace</th><th>Feeds</th></tr></thead><tbody>';
+    [["O&M Operations Console","om_sites","Availability, production variance, revenue"],
+     ["SLA & Contractual Intelligence","sla_contracts / sla_breaches","Contract-adjusted availability, exceptions, LD"],
+     ["Field Service & Dispatch","fs_calls / fs_signals","Service execution log, performance signals"]].forEach(function(r){
+      h+='<tr><td><b>'+esc(r[0])+'</b></td><td><code>'+esc(r[1])+'</code></td><td class="small muted">'+esc(r[2])+'</td></tr>';
+    });
+    h+='</tbody></table></div></div></div>';
+    h+='<div class="card"><div class="card-h"><h3>Portal Data Feed</h3><span class="sub">How the portal consumes reporting</span></div><div class="card-b"><p class="small">Report history lives under <code>rpt_reports/{id}</code>; owner cadence under <code>rpt_owners/{id}</code>; an aggregate at <code>rpt_rollup/'+esc(WS.orgId)+'</code> exposes <code>{reportsIssued, lastIssued, ownersDue}</code>. Joined to the portal by <code>projectId</code> so a project card can show "latest report" and "next due".</p></div></div>';
+    $("app").innerHTML=h;
+  }
+
+  function closeModal(){ $("ov").className="ov"; }
+  function back(){ STATE.sel={}; render(); }
+
+  /* ================= expose ================= */
+  window.UI = {
+    buildReport:buildReport, previewFromBuilder:previewFromBuilder, exportFromBuilder:exportFromBuilder,
+    newOwner:newOwner, editOwner:editOwner, ownerReport:ownerReport,
+    back:back, closeModal:closeModal
+  };
+
+  boot();
+})();
+</script>
+</body>
+</html>

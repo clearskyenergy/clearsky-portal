@@ -1,0 +1,1168 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ClearSky OMEGA — O&amp;M Operations Console</title>
+<style>
+/* ===== ES5-only, no build step. OMEGA dark-navy topbar theme ===== */
+* { box-sizing: border-box; }
+html, body { margin:0; padding:0; height:100%; }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  color:#1b2733; background:#eef1f4; font-size:14px;
+}
+a { color:#1461d2; text-decoration:none; cursor:pointer; }
+a:hover { text-decoration:underline; }
+
+/* Topbar */
+.tb { display:flex; align-items:center; height:52px; background:#0e1b33; color:#fff; padding:0 16px; position:sticky; top:0; z-index:50; }
+.tb-omega { height:26px; margin-right:9px; }
+.tb-logo-txt { font-weight:700; font-size:17px; letter-spacing:.3px; }
+.tb-logo-txt span { color:#4da3ff; }
+.tb-sep { width:1px; height:24px; background:#2a3c5c; margin:0 16px; }
+.tb-ws { font-size:13px; color:#9fb4d6; }
+.tb-ws b { color:#fff; }
+.tb-right { margin-left:auto; display:flex; align-items:center; gap:14px; font-size:12px; color:#9fb4d6; }
+.tb-badge { background:#123; border:1px solid #2a3c5c; color:#8fc0ff; padding:3px 9px; border-radius:20px; font-size:11px; font-weight:600; letter-spacing:.4px; }
+.tb-user { width:28px; height:28px; border-radius:50%; background:#2a3c5c; display:flex; align-items:center; justify-content:center; color:#cfe0ff; font-weight:700; font-size:12px; }
+
+/* Nav tabs */
+.nav { display:flex; background:#12233f; padding:0 8px; flex-wrap:wrap; }
+.nav a { color:#a9bcd8; padding:11px 15px; font-size:13px; font-weight:600; border-bottom:3px solid transparent; }
+.nav a.on { color:#fff; border-bottom-color:#4da3ff; background:#0e1b33; }
+
+/* Layout */
+.wrap { padding:18px; max-width:1500px; margin:0 auto; }
+.row { display:flex; gap:18px; align-items:flex-start; }
+.col { flex:1; min-width:0; }
+
+/* Cards */
+.card { background:#fff; border:1px solid #dde3ea; border-radius:10px; box-shadow:0 1px 2px rgba(16,30,54,.05); margin-bottom:18px; }
+.card-h { padding:13px 16px; border-bottom:1px solid #edf1f5; display:flex; align-items:center; gap:10px; }
+.card-h h3 { margin:0; font-size:14px; font-weight:700; }
+.card-h .sub { font-size:12px; color:#7b8794; font-weight:400; }
+.card-b { padding:16px; }
+
+/* Buttons */
+.btn { display:inline-flex; align-items:center; gap:6px; border:1px solid #cbd4de; background:#fff; color:#1b2733; padding:7px 13px; border-radius:7px; font-size:13px; font-weight:600; cursor:pointer; }
+.btn:hover { background:#f4f7fa; }
+.btn.pri { background:#1461d2; border-color:#1461d2; color:#fff; }
+.btn.pri:hover { background:#0f4fae; }
+.btn.dark { background:#0e1b33; border-color:#0e1b33; color:#fff; }
+.btn.sm { padding:4px 9px; font-size:12px; }
+.btn.ghost { border-color:transparent; background:transparent; color:#1461d2; }
+.btn.danger { background:#b42323; border-color:#b42323; color:#fff; }
+
+/* Pipeline path (Sitetracker-style chevrons) */
+.path { display:flex; border-radius:7px; overflow:hidden; border:1px solid #d5dde6; margin-bottom:16px; }
+.path .st { flex:1; position:relative; padding:10px 8px 10px 22px; font-size:12px; font-weight:600; text-align:center; background:#eef2f6; color:#5b6b7c; cursor:pointer; white-space:nowrap; }
+.path .st:after { content:""; position:absolute; right:-11px; top:0; width:0; height:0; border-top:20px solid transparent; border-bottom:20px solid transparent; border-left:11px solid #eef2f6; z-index:2; }
+.path .st:before { content:""; position:absolute; right:-13px; top:0; width:0; height:0; border-top:20px solid transparent; border-bottom:20px solid transparent; border-left:11px solid #d5dde6; z-index:1; }
+.path .st.done { background:#5a76c9; color:#fff; }
+.path .st.done:after { border-left-color:#5a76c9; }
+.path .st.cur { background:#0e1b33; color:#fff; }
+.path .st.cur:after { border-left-color:#0e1b33; }
+.path .st:last-child:after, .path .st:last-child:before { display:none; }
+
+/* Tables */
+table { width:100%; border-collapse:collapse; font-size:13px; }
+th { text-align:left; font-size:11px; text-transform:uppercase; letter-spacing:.4px; color:#7b8794; padding:8px 10px; border-bottom:1px solid #e4e9ef; font-weight:700; }
+td { padding:9px 10px; border-bottom:1px solid #eef2f6; vertical-align:middle; }
+tr:hover td { background:#f8fafc; }
+.tbl-wrap { overflow:auto; }
+
+/* Detail grid */
+.dl { display:grid; grid-template-columns:1fr 1fr; gap:12px 20px; }
+.dl .fld label { display:block; font-size:11px; color:#7b8794; text-transform:uppercase; letter-spacing:.4px; margin-bottom:3px; }
+.dl .fld .val { font-size:13px; color:#1b2733; }
+.section-h { font-size:12px; font-weight:700; color:#3a4a5c; margin:18px 0 8px; padding-bottom:5px; border-bottom:1px solid #edf1f5; display:flex; align-items:center; gap:6px; }
+
+/* Badges/pills */
+.pill { display:inline-block; padding:2px 9px; border-radius:20px; font-size:11px; font-weight:600; }
+.pill.blue { background:#e3efff; color:#1461d2; }
+.pill.green { background:#e2f5ea; color:#137a44; }
+.pill.amber { background:#fff2d9; color:#9a6800; }
+.pill.red { background:#fde3e3; color:#b42323; }
+.pill.gray { background:#eceff3; color:#5b6b7c; }
+.pill.purple { background:#efe6ff; color:#6b3fd4; }
+.risk { width:14px; height:14px; border-radius:3px; display:inline-block; vertical-align:middle; }
+
+/* Inputs */
+input, select, textarea { font-family:inherit; font-size:13px; padding:8px 10px; border:1px solid #cbd4de; border-radius:7px; width:100%; background:#fff; }
+input:focus, select:focus, textarea:focus { outline:none; border-color:#1461d2; box-shadow:0 0 0 3px rgba(20,97,210,.12); }
+label.f { display:block; font-size:11px; color:#7b8794; text-transform:uppercase; letter-spacing:.4px; margin:0 0 4px; }
+.form-row { margin-bottom:13px; }
+.form-2 { display:grid; grid-template-columns:1fr 1fr; gap:13px; }
+
+/* Modal */
+.ov { position:fixed; inset:0; background:rgba(14,27,51,.5); display:none; align-items:flex-start; justify-content:center; z-index:100; padding:40px 16px; overflow:auto; }
+.ov.on { display:flex; }
+.modal { background:#fff; border-radius:12px; width:100%; max-width:560px; box-shadow:0 20px 60px rgba(0,0,0,.3); }
+.modal-h { padding:16px 20px; border-bottom:1px solid #edf1f5; display:flex; align-items:center; }
+.modal-h h3 { margin:0; font-size:16px; }
+.modal-h .x { margin-left:auto; cursor:pointer; color:#7b8794; font-size:20px; line-height:1; }
+.modal-b { padding:20px; }
+.modal-f { padding:14px 20px; border-top:1px solid #edf1f5; display:flex; gap:10px; justify-content:flex-end; }
+
+/* Sub-tabs */
+.subtabs { display:flex; gap:2px; border-bottom:1px solid #e4e9ef; margin-bottom:16px; flex-wrap:wrap; }
+.subtabs a { padding:9px 15px; font-size:13px; font-weight:600; color:#5b6b7c; border-bottom:2px solid transparent; }
+.subtabs a.on { color:#1461d2; border-bottom-color:#1461d2; }
+
+/* KPI strip */
+.kpis { display:flex; gap:14px; margin-bottom:18px; flex-wrap:wrap; }
+.kpi { flex:1; min-width:150px; background:#fff; border:1px solid #dde3ea; border-radius:10px; padding:14px 16px; }
+.kpi .n { font-size:26px; font-weight:800; color:#0e1b33; }
+.kpi .n.good { color:#137a44; } .kpi .n.warn { color:#9a6800; } .kpi .n.bad { color:#b42323; }
+.kpi .l { font-size:11px; text-transform:uppercase; letter-spacing:.5px; color:#7b8794; margin-top:2px; }
+.kpi .d { font-size:11px; margin-top:3px; font-weight:600; }
+.kpi .d.up { color:#137a44; } .kpi .d.down { color:#b42323; }
+
+/* Availability / gauge bars */
+.bar { height:8px; border-radius:6px; background:#eceff3; overflow:hidden; }
+.bar > span { display:block; height:100%; border-radius:6px; }
+.spark { display:flex; align-items:flex-end; gap:2px; height:34px; }
+.spark i { flex:1; background:#c7d6ec; border-radius:2px 2px 0 0; display:block; min-height:2px; }
+.spark i.lo { background:#f0b3b3; }
+
+.muted { color:#7b8794; }
+.empty { text-align:center; padding:40px 20px; color:#98a4b2; font-size:13px; }
+.flex { display:flex; align-items:center; gap:10px; }
+.spacer { flex:1; }
+.small { font-size:12px; }
+.tag-src { font-size:10px; padding:1px 6px; border-radius:4px; font-weight:700; letter-spacing:.3px; }
+.tag-src.repo { background:#e3efff; color:#1461d2; }
+.tag-src.monday { background:#ffe6d6; color:#c8531a; }
+.toast { position:fixed; bottom:22px; right:22px; background:#0e1b33; color:#fff; padding:12px 18px; border-radius:9px; font-size:13px; box-shadow:0 8px 30px rgba(0,0,0,.3); z-index:200; display:none; }
+.toast.on { display:block; }
+.loading { padding:40px; text-align:center; color:#7b8794; }
+.ent-lock { background:#fff7e6; border:1px solid #f0d492; border-radius:8px; padding:10px 14px; font-size:12px; color:#8a6400; margin-bottom:16px; }
+.info-lock { background:#e8f0fb; border:1px solid #b9d3f2; border-radius:8px; padding:10px 14px; font-size:12px; color:#1461d2; margin-bottom:16px; }
+
+/* Severity dots */
+.dot { width:9px; height:9px; border-radius:50%; display:inline-block; vertical-align:middle; margin-right:5px; }
+.dot.p1 { background:#b42323; } .dot.p2 { background:#e08600; } .dot.p3 { background:#c9a500; } .dot.p4 { background:#5b6b7c; }
+
+/* Timeline */
+.tl { position:relative; padding-left:22px; }
+.tl:before { content:""; position:absolute; left:6px; top:4px; bottom:4px; width:2px; background:#e4e9ef; }
+.tl .ev { position:relative; padding:0 0 16px 0; }
+.tl .ev:before { content:""; position:absolute; left:-19px; top:3px; width:10px; height:10px; border-radius:50%; background:#1461d2; border:2px solid #fff; box-shadow:0 0 0 1px #cbd4de; }
+.tl .ev .t { font-size:11px; color:#98a4b2; }
+.tl .ev .m { font-size:13px; }
+
+/* mini widget preview (portal embed) */
+.widget { border:1px dashed #b9d3f2; border-radius:10px; padding:14px 16px; background:#f7fafe; }
+.widget .wh { font-size:11px; text-transform:uppercase; letter-spacing:.5px; color:#1461d2; font-weight:700; margin-bottom:8px; }
+</style>
+</head>
+<body>
+
+<div class="tb">
+  <img src="/clearsky-omega-mark-white.png" alt="OMEGA" class="tb-omega">
+  <span class="tb-logo-txt">Clear<span>Sky</span> OMEGA</span>
+  <div class="tb-sep"></div>
+  <span class="tb-ws">O&amp;M Operations Console &nbsp;·&nbsp; <b id="wsName">Loading…</b></span>
+  <div class="tb-right">
+    <button id="reportBtn" class="btn sm" style="background:#12233f;border-color:#2a3c5c;color:#cfe0ff" onclick="UI.openReport()">⤓ Owner Report</button>
+    <span class="tb-badge" id="tierBadge">—</span>
+    <span id="userEmail">—</span>
+    <div class="tb-user" id="userInitial">?</div>
+  </div>
+</div>
+
+<div class="nav" id="nav">
+  <a data-mod="fleet" class="on">Fleet Overview</a>
+  <a data-mod="performance">Performance &amp; Revenue</a>
+  <a data-mod="sla">SLA &amp; Availability</a>
+  <a data-mod="tickets">Tickets</a>
+  <a data-mod="technicians">Technicians</a>
+  <a data-mod="reports">Reports</a>
+  <a data-mod="settings" style="margin-left:auto">⚙ Settings</a>
+</div>
+
+<div class="wrap" id="app">
+  <div class="loading">Connecting to workspace…</div>
+</div>
+
+<!-- Modal -->
+<div class="ov" id="ov">
+  <div class="modal">
+    <div class="modal-h"><h3 id="ovTitle">—</h3><span class="x" onclick="UI.closeModal()">&times;</span></div>
+    <div class="modal-b" id="ovBody"></div>
+    <div class="modal-f" id="ovFoot"></div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<!-- ClearSky config (Firebase + Maps keys). Optional: inline fallback exists. -->
+<script src="/config.js"></script>
+<!-- Shared tool registry + tier system (single source of truth) -->
+<script src="https://tools.csebuilders.com/omega-tools.js"></script>
+<!-- Firebase compat v8 -->
+<script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+<script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-auth.js"></script>
+<script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-firestore.js"></script>
+
+<script>
+/* ============================================================
+   ClearSky OMEGA — O&M Operations Console
+   The "operational & decision layer" over live assets.
+   Performance vs revenue variance · SLA/availability intelligence ·
+   technician & ticket management · owner-ready reporting.
+   Namespace: om_*  ·  ES5-only, no build step.  Firebase compat v8.
+   ============================================================ */
+(function () {
+  "use strict";
+
+  window.onerror = function(msg){
+    var app = document.getElementById("app");
+    if(app && app.querySelector(".loading")){
+      app.innerHTML = '<div class="card"><div class="card-b"><h3>Something went wrong</h3><p class="muted small">'+String(msg)+'</p><p class="muted small">If this persists, it\'s usually a Firebase config issue — check the console.</p></div></div>';
+    }
+    return false;
+  };
+
+  /* ---- Firebase config: shared clearsky-portal project ---- */
+  var CSCONFIG = (typeof window !== "undefined" && window.CLEARSKY_CONFIG) ? window.CLEARSKY_CONFIG : null;
+
+  var FB = (CSCONFIG && CSCONFIG.firebase) ? CSCONFIG.firebase : {
+    apiKey: "AIzaSyABoM1lgOYUnd5ZadaoTMhYmA9cHa8Tyo0",
+    authDomain: "clearsky-portal.firebaseapp.com",
+    projectId: "clearsky-portal",
+    storageBucket: "clearsky-portal.firebasestorage.app",
+    messagingSenderId: "742134484347",
+    appId: "1:742134484347:web:ab0f95fd221536158481de"
+  };
+
+  var MAPS_KEY = (CSCONFIG && CSCONFIG.googleMapsKey) ? CSCONFIG.googleMapsKey : "AIzaSyC0roZ_qMwtbVzqRLtNx9nrCeaGqrE1sNs";
+
+  /* This tool's key in omega-tools.js (the ONE registry). */
+  var APP_KEY = "omconsole";
+
+  var TIER_LABEL = { 0:"OMEGA (All)", 1:"OMEGA Core", 2:"OMEGA Performance", 3:"Enterprise · Alpha & Omega" };
+  function tierName(n){ return TIER_LABEL[n] != null ? TIER_LABEL[n] : ("Tier "+n); }
+
+  var ADMIN_DOMAINS = { "csebuilders.com": true, "clearsky-usa.com": true };
+  var COMPANY = (CSCONFIG && CSCONFIG.companyName) ? CSCONFIG.companyName : "ClearSky OMEGA";
+
+  var MONDAY_BASE = "https://monday.com/boards/";
+
+  /* ---- Monitoring / SCADA / ticketing integration proxy ----
+     Same secure-proxy pattern the Site Lifecycle Console uses for CRM.
+     The proxy holds each customer's monitoring/DAS credentials server-side.
+     The browser NEVER stores or reads the token. ---- */
+  var INTEG_PROXY_URL = "https://tools.csebuilders.com/api/om-integrations"; // TODO: serverless route
+
+  /* Supported live-data & field-service integrations. 'secret:true' fields
+     are sent to the proxy and never persisted client-side. */
+  var INTEGRATIONS = {
+    /* --- Monitoring / DAS / SCADA (pull telemetry, availability, production) --- */
+    powerfactors:  { group:"Monitoring", label:"Power Factors (Drive)", fields:[
+      { key:"apiKey", label:"API Key", secret:true } ], note:"Asset performance / DAS aggregation." },
+    also:          { group:"Monitoring", label:"AlsoEnergy / PowerTrack", fields:[
+      { key:"apiKey", label:"API Key", secret:true },
+      { key:"siteId", label:"Site ID" } ], note:"Solar + storage monitoring." },
+    solaredge:     { group:"Monitoring", label:"SolarEdge Monitoring", fields:[
+      { key:"apiKey", label:"API Key", secret:true } ], note:"Inverter-level production." },
+    fronius:       { group:"Monitoring", label:"Fronius Solar.web", fields:[
+      { key:"accessKeyId", label:"Access Key ID" },
+      { key:"accessKeyValue", label:"Access Key Value", secret:true } ], note:"Inverter telemetry." },
+    gotion_ems:    { group:"Monitoring", label:"Gotion / Molecule EMS", fields:[
+      { key:"endpoint", label:"EMS Endpoint URL", ph:"https://ems.molecule…" },
+      { key:"token", label:"Bearer Token", secret:true } ], note:"BESS SoC, dispatch, availability." },
+    modbus_gw:     { group:"Monitoring", label:"Generic Modbus/SunSpec Gateway", fields:[
+      { key:"endpoint", label:"Gateway URL" },
+      { key:"apiKey", label:"API Key", secret:true } ], note:"On-site datalogger bridge." },
+    /* --- Field service / ticketing (push work orders, pull status) --- */
+    servicenow:    { group:"Field Service", label:"ServiceNow", fields:[
+      { key:"instanceUrl", label:"Instance URL", ph:"https://yourco.service-now.com" },
+      { key:"clientId", label:"Client ID", secret:true },
+      { key:"clientSecret", label:"Client Secret", secret:true } ], note:"Enterprise work-order sync." },
+    servicetitan:  { group:"Field Service", label:"ServiceTitan", fields:[
+      { key:"clientId", label:"Client ID", secret:true },
+      { key:"clientSecret", label:"Client Secret", secret:true },
+      { key:"tenantId", label:"Tenant ID" } ], note:"Dispatch & technician scheduling." },
+    monday_wo:     { group:"Field Service", label:"Monday.com (Work Orders)", fields:[
+      { key:"apiToken", label:"API Token", secret:true } ], note:"Board-based ticket sync." },
+    /* --- Notifications (SLA breach / P1 alerts) --- */
+    slack:         { group:"Alerts", label:"Slack", fields:[
+      { key:"webhookUrl", label:"Incoming Webhook URL", secret:true } ], note:"Post P1 tickets & SLA-at-risk alerts." },
+    twilio:        { group:"Alerts", label:"Twilio SMS", fields:[
+      { key:"accountSid", label:"Account SID" },
+      { key:"authToken", label:"Auth Token", secret:true },
+      { key:"fromNumber", label:"From Number", ph:"+1…" } ], note:"On-call SMS for critical tickets." }
+  };
+
+  /* ---- Pipeline definitions ---- */
+  var TICKET_STAGES = ["New","Triaged","Dispatched","On Site","Resolved","Verified"];
+  var TICKET_PRIORITIES = ["P1","P2","P3","P4"];
+
+  var db, auth, USER = null, WS = null;
+  var STATE = { mod: "fleet", sel: {}, cache: {} };
+
+  /* ================= util ================= */
+  function $(id){ return document.getElementById(id); }
+  function el(tag, cls, html){ var e=document.createElement(tag); if(cls)e.className=cls; if(html!=null)e.innerHTML=html; return e; }
+  function esc(s){ if(s==null)return ""; return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;"); }
+  function money(n){ if(n==null||n==="")return "—"; var x=Number(n); if(isNaN(x))return esc(n); return "$"+x.toLocaleString(undefined,{maximumFractionDigits:0}); }
+  function pct(n,d){ if(n==null)return "—"; return (Number(n)).toFixed(d==null?1:d)+"%"; }
+  function fmtDate(d){ if(!d)return "—"; if(d.toDate) d=d.toDate(); var dt=new Date(d); if(isNaN(dt))return esc(d); return (dt.getMonth()+1)+"/"+dt.getDate()+"/"+dt.getFullYear(); }
+  function fmtDT(ms){ if(!ms)return "—"; var dt=new Date(ms); if(isNaN(dt))return "—"; return (dt.getMonth()+1)+"/"+dt.getDate()+" "+("0"+dt.getHours()).slice(-2)+":"+("0"+dt.getMinutes()).slice(-2); }
+  function ago(ms){ if(!ms)return "—"; var s=(Date.now()-ms)/1000; if(s<60)return "just now"; if(s<3600)return Math.floor(s/60)+"m ago"; if(s<86400)return Math.floor(s/3600)+"h ago"; return Math.floor(s/86400)+"d ago"; }
+  function uid(p){ return (p||"id")+"_"+Date.now().toString(36)+"_"+Math.random().toString(36).slice(2,7); }
+  function toast(msg){ var t=$("toast"); t.textContent=msg; t.className="toast on"; setTimeout(function(){ t.className="toast"; },2600); }
+  function coll(name){ return db.collection("om_"+name); } // om_sites, om_tickets, om_techs, om_perf, om_integrations
+  function num(v,d){ var x=Number(v); return isNaN(x)?(d||0):x; }
+
+  var DEMO = false;
+
+  /* ================= boot ================= */
+  function boot(){
+    var keyMissing = !FB.apiKey || FB.apiKey.indexOf("PLACEHOLDER") !== -1;
+    if (typeof firebase === "undefined" || keyMissing) {
+      return startDemo(keyMissing ? "config" : "sdk");
+    }
+    try {
+      firebase.initializeApp(FB);
+      db = firebase.firestore();
+      auth = firebase.auth();
+    } catch (e) { return startDemo("init"); }
+    auth.onAuthStateChanged(function(u){
+      if(!u){ auth.signInAnonymously().catch(function(){ startDemo("auth"); }); return; }
+      onUser(u);
+    }, function(){ startDemo("auth"); });
+  }
+
+  function startDemo(reason){
+    DEMO = true;
+    db = makeMemDb();
+    var banner = { config:"Demo mode — add your Firebase web apiKey to go live.",
+                   sdk:"Demo mode — Firebase SDK didn't load (offline or CDN blocked).",
+                   init:"Demo mode — Firebase failed to initialize.",
+                   auth:"Demo mode — sign-in unavailable." }[reason] || "Demo mode.";
+    STATE.demoBanner = banner;
+    onUser({ email:"admin@csebuilders.com" });
+  }
+
+  /* Minimal in-memory Firestore-compatible shim. */
+  function makeMemDb(){
+    var store = {};
+    function collection(name){
+      store[name] = store[name] || {};
+      return { _name:name,
+        doc:function(id){ id = id || uid("doc"); return docRef(name,id); },
+        where:function(f,op,val){ return query(name,[[f,op,val]]); },
+        limit:function(){ return query(name,[]); },
+        get:function(){ return query(name,[]).get(); } };
+    }
+    function docRef(name,id){
+      return { id:id,
+        set:function(obj){ store[name][id]=clone(obj); return Promise.resolve(); },
+        update:function(patch){ var d=store[name][id]||{}; for(var k in patch) d[k]=patch[k]; store[name][id]=d; return Promise.resolve(); },
+        get:function(){ var d=store[name][id]; return Promise.resolve({ exists:!!d, id:id, data:function(){return clone(d);} }); } };
+    }
+    function query(name, conds){
+      return { where:function(f,op,val){ return query(name, conds.concat([[f,op,val]])); },
+        limit:function(){ return this; },
+        get:function(){
+          var out=[]; var bag=store[name]||{};
+          for(var id in bag){ var row=bag[id], ok=true;
+            for(var i=0;i<conds.length;i++){ var c=conds[i]; if(c[1]==="=="&&row[c[0]]!==c[2]){ ok=false; break; } }
+            if(ok) out.push({ id:id, data:(function(r){return function(){return clone(r);};})(row) }); }
+          return Promise.resolve({ empty:out.length===0, size:out.length, forEach:function(cb){ out.forEach(cb); } });
+        } };
+    }
+    function batch(){ var ops=[];
+      return { set:function(ref,obj){ ops.push(function(){ ref.set(obj); }); },
+               update:function(ref,obj){ ops.push(function(){ ref.update(obj); }); },
+               commit:function(){ ops.forEach(function(f){f();}); return Promise.resolve(); } };
+    }
+    function clone(o){ return o==null?o:JSON.parse(JSON.stringify(o)); }
+    return { collection:collection, batch:batch };
+  }
+
+  /* Single source of truth: omega-tools.js registry. */
+  var OT = window.OMEGATools;
+  var ORG = null;
+
+  function omegaOrgRef(orgId){ return db.collection("omega_orgs").doc(orgId); }
+  function workspaceOf(org){
+    return { orgId: org.orgId, tierLevel: org.tierLevel, unlockedTools: org.unlockedTools || [],
+             requiredTools: org.requiredTools || [], customToolUrls: org.customToolUrls || {} };
+  }
+  function canOpenThisApp(org){
+    if(!OT){ return org.tierLevel >= 2; }
+    var tool = OT.byKey(APP_KEY);
+    if(!tool){ return org.tierLevel >= 2; }
+    return OT.isUnlocked(tool, workspaceOf(org));
+  }
+
+  function onUser(u){
+    USER = u;
+    var email = u.email || "admin@csebuilders.com";
+    var domain = (email.split("@")[1] || "").toLowerCase();
+    if(!domain){ renderNoAuth(); return; }
+    $("userEmail").textContent = email;
+    $("userInitial").textContent = (email[0]||"?").toUpperCase();
+
+    resolveOrg(domain, email).then(function(org){
+      ORG = org;
+      WS = { orgId: org.orgId, name: (COMPANY || org.orgId) };
+      $("wsName").textContent = WS.name + (DEMO ? " · DEMO" : "");
+      var tb=$("tierBadge"); if(tb){ tb.textContent = tierName(org.tierLevel).toUpperCase(); }
+      if(!canOpenThisApp(org)){ renderUpgrade(org, email); return; }
+      bindNav();
+      seedIfEmpty().then(function(){ render(); }).catch(function(e){
+        $("app").innerHTML='<div class="card"><div class="card-b"><h3>Couldn\'t load data</h3><p class="muted small">'+esc(String(e&&e.message||e))+'</p></div></div>';
+      });
+    });
+  }
+
+  function cfgTierLevel(){
+    var c = window.CLEARSKY_CONFIG; if(!c) return null;
+    if(typeof c.tierLevel === "number") return c.tierLevel;
+    if(typeof c.tier === "number") return c.tier;
+    if(typeof c.tier === "string"){ var t=c.tier.toLowerCase();
+      if(t.indexOf("enter")===0 || t.indexOf("alpha")===0) return 3;
+      if(t.indexOf("perf")===0 || t==="deluxe") return 2;
+      if(t==="core" || t==="standard") return 1; }
+    return null;
+  }
+
+  function resolveOrg(domain, email){
+    var isAdmin = !!ADMIN_DOMAINS[domain];
+    var cfgTier = cfgTierLevel();
+    if(DEMO){
+      var lvl = isAdmin ? 3 : (cfgTier != null ? cfgTier : 2);
+      var unlocked = (lvl < 2) ? [] : [APP_KEY];
+      return Promise.resolve({ orgId:domain, tierLevel:lvl, unlockedTools:unlocked, requiredTools:[], customToolUrls:{}, isAdmin:isAdmin });
+    }
+    return omegaOrgRef(domain).get().then(function(d){
+      if(d.exists){ var data=d.data();
+        var lvl=(typeof data.tierLevel==="number")?data.tierLevel:(cfgTier!=null?cfgTier:1);
+        return { orgId:domain, tierLevel:lvl, unlockedTools:data.unlockedTools||[], requiredTools:data.requiredTools||[], customToolUrls:data.customToolUrls||{}, isAdmin:isAdmin }; }
+      return { orgId:domain, tierLevel:(isAdmin?3:(cfgTier!=null?cfgTier:1)), unlockedTools:[], requiredTools:[], customToolUrls:{}, isAdmin:isAdmin };
+    }).catch(function(){
+      return { orgId:domain, tierLevel:(isAdmin?3:(cfgTier!=null?cfgTier:1)), unlockedTools:[], requiredTools:[], customToolUrls:{}, isAdmin:isAdmin };
+    });
+  }
+
+  function renderNoAuth(){ $("app").innerHTML = '<div class="card"><div class="card-b"><h3>Sign-in required</h3><p class="muted">This console requires an authenticated account.</p></div></div>'; }
+
+  function renderUpgrade(org, email){
+    $("app").innerHTML =
+      '<div class="card"><div class="card-b" style="text-align:center;padding:50px 20px">'
+      + '<div style="font-size:40px">🔒</div>'
+      + '<h3 style="margin:12px 0 6px">O&amp;M Operations Console</h3>'
+      + '<p class="muted">This is an <b>OMEGA Performance</b> &amp; <b>Enterprise</b> app.</p>'
+      + '<p class="muted small">Your plan (<b>'+esc(tierName(org.tierLevel))+'</b>) doesn\'t include it yet. '
+      + 'Performance &amp; Enterprise accounts unlock it; it can also be added individually.</p>'
+      + '<p class="muted small">Contact ClearSky to add this app to <b>'+esc(org.orgId)+'</b>.</p>'
+      + '</div></div>';
+  }
+
+  function bindNav(){
+    var links = $("nav").getElementsByTagName("a");
+    for(var i=0;i<links.length;i++){ (function(a){
+      a.onclick=function(){ for(var j=0;j<links.length;j++) links[j].className="";
+        a.className="on"; STATE.mod=a.getAttribute("data-mod"); STATE.sel={}; render(); };
+    })(links[i]); }
+  }
+
+  /* ================= seed demo data (first run only) ================= */
+  function seedIfEmpty(){
+    var org = WS.orgId;
+    return coll("sites").where("orgId","==",org).limit(1).get().then(function(s){
+      if(!s.empty) return;
+      var batch = db.batch();
+
+      /* Live O&M sites. Each mirrors a project that would exist in the portal
+         (source repo=editor or monday), so the portal can later join on projectId. */
+      function ser(base, dips){ /* build 24 fake daily production values */
+        var arr=[]; for(var i=0;i<24;i++){ var v=base*(0.85+Math.random()*0.3); if(dips.indexOf(i)>=0)v*=0.35; arr.push(Math.round(v)); } return arr; }
+
+      var sites = [
+        { name:"Claremont BESS — Berkeley", source:"repo", editorProjectId:"editor_clrmnt_001", address:"Claremont Ave, Berkeley CA",
+          lat:37.865, lng:-122.246, tech:"Solar+Storage", capKw:802, capKwh:5000, utility:"PG&E B-19",
+          contractAvail:98.0, slaType:"O&M Agreement", ppaRate:0.148, expectedMwhMo:118,
+          avail:97.3, actualMwhMo:109, health:"warn", monBase:410, dips:[6,7,17] },
+        { name:"Winnipeg BESS — Fort St", source:"repo", editorProjectId:"editor_wpg_001", address:"252 Fort St, Winnipeg",
+          lat:49.888, lng:-97.135, tech:"Storage", capKw:1200, capKwh:5000, utility:"Manitoba Hydro",
+          contractAvail:97.0, slaType:"PPA", ppaRate:0.092, expectedMwhMo:96,
+          avail:99.1, actualMwhMo:98, health:"good", monBase:340, dips:[] },
+        { name:"Bondi Junction — Macro Colo", source:"monday", mondayBoardId:"7712345001", address:"33 Council St, Bondi",
+          lat:-33.891, lng:151.247, tech:"Solar+Storage", capKw:640, capKwh:2560, utility:"Ausgrid",
+          contractAvail:99.0, slaType:"O&M Agreement", ppaRate:0.210, expectedMwhMo:88,
+          avail:94.2, actualMwhMo:71, health:"bad", monBase:300, dips:[3,4,5,12,13] },
+        { name:"OGI Solar — Cedar Rapids", source:"repo", editorProjectId:"editor_ogi_014", address:"Cedar Rapids, IA",
+          lat:41.977, lng:-91.665, tech:"Solar", capKw:2100, capKwh:0, utility:"Alliant",
+          contractAvail:97.5, slaType:"O&M Agreement", ppaRate:0.071, expectedMwhMo:240,
+          avail:98.6, actualMwhMo:236, health:"good", monBase:820, dips:[9] }
+      ];
+      var siteRefs=[];
+      sites.forEach(function(s){
+        var ref=coll("sites").doc(uid("site"));
+        s.orgId=org; s.createdAt=Date.now(); s.series=ser(s.monBase, s.dips);
+        s.lastTelemetry=Date.now()-(Math.floor(Math.random()*40)*60000);
+        batch.set(ref, s); siteRefs.push({ id:ref.id, s:s });
+      });
+
+      /* Technicians */
+      var techs=[
+        { name:"Marcus Reyes", role:"Lead Field Tech", region:"West", phone:"+1 510-555-0101", status:"On Site", openTickets:2, certs:"NABCEP · OSHA-30 · HV" },
+        { name:"Dana Whitfield", role:"BESS Specialist", region:"West", phone:"+1 415-555-0142", status:"Available", openTickets:1, certs:"Gotion Cert · NFPA-70E" },
+        { name:"Ari Cohen", role:"Field Tech", region:"Central", phone:"+1 319-555-0177", status:"Available", openTickets:1, certs:"OSHA-30" },
+        { name:"Priya Nair", role:"Regional O&M Mgr", region:"APAC", phone:"+61 2 5550 0198", status:"Off", openTickets:0, certs:"CEC Accredited" }
+      ];
+      var techRefs=[];
+      techs.forEach(function(t){ var ref=coll("techs").doc(uid("tech")); t.orgId=org; t.createdAt=Date.now(); batch.set(ref,t); techRefs.push({id:ref.id,t:t}); });
+
+      /* Tickets — tie to sites & techs; drive SLA + technician views */
+      function T(o){ var ref=coll("tickets").doc(uid("tkt")); o.orgId=org; o.createdAt=o.createdAt||Date.now(); batch.set(ref,o); return ref; }
+      var now=Date.now(), H=3600000, D=86400000;
+      T({ num:"WO-1042", siteId:siteRefs[2].id, siteName:sites[2].name, title:"Inverter 3 offline — zero export", priority:"P1",
+          stage:"On Site", assignedTo:techRefs[0].id, assignedName:"Marcus Reyes", source:"monitor", category:"Inverter",
+          slaHours:4, openedAt:now-6*H, downMwh:14, revImpact:2940,
+          log:[{t:now-6*H,m:"Auto-created from Power Factors fault F0207"},{t:now-5*H,m:"Triaged — P1, export loss confirmed"},{t:now-3*H,m:"Dispatched Marcus"},{t:now-1*H,m:"On site, diagnosing DC combiner"}] });
+      T({ num:"WO-1041", siteId:siteRefs[0].id, siteName:sites[0].name, title:"BESS rack 2 derate — thermal", priority:"P2",
+          stage:"Dispatched", assignedTo:techRefs[1].id, assignedName:"Dana Whitfield", source:"monitor", category:"BESS",
+          slaHours:24, openedAt:now-10*H, downMwh:6, revImpact:888,
+          log:[{t:now-10*H,m:"EMS flagged rack 2 thermal derate"},{t:now-9*H,m:"Triaged P2"},{t:now-2*H,m:"Dispatched Dana"}] });
+      T({ num:"WO-1039", siteId:siteRefs[0].id, siteName:sites[0].name, title:"Quarterly PM — combiner torque check", priority:"P4",
+          stage:"New", assignedTo:"", assignedName:"", source:"scheduled", category:"Preventive",
+          slaHours:168, openedAt:now-1*D, downMwh:0, revImpact:0,
+          log:[{t:now-1*D,m:"Scheduled PM generated"}] });
+      T({ num:"WO-1035", siteId:siteRefs[1].id, siteName:sites[1].name, title:"Comms gateway packet loss", priority:"P3",
+          stage:"Resolved", assignedTo:techRefs[2].id, assignedName:"Ari Cohen", source:"monitor", category:"Comms",
+          slaHours:48, openedAt:now-3*D, resolvedAt:now-2*D, downMwh:1, revImpact:92,
+          log:[{t:now-3*D,m:"Gateway heartbeat lost"},{t:now-3*D+2*H,m:"Dispatched Ari"},{t:now-2*D,m:"Replaced cellular modem — comms restored"}] });
+      T({ num:"WO-1030", siteId:siteRefs[3].id, siteName:sites[3].name, title:"String 14 underperformance", priority:"P3",
+          stage:"Verified", assignedTo:techRefs[2].id, assignedName:"Ari Cohen", source:"monitor", category:"PV",
+          slaHours:48, openedAt:now-6*D, resolvedAt:now-5*D, downMwh:2, revImpact:142,
+          log:[{t:now-6*D,m:"Benchmark variance on string 14"},{t:now-5*D,m:"Cleaned + reseated MC4 — recovered"}] });
+
+      batch.commit();
+      return new Promise(function(r){ setTimeout(r,700); });
+    });
+  }
+
+  /* ================= data loaders ================= */
+  function loadColl(name){
+    if(STATE.cache[name]) return Promise.resolve(STATE.cache[name]);
+    return coll(name).where("orgId","==",WS.orgId).get().then(function(s){
+      var arr=[]; s.forEach(function(d){ var o=d.data(); o.id=d.id; arr.push(o); });
+      arr.sort(function(a,b){ return (b.createdAt||0)-(a.createdAt||0); });
+      STATE.cache[name]=arr; return arr;
+    });
+  }
+  function invalidate(name){ delete STATE.cache[name]; }
+  function siteObj(id){ return (STATE.cache.sites||[]).filter(function(x){return x.id===id;})[0]; }
+  function techObj(id){ return (STATE.cache.techs||[]).filter(function(x){return x.id===id;})[0]; }
+
+  /* ================= render dispatch ================= */
+  function render(){
+    $("app").innerHTML='<div class="loading">Loading '+STATE.mod+'…</div>';
+    /* sites + tickets + techs are needed across most panes; load together */
+    Promise.all([loadColl("sites"), loadColl("tickets"), loadColl("techs")]).then(function(){
+      if(STATE.mod==="fleet")        renderFleet();
+      else if(STATE.mod==="performance") renderPerformance();
+      else if(STATE.mod==="sla")     renderSLA();
+      else if(STATE.mod==="tickets") renderTickets();
+      else if(STATE.mod==="technicians") renderTechs();
+      else if(STATE.mod==="reports") renderReports();
+      else if(STATE.mod==="settings") renderSettings();
+    });
+  }
+
+  function infoBanner(txt){ return '<div class="info-lock">◎ '+txt+'</div>'; }
+  function entLockBanner(txt){ return '<div class="ent-lock">★ Enterprise module — '+txt+'</div>'; }
+  function siteSourcePill(s){ if(!s)return ''; if(s.source==="monday")return '<span class="tag-src monday">MONDAY</span>'; return '<span class="tag-src repo">EDITOR</span>'; }
+  function kpi(n,l,cls,delta){ return '<div class="kpi"><div class="n'+(cls?" "+cls:"")+'">'+(n==null?"—":n)+'</div><div class="l">'+esc(l)+'</div>'+(delta?'<div class="d '+(delta.dir)+'">'+esc(delta.txt)+'</div>':'')+'</div>'; }
+  function fld(l,v){ return '<div class="fld"><label>'+esc(l)+'</label><div class="val">'+esc(v||"—")+'</div></div>'; }
+  function fld2(l,v){ return '<div class="fld" style="grid-column:1/3"><label>'+esc(l)+'</label><div class="val">'+esc(v||"—")+'</div></div>'; }
+  function healthPill(h){ var m={good:["green","Healthy"],warn:["amber","At Risk"],bad:["red","Underperforming"]}; var x=m[h]||["gray","—"]; return '<span class="pill '+x[0]+'">'+x[1]+'</span>'; }
+  function prioPill(p){ var m={P1:"red",P2:"amber",P3:"blue",P4:"gray"}; return '<span class="pill '+(m[p]||"gray")+'"><span class="dot '+p.toLowerCase()+'"></span>'+esc(p)+'</span>'; }
+  function stagePillT(s){ var m={New:"gray",Triaged:"blue",Dispatched:"purple",'On Site':"amber",Resolved:"green",Verified:"green"}; return '<span class="pill '+(m[s]||"gray")+'">'+esc(s)+'</span>'; }
+  function availBar(a,contract){ var good=a>=contract; var c=good?"#137a44":(a>=contract-2?"#e08600":"#b42323"); return '<div class="bar"><span style="width:'+Math.max(2,Math.min(100,a))+'%;background:'+c+'"></span></div>'; }
+  function spark(series,base){ if(!series||!series.length)return ""; var h='<div class="spark">'; var max=Math.max.apply(null,series)||1; series.forEach(function(v){ var lo=v<base*0.6?" lo":""; h+='<i class="'+lo.trim()+'" style="height:'+Math.max(6,Math.round(v/max*100))+'%"></i>'; }); return h+'</div>'; }
+
+  /* variance helpers (the enSights "expected vs actual $" core) */
+  function siteVariance(s){
+    var exp=num(s.expectedMwhMo), act=num(s.actualMwhMo), rate=num(s.ppaRate);
+    var lostMwh=Math.max(0,exp-act);
+    var expRev=exp*1000*rate, actRev=act*1000*rate, lostRev=lostMwh*1000*rate;
+    var yieldPct = exp>0 ? (act/exp*100) : 0;
+    return { exp:exp, act:act, lostMwh:lostMwh, expRev:expRev, actRev:actRev, lostRev:lostRev, yieldPct:yieldPct };
+  }
+  function fleetRollup(){
+    var sites=STATE.cache.sites||[], tickets=STATE.cache.tickets||[];
+    var expRev=0, actRev=0, lostRev=0, lostMwh=0, availSum=0, capKw=0, breaching=0;
+    sites.forEach(function(s){ var v=siteVariance(s); expRev+=v.expRev; actRev+=v.actRev; lostRev+=v.lostRev; lostMwh+=v.lostMwh;
+      availSum+=num(s.avail); capKw+=num(s.capKw); if(num(s.avail)<num(s.contractAvail)) breaching++; });
+    var openP1=tickets.filter(function(t){ return t.priority==="P1" && t.stage!=="Resolved" && t.stage!=="Verified"; }).length;
+    var open=tickets.filter(function(t){ return t.stage!=="Resolved" && t.stage!=="Verified"; }).length;
+    return { count:sites.length, avgAvail: sites.length?availSum/sites.length:0, expRev:expRev, actRev:actRev,
+             lostRev:lostRev, lostMwh:lostMwh, capKw:capKw, breaching:breaching, openP1:openP1, open:open };
+  }
+  function ticketsForSite(id){ return (STATE.cache.tickets||[]).filter(function(t){return t.siteId===id;}); }
+  function slaAtRisk(t){ if(t.stage==="Resolved"||t.stage==="Verified")return false; var due=t.openedAt+num(t.slaHours)*3600000; return Date.now() > due - (num(t.slaHours)*3600000*0.25); }
+  function slaBreached(t){ if(t.stage==="Resolved"||t.stage==="Verified")return false; return Date.now() > t.openedAt+num(t.slaHours)*3600000; }
+
+  /* ---------------- FLEET OVERVIEW ---------------- */
+  function renderFleet(){
+    var sites=STATE.cache.sites||[]; var R=fleetRollup();
+    var h=infoBanner("Live operational layer over your fleet — one closed-loop view across monitoring, service execution, and contractual obligations.");
+    h+='<div class="kpis">'
+      + kpi(sites.length,"Sites Under O&M")
+      + kpi(pct(R.avgAvail),"Fleet Availability", R.avgAvail>=97?"good":(R.avgAvail>=95?"warn":"bad"))
+      + kpi(money(R.lostRev),"Revenue at Risk (mo)", R.lostRev>0?"bad":"good", R.lostMwh>0?{dir:"down",txt:"▼ "+R.lostMwh.toFixed(0)+" MWh lost"}:null)
+      + kpi(R.openP1,"Open P1", R.openP1>0?"bad":"good")
+      + kpi((R.capKw/1000).toFixed(1)+" MW","Capacity Managed")
+      + '</div>';
+
+    h+='<div class="card"><div class="card-h"><h3>Fleet Health</h3><span class="sub">Expected vs actual · availability vs contract</span>'
+      + '<div class="spacer"></div><button class="btn pri sm" onclick="UI.newSite()">+ Add Site</button></div>'
+      + '<div class="card-b"><div class="tbl-wrap"><table><thead><tr>'
+      + '<th>Site</th><th>Tech</th><th>30d Production</th><th>Avail vs SLA</th><th>Yield</th><th>Rev at Risk</th><th>Open</th><th>Telemetry</th><th></th>'
+      + '</tr></thead><tbody>';
+    sites.forEach(function(s){
+      var v=siteVariance(s); var open=ticketsForSite(s.id).filter(function(t){return t.stage!=="Resolved"&&t.stage!=="Verified";}).length;
+      var availCls=num(s.avail)>=num(s.contractAvail)?"green":(num(s.avail)>=num(s.contractAvail)-2?"amber":"red");
+      h+='<tr><td><a onclick="UI.openSite(\''+s.id+'\')"><b>'+esc(s.name)+'</b></a> '+siteSourcePill(s)+'<div class="small muted">'+esc(s.utility||"")+' · '+num(s.capKw)+' kW</div></td>'
+        +'<td class="small">'+esc(s.tech||"—")+'</td>'
+        +'<td style="min-width:120px">'+spark(s.series,s.monBase)+'</td>'
+        +'<td style="min-width:130px">'+availBar(num(s.avail),num(s.contractAvail))+'<div class="small"><span class="pill '+availCls+'">'+pct(s.avail)+'</span> <span class="muted">SLA '+pct(s.contractAvail,0)+'</span></div></td>'
+        +'<td>'+pct(v.yieldPct,0)+'</td>'
+        +'<td>'+(v.lostRev>0?'<span class="pill red">'+money(v.lostRev)+'</span>':'<span class="muted">—</span>')+'</td>'
+        +'<td>'+(open?'<span class="pill amber">'+open+'</span>':'<span class="muted">0</span>')+'</td>'
+        +'<td class="small muted">'+ago(s.lastTelemetry)+'</td>'
+        +'<td style="text-align:right"><button class="btn ghost sm" onclick="UI.openSite(\''+s.id+'\')">Open →</button></td></tr>';
+    });
+    h+='</tbody></table></div>';
+    if(!sites.length) h+='<div class="empty">No sites under O&M yet. Add one, or connect a monitoring integration in Settings.</div>';
+    h+='</div></div>';
+
+    /* Portal-embed widget preview */
+    h+='<div class="card"><div class="card-h"><h3>Portal Widget Preview</h3><span class="sub">How this data will surface in the tenant portal dashboard</span></div><div class="card-b">';
+    h+='<div class="row">';
+    h+='<div class="col widget"><div class="wh">O&M Health · index datapoint</div><div style="font-size:22px;font-weight:800;color:'+(R.avgAvail>=97?"#137a44":"#9a6800")+'">'+pct(R.avgAvail)+' avail</div><div class="small muted">'+R.open+' open tickets · '+money(R.lostRev)+' at risk this month</div><div class="small muted" style="margin-top:6px">Feed key: <code>om_rollup/'+esc(WS.orgId)+'</code></div></div>';
+    h+='<div class="col widget"><div class="wh">Per-site datapoint</div><div class="small">Each site publishes <code>{avail, yieldPct, lostRev, openTickets, lastTelemetry}</code> keyed by <code>projectId</code>, so the portal joins it to the same project card the editor created.</div></div>';
+    h+='</div></div></div>';
+
+    $("app").innerHTML=h;
+  }
+
+  /* ---------------- SITE DETAIL ---------------- */
+  function openSite(id){
+    var s=siteObj(id); if(!s)return; STATE.sel.site=s;
+    var v=siteVariance(s); var tix=ticketsForSite(id);
+    var h='<a class="btn sm" onclick="UI.back()">← Back to Fleet</a>';
+    h+='<div class="card" style="margin-top:12px"><div class="card-h"><h3>'+esc(s.name)+'</h3><span class="sub">'+esc(s.tech||"")+' · '+num(s.capKw)+' kW / '+num(s.capKwh)+' kWh</span>'
+      +'<div class="spacer"></div>'+healthPill(s.health)
+      +'<button class="btn sm" onclick="UI.editSite(\''+s.id+'\')">Edit</button>'
+      +'<button class="btn pri sm" onclick="UI.newTicket(\''+s.id+'\')">+ Ticket</button></div><div class="card-b">';
+
+    h+='<div class="kpis">'
+      + kpi(pct(s.avail),"Availability", num(s.avail)>=num(s.contractAvail)?"good":"bad", {dir:num(s.avail)>=num(s.contractAvail)?"up":"down",txt:(num(s.avail)>=num(s.contractAvail)?"▲ meets ":"▼ under ")+pct(s.contractAvail,0)+" SLA"})
+      + kpi(pct(v.yieldPct,0),"Yield vs Expected", v.yieldPct>=98?"good":(v.yieldPct>=92?"warn":"bad"))
+      + kpi(money(v.lostRev),"Revenue Lost (mo)", v.lostRev>0?"bad":"good")
+      + kpi(v.lostMwh.toFixed(1)+" MWh","Energy Lost (mo)")
+      + '</div>';
+
+    h+='<div class="row">';
+    /* left: performance */
+    h+='<div class="col"><div class="section-h">30-Day Production (expected band vs actual)</div>';
+    h+='<div style="padding:6px 0">'+spark(s.series,s.monBase)+'</div>';
+    h+='<div class="dl" style="margin-top:8px">';
+    h+=fld("Expected (mo)",v.exp+" MWh")+fld("Actual (mo)",v.act+" MWh");
+    h+=fld("Expected Revenue",money(v.expRev))+fld("Actual Revenue",money(v.actRev));
+    h+=fld("PPA / Merchant Rate","$"+num(s.ppaRate).toFixed(3)+"/kWh")+fld("Variance", v.lostRev>0?("−"+money(v.lostRev)):"on plan");
+    h+='</div>';
+    h+='<div class="section-h">Contractual Availability</div><div class="dl">';
+    h+=fld("Contract Type",s.slaType)+fld("Contracted Availability",pct(s.contractAvail,1));
+    h+=fld("Measured Availability",pct(s.avail,1))+fld("Status", num(s.avail)>=num(s.contractAvail)?"Compliant":"At risk of breach");
+    h+='</div></div>';
+    /* right: details + map */
+    h+='<div class="col" style="max-width:420px"><div class="section-h">Site Details</div><div class="dl">';
+    h+=fld("Utility / Tariff",s.utility)+fld("Technology",s.tech);
+    h+=fld("Power",num(s.capKw)+" kW")+fld("Energy",num(s.capKwh)+" kWh");
+    h+=fld("Last Telemetry",ago(s.lastTelemetry))+fld("Data Source", DEMO?"Demo feed":"Monitoring integration");
+    h+='</div>';
+    h+='<div class="section-h">Linked Project</div>';
+    h+='<div class="flex"><span>'+esc(s.name)+'</span>'+siteSourcePill(s);
+    if(s.source==="monday"&&s.mondayBoardId) h+=' <a class="btn ghost sm" target="_blank" href="'+MONDAY_BASE+esc(s.mondayBoardId)+'">Monday ↗</a>';
+    if(s.source==="repo"&&s.editorProjectId) h+=' <span class="small muted">editor: '+esc(s.editorProjectId)+'</span>';
+    h+='</div>';
+    h+='<div class="section-h">Location</div><div class="map" style="border-radius:8px;overflow:hidden;border:1px solid #dde3ea;background:#dfe6ec;position:relative;height:200px">'+mapImg(s.lat,s.lng)+'</div>';
+    h+='</div></div>'; // row
+
+    /* tickets for this site */
+    h+='<div class="section-h">Service History &amp; Open Work</div>';
+    h+='<div class="tbl-wrap"><table><thead><tr><th>WO</th><th>Title</th><th>Priority</th><th>Stage</th><th>Assigned</th><th>SLA</th><th>Rev Impact</th></tr></thead><tbody>';
+    if(!tix.length) h+='<tr><td colspan="7" class="empty">No tickets for this site.</td></tr>';
+    tix.forEach(function(t){
+      var sla = slaBreached(t)?'<span class="pill red">Breached</span>':(slaAtRisk(t)?'<span class="pill amber">At risk</span>':'<span class="pill green">OK</span>');
+      h+='<tr><td><a onclick="UI.openTicket(\''+t.id+'\')"><b>'+esc(t.num)+'</b></a></td><td>'+esc(t.title)+'</td><td>'+prioPill(t.priority)+'</td><td>'+stagePillT(t.stage)+'</td><td class="small">'+esc(t.assignedName||"—")+'</td><td>'+sla+'</td><td>'+(num(t.revImpact)?money(t.revImpact):'—')+'</td></tr>';
+    });
+    h+='</tbody></table></div>';
+    h+='</div></div>';
+    $("app").innerHTML=h;
+  }
+
+  function mapImg(lat,lng){
+    if(lat==null||lng==null) return '<div class="empty">No coordinates set</div>';
+    var url="https://maps.googleapis.com/maps/api/staticmap?center="+lat+","+lng+"&zoom=17&size=900x200&maptype=satellite&markers=color:blue%7C"+lat+","+lng+"&key="+MAPS_KEY;
+    return '<img src="'+url+'" style="width:100%;height:100%;object-fit:cover" alt="map" onerror="this.style.display=\'none\';this.parentNode.innerHTML+=\'<div class=&quot;empty&quot;>Map key not configured</div>\'">';
+  }
+
+  /* ---------------- PERFORMANCE & REVENUE ---------------- */
+  function renderPerformance(){
+    var sites=STATE.cache.sites||[]; var R=fleetRollup();
+    var h=infoBanner("Expected vs actual revenue with real-time variance. Downtime &amp; yield loss automatically converted into $ impact — benchmark-adjusted, billing-ready.");
+    h+='<div class="kpis">'
+      + kpi(money(R.expRev),"Expected Revenue (mo)")
+      + kpi(money(R.actRev),"Actual Revenue (mo)", R.actRev>=R.expRev?"good":"warn")
+      + kpi(money(R.lostRev),"Variance ($ lost)", R.lostRev>0?"bad":"good")
+      + kpi(R.lostMwh.toFixed(0)+" MWh","Energy Not Delivered")
+      + '</div>';
+    h+='<div class="card"><div class="card-h"><h3>Revenue Variance by Site</h3><span class="sub">Benchmark-adjusted expected vs actual</span></div><div class="card-b"><div class="tbl-wrap"><table><thead><tr>'
+      +'<th>Site</th><th>Expected MWh</th><th>Actual MWh</th><th>Yield</th><th>Expected $</th><th>Actual $</th><th>Variance</th><th>Billing Check</th></tr></thead><tbody>';
+    sites.forEach(function(s){ var v=siteVariance(s);
+      var billing = v.yieldPct>=99.5?'<span class="pill green">Matches</span>':(v.yieldPct>=95?'<span class="pill amber">Review</span>':'<span class="pill red">Underbilled risk</span>');
+      h+='<tr><td><a onclick="UI.openSite(\''+s.id+'\')"><b>'+esc(s.name)+'</b></a></td>'
+        +'<td>'+v.exp+'</td><td>'+v.act+'</td><td>'+pct(v.yieldPct,0)+'</td>'
+        +'<td>'+money(v.expRev)+'</td><td>'+money(v.actRev)+'</td>'
+        +'<td>'+(v.lostRev>0?'<span class="pill red">−'+money(v.lostRev)+'</span>':'<span class="pill green">on plan</span>')+'</td>'
+        +'<td>'+billing+'</td></tr>';
+    });
+    h+='</tbody></table></div>';
+    h+='<div class="small muted" style="margin-top:10px">Billing check compares actual delivered energy against contracted/expected to flag under- or over-billing against O&M performance guarantees.</div>';
+    h+='</div></div>';
+    $("app").innerHTML=h;
+  }
+
+  /* ---------------- SLA & AVAILABILITY ---------------- */
+  function renderSLA(){
+    var sites=STATE.cache.sites||[], tickets=STATE.cache.tickets||[];
+    var breaching=sites.filter(function(s){return num(s.avail)<num(s.contractAvail);});
+    var atRiskT=tickets.filter(slaAtRisk).length, breachedT=tickets.filter(slaBreached).length;
+    var h=infoBanner("Operate against what you're actually contracted to deliver. Availability adjusted to contractual definitions, with early warning when obligations are at risk.");
+    h+='<div class="kpis">'
+      + kpi(sites.length-breaching.length,"Sites Compliant","good")
+      + kpi(breaching.length,"Sites Under SLA", breaching.length?"bad":"good")
+      + kpi(atRiskT,"Tickets SLA At-Risk", atRiskT?"warn":"good")
+      + kpi(breachedT,"Tickets SLA Breached", breachedT?"bad":"good")
+      + '</div>';
+
+    h+='<div class="card"><div class="card-h"><h3>Contractual Availability</h3><span class="sub">Measured vs contracted, per site</span></div><div class="card-b"><div class="tbl-wrap"><table><thead><tr>'
+      +'<th>Site</th><th>Contract</th><th>Contracted</th><th>Measured</th><th>Availability</th><th>Margin</th><th>Status</th></tr></thead><tbody>';
+    sites.forEach(function(s){ var margin=num(s.avail)-num(s.contractAvail);
+      h+='<tr><td><a onclick="UI.openSite(\''+s.id+'\')"><b>'+esc(s.name)+'</b></a></td>'
+        +'<td class="small">'+esc(s.slaType)+'</td><td>'+pct(s.contractAvail,1)+'</td><td>'+pct(s.avail,1)+'</td>'
+        +'<td style="min-width:140px">'+availBar(num(s.avail),num(s.contractAvail))+'</td>'
+        +'<td>'+(margin>=0?'<span class="pill green">+'+margin.toFixed(1)+'</span>':'<span class="pill red">'+margin.toFixed(1)+'</span>')+'</td>'
+        +'<td>'+(margin>=0?'<span class="pill green">Compliant</span>':'<span class="pill red">Breach risk</span>')+'</td></tr>';
+    });
+    h+='</tbody></table></div></div></div>';
+
+    /* SLA obligation clock on open tickets */
+    var open=tickets.filter(function(t){return t.stage!=="Resolved"&&t.stage!=="Verified";});
+    h+='<div class="card"><div class="card-h"><h3>Response Obligation Clock</h3><span class="sub">Open work orders vs SLA response window</span></div><div class="card-b"><div class="tbl-wrap"><table><thead><tr>'
+      +'<th>WO</th><th>Site</th><th>Priority</th><th>Opened</th><th>SLA Window</th><th>Due</th><th>Status</th></tr></thead><tbody>';
+    if(!open.length) h+='<tr><td colspan="7" class="empty">No open obligations. 🎉</td></tr>';
+    open.sort(function(a,b){return (a.openedAt+num(a.slaHours)*3600000)-(b.openedAt+num(b.slaHours)*3600000);});
+    open.forEach(function(t){ var due=t.openedAt+num(t.slaHours)*3600000;
+      var st=slaBreached(t)?'<span class="pill red">Breached</span>':(slaAtRisk(t)?'<span class="pill amber">At risk</span>':'<span class="pill green">On track</span>');
+      h+='<tr><td><a onclick="UI.openTicket(\''+t.id+'\')"><b>'+esc(t.num)+'</b></a></td><td class="small">'+esc(t.siteName)+'</td><td>'+prioPill(t.priority)+'</td><td class="small">'+ago(t.openedAt)+'</td><td>'+num(t.slaHours)+'h</td><td class="small">'+fmtDT(due)+'</td><td>'+st+'</td></tr>';
+    });
+    h+='</tbody></table></div>';
+    h+='<div class="small muted" style="margin-top:10px">Proof of compliance is built into operations: every response window is timestamped for owner audits and renewals.</div>';
+    h+='</div></div>';
+    $("app").innerHTML=h;
+  }
+
+  /* ---------------- TICKETS ---------------- */
+  function renderTickets(){
+    var tickets=STATE.cache.tickets||[];
+    var open=tickets.filter(function(t){return t.stage!=="Resolved"&&t.stage!=="Verified";});
+    var p1=open.filter(function(t){return t.priority==="P1";}).length;
+    var h=infoBanner("One closed-loop system for detection, execution, and resolution — connect monitoring faults, dispatch, and closeout in a single flow.");
+    h+='<div class="kpis">'
+      + kpi(open.length,"Open Tickets")
+      + kpi(p1,"P1 Critical", p1?"bad":"good")
+      + kpi(tickets.filter(slaAtRisk).length,"SLA At-Risk","warn")
+      + kpi(tickets.filter(function(t){return t.stage==="Resolved"||t.stage==="Verified";}).length,"Closed")
+      + '</div>';
+    h+='<div class="card"><div class="card-h"><h3>Work Orders</h3><span class="sub">Detection → dispatch → resolution</span>'
+      +'<div class="spacer"></div><button class="btn pri sm" onclick="UI.newTicket()">+ New Ticket</button></div>'
+      +'<div class="card-b"><div class="tbl-wrap"><table><thead><tr>'
+      +'<th>WO</th><th>Site</th><th>Title</th><th>Priority</th><th>Stage</th><th>Assigned</th><th>Source</th><th>SLA</th><th>Rev Impact</th><th></th></tr></thead><tbody>';
+    tickets.forEach(function(t){
+      var sla = slaBreached(t)?'<span class="pill red">Breached</span>':(slaAtRisk(t)?'<span class="pill amber">At risk</span>':'<span class="pill green">OK</span>');
+      var src = t.source==="monitor"?'<span class="tag-src repo">MONITOR</span>':(t.source==="scheduled"?'<span class="pill gray">PM</span>':'<span class="pill blue">Manual</span>');
+      h+='<tr><td><a onclick="UI.openTicket(\''+t.id+'\')"><b>'+esc(t.num)+'</b></a></td>'
+        +'<td class="small">'+esc(t.siteName)+'</td><td>'+esc(t.title)+'</td>'
+        +'<td>'+prioPill(t.priority)+'</td><td>'+stagePillT(t.stage)+'</td>'
+        +'<td class="small">'+esc(t.assignedName||'<span class="muted">Unassigned</span>')+'</td>'
+        +'<td>'+src+'</td><td>'+sla+'</td><td>'+(num(t.revImpact)?money(t.revImpact):'—')+'</td>'
+        +'<td style="text-align:right"><button class="btn ghost sm" onclick="UI.openTicket(\''+t.id+'\')">Open →</button></td></tr>';
+    });
+    h+='</tbody></table></div>';
+    if(!tickets.length) h+='<div class="empty">No tickets yet.</div>';
+    h+='</div></div>';
+    $("app").innerHTML=h;
+  }
+
+  function openTicket(id){
+    var t=(STATE.cache.tickets||[]).filter(function(x){return x.id===id;})[0]; if(!t)return; STATE.sel.ticket=t;
+    var h='<a class="btn sm" onclick="UI.back()">← Back to Tickets</a>';
+    h+='<div class="card" style="margin-top:12px"><div class="card-h"><h3>'+esc(t.num)+' · '+esc(t.title)+'</h3><span class="sub">'+esc(t.siteName)+'</span>'
+      +'<div class="spacer"></div>'+prioPill(t.priority)
+      +'<button class="btn sm" onclick="UI.assignTicket(\''+t.id+'\')">Assign</button>'
+      +'<button class="btn pri sm" onclick="UI.advanceTicket(\''+t.id+'\')">Advance Stage →</button></div><div class="card-b">';
+
+    /* stage chevrons */
+    h+='<div class="path">';
+    var ci=TICKET_STAGES.indexOf(t.stage);
+    TICKET_STAGES.forEach(function(st,i){ var cl=i<ci?"done":(i===ci?"cur":"");
+      h+='<div class="st '+cl+'" onclick="UI.setTicketStage(\''+t.id+'\',\''+st+'\')">'+esc(st)+'</div>'; });
+    h+='</div>';
+
+    h+='<div class="row"><div class="col"><div class="section-h">Activity Log</div><div class="tl">';
+    var log=(t.log||[]).slice().sort(function(a,b){return a.t-b.t;});
+    if(!log.length) h+='<div class="muted small">No activity yet.</div>';
+    log.forEach(function(e){ h+='<div class="ev"><div class="t">'+fmtDT(e.t)+'</div><div class="m">'+esc(e.m)+'</div></div>'; });
+    h+='</div><div style="margin-top:10px" class="flex"><input id="logInput" placeholder="Add a note / field update…"><button class="btn" onclick="UI.addTicketNote(\''+t.id+'\')">Log</button></div></div>';
+
+    h+='<div class="col" style="max-width:380px"><div class="section-h">Details</div><div class="dl">';
+    h+=fld("Priority",t.priority)+fld("Stage",t.stage);
+    h+=fld("Category",t.category)+fld("Source", t.source==="monitor"?"Monitoring fault":(t.source==="scheduled"?"Scheduled PM":"Manual"));
+    h+=fld("Assigned",t.assignedName||"Unassigned")+fld("SLA Window",num(t.slaHours)+" h");
+    h+=fld("Opened",fmtDT(t.openedAt))+fld("SLA Due",fmtDT(t.openedAt+num(t.slaHours)*3600000));
+    h+=fld("Energy Impact",num(t.downMwh)+" MWh")+fld("Revenue Impact",money(t.revImpact));
+    h+='</div>';
+    h+='<div class="section-h">SLA Status</div>';
+    h+=slaBreached(t)?'<div class="ent-lock" style="background:#fde3e3;border-color:#f0b3b3;color:#b42323">⚠ Response SLA breached — flag for owner report.</div>'
+      :(slaAtRisk(t)?'<div class="ent-lock">◷ Approaching SLA window — prioritize dispatch.</div>'
+      :'<div class="ent-lock" style="background:#e2f5ea;border-color:#a8dcc0;color:#137a44">✓ Within SLA window.</div>');
+    h+='<div class="flex" style="margin-top:12px"><button class="btn sm" onclick="UI.openSite(\''+t.siteId+'\')">View Site →</button><button class="btn sm" onclick="UI.notifyTicket(\''+t.id+'\')">🔔 Notify On-Call</button></div>';
+    h+='</div></div>';
+    h+='</div></div>';
+    $("app").innerHTML=h;
+  }
+
+  /* ---------------- TECHNICIANS ---------------- */
+  function renderTechs(){
+    var techs=STATE.cache.techs||[], tickets=STATE.cache.tickets||[];
+    var active=tickets.filter(function(t){return t.stage==="Dispatched"||t.stage==="On Site";});
+    var h=infoBanner("Coordinate field teams with clarity and accountability — from your operating center to techs in the field.");
+    h+='<div class="kpis">'
+      + kpi(techs.length,"Technicians")
+      + kpi(techs.filter(function(x){return x.status==="Available";}).length,"Available","good")
+      + kpi(techs.filter(function(x){return x.status==="On Site";}).length,"On Site","warn")
+      + kpi(active.length,"Active Dispatches")
+      + '</div>';
+
+    h+='<div class="card"><div class="card-h"><h3>Field Team</h3><span class="sub">Assignments &amp; live status</span>'
+      +'<div class="spacer"></div><button class="btn pri sm" onclick="UI.newTech()">+ Add Technician</button></div>'
+      +'<div class="card-b"><div class="tbl-wrap"><table><thead><tr>'
+      +'<th>Technician</th><th>Role</th><th>Region</th><th>Status</th><th>Open Assignments</th><th>Certifications</th></tr></thead><tbody>';
+    techs.forEach(function(x){
+      var openA=tickets.filter(function(t){return t.assignedTo===x.id && t.stage!=="Resolved" && t.stage!=="Verified";}).length;
+      var st={ "Available":"green","On Site":"amber","Off":"gray" }[x.status]||"gray";
+      h+='<tr><td><b>'+esc(x.name)+'</b><div class="small muted">'+esc(x.phone||"")+'</div></td><td class="small">'+esc(x.role)+'</td><td class="small">'+esc(x.region)+'</td>'
+        +'<td><span class="pill '+st+'">'+esc(x.status)+'</span></td>'
+        +'<td>'+(openA?'<span class="pill amber">'+openA+'</span>':'<span class="muted">0</span>')+'</td>'
+        +'<td class="small muted">'+esc(x.certs||"—")+'</td></tr>';
+    });
+    h+='</tbody></table></div>';
+    if(!techs.length) h+='<div class="empty">No technicians yet.</div>';
+    h+='</div></div>';
+
+    /* active dispatch board */
+    h+='<div class="card"><div class="card-h"><h3>Active Dispatch Board</h3><span class="sub">Execution status: scheduled → completed</span></div><div class="card-b"><div class="tbl-wrap"><table><thead><tr>'
+      +'<th>WO</th><th>Tech</th><th>Site</th><th>Priority</th><th>Stage</th><th>Opened</th></tr></thead><tbody>';
+    if(!active.length) h+='<tr><td colspan="6" class="empty">No active dispatches.</td></tr>';
+    active.forEach(function(t){ h+='<tr><td><a onclick="UI.openTicket(\''+t.id+'\')"><b>'+esc(t.num)+'</b></a></td><td class="small">'+esc(t.assignedName||"—")+'</td><td class="small">'+esc(t.siteName)+'</td><td>'+prioPill(t.priority)+'</td><td>'+stagePillT(t.stage)+'</td><td class="small">'+ago(t.openedAt)+'</td></tr>'; });
+    h+='</tbody></table></div></div></div>';
+    $("app").innerHTML=h;
+  }
+
+  /* ---------------- REPORTS ---------------- */
+  function renderReports(){
+    var R=fleetRollup();
+    var h=infoBanner("Turn operations into confidence — SLA &amp; availability reporting, owner-ready summaries, one-click exports, and a historical audit trail.");
+    h+='<div class="card"><div class="card-h"><h3>Owner &amp; Audit Reports</h3><span class="sub">Generate defensible, owner-ready packages</span></div><div class="card-b">';
+    h+='<div class="row">';
+    h+=reportCard("Monthly O&M Summary","Availability, production variance, ticket log &amp; SLA compliance for the period.","summary");
+    h+=reportCard("SLA Compliance Certificate","Contracted vs measured availability per site, with breach audit trail.","sla");
+    h+=reportCard("Revenue Variance Statement","Expected vs actual $ and energy, billing reconciliation.","revenue");
+    h+='</div>';
+    h+='<div class="section-h">This Period at a Glance</div><div class="dl">';
+    h+=fld("Fleet Availability",pct(R.avgAvail))+fld("Revenue at Risk",money(R.lostRev));
+    h+=fld("Energy Not Delivered",R.lostMwh.toFixed(0)+" MWh")+fld("Open Tickets",String(R.open));
+    h+='</div>';
+    h+='<div class="flex" style="margin-top:16px"><button class="btn pri" onclick="UI.openReport()">⤓ Generate Owner Report</button><button class="btn" onclick="UI.exportCsv()">Export CSV</button></div>';
+    h+='</div></div>';
+    $("app").innerHTML=h;
+  }
+  function reportCard(title,desc,key){
+    return '<div class="col widget"><div class="wh">Report</div><div style="font-weight:700;margin-bottom:4px">'+esc(title)+'</div><div class="small muted" style="margin-bottom:10px">'+desc+'</div><button class="btn sm" onclick="UI.openReport(\''+key+'\')">Preview →</button></div>';
+  }
+
+  function openReport(key){
+    var R=fleetRollup(); var sites=STATE.cache.sites||[];
+    var title = key==="sla"?"SLA Compliance Certificate":(key==="revenue"?"Revenue Variance Statement":"Monthly O&M Summary");
+    var rows='';
+    sites.forEach(function(s){ var v=siteVariance(s);
+      rows+='<tr><td>'+esc(s.name)+'</td><td>'+pct(s.contractAvail,1)+'</td><td>'+pct(s.avail,1)+'</td><td>'+pct(v.yieldPct,0)+'</td><td>'+money(v.lostRev)+'</td></tr>'; });
+    var body='<p class="small muted" style="margin-top:0">'+esc(COMPANY)+' · '+esc(WS.orgId)+' · period ending '+fmtDate(Date.now())+'</p>';
+    body+='<div class="dl" style="margin:8px 0 14px">';
+    body+='<div class="fld"><label>Fleet Availability</label><div class="val">'+pct(R.avgAvail)+'</div></div>';
+    body+='<div class="fld"><label>Revenue at Risk</label><div class="val">'+money(R.lostRev)+'</div></div>';
+    body+='<div class="fld"><label>Sites</label><div class="val">'+R.count+'</div></div>';
+    body+='<div class="fld"><label>Open Tickets</label><div class="val">'+R.open+'</div></div>';
+    body+='</div>';
+    body+='<div class="tbl-wrap"><table><thead><tr><th>Site</th><th>Contracted</th><th>Measured</th><th>Yield</th><th>Rev at Risk</th></tr></thead><tbody>'+rows+'</tbody></table></div>';
+    body+='<div class="ent-lock" style="margin-top:12px;background:#e2f5ea;border-color:#a8dcc0;color:#137a44">✓ '+esc(title)+' ready. Export to PDF/XLS or push to the owner portal.</div>';
+    $("ovTitle").textContent=title; $("ovBody").innerHTML=body; $("ovFoot").innerHTML='';
+    var c=el("button","btn","Close"); c.onclick=closeModal;
+    var pdf=el("button","btn","⤓ PDF"); pdf.onclick=function(){ toast(DEMO?"Demo: PDF export stubbed":"Generating PDF…"); };
+    var xls=el("button","btn pri","⤓ XLS"); xls.onclick=function(){ exportCsv(); };
+    $("ovFoot").appendChild(c); $("ovFoot").appendChild(pdf); $("ovFoot").appendChild(xls);
+    $("ov").className="ov on";
+  }
+
+  function exportCsv(){
+    var sites=STATE.cache.sites||[];
+    var lines=["Site,Utility,Capacity kW,Contracted Avail,Measured Avail,Expected MWh,Actual MWh,Yield %,Expected $,Actual $,Rev at Risk $"];
+    sites.forEach(function(s){ var v=siteVariance(s);
+      lines.push([q(s.name),q(s.utility),num(s.capKw),s.contractAvail,s.avail,v.exp,v.act,v.yieldPct.toFixed(1),v.expRev.toFixed(0),v.actRev.toFixed(0),v.lostRev.toFixed(0)].join(",")); });
+    function q(x){ x=String(x||""); return /[",]/.test(x)?'"'+x.replace(/"/g,'""')+'"':x; }
+    var blob=new Blob([lines.join("\n")],{type:"text/csv"}); var url=URL.createObjectURL(blob);
+    var a=document.createElement("a"); a.href=url; a.download="om-report-"+WS.orgId+".csv"; document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    toast("CSV exported");
+  }
+
+  /* ---------------- SETTINGS / INTEGRATIONS ---------------- */
+  function integConfigRef(){ return db.collection("om_integrations").doc(WS.orgId); }
+  function loadIntegConfig(){
+    if(STATE.cache.integConfig) return Promise.resolve(STATE.cache.integConfig);
+    return integConfigRef().get().then(function(d){ var c=d.exists?d.data():{ orgId:WS.orgId, connected:{} }; STATE.cache.integConfig=c; return c; });
+  }
+
+  function renderSettings(){
+    loadIntegConfig().then(function(cfg){
+      var h='<div class="subtabs"><a class="on">Integrations</a><a onclick="UI.settingsTab(\'about\')">About &amp; Data Feed</a></div>';
+      h+=infoBanner("enSights sits above monitoring tools, technician apps, and service systems. Credentials are stored server-side via the secure proxy — the browser never holds a token.");
+      /* group integrations */
+      var groups={}; for(var k in INTEGRATIONS){ var g=INTEGRATIONS[k].group; (groups[g]=groups[g]||[]).push(k); }
+      for(var gname in groups){
+        h+='<div class="card"><div class="card-h"><h3>'+esc(gname)+'</h3><span class="sub">'+(gname==="Monitoring"?"Pull production, availability &amp; faults":gname==="Field Service"?"Push work orders, pull status":"Notify on-call &amp; SLA events")+'</span></div><div class="card-b"><div class="tbl-wrap"><table><thead><tr><th>Provider</th><th>Purpose</th><th>Status</th><th></th></tr></thead><tbody>';
+        groups[gname].forEach(function(k){ var it=INTEGRATIONS[k]; var conn=cfg.connected&&cfg.connected[k];
+          h+='<tr><td><b>'+esc(it.label)+'</b></td><td class="small muted">'+esc(it.note||"")+'</td>'
+            +'<td>'+(conn?'<span class="pill green">Connected</span>':'<span class="pill gray">Not connected</span>')+'</td>'
+            +'<td style="text-align:right">'+(conn?'<button class="btn sm" onclick="UI.integTest(\''+k+'\')">Test</button> <button class="btn sm danger" onclick="UI.integDisconnect(\''+k+'\')">Disconnect</button>':'<button class="btn pri sm" onclick="UI.integConnect(\''+k+'\')">Connect</button>')+'</td></tr>';
+        });
+        h+='</tbody></table></div></div></div>';
+      }
+      $("app").innerHTML=h;
+    });
+  }
+  function settingsTab(which){
+    if(which!=="about") return renderSettings();
+    var h='<div class="subtabs"><a onclick="UI.settingsTab(\'integrations\')">Integrations</a><a class="on">About &amp; Data Feed</a></div>';
+    h+='<div class="card"><div class="card-h"><h3>Portal Data Feed</h3><span class="sub">How the portal consumes this console</span></div><div class="card-b">';
+    h+='<p class="small">Every site rollup is written under <code>om_sites/{id}</code> and an aggregate under <code>om_rollup/'+esc(WS.orgId)+'</code>. When you update a project in the portal (editor or Monday), it joins to this console via <code>editorProjectId</code> / <code>mondayBoardId</code>. The portal dashboard reads the rollup and renders the O&amp;M health datapoint as a widget — no extra plumbing needed.</p>';
+    h+='<div class="section-h">Published Fields (per site)</div><div class="dl">';
+    h+=fld("avail","measured availability %")+fld("contractAvail","contracted %");
+    h+=fld("yieldPct","actual ÷ expected")+fld("lostRev","$ at risk this period");
+    h+=fld("openTickets","count not resolved")+fld("lastTelemetry","freshness timestamp");
+    h+='</div></div></div>';
+    $("app").innerHTML=h;
+  }
+
+  function integConnect(k){
+    var it=INTEGRATIONS[k]; if(!it)return;
+    var body='<p class="small muted" style="margin-top:0">'+esc(it.note||"")+'</p><p class="small muted">Secret fields are sent to the secure proxy and never stored in the browser or Firestore.</p>';
+    it.fields.forEach(function(f){ body+='<div class="form-row"><label class="f">'+esc(f.label)+(f.secret?' 🔒':'')+'</label><input id="ig_'+f.key+'" type="'+(f.secret?"password":"text")+'" placeholder="'+esc(f.ph||"")+'"></div>'; });
+    $("ovTitle").textContent="Connect "+it.label; $("ovBody").innerHTML=body; $("ovFoot").innerHTML='';
+    var c=el("button","btn","Cancel"); c.onclick=closeModal;
+    var go=el("button","btn pri","Connect"); go.onclick=function(){ integSaveCreds(k); };
+    $("ovFoot").appendChild(c); $("ovFoot").appendChild(go); $("ov").className="ov on";
+  }
+
+  function integSaveCreds(k){
+    var it=INTEGRATIONS[k]; var creds={}, meta={};
+    it.fields.forEach(function(f){ var v=($("ig_"+f.key)||{}).value||""; if(f.secret) creds[f.key]=v; else meta[f.key]=v; });
+    var finish=function(){
+      var cfg=STATE.cache.integConfig||{ orgId:WS.orgId, connected:{} }; cfg.connected=cfg.connected||{};
+      cfg.connected[k]={ label:it.label, group:it.group, meta:meta, connectedAt:Date.now(), by:(USER&&USER.email)||"" };
+      cfg.orgId=WS.orgId; cfg.updatedAt=Date.now();
+      integConfigRef().set(cfg).then(function(){ STATE.cache.integConfig=cfg; closeModal(); toast(it.label+" connected"); renderSettings(); });
+    };
+    if(DEMO){ setTimeout(finish,500); return; }
+    fetch(INTEG_PROXY_URL,{ method:"POST", headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({ action:"save_credentials", orgId:WS.orgId, provider:k, creds:creds, meta:meta, user:(USER&&USER.email)||"" }) })
+      .then(function(){ finish(); }).catch(function(){ finish(); });
+  }
+  function integTest(k){
+    var it=INTEGRATIONS[k];
+    if(DEMO){ toast("Demo: "+it.label+" test OK"); return; }
+    toast("Testing "+it.label+"…");
+    fetch(INTEG_PROXY_URL,{ method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({ action:"test", orgId:WS.orgId, provider:k }) })
+      .then(function(r){return r.json();}).then(function(res){ toast(res&&res.ok?it.label+" OK":it.label+" failed"); })
+      .catch(function(){ toast("Test failed — check proxy"); });
+  }
+  function integDisconnect(k){
+    var cfg=STATE.cache.integConfig||{}; if(cfg.connected) delete cfg.connected[k];
+    integConfigRef().set(cfg).then(function(){ STATE.cache.integConfig=cfg; toast("Disconnected"); renderSettings(); });
+  }
+
+  /* ================= mutations ================= */
+  function persist(name, id, patch, then){
+    coll(name).doc(id).update(patch).then(function(){ invalidate(name); if(then)then(); }).catch(function(e){ toast("Save failed"); });
+  }
+
+  function setTicketStage(id, stage){
+    var t=(STATE.cache.tickets||[]).filter(function(x){return x.id===id;})[0]; if(!t)return;
+    var patch={ stage:stage }; var log=(t.log||[]).slice(); log.push({ t:Date.now(), m:"Stage → "+stage }); patch.log=log;
+    if(stage==="Resolved"||stage==="Verified") patch.resolvedAt=Date.now();
+    t.stage=stage; t.log=log;
+    persist("tickets", id, patch, function(){ openTicket(id); });
+    toast("Stage updated");
+  }
+  function advanceTicket(id){
+    var t=(STATE.cache.tickets||[]).filter(function(x){return x.id===id;})[0]; if(!t)return;
+    var i=TICKET_STAGES.indexOf(t.stage); if(i<TICKET_STAGES.length-1) setTicketStage(id, TICKET_STAGES[i+1]); else toast("Already at final stage");
+  }
+  function addTicketNote(id){
+    var v=($("logInput")||{}).value||""; if(!v.trim())return;
+    var t=(STATE.cache.tickets||[]).filter(function(x){return x.id===id;})[0]; if(!t)return;
+    var log=(t.log||[]).slice(); log.push({ t:Date.now(), m:v.trim() }); t.log=log;
+    persist("tickets", id, { log:log }, function(){ openTicket(id); });
+  }
+  function assignTicket(id){
+    var t=(STATE.cache.tickets||[]).filter(function(x){return x.id===id;})[0]; if(!t)return;
+    var techs=STATE.cache.techs||[];
+    var body='<div class="form-row"><label class="f">Assign To</label><select id="asgSel">';
+    body+='<option value="">— Unassigned —</option>';
+    techs.forEach(function(x){ body+='<option value="'+x.id+'"'+(t.assignedTo===x.id?" selected":"")+'>'+esc(x.name)+' · '+esc(x.role)+'</option>'; });
+    body+='</select></div>';
+    $("ovTitle").textContent="Assign "+t.num; $("ovBody").innerHTML=body; $("ovFoot").innerHTML='';
+    var c=el("button","btn","Cancel"); c.onclick=closeModal;
+    var go=el("button","btn pri","Assign"); go.onclick=function(){
+      var tid=$("asgSel").value; var tech=techObj(tid);
+      var log=(t.log||[]).slice(); log.push({ t:Date.now(), m: tech?("Assigned "+tech.name):"Unassigned" });
+      t.assignedTo=tid; t.assignedName=tech?tech.name:""; t.log=log;
+      persist("tickets", id, { assignedTo:tid, assignedName:t.assignedName, log:log }, function(){ closeModal(); openTicket(id); toast("Assigned"); });
+    };
+    $("ovFoot").appendChild(c); $("ovFoot").appendChild(go); $("ov").className="ov on";
+  }
+  function notifyTicket(id){
+    var cfg=STATE.cache.integConfig||{};
+    var hasSlack=cfg.connected&&cfg.connected.slack, hasSms=cfg.connected&&cfg.connected.twilio;
+    if(!hasSlack&&!hasSms){ toast("Connect Slack or Twilio in Settings first"); return; }
+    toast(DEMO?"Demo: on-call notified":"Notifying on-call…");
+  }
+
+  function newTicket(siteId){
+    var sites=STATE.cache.sites||[];
+    var body='<div class="form-row"><label class="f">Site</label><select id="tk_site">';
+    sites.forEach(function(s){ body+='<option value="'+s.id+'"'+(siteId===s.id?" selected":"")+'>'+esc(s.name)+'</option>'; });
+    body+='</select></div>';
+    body+='<div class="form-row"><label class="f">Title</label><input id="tk_title" placeholder="e.g. Inverter 2 fault"></div>';
+    body+='<div class="form-2"><div class="form-row"><label class="f">Priority</label><select id="tk_prio">'+TICKET_PRIORITIES.map(function(p){return '<option>'+p+'</option>';}).join("")+'</select></div>';
+    body+='<div class="form-row"><label class="f">Category</label><input id="tk_cat" placeholder="Inverter / BESS / PV / Comms"></div></div>';
+    body+='<div class="form-2"><div class="form-row"><label class="f">SLA Window (hrs)</label><input id="tk_sla" type="number" value="24"></div>';
+    body+='<div class="form-row"><label class="f">Est. Rev Impact $</label><input id="tk_rev" type="number" value="0"></div></div>';
+    $("ovTitle").textContent="New Work Order"; $("ovBody").innerHTML=body; $("ovFoot").innerHTML='';
+    var c=el("button","btn","Cancel"); c.onclick=closeModal;
+    var go=el("button","btn pri","Create"); go.onclick=function(){
+      var sid=$("tk_site").value; var s=siteObj(sid);
+      var num2="WO-"+(1043+Math.floor(Math.random()*900));
+      var o={ orgId:WS.orgId, num:num2, siteId:sid, siteName:s?s.name:"", title:($("tk_title").value||"Untitled"),
+        priority:$("tk_prio").value, category:$("tk_cat").value||"General", source:"manual",
+        slaHours:num($("tk_sla").value,24), revImpact:num($("tk_rev").value,0), downMwh:0,
+        stage:"New", assignedTo:"", assignedName:"", openedAt:Date.now(), createdAt:Date.now(),
+        log:[{t:Date.now(),m:"Ticket created manually"}] };
+      coll("tickets").doc(uid("tkt")).set(o).then(function(){ invalidate("tickets"); closeModal(); STATE.mod="tickets"; render(); toast("Ticket "+num2+" created"); });
+    };
+    $("ovFoot").appendChild(c); $("ovFoot").appendChild(go); $("ov").className="ov on";
+  }
+
+  function newSite(){ formSite(null); }
+  function editSite(id){ formSite(siteObj(id)); }
+  function formSite(s){
+    s=s||{};
+    var body='<div class="form-row"><label class="f">Site Name</label><input id="st_name" value="'+esc(s.name||"")+'"></div>';
+    body+='<div class="form-2"><div class="form-row"><label class="f">Technology</label><input id="st_tech" value="'+esc(s.tech||"Solar+Storage")+'"></div>';
+    body+='<div class="form-row"><label class="f">Utility / Tariff</label><input id="st_util" value="'+esc(s.utility||"")+'"></div></div>';
+    body+='<div class="form-2"><div class="form-row"><label class="f">Power (kW)</label><input id="st_kw" type="number" value="'+num(s.capKw)+'"></div>';
+    body+='<div class="form-row"><label class="f">Energy (kWh)</label><input id="st_kwh" type="number" value="'+num(s.capKwh)+'"></div></div>';
+    body+='<div class="form-2"><div class="form-row"><label class="f">Contracted Avail %</label><input id="st_cav" type="number" step="0.1" value="'+num(s.contractAvail,97)+'"></div>';
+    body+='<div class="form-row"><label class="f">Measured Avail %</label><input id="st_av" type="number" step="0.1" value="'+num(s.avail,98)+'"></div></div>';
+    body+='<div class="form-2"><div class="form-row"><label class="f">Expected MWh/mo</label><input id="st_exp" type="number" value="'+num(s.expectedMwhMo)+'"></div>';
+    body+='<div class="form-row"><label class="f">Actual MWh/mo</label><input id="st_act" type="number" value="'+num(s.actualMwhMo)+'"></div></div>';
+    body+='<div class="form-2"><div class="form-row"><label class="f">Rate $/kWh</label><input id="st_rate" type="number" step="0.001" value="'+num(s.ppaRate,0.1)+'"></div>';
+    body+='<div class="form-row"><label class="f">Contract Type</label><input id="st_sla" value="'+esc(s.slaType||"O&M Agreement")+'"></div></div>';
+    body+='<div class="form-2"><div class="form-row"><label class="f">Lat</label><input id="st_lat" type="number" step="0.0001" value="'+(s.lat!=null?s.lat:"")+'"></div>';
+    body+='<div class="form-row"><label class="f">Lng</label><input id="st_lng" type="number" step="0.0001" value="'+(s.lng!=null?s.lng:"")+'"></div></div>';
+    body+='<div class="form-row"><label class="f">Linked editor projectId (optional)</label><input id="st_pid" value="'+esc(s.editorProjectId||"")+'" placeholder="editor_…"></div>';
+    $("ovTitle").textContent=s.id?"Edit Site":"Add Site"; $("ovBody").innerHTML=body; $("ovFoot").innerHTML='';
+    var c=el("button","btn","Cancel"); c.onclick=closeModal;
+    var go=el("button","btn pri","Save"); go.onclick=function(){
+      var o={ orgId:WS.orgId, name:$("st_name").value||"Untitled", tech:$("st_tech").value, utility:$("st_util").value,
+        capKw:num($("st_kw").value), capKwh:num($("st_kwh").value), contractAvail:num($("st_cav").value,97), avail:num($("st_av").value,98),
+        expectedMwhMo:num($("st_exp").value), actualMwhMo:num($("st_act").value), ppaRate:num($("st_rate").value,0.1), slaType:$("st_sla").value,
+        lat:$("st_lat").value?num($("st_lat").value):null, lng:$("st_lng").value?num($("st_lng").value):null,
+        editorProjectId:$("st_pid").value, source: $("st_pid").value?"repo":(s.source||"repo"),
+        health:(num($("st_av").value,98)>=num($("st_cav").value,97)?"good":"bad"),
+        lastTelemetry: s.lastTelemetry||Date.now(), series: s.series||[], monBase: s.monBase||num($("st_exp").value)*8 };
+      if(s.mondayBoardId) o.mondayBoardId=s.mondayBoardId;
+      o.createdAt = s.createdAt || Date.now();
+      var ref = s.id ? coll("sites").doc(s.id) : coll("sites").doc(uid("site"));
+      ref.set(o).then(function(){ invalidate("sites"); closeModal(); STATE.mod="fleet"; render(); toast("Site saved"); });
+    };
+    $("ovFoot").appendChild(c); $("ovFoot").appendChild(go); $("ov").className="ov on";
+  }
+
+  function newTech(){
+    var body='<div class="form-row"><label class="f">Name</label><input id="tc_name"></div>';
+    body+='<div class="form-2"><div class="form-row"><label class="f">Role</label><input id="tc_role" placeholder="Field Tech"></div>';
+    body+='<div class="form-row"><label class="f">Region</label><input id="tc_region"></div></div>';
+    body+='<div class="form-2"><div class="form-row"><label class="f">Phone</label><input id="tc_phone"></div>';
+    body+='<div class="form-row"><label class="f">Status</label><select id="tc_status"><option>Available</option><option>On Site</option><option>Off</option></select></div></div>';
+    body+='<div class="form-row"><label class="f">Certifications</label><input id="tc_certs" placeholder="NABCEP · OSHA-30 …"></div>';
+    $("ovTitle").textContent="Add Technician"; $("ovBody").innerHTML=body; $("ovFoot").innerHTML='';
+    var c=el("button","btn","Cancel"); c.onclick=closeModal;
+    var go=el("button","btn pri","Save"); go.onclick=function(){
+      var o={ orgId:WS.orgId, name:$("tc_name").value||"New Tech", role:$("tc_role").value||"Field Tech", region:$("tc_region").value,
+        phone:$("tc_phone").value, status:$("tc_status").value, certs:$("tc_certs").value, openTickets:0, createdAt:Date.now() };
+      coll("techs").doc(uid("tech")).set(o).then(function(){ invalidate("techs"); closeModal(); STATE.mod="technicians"; render(); toast("Technician added"); });
+    };
+    $("ovFoot").appendChild(c); $("ovFoot").appendChild(go); $("ov").className="ov on";
+  }
+
+  function closeModal(){ $("ov").className="ov"; }
+  function back(){ STATE.sel={}; render(); }
+
+  /* ================= expose ================= */
+  window.UI = {
+    openSite:openSite, newSite:newSite, editSite:editSite,
+    openTicket:openTicket, newTicket:newTicket, setTicketStage:setTicketStage, advanceTicket:advanceTicket,
+    addTicketNote:addTicketNote, assignTicket:assignTicket, notifyTicket:notifyTicket,
+    newTech:newTech,
+    openReport:openReport, exportCsv:exportCsv,
+    settingsTab:settingsTab, integConnect:integConnect, integSaveCreds:integSaveCreds, integTest:integTest, integDisconnect:integDisconnect,
+    back:back, closeModal:closeModal
+  };
+
+  boot();
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,808 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ClearSky OMEGA — Field Service &amp; Dispatch</title>
+<style>
+/* ===== ES5-only, no build step. OMEGA dark-navy topbar theme ===== */
+* { box-sizing: border-box; }
+html, body { margin:0; padding:0; height:100%; }
+body { font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif; color:#1b2733; background:#eef1f4; font-size:14px; }
+a { color:#1461d2; text-decoration:none; cursor:pointer; }
+a:hover { text-decoration:underline; }
+
+.tb { display:flex; align-items:center; height:52px; background:#0e1b33; color:#fff; padding:0 16px; position:sticky; top:0; z-index:50; }
+.tb-omega { height:26px; margin-right:9px; }
+.tb-logo-txt { font-weight:700; font-size:17px; letter-spacing:.3px; }
+.tb-logo-txt span { color:#4da3ff; }
+.tb-sep { width:1px; height:24px; background:#2a3c5c; margin:0 16px; }
+.tb-ws { font-size:13px; color:#9fb4d6; }
+.tb-ws b { color:#fff; }
+.tb-right { margin-left:auto; display:flex; align-items:center; gap:14px; font-size:12px; color:#9fb4d6; }
+.tb-badge { background:#123; border:1px solid #2a3c5c; color:#8fc0ff; padding:3px 9px; border-radius:20px; font-size:11px; font-weight:600; letter-spacing:.4px; }
+.tb-user { width:28px; height:28px; border-radius:50%; background:#2a3c5c; display:flex; align-items:center; justify-content:center; color:#cfe0ff; font-weight:700; font-size:12px; }
+
+.nav { display:flex; background:#12233f; padding:0 8px; flex-wrap:wrap; }
+.nav a { color:#a9bcd8; padding:11px 15px; font-size:13px; font-weight:600; border-bottom:3px solid transparent; }
+.nav a.on { color:#fff; border-bottom-color:#4da3ff; background:#0e1b33; }
+
+.wrap { padding:18px; max-width:1560px; margin:0 auto; }
+.row { display:flex; gap:18px; align-items:flex-start; }
+.col { flex:1; min-width:0; }
+
+.card { background:#fff; border:1px solid #dde3ea; border-radius:10px; box-shadow:0 1px 2px rgba(16,30,54,.05); margin-bottom:18px; }
+.card-h { padding:13px 16px; border-bottom:1px solid #edf1f5; display:flex; align-items:center; gap:10px; }
+.card-h h3 { margin:0; font-size:14px; font-weight:700; }
+.card-h .sub { font-size:12px; color:#7b8794; font-weight:400; }
+.card-b { padding:16px; }
+
+.btn { display:inline-flex; align-items:center; gap:6px; border:1px solid #cbd4de; background:#fff; color:#1b2733; padding:7px 13px; border-radius:7px; font-size:13px; font-weight:600; cursor:pointer; }
+.btn:hover { background:#f4f7fa; }
+.btn.pri { background:#1461d2; border-color:#1461d2; color:#fff; }
+.btn.pri:hover { background:#0f4fae; }
+.btn.dark { background:#0e1b33; border-color:#0e1b33; color:#fff; }
+.btn.sm { padding:4px 9px; font-size:12px; }
+.btn.ghost { border-color:transparent; background:transparent; color:#1461d2; }
+.btn.danger { background:#b42323; border-color:#b42323; color:#fff; }
+.btn.ok { background:#137a44; border-color:#137a44; color:#fff; }
+
+.path { display:flex; border-radius:7px; overflow:hidden; border:1px solid #d5dde6; margin-bottom:16px; }
+.path .st { flex:1; position:relative; padding:10px 8px 10px 22px; font-size:12px; font-weight:600; text-align:center; background:#eef2f6; color:#5b6b7c; cursor:pointer; white-space:nowrap; }
+.path .st:after { content:""; position:absolute; right:-11px; top:0; width:0; height:0; border-top:20px solid transparent; border-bottom:20px solid transparent; border-left:11px solid #eef2f6; z-index:2; }
+.path .st:before { content:""; position:absolute; right:-13px; top:0; width:0; height:0; border-top:20px solid transparent; border-bottom:20px solid transparent; border-left:11px solid #d5dde6; z-index:1; }
+.path .st.done { background:#5a76c9; color:#fff; }
+.path .st.done:after { border-left-color:#5a76c9; }
+.path .st.cur { background:#0e1b33; color:#fff; }
+.path .st.cur:after { border-left-color:#0e1b33; }
+.path .st:last-child:after, .path .st:last-child:before { display:none; }
+
+table { width:100%; border-collapse:collapse; font-size:13px; }
+th { text-align:left; font-size:11px; text-transform:uppercase; letter-spacing:.4px; color:#7b8794; padding:8px 10px; border-bottom:1px solid #e4e9ef; font-weight:700; }
+td { padding:9px 10px; border-bottom:1px solid #eef2f6; vertical-align:middle; }
+tr:hover td { background:#f8fafc; }
+.tbl-wrap { overflow:auto; }
+
+.dl { display:grid; grid-template-columns:1fr 1fr; gap:12px 20px; }
+.dl .fld label { display:block; font-size:11px; color:#7b8794; text-transform:uppercase; letter-spacing:.4px; margin-bottom:3px; }
+.dl .fld .val { font-size:13px; color:#1b2733; }
+.section-h { font-size:12px; font-weight:700; color:#3a4a5c; margin:18px 0 8px; padding-bottom:5px; border-bottom:1px solid #edf1f5; display:flex; align-items:center; gap:6px; }
+
+.pill { display:inline-block; padding:2px 9px; border-radius:20px; font-size:11px; font-weight:600; }
+.pill.blue { background:#e3efff; color:#1461d2; }
+.pill.green { background:#e2f5ea; color:#137a44; }
+.pill.amber { background:#fff2d9; color:#9a6800; }
+.pill.red { background:#fde3e3; color:#b42323; }
+.pill.gray { background:#eceff3; color:#5b6b7c; }
+.pill.purple { background:#efe6ff; color:#6b3fd4; }
+.pill.teal { background:#d9f5f2; color:#0d7d72; }
+
+input, select, textarea { font-family:inherit; font-size:13px; padding:8px 10px; border:1px solid #cbd4de; border-radius:7px; width:100%; background:#fff; }
+input:focus, select:focus, textarea:focus { outline:none; border-color:#1461d2; box-shadow:0 0 0 3px rgba(20,97,210,.12); }
+label.f { display:block; font-size:11px; color:#7b8794; text-transform:uppercase; letter-spacing:.4px; margin:0 0 4px; }
+.form-row { margin-bottom:13px; }
+.form-2 { display:grid; grid-template-columns:1fr 1fr; gap:13px; }
+.form-3 { display:grid; grid-template-columns:1fr 1fr 1fr; gap:13px; }
+
+.ov { position:fixed; inset:0; background:rgba(14,27,51,.5); display:none; align-items:flex-start; justify-content:center; z-index:100; padding:40px 16px; overflow:auto; }
+.ov.on { display:flex; }
+.modal { background:#fff; border-radius:12px; width:100%; max-width:600px; box-shadow:0 20px 60px rgba(0,0,0,.3); }
+.modal-h { padding:16px 20px; border-bottom:1px solid #edf1f5; display:flex; align-items:center; }
+.modal-h h3 { margin:0; font-size:16px; }
+.modal-h .x { margin-left:auto; cursor:pointer; color:#7b8794; font-size:20px; line-height:1; }
+.modal-b { padding:20px; }
+.modal-f { padding:14px 20px; border-top:1px solid #edf1f5; display:flex; gap:10px; justify-content:flex-end; }
+
+.subtabs { display:flex; gap:2px; border-bottom:1px solid #e4e9ef; margin-bottom:16px; flex-wrap:wrap; }
+.subtabs a { padding:9px 15px; font-size:13px; font-weight:600; color:#5b6b7c; border-bottom:2px solid transparent; }
+.subtabs a.on { color:#1461d2; border-bottom-color:#1461d2; }
+
+.kpis { display:flex; gap:14px; margin-bottom:18px; flex-wrap:wrap; }
+.kpi { flex:1; min-width:150px; background:#fff; border:1px solid #dde3ea; border-radius:10px; padding:14px 16px; }
+.kpi .n { font-size:26px; font-weight:800; color:#0e1b33; }
+.kpi .n.good { color:#137a44; } .kpi .n.warn { color:#9a6800; } .kpi .n.bad { color:#b42323; }
+.kpi .l { font-size:11px; text-transform:uppercase; letter-spacing:.5px; color:#7b8794; margin-top:2px; }
+.kpi .d { font-size:11px; margin-top:3px; font-weight:600; }
+.kpi .d.up { color:#137a44; } .kpi .d.down { color:#b42323; }
+
+/* Dispatch board (kanban) */
+.board { display:flex; gap:14px; overflow-x:auto; padding-bottom:6px; }
+.lane { flex:1; min-width:210px; background:#f4f7fa; border:1px solid #e4e9ef; border-radius:10px; }
+.lane-h { padding:10px 12px; font-size:12px; font-weight:700; color:#3a4a5c; border-bottom:1px solid #e4e9ef; display:flex; align-items:center; gap:6px; }
+.lane-h .cnt { margin-left:auto; background:#dde3ea; color:#5b6b7c; border-radius:20px; padding:1px 8px; font-size:11px; }
+.lane-b { padding:10px; display:flex; flex-direction:column; gap:9px; min-height:60px; }
+.wo { background:#fff; border:1px solid #dde3ea; border-radius:8px; padding:10px; cursor:pointer; box-shadow:0 1px 2px rgba(16,30,54,.04); }
+.wo:hover { border-color:#b9d3f2; }
+.wo .wt { font-size:13px; font-weight:600; margin-bottom:3px; }
+.wo .wm { font-size:11px; color:#7b8794; }
+.wo .wf2 { display:flex; align-items:center; gap:6px; margin-top:7px; flex-wrap:wrap; }
+.avatar { width:22px; height:22px; border-radius:50%; background:#0e1b33; color:#cfe0ff; font-size:10px; font-weight:700; display:inline-flex; align-items:center; justify-content:center; }
+.avatar.vendor { background:#0d7d72; }
+.avatar.un { background:#cbd4de; color:#5b6b7c; }
+
+.dot { width:9px; height:9px; border-radius:50%; display:inline-block; vertical-align:middle; margin-right:5px; }
+.dot.p1 { background:#b42323; } .dot.p2 { background:#e08600; } .dot.p3 { background:#c9a500; } .dot.p4 { background:#5b6b7c; }
+.sd { width:8px; height:8px; border-radius:50%; display:inline-block; }
+.sd.on { background:#137a44; } .sd.off { background:#cbd4de; } .sd.site { background:#e08600; }
+
+.tl { position:relative; padding-left:22px; }
+.tl:before { content:""; position:absolute; left:6px; top:4px; bottom:4px; width:2px; background:#e4e9ef; }
+.tl .ev { position:relative; padding:0 0 14px 0; }
+.tl .ev:before { content:""; position:absolute; left:-19px; top:3px; width:10px; height:10px; border-radius:50%; background:#1461d2; border:2px solid #fff; box-shadow:0 0 0 1px #cbd4de; }
+.tl .ev.sig:before { background:#e08600; }
+.tl .ev .t { font-size:11px; color:#98a4b2; }
+.tl .ev .m { font-size:13px; }
+
+.muted { color:#7b8794; }
+.empty { text-align:center; padding:34px 20px; color:#98a4b2; font-size:13px; }
+.flex { display:flex; align-items:center; gap:10px; }
+.spacer { flex:1; }
+.small { font-size:12px; }
+.tag-src { font-size:10px; padding:1px 6px; border-radius:4px; font-weight:700; letter-spacing:.3px; }
+.tag-src.repo { background:#e3efff; color:#1461d2; }
+.tag-src.monday { background:#ffe6d6; color:#c8531a; }
+.tag-src.sig { background:#fff2d9; color:#9a6800; }
+.toast { position:fixed; bottom:22px; right:22px; background:#0e1b33; color:#fff; padding:12px 18px; border-radius:9px; font-size:13px; box-shadow:0 8px 30px rgba(0,0,0,.3); z-index:200; display:none; }
+.toast.on { display:block; }
+.loading { padding:40px; text-align:center; color:#7b8794; }
+.info-lock { background:#e8f0fb; border:1px solid #b9d3f2; border-radius:8px; padding:10px 14px; font-size:12px; color:#1461d2; margin-bottom:16px; }
+.warn-lock { background:#fff7e6; border:1px solid #f0d492; border-radius:8px; padding:10px 14px; font-size:12px; color:#8a6400; margin-bottom:16px; }
+.ok-lock { background:#e2f5ea; border:1px solid #a8dcc0; border-radius:8px; padding:10px 14px; font-size:12px; color:#137a44; margin-bottom:16px; }
+.sig-lock { background:#fff2d9; border:1px solid #f0d492; border-radius:8px; padding:10px 14px; font-size:12px; color:#9a6800; margin-bottom:16px; }
+
+.widget { border:1px dashed #b9d3f2; border-radius:10px; padding:14px 16px; background:#f7fafe; }
+.widget .wh { font-size:11px; text-transform:uppercase; letter-spacing:.5px; color:#1461d2; font-weight:700; margin-bottom:8px; }
+code { background:#eef2f6; padding:1px 5px; border-radius:4px; font-size:12px; }
+.crew-row { display:flex; align-items:center; gap:12px; padding:10px 0; border-bottom:1px solid #eef2f6; }
+.crew-row:last-child { border-bottom:none; }
+.workload { height:8px; border-radius:6px; background:#eceff3; overflow:hidden; flex:1; max-width:160px; }
+.workload > span { display:block; height:100%; border-radius:6px; }
+</style>
+</head>
+<body>
+
+<div class="tb">
+  <img src="/clearsky-omega-mark-white.png" alt="OMEGA" class="tb-omega">
+  <span class="tb-logo-txt">Clear<span>Sky</span> OMEGA</span>
+  <div class="tb-sep"></div>
+  <span class="tb-ws">Field Service &amp; Dispatch &nbsp;·&nbsp; <b id="wsName">Loading…</b></span>
+  <div class="tb-right">
+    <button id="signalBtn" class="btn sm" style="background:#12233f;border-color:#2a3c5c;color:#cfe0ff" onclick="UI.openSignals()">◎ Performance Signals</button>
+    <span class="tb-badge" id="tierBadge">—</span>
+    <span id="userEmail">—</span>
+    <div class="tb-user" id="userInitial">?</div>
+  </div>
+</div>
+
+<div class="nav" id="nav">
+  <a data-mod="dispatch" class="on">Dispatch Board</a>
+  <a data-mod="calls">Service Calls</a>
+  <a data-mod="crews">Crews &amp; Vendors</a>
+  <a data-mod="schedule">Schedule</a>
+  <a data-mod="signals">Signal Inbox</a>
+  <a data-mod="settings" style="margin-left:auto">⚙ Settings</a>
+</div>
+
+<div class="wrap" id="app"><div class="loading">Connecting to workspace…</div></div>
+
+<div class="ov" id="ov">
+  <div class="modal">
+    <div class="modal-h"><h3 id="ovTitle">—</h3><span class="x" onclick="UI.closeModal()">&times;</span></div>
+    <div class="modal-b" id="ovBody"></div>
+    <div class="modal-f" id="ovFoot"></div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script src="/config.js"></script>
+<script src="https://tools.csebuilders.com/omega-tools.js"></script>
+<script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+<script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-auth.js"></script>
+<script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-firestore.js"></script>
+
+<script>
+/* ============================================================
+   ClearSky OMEGA — Field Service & Dispatch Console
+     · technician assignment + live dispatch board
+     · execution status: scheduled → completed
+     · ownership continuity across internal crews AND vendors
+     · signal → verify → ticket → dispatch → close loop
+   Namespace: fs_*  ·  ES5-only, no build step.  Firebase compat v8.
+   ============================================================ */
+(function () {
+  "use strict";
+
+  window.onerror = function(msg){
+    var app=document.getElementById("app");
+    if(app && app.querySelector(".loading")){ app.innerHTML='<div class="card"><div class="card-b"><h3>Something went wrong</h3><p class="muted small">'+String(msg)+'</p></div></div>'; }
+    return false;
+  };
+
+  var CSCONFIG=(typeof window!=="undefined"&&window.CLEARSKY_CONFIG)?window.CLEARSKY_CONFIG:null;
+  var FB=(CSCONFIG&&CSCONFIG.firebase)?CSCONFIG.firebase:{
+    apiKey:"AIzaSyABoM1lgOYUnd5ZadaoTMhYmA9cHa8Tyo0", authDomain:"clearsky-portal.firebaseapp.com",
+    projectId:"clearsky-portal", storageBucket:"clearsky-portal.firebasestorage.app",
+    messagingSenderId:"742134484347", appId:"1:742134484347:web:ab0f95fd221536158481de" };
+
+  var APP_KEY="fieldservice";
+  var TIER_LABEL={ 0:"OMEGA (All)",1:"OMEGA Core",2:"OMEGA Performance",3:"Enterprise · Alpha & Omega" };
+  function tierName(n){ return TIER_LABEL[n]!=null?TIER_LABEL[n]:("Tier "+n); }
+  var ADMIN_DOMAINS={ "csebuilders.com":true,"clearsky-usa.com":true };
+  var COMPANY=(CSCONFIG&&CSCONFIG.companyName)?CSCONFIG.companyName:"ClearSky OMEGA";
+  var ALERT_PROXY_URL="https://tools.csebuilders.com/api/om-integrations";
+
+  /* Execution lifecycle — scheduled → completed, with the field states between. */
+  var CALL_STAGES=["New","Assigned","Scheduled","En Route","On Site","Completed","Verified"];
+  var PRIORITIES=["P1","P2","P3","P4"];
+  var CREW_KINDS={ internal:"Internal", vendor:"Third-Party Vendor" };
+
+  var db, auth, USER=null, WS=null;
+  var STATE={ mod:"dispatch", sel:{}, cache:{} };
+
+  /* ================= util ================= */
+  function $(id){ return document.getElementById(id); }
+  function el(t,c,h){ var e=document.createElement(t); if(c)e.className=c; if(h!=null)e.innerHTML=h; return e; }
+  function esc(s){ if(s==null)return ""; return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;"); }
+  function money(n){ if(n==null||n==="")return "—"; var x=Number(n); if(isNaN(x))return esc(n); return "$"+x.toLocaleString(undefined,{maximumFractionDigits:0}); }
+  function num(v,d){ var x=Number(v); return isNaN(x)?(d||0):x; }
+  function fmtDate(d){ if(!d)return "—"; if(d&&d.toDate)d=d.toDate(); var dt=new Date(d); if(isNaN(dt))return esc(d); return (dt.getMonth()+1)+"/"+dt.getDate()+"/"+dt.getFullYear(); }
+  function fmtDT(ms){ if(!ms)return "—"; var dt=new Date(ms); if(isNaN(dt))return "—"; return (dt.getMonth()+1)+"/"+dt.getDate()+" "+("0"+dt.getHours()).slice(-2)+":"+("0"+dt.getMinutes()).slice(-2); }
+  function ago(ms){ if(!ms)return "—"; var s=(Date.now()-ms)/1000; if(s<0)return "in "+inHrs(-s*1000); if(s<60)return "just now"; if(s<3600)return Math.floor(s/60)+"m ago"; if(s<86400)return Math.floor(s/3600)+"h ago"; return Math.floor(s/86400)+"d ago"; }
+  function inHrs(ms){ var h=ms/3600000; if(h<1)return Math.round(h*60)+"m"; if(h<48)return h.toFixed(1)+"h"; return (h/24).toFixed(1)+"d"; }
+  function initials(name){ if(!name)return "?"; var p=name.split(" "); return ((p[0]||"")[0]||"")+((p[1]||"")[0]||""); }
+  function uid(p){ return (p||"id")+"_"+Date.now().toString(36)+"_"+Math.random().toString(36).slice(2,7); }
+  function toast(m){ var t=$("toast"); t.textContent=m; t.className="toast on"; setTimeout(function(){ t.className="toast"; },2600); }
+  function coll(name){ return db.collection("fs_"+name); } // fs_calls, fs_crews, fs_signals
+
+  var DEMO=false;
+
+  /* ================= boot ================= */
+  function boot(){
+    var keyMissing=!FB.apiKey||FB.apiKey.indexOf("PLACEHOLDER")!==-1;
+    if(typeof firebase==="undefined"||keyMissing) return startDemo(keyMissing?"config":"sdk");
+    try{ firebase.initializeApp(FB); db=firebase.firestore(); auth=firebase.auth(); }catch(e){ return startDemo("init"); }
+    auth.onAuthStateChanged(function(u){ if(!u){ auth.signInAnonymously().catch(function(){ startDemo("auth"); }); return; } onUser(u); }, function(){ startDemo("auth"); });
+  }
+  function startDemo(){ DEMO=true; db=makeMemDb(); onUser({ email:"admin@csebuilders.com" }); }
+
+  function makeMemDb(){
+    var store={};
+    function collection(name){ store[name]=store[name]||{};
+      return { _name:name, doc:function(id){ id=id||uid("doc"); return docRef(name,id); },
+        where:function(f,op,v){ return query(name,[[f,op,v]]); }, limit:function(){ return query(name,[]); }, get:function(){ return query(name,[]).get(); } }; }
+    function docRef(name,id){ return { id:id,
+      set:function(o){ store[name][id]=clone(o); return Promise.resolve(); },
+      update:function(p){ var d=store[name][id]||{}; for(var k in p)d[k]=p[k]; store[name][id]=d; return Promise.resolve(); },
+      get:function(){ var d=store[name][id]; return Promise.resolve({ exists:!!d, id:id, data:function(){return clone(d);} }); } }; }
+    function query(name,conds){ return { where:function(f,op,v){ return query(name,conds.concat([[f,op,v]])); }, limit:function(){ return this; },
+      get:function(){ var out=[],bag=store[name]||{}; for(var id in bag){ var r=bag[id],ok=true;
+        for(var i=0;i<conds.length;i++){ var c=conds[i]; if(c[1]==="=="&&r[c[0]]!==c[2]){ ok=false; break; } }
+        if(ok) out.push({ id:id, data:(function(x){return function(){return clone(x);};})(r) }); }
+        return Promise.resolve({ empty:out.length===0, size:out.length, forEach:function(cb){ out.forEach(cb); } }); } }; }
+    function batch(){ var ops=[]; return { set:function(r,o){ ops.push(function(){ r.set(o); }); }, update:function(r,o){ ops.push(function(){ r.update(o); }); }, commit:function(){ ops.forEach(function(f){f();}); return Promise.resolve(); } }; }
+    function clone(o){ return o==null?o:JSON.parse(JSON.stringify(o)); }
+    return { collection:collection, batch:batch };
+  }
+
+  var OT=window.OMEGATools; var ORG=null;
+  function omegaOrgRef(orgId){ return db.collection("omega_orgs").doc(orgId); }
+  function workspaceOf(o){ return { orgId:o.orgId, tierLevel:o.tierLevel, unlockedTools:o.unlockedTools||[], requiredTools:o.requiredTools||[], customToolUrls:o.customToolUrls||{} }; }
+  function canOpenThisApp(o){ if(!OT)return o.tierLevel>=2; var t=OT.byKey(APP_KEY); if(!t)return o.tierLevel>=2; return OT.isUnlocked(t,workspaceOf(o)); }
+
+  function onUser(u){
+    USER=u; var email=u.email||"admin@csebuilders.com"; var domain=(email.split("@")[1]||"").toLowerCase();
+    if(!domain){ renderNoAuth(); return; }
+    $("userEmail").textContent=email; $("userInitial").textContent=(email[0]||"?").toUpperCase();
+    resolveOrg(domain,email).then(function(org){
+      ORG=org; WS={ orgId:org.orgId, name:(COMPANY||org.orgId) };
+      $("wsName").textContent=WS.name+(DEMO?" · DEMO":"");
+      var tb=$("tierBadge"); if(tb)tb.textContent=tierName(org.tierLevel).toUpperCase();
+      if(!canOpenThisApp(org)){ renderUpgrade(org); return; }
+      bindNav();
+      seedIfEmpty().then(function(){ render(); }).catch(function(e){ $("app").innerHTML='<div class="card"><div class="card-b"><h3>Couldn\'t load data</h3><p class="muted small">'+esc(String(e&&e.message||e))+'</p></div></div>'; });
+    });
+  }
+  function cfgTierLevel(){ var c=window.CLEARSKY_CONFIG; if(!c)return null;
+    if(typeof c.tierLevel==="number")return c.tierLevel; if(typeof c.tier==="number")return c.tier;
+    if(typeof c.tier==="string"){ var t=c.tier.toLowerCase(); if(t.indexOf("enter")===0||t.indexOf("alpha")===0)return 3; if(t.indexOf("perf")===0||t==="deluxe")return 2; if(t==="core"||t==="standard")return 1; } return null; }
+  function resolveOrg(domain){ var isAdmin=!!ADMIN_DOMAINS[domain]; var cfgTier=cfgTierLevel();
+    if(DEMO){ var lvl=isAdmin?3:(cfgTier!=null?cfgTier:2); var unl=(lvl<2)?[]:[APP_KEY]; return Promise.resolve({ orgId:domain, tierLevel:lvl, unlockedTools:unl, requiredTools:[], customToolUrls:{}, isAdmin:isAdmin }); }
+    return omegaOrgRef(domain).get().then(function(d){ if(d.exists){ var data=d.data(); var lvl=(typeof data.tierLevel==="number")?data.tierLevel:(cfgTier!=null?cfgTier:1);
+      return { orgId:domain, tierLevel:lvl, unlockedTools:data.unlockedTools||[], requiredTools:data.requiredTools||[], customToolUrls:data.customToolUrls||{}, isAdmin:isAdmin }; }
+      return { orgId:domain, tierLevel:(isAdmin?3:(cfgTier!=null?cfgTier:1)), unlockedTools:[], requiredTools:[], customToolUrls:{}, isAdmin:isAdmin };
+    }).catch(function(){ return { orgId:domain, tierLevel:(isAdmin?3:(cfgTier!=null?cfgTier:1)), unlockedTools:[], requiredTools:[], customToolUrls:{}, isAdmin:isAdmin }; });
+  }
+  function renderNoAuth(){ $("app").innerHTML='<div class="card"><div class="card-b"><h3>Sign-in required</h3><p class="muted">This console requires an authenticated account.</p></div></div>'; }
+  function renderUpgrade(org){ $("app").innerHTML='<div class="card"><div class="card-b" style="text-align:center;padding:50px 20px"><div style="font-size:40px">🔒</div><h3 style="margin:12px 0 6px">Field Service &amp; Dispatch</h3><p class="muted">This is an <b>OMEGA Performance</b> &amp; <b>Enterprise</b> app.</p><p class="muted small">Your plan (<b>'+esc(tierName(org.tierLevel))+'</b>) doesn\'t include it yet.</p><p class="muted small">Contact ClearSky to add this app to <b>'+esc(org.orgId)+'</b>.</p></div></div>'; }
+  function bindNav(){ var links=$("nav").getElementsByTagName("a"); for(var i=0;i<links.length;i++){ (function(a){ a.onclick=function(){ for(var j=0;j<links.length;j++)links[j].className=""; a.className="on"; STATE.mod=a.getAttribute("data-mod"); STATE.sel={}; render(); }; })(links[i]); } }
+
+  /* ================= seed ================= */
+  function seedIfEmpty(){
+    var org=WS.orgId;
+    return coll("crews").where("orgId","==",org).limit(1).get().then(function(s){
+      if(!s.empty) return;
+      var batch=db.batch(); var now=Date.now(), H=3600000, D=86400000;
+
+      function CR(o){ var ref=coll("crews").doc(uid("crew")); o.orgId=org; o.createdAt=Date.now(); batch.set(ref,o); return ref; }
+      var m1=CR({ name:"Marcus Reyes", kind:"internal", role:"Lead Field Tech", region:"West", phone:"+1 510-555-0101", email:"marcus@clearsky-usa.com", status:"On Site", certs:"NABCEP · OSHA-30 · HV", capacity:5 });
+      var m2=CR({ name:"Dana Whitfield", kind:"internal", role:"BESS Specialist", region:"West", phone:"+1 415-555-0142", email:"dana@clearsky-usa.com", status:"Available", certs:"Gotion Cert · NFPA-70E", capacity:5 });
+      var m3=CR({ name:"Ari Cohen", kind:"internal", role:"Field Tech", region:"Central", phone:"+1 319-555-0177", email:"ari@clearsky-usa.com", status:"Available", certs:"OSHA-30", capacity:4 });
+      var v1=CR({ name:"Voltus Field Ops", kind:"vendor", role:"VPP / Dispatch Partner", region:"National", phone:"+1 800-555-0300", email:"dispatch@voltus.co", status:"Available", certs:"Master Service Agreement", capacity:8, company:"Voltus" });
+      var v2=CR({ name:"Ausgrid Approved Contractor", kind:"vendor", role:"Licensed Electrical (APAC)", region:"APAC", phone:"+61 2 5550 0400", email:"ops@apac-contractor.au", status:"Available", certs:"CEC Accredited · Ausgrid ASP", capacity:3, company:"APAC Electrical Pty" });
+      var v3=CR({ name:"Rexel Service Team", kind:"vendor", role:"Equipment / Warranty", region:"Central", phone:"+1 800-555-0355", email:"service@rexelenergy.com", status:"Off", certs:"Autel/Gotion authorized", capacity:4, company:"Rexel Energy Solutions" });
+
+      var crews={ m1:m1.id, m2:m2.id, m3:m3.id, v1:v1.id, v2:v2.id, v3:v3.id };
+      var names={}; names[m1.id]="Marcus Reyes"; names[m2.id]="Dana Whitfield"; names[m3.id]="Ari Cohen"; names[v1.id]="Voltus Field Ops"; names[v2.id]="Ausgrid Approved Contractor"; names[v3.id]="Rexel Service Team";
+      var kinds={}; kinds[m1.id]="internal"; kinds[m2.id]="internal"; kinds[m3.id]="internal"; kinds[v1.id]="vendor"; kinds[v2.id]="vendor"; kinds[v3.id]="vendor";
+
+      function C(o){ var ref=coll("calls").doc(uid("call")); o.orgId=org; o.createdAt=o.createdAt||Date.now(); batch.set(ref,o); return ref; }
+
+      // P1 on site — internal
+      C({ num:"SC-2042", site:"Bondi Junction — Macro Colo", siteId:"editor_bondi", source:"monday", mondayBoardId:"7712345001",
+        title:"Inverter 3 offline — zero export", priority:"P1", category:"Inverter", stage:"On Site",
+        assignedTo:m1.id, assignedName:names[m1.id], assignedKind:"internal", origin:"signal", signalRef:"SIG-8801",
+        openedAt:now-6*H, scheduledAt:now-4*H, etaAt:now-3*H, slaHours:4, downMwh:14, revImpact:2940,
+        log:[{t:now-6*H,m:"Created from Power Factors fault F0207 (verified: export=0)",sig:true},{t:now-6*H,m:"Priority P1 — availability at risk"},{t:now-5*H,m:"Assigned Marcus Reyes (internal)"},{t:now-4*H,m:"Scheduled + dispatched"},{t:now-3*H,m:"On site — diagnosing DC combiner"}] });
+      // P2 en route — vendor handoff (continuity example)
+      C({ num:"SC-2041", site:"Claremont BESS — Berkeley", siteId:"editor_clrmnt_001", source:"repo", editorProjectId:"editor_clrmnt_001",
+        title:"BESS rack 2 thermal derate", priority:"P2", category:"BESS", stage:"En Route",
+        assignedTo:v3.id, assignedName:names[v3.id], assignedKind:"vendor",
+        origin:"signal", signalRef:"SIG-8799", openedAt:now-10*H, scheduledAt:now-2*H, etaAt:now+1*H, slaHours:24, downMwh:6, revImpact:888,
+        log:[{t:now-10*H,m:"EMS flagged rack 2 thermal derate",sig:true},{t:now-9*H,m:"Assigned Dana (internal)"},{t:now-3*H,m:"Reassigned to Rexel Service Team — warranty component"},{t:now-2*H,m:"Vendor scheduled, en route"}] });
+      // Scheduled — vendor
+      C({ num:"SC-2039", site:"OGI Solar — Cedar Rapids", siteId:"editor_ogi_014", source:"repo", editorProjectId:"editor_ogi_014",
+        title:"Quarterly PM — combiner torque + IR scan", priority:"P4", category:"Preventive", stage:"Scheduled",
+        assignedTo:m3.id, assignedName:names[m3.id], assignedKind:"internal", origin:"scheduled",
+        openedAt:now-1*D, scheduledAt:now+2*D, slaHours:168, downMwh:0, revImpact:0,
+        log:[{t:now-1*D,m:"Scheduled PM generated"},{t:now-20*H,m:"Assigned Ari Cohen"},{t:now-18*H,m:"Scheduled for site visit"}] });
+      // Assigned, not scheduled
+      C({ num:"SC-2038", site:"Winnipeg BESS — Fort St", siteId:"editor_wpg_001", source:"repo", editorProjectId:"editor_wpg_001",
+        title:"Comms gateway intermittent packet loss", priority:"P3", category:"Comms", stage:"Assigned",
+        assignedTo:v1.id, assignedName:names[v1.id], assignedKind:"vendor", origin:"signal", signalRef:"SIG-8795",
+        openedAt:now-14*H, slaHours:48, downMwh:1, revImpact:92,
+        log:[{t:now-14*H,m:"Gateway heartbeat degraded",sig:true},{t:now-13*H,m:"Assigned Voltus Field Ops (vendor)"}] });
+      // Completed, awaiting verify (the loop's last mile)
+      C({ num:"SC-2035", site:"OGI Solar — Cedar Rapids", siteId:"editor_ogi_014", source:"repo", editorProjectId:"editor_ogi_014",
+        title:"String 14 underperformance", priority:"P3", category:"PV", stage:"Completed",
+        assignedTo:m3.id, assignedName:names[m3.id], assignedKind:"internal", origin:"signal", signalRef:"SIG-8780",
+        openedAt:now-6*D, scheduledAt:now-5*D, completedAt:now-5*D+3*H, slaHours:48, downMwh:2, revImpact:142,
+        log:[{t:now-6*D,m:"Benchmark variance string 14",sig:true},{t:now-5*D,m:"Ari on site"},{t:now-5*D+3*H,m:"Cleaned + reseated MC4 — awaiting data verify"}] });
+      // Verified/closed
+      C({ num:"SC-2030", site:"Winnipeg BESS — Fort St", siteId:"editor_wpg_001", source:"repo", editorProjectId:"editor_wpg_001",
+        title:"AC disconnect nuisance trip", priority:"P3", category:"Electrical", stage:"Verified",
+        assignedTo:m2.id, assignedName:names[m2.id], assignedKind:"internal", origin:"manual",
+        openedAt:now-9*D, scheduledAt:now-8*D, completedAt:now-8*D+2*H, verifiedAt:now-7*D, slaHours:48, downMwh:0, revImpact:0,
+        log:[{t:now-9*D,m:"Reported by site host"},{t:now-8*D,m:"Dana on site"},{t:now-8*D+2*H,m:"Replaced breaker"},{t:now-7*D,m:"Data verified stable — closed"}] });
+
+      /* Signal inbox — performance signals not yet actioned (verify → ticket loop) */
+      function S(o){ var ref=coll("signals").doc(uid("sig")); o.orgId=org; o.createdAt=Date.now(); batch.set(ref,o); return ref; }
+      S({ ref:"SIG-8803", site:"Claremont BESS — Berkeley", siteId:"editor_clrmnt_001", source:"repo", editorProjectId:"editor_clrmnt_001",
+        metric:"AC power", detail:"Inverter 2 output 41% below expected for 3 intervals", severity:"P2", raisedAt:now-40*60000, status:"new", confidence:"High" });
+      S({ ref:"SIG-8802", site:"OGI Solar — Cedar Rapids", siteId:"editor_ogi_014", source:"repo", editorProjectId:"editor_ogi_014",
+        metric:"Comms", detail:"Datalogger heartbeat gap 12 min", severity:"P3", raisedAt:now-90*60000, status:"new", confidence:"Medium" });
+      S({ ref:"SIG-8804", site:"Bondi Junction — Macro Colo", siteId:"editor_bondi", source:"monday", mondayBoardId:"7712345001",
+        metric:"SoC", detail:"BESS SoC drift vs dispatch schedule", severity:"P3", raisedAt:now-3*H, status:"snoozed", confidence:"Low" });
+
+      batch.commit();
+      return new Promise(function(r){ setTimeout(r,700); });
+    });
+  }
+
+  /* ================= loaders ================= */
+  function loadColl(name){
+    if(STATE.cache[name]) return Promise.resolve(STATE.cache[name]);
+    return coll(name).where("orgId","==",WS.orgId).get().then(function(s){
+      var arr=[]; s.forEach(function(d){ var o=d.data(); o.id=d.id; arr.push(o); });
+      arr.sort(function(a,b){ return (b.createdAt||0)-(a.createdAt||0); });
+      STATE.cache[name]=arr; return arr;
+    });
+  }
+  function invalidate(n){ delete STATE.cache[n]; }
+  function crewObj(id){ return (STATE.cache.crews||[]).filter(function(x){return x.id===id;})[0]; }
+  function callObj(id){ return (STATE.cache.calls||[]).filter(function(x){return x.id===id;})[0]; }
+  function openCallsFor(crewId){ return (STATE.cache.calls||[]).filter(function(c){ return c.assignedTo===crewId && c.stage!=="Verified"; }); }
+
+  /* ================= shared bits ================= */
+  function info(t){ return '<div class="info-lock">◎ '+t+'</div>'; }
+  function kpi(n,l,cls,delta){ return '<div class="kpi"><div class="n'+(cls?" "+cls:"")+'">'+(n==null?"—":n)+'</div><div class="l">'+esc(l)+'</div>'+(delta?'<div class="d '+delta.dir+'">'+esc(delta.txt)+'</div>':'')+'</div>'; }
+  function fld(l,v){ return '<div class="fld"><label>'+esc(l)+'</label><div class="val">'+esc(v||"—")+'</div></div>'; }
+  function prioPill(p){ var m={P1:"red",P2:"amber",P3:"blue",P4:"gray"}; return '<span class="pill '+(m[p]||"gray")+'"><span class="dot '+String(p).toLowerCase()+'"></span>'+esc(p)+'</span>'; }
+  function stagePill(s){ var m={New:"gray",Assigned:"blue",Scheduled:"purple","En Route":"teal","On Site":"amber",Completed:"green",Verified:"green"}; return '<span class="pill '+(m[s]||"gray")+'">'+esc(s)+'</span>'; }
+  function srcPill(c){ if(!c)return ''; if(c.origin==="signal")return '<span class="tag-src sig">SIGNAL</span>'; if(c.source==="monday")return '<span class="tag-src monday">MONDAY</span>'; return '<span class="tag-src repo">EDITOR</span>'; }
+  function avatar(call){ if(!call.assignedTo) return '<span class="avatar un">—</span>'; return '<span class="avatar '+(call.assignedKind==="vendor"?"vendor":"")+'" title="'+esc(call.assignedName)+'">'+esc(initials(call.assignedName))+'</span>'; }
+  function crewDot(status){ var m={Available:"on","On Site":"site",Off:"off"}; return '<span class="sd '+(m[status]||"off")+'"></span>'; }
+  function slaBreached(c){ if(c.stage==="Completed"||c.stage==="Verified")return false; return Date.now()>c.openedAt+num(c.slaHours)*3600000; }
+  function slaAtRisk(c){ if(c.stage==="Completed"||c.stage==="Verified")return false; var due=c.openedAt+num(c.slaHours)*3600000; return Date.now()>due-(num(c.slaHours)*3600000*0.25); }
+
+  /* ================= render dispatch ================= */
+  function render(){
+    $("app").innerHTML='<div class="loading">Loading '+STATE.mod+'…</div>';
+    Promise.all([loadColl("crews"), loadColl("calls"), loadColl("signals")]).then(function(){
+      if(STATE.mod==="dispatch") renderDispatch();
+      else if(STATE.mod==="calls") renderCalls();
+      else if(STATE.mod==="crews") renderCrews();
+      else if(STATE.mod==="schedule") renderSchedule();
+      else if(STATE.mod==="signals") renderSignals();
+      else if(STATE.mod==="settings") renderSettings();
+    });
+  }
+
+  /* ---------------- DISPATCH BOARD (kanban) ---------------- */
+  function renderDispatch(){
+    var calls=STATE.cache.calls||[]; var signals=STATE.cache.signals||[];
+    var open=calls.filter(function(c){return c.stage!=="Verified";});
+    var p1=open.filter(function(c){return c.priority==="P1";}).length;
+    var newSig=signals.filter(function(s){return s.status==="new";}).length;
+    var awaitVerify=calls.filter(function(c){return c.stage==="Completed";}).length;
+
+    var h=info("Coordinate field teams with clarity and accountability — from your operating center to techs in the field. Drag work across the execution lifecycle.");
+    h+='<div class="kpis">'
+      + kpi(open.length,"Active Calls")
+      + kpi(p1,"P1 Critical", p1?"bad":"good")
+      + kpi(awaitVerify,"Awaiting Verify", awaitVerify?"warn":"good")
+      + kpi(newSig,"New Signals", newSig?"warn":"good")
+      + kpi(calls.filter(slaBreached).length,"SLA Breached", calls.filter(slaBreached).length?"bad":"good")
+      + '</div>';
+
+    h+='<div class="card"><div class="card-h"><h3>Dispatch Board</h3><span class="sub">Scheduled → Completed</span>'
+      +'<div class="spacer"></div><button class="btn sm" onclick="UI.openSignals()">◎ '+newSig+' signals</button><button class="btn pri sm" onclick="UI.newCall()">+ New Call</button></div><div class="card-b">';
+    h+='<div class="board">';
+    CALL_STAGES.forEach(function(stg){
+      var lc=calls.filter(function(c){return c.stage===stg;});
+      h+='<div class="lane"><div class="lane-h">'+esc(stg)+'<span class="cnt">'+lc.length+'</span></div><div class="lane-b">';
+      lc.forEach(function(c){
+        var sla=slaBreached(c)?'<span class="pill red">SLA</span>':(slaAtRisk(c)?'<span class="pill amber">Risk</span>':'');
+        h+='<div class="wo" onclick="UI.openCall(\''+c.id+'\')"><div class="wt">'+esc(c.title)+'</div>'
+          +'<div class="wm">'+esc(c.num)+' · '+esc(c.site)+'</div>'
+          +'<div class="wf2">'+prioPill(c.priority)+avatar(c)+srcPill(c)+sla+'</div></div>';
+      });
+      if(!lc.length) h+='<div class="empty" style="padding:14px">—</div>';
+      h+='</div></div>';
+    });
+    h+='</div>';
+    h+='<div class="small muted" style="margin-top:10px">Tip: open any call to advance its stage, reassign, or hand off to a vendor. Verified calls write back to the site\'s performance record.</div>';
+    h+='</div></div>';
+    $("app").innerHTML=h;
+  }
+
+  /* ---------------- SERVICE CALLS (table) ---------------- */
+  function renderCalls(){
+    var calls=STATE.cache.calls||[];
+    var h=info("Execution status tracked from scheduled work to completion, with consistent ownership across internal teams and vendors.");
+    h+='<div class="card"><div class="card-h"><h3>Service Calls</h3><span class="sub">All work orders</span>'
+      +'<div class="spacer"></div><button class="btn pri sm" onclick="UI.newCall()">+ New Call</button></div>'
+      +'<div class="card-b"><div class="tbl-wrap"><table><thead><tr>'
+      +'<th>Call</th><th>Site</th><th>Title</th><th>Priority</th><th>Stage</th><th>Owner</th><th>Origin</th><th>Scheduled</th><th>SLA</th><th></th></tr></thead><tbody>';
+    calls.forEach(function(c){
+      var sla=slaBreached(c)?'<span class="pill red">Breached</span>':(slaAtRisk(c)?'<span class="pill amber">At risk</span>':'<span class="pill green">OK</span>');
+      var owner = c.assignedTo? (avatar(c)+' <span class="small">'+esc(c.assignedName)+'</span>'+(c.assignedKind==="vendor"?' <span class="pill teal">Vendor</span>':'')) : '<span class="muted">Unassigned</span>';
+      h+='<tr><td><a onclick="UI.openCall(\''+c.id+'\')"><b>'+esc(c.num)+'</b></a></td>'
+        +'<td class="small">'+esc(c.site)+'</td><td>'+esc(c.title)+'</td>'
+        +'<td>'+prioPill(c.priority)+'</td><td>'+stagePill(c.stage)+'</td>'
+        +'<td>'+owner+'</td><td>'+srcPill(c)+'</td>'
+        +'<td class="small">'+(c.scheduledAt?fmtDT(c.scheduledAt):"—")+'</td><td>'+sla+'</td>'
+        +'<td style="text-align:right"><button class="btn ghost sm" onclick="UI.openCall(\''+c.id+'\')">Open →</button></td></tr>';
+    });
+    h+='</tbody></table></div>';
+    if(!calls.length) h+='<div class="empty">No service calls.</div>';
+    h+='</div></div>';
+    $("app").innerHTML=h;
+  }
+
+  /* ---------------- CALL DETAIL ---------------- */
+  function openCall(id){
+    var c=callObj(id); if(!c)return; STATE.sel.call=c;
+    var h='<a class="btn sm" onclick="UI.back()">← Back</a>';
+    h+='<div class="card" style="margin-top:12px"><div class="card-h"><h3>'+esc(c.num)+' · '+esc(c.title)+'</h3><span class="sub">'+esc(c.site)+'</span>'
+      +'<div class="spacer"></div>'+prioPill(c.priority)
+      +'<button class="btn sm" onclick="UI.assignCall(\''+c.id+'\')">'+(c.assignedTo?"Reassign":"Assign")+'</button>'
+      +'<button class="btn pri sm" onclick="UI.advanceCall(\''+c.id+'\')">Advance →</button></div><div class="card-b">';
+
+    /* lifecycle chevrons */
+    h+='<div class="path">';
+    var ci=CALL_STAGES.indexOf(c.stage);
+    CALL_STAGES.forEach(function(st,i){ var cl=i<ci?"done":(i===ci?"cur":"");
+      h+='<div class="st '+cl+'" onclick="UI.setCallStage(\''+c.id+'\',\''+st+'\')">'+esc(st)+'</div>'; });
+    h+='</div>';
+
+    /* verify banner when Completed */
+    if(c.stage==="Completed"){
+      h+='<div class="sig-lock">◎ Awaiting data verification. Confirm the performance signal has cleared before closing — this is the "verify data → close" step.<div style="margin-top:8px"><button class="btn ok sm" onclick="UI.verifyClose(\''+c.id+'\')">✓ Data verified — close call</button> <button class="btn sm" onclick="UI.reopenCall(\''+c.id+'\')">Signal still active — reopen</button></div></div>';
+    }
+    if(c.origin==="signal" && c.signalRef){
+      h+='<div class="warn-lock">Originated from performance signal <b>'+esc(c.signalRef)+'</b>. The loop: signal detected → verified → this call created → dispatch → close on data confirmation.</div>';
+    }
+
+    h+='<div class="row"><div class="col"><div class="section-h">Execution Timeline</div><div class="tl">';
+    var log=(c.log||[]).slice().sort(function(a,b){return a.t-b.t;});
+    if(!log.length) h+='<div class="muted small">No activity.</div>';
+    log.forEach(function(e){ h+='<div class="ev'+(e.sig?" sig":"")+'"><div class="t">'+fmtDT(e.t)+'</div><div class="m">'+esc(e.m)+'</div></div>'; });
+    h+='</div><div class="flex" style="margin-top:10px"><input id="logInput" placeholder="Field update / note…"><button class="btn" onclick="UI.addCallNote(\''+c.id+'\')">Log</button></div></div>';
+
+    h+='<div class="col" style="max-width:380px"><div class="section-h">Ownership</div>';
+    if(c.assignedTo){ var cr=crewObj(c.assignedTo);
+      h+='<div class="flex">'+avatar(c)+'<div><b>'+esc(c.assignedName)+'</b> '+(c.assignedKind==="vendor"?'<span class="pill teal">Vendor</span>':'<span class="pill blue">Internal</span>')+'<div class="small muted">'+esc(cr?cr.role:"")+(cr&&cr.company?(" · "+cr.company):"")+'</div></div></div>';
+    } else h+='<div class="muted small">Unassigned — assign an internal crew or vendor.</div>';
+    h+='<div class="section-h">Details</div><div class="dl">';
+    h+=fld("Priority",c.priority)+fld("Category",c.category);
+    h+=fld("Stage",c.stage)+fld("Origin", c.origin==="signal"?"Performance signal":(c.origin==="scheduled"?"Scheduled PM":"Manual"));
+    h+=fld("Opened",fmtDT(c.openedAt))+fld("SLA Window",num(c.slaHours)+" h");
+    h+=fld("Scheduled",c.scheduledAt?fmtDT(c.scheduledAt):"—")+fld("ETA",c.etaAt?fmtDT(c.etaAt):"—");
+    h+=fld("Completed",c.completedAt?fmtDT(c.completedAt):"—")+fld("Verified",c.verifiedAt?fmtDT(c.verifiedAt):"—");
+    h+=fld("Energy Impact",num(c.downMwh)+" MWh")+fld("Revenue Impact",money(c.revImpact));
+    h+='</div>';
+    h+='<div class="section-h">SLA</div>';
+    h+= slaBreached(c)?'<div class="warn-lock" style="background:#fde3e3;border-color:#f0b3b3;color:#b42323">⚠ SLA breached.</div>':(slaAtRisk(c)?'<div class="warn-lock">◷ Approaching SLA window.</div>':'<div class="ok-lock">✓ Within SLA.</div>');
+    h+='<div class="flex" style="margin-top:12px"><button class="btn sm" onclick="UI.scheduleCall(\''+c.id+'\')">📅 Schedule</button><button class="btn sm" onclick="UI.notify(\''+c.id+'\')">🔔 Notify</button></div>';
+    h+='</div></div>';
+    h+='</div></div>';
+    $("app").innerHTML=h;
+  }
+
+  /* ---------------- CREWS & VENDORS ---------------- */
+  function renderCrews(){
+    var crews=STATE.cache.crews||[]; var calls=STATE.cache.calls||[];
+    var internal=crews.filter(function(x){return x.kind==="internal";});
+    var vendors=crews.filter(function(x){return x.kind==="vendor";});
+    var h=info("Consistent ownership across internal teams and third-party vendors — one register, one accountability model, no gaps at handoff.");
+    h+='<div class="kpis">'
+      + kpi(crews.length,"Total Crews")
+      + kpi(internal.length,"Internal")
+      + kpi(vendors.length,"Vendors","teal")
+      + kpi(crews.filter(function(x){return x.status==="Available";}).length,"Available","good")
+      + '</div>';
+
+    [["Internal Teams",internal,"blue"],["Third-Party Vendors",vendors,"teal"]].forEach(function(grp){
+      h+='<div class="card"><div class="card-h"><h3>'+grp[0]+'</h3><span class="sub">assignments &amp; workload</span><div class="spacer"></div><button class="btn pri sm" onclick="UI.newCrew(\''+(grp[0].indexOf("Vendor")>=0?"vendor":"internal")+'\')">+ Add</button></div><div class="card-b">';
+      if(!grp[1].length) h+='<div class="empty">None yet.</div>';
+      grp[1].forEach(function(x){
+        var loadN=openCallsFor(x.id).length; var cap=num(x.capacity,5); var pctL=Math.min(100,loadN/cap*100);
+        var barc = pctL>=90?"#b42323":pctL>=60?"#e08600":"#137a44";
+        h+='<div class="crew-row"><span class="avatar '+(x.kind==="vendor"?"vendor":"")+'">'+esc(initials(x.name))+'</span>'
+          +'<div style="flex:1;min-width:0"><div><b>'+esc(x.name)+'</b> '+crewDot(x.status)+' <span class="small muted">'+esc(x.status)+'</span></div>'
+          +'<div class="small muted">'+esc(x.role)+(x.company?(" · "+esc(x.company)):"")+' · '+esc(x.region)+' · '+esc(x.certs||"")+'</div></div>'
+          +'<div class="workload"><span style="width:'+pctL+'%;background:'+barc+'"></span></div>'
+          +'<div class="small" style="width:60px;text-align:right">'+loadN+'/'+cap+'</div>'
+          +'<button class="btn ghost sm" onclick="UI.openCrew(\''+x.id+'\')">View →</button></div>';
+      });
+      h+='</div></div>';
+    });
+    $("app").innerHTML=h;
+  }
+
+  function openCrew(id){
+    var x=crewObj(id); if(!x)return;
+    var mine=(STATE.cache.calls||[]).filter(function(c){return c.assignedTo===id;});
+    var open=mine.filter(function(c){return c.stage!=="Verified";});
+    var h='<a class="btn sm" onclick="UI.back()">← Back to Crews</a>';
+    h+='<div class="card" style="margin-top:12px"><div class="card-h"><h3>'+esc(x.name)+'</h3><span class="sub">'+esc(x.role)+(x.company?(" · "+esc(x.company)):"")+'</span><div class="spacer"></div>'
+      +(x.kind==="vendor"?'<span class="pill teal">Vendor</span>':'<span class="pill blue">Internal</span>')
+      +'<button class="btn sm" onclick="UI.editCrew(\''+x.id+'\')">Edit</button></div><div class="card-b">';
+    h+='<div class="row"><div class="col" style="max-width:340px"><div class="section-h">Details</div><div class="dl">';
+    h+=fld("Type",CREW_KINDS[x.kind])+fld("Status",x.status);
+    h+=fld("Region",x.region)+fld("Capacity",num(x.capacity)+" concurrent");
+    h+=fld("Phone",x.phone)+fld("Email",x.email);
+    if(x.company)h+=fld2("Company",x.company);
+    h+=fld2("Certifications",x.certs);
+    h+='</div></div>';
+    h+='<div class="col"><div class="section-h">Assigned Work ('+open.length+' open)</div><div class="tbl-wrap"><table><thead><tr><th>Call</th><th>Site</th><th>Priority</th><th>Stage</th></tr></thead><tbody>';
+    if(!mine.length) h+='<tr><td colspan="4" class="empty">No assignments.</td></tr>';
+    mine.forEach(function(c){ h+='<tr><td><a onclick="UI.openCall(\''+c.id+'\')"><b>'+esc(c.num)+'</b></a></td><td class="small">'+esc(c.site)+'</td><td>'+prioPill(c.priority)+'</td><td>'+stagePill(c.stage)+'</td></tr>'; });
+    h+='</tbody></table></div></div></div>';
+    h+='</div></div>';
+    $("app").innerHTML=h;
+  }
+  function fld2(l,v){ return '<div class="fld" style="grid-column:1/3"><label>'+esc(l)+'</label><div class="val">'+esc(v||"—")+'</div></div>'; }
+
+  /* ---------------- SCHEDULE (next 7 days) ---------------- */
+  function renderSchedule(){
+    var calls=STATE.cache.calls||[];
+    var scheduled=calls.filter(function(c){return c.scheduledAt && c.stage!=="Verified";});
+    scheduled.sort(function(a,b){return a.scheduledAt-b.scheduledAt;});
+    var h=info("Fewer gaps between planned work and field execution. Upcoming scheduled visits across all crews and vendors.");
+    // group by day
+    var days={};
+    scheduled.forEach(function(c){ var d=new Date(c.scheduledAt); var key=d.getFullYear()+"-"+("0"+(d.getMonth()+1)).slice(-2)+"-"+("0"+d.getDate()).slice(-2); (days[key]=days[key]||[]).push(c); });
+    var keys=Object.keys(days).sort();
+    h+='<div class="card"><div class="card-h"><h3>Upcoming Schedule</h3><span class="sub">Planned site visits</span></div><div class="card-b">';
+    if(!keys.length) h+='<div class="empty">Nothing scheduled.</div>';
+    keys.forEach(function(k){
+      var d=new Date(k+"T00:00:00");
+      h+='<div class="section-h">'+d.toLocaleDateString(undefined,{weekday:"long",month:"short",day:"numeric"})+'</div>';
+      h+='<div class="tbl-wrap"><table><thead><tr><th>Time</th><th>Call</th><th>Site</th><th>Owner</th><th>Priority</th><th>Stage</th></tr></thead><tbody>';
+      days[k].forEach(function(c){ h+='<tr><td class="small">'+new Date(c.scheduledAt).toLocaleTimeString(undefined,{hour:"2-digit",minute:"2-digit"})+'</td><td><a onclick="UI.openCall(\''+c.id+'\')"><b>'+esc(c.num)+'</b></a> '+esc(c.title)+'</td><td class="small">'+esc(c.site)+'</td><td>'+avatar(c)+' <span class="small">'+esc(c.assignedName||"—")+'</span>'+(c.assignedKind==="vendor"?' <span class="pill teal">V</span>':'')+'</td><td>'+prioPill(c.priority)+'</td><td>'+stagePill(c.stage)+'</td></tr>'; });
+      h+='</tbody></table></div>';
+    });
+    h+='</div></div>';
+    $("app").innerHTML=h;
+  }
+
+  /* ---------------- SIGNAL INBOX (verify → ticket) ---------------- */
+  function renderSignals(){
+    var signals=STATE.cache.signals||[];
+    var newS=signals.filter(function(s){return s.status==="new";});
+    var h=info("Ticketing tied directly to performance signals: verify the data, then create a service call. Dismiss false positives so crews only chase real faults.");
+    h+='<div class="kpis">'
+      + kpi(newS.length,"New Signals", newS.length?"warn":"good")
+      + kpi(signals.filter(function(s){return s.status==="ticketed";}).length,"Converted to Calls","good")
+      + kpi(signals.filter(function(s){return s.status==="dismissed";}).length,"Dismissed")
+      + '</div>';
+    h+='<div class="card"><div class="card-h"><h3>Performance Signal Inbox</h3><span class="sub">Detection layer → dispatch</span></div><div class="card-b"><div class="tbl-wrap"><table><thead><tr>'
+      +'<th>Signal</th><th>Site</th><th>Metric</th><th>Detail</th><th>Severity</th><th>Confidence</th><th>Raised</th><th>Actions</th></tr></thead><tbody>';
+    if(!signals.length) h+='<tr><td colspan="8" class="empty">No signals. Monitoring integrations feed this inbox.</td></tr>';
+    signals.forEach(function(s){
+      var statePill = s.status==="new"?'':(s.status==="ticketed"?'<span class="pill green">Ticketed</span>':(s.status==="dismissed"?'<span class="pill gray">Dismissed</span>':'<span class="pill amber">Snoozed</span>'));
+      var actions = s.status==="new"||s.status==="snoozed"
+        ? '<button class="btn ok sm" onclick="UI.signalToCall(\''+s.id+'\')">✓ Verify → Call</button> <button class="btn sm" onclick="UI.dismissSignal(\''+s.id+'\')">Dismiss</button>'
+        : statePill+' '+(s.callId?'<button class="btn ghost sm" onclick="UI.openCall(\''+s.callId+'\')">View call →</button>':'');
+      h+='<tr><td><b>'+esc(s.ref)+'</b></td><td class="small">'+esc(s.site)+'</td><td>'+esc(s.metric)+'</td><td class="small">'+esc(s.detail)+'</td><td>'+prioPill(s.severity)+'</td><td class="small">'+esc(s.confidence||"—")+'</td><td class="small muted">'+ago(s.raisedAt)+'</td><td>'+actions+'</td></tr>';
+    });
+    h+='</tbody></table></div>';
+    h+='<div class="small muted" style="margin-top:10px">"Verify → Call" spawns a service call pre-filled from the signal and links them, so closing the call requires confirming the signal cleared.</div>';
+    h+='</div></div>';
+    $("app").innerHTML=h;
+  }
+  function openSignals(){ STATE.mod="signals"; var links=$("nav").getElementsByTagName("a"); for(var i=0;i<links.length;i++){ links[i].className=(links[i].getAttribute("data-mod")==="signals"?"on":""); } render(); }
+
+  /* ---------------- SETTINGS ---------------- */
+  function renderSettings(){
+    var h=info("Field service connects your monitoring (signal source), dispatch tools, and notifications — all through the shared secure proxy.");
+    h+='<div class="card"><div class="card-h"><h3>Connected Systems</h3><span class="sub">Managed in the O&M Console integration hub</span></div><div class="card-b"><div class="tbl-wrap"><table><thead><tr><th>System</th><th>Role here</th><th></th></tr></thead><tbody>';
+    [["Monitoring / DAS","Feeds the Signal Inbox (Power Factors, AlsoEnergy, EMS…)"],
+     ["ServiceNow / ServiceTitan","Two-way work-order sync for dispatch"],
+     ["Monday.com","Board-based call sync"],
+     ["Slack / Twilio","On-call notifications & P1 escalation"]].forEach(function(r){
+      h+='<tr><td><b>'+esc(r[0])+'</b></td><td class="small muted">'+esc(r[1])+'</td><td style="text-align:right"><a class="btn sm" href="https://tools.csebuilders.com" target="_blank">Manage in O&M Console ↗</a></td></tr>';
+    });
+    h+='</tbody></table></div></div></div>';
+    h+='<div class="card"><div class="card-h"><h3>Portal Data Feed</h3><span class="sub">How the portal consumes field service</span></div><div class="card-b"><p class="small">Each call publishes <code>{stage, priority, assignedName, assignedKind, scheduledAt, slaStatus}</code> under <code>fs_calls/{id}</code>, plus a per-site rollup <code>{openCalls, nextVisit, awaitingVerify}</code> and an org aggregate at <code>fs_rollup/'+esc(WS.orgId)+'</code>. Joined to the portal project card by <code>editorProjectId</code> / <code>mondayBoardId</code> — the same identity the editor, O&M, and SLA consoles use.</p></div></div>';
+    $("app").innerHTML=h;
+  }
+
+  /* ================= mutations ================= */
+  function persist(name,id,patch,then){ coll(name).doc(id).update(patch).then(function(){ invalidate(name); if(then)then(); }).catch(function(){ toast("Save failed"); }); }
+
+  function setCallStage(id,stage){
+    var c=callObj(id); if(!c)return;
+    var patch={ stage:stage }; var log=(c.log||[]).slice(); log.push({ t:Date.now(), m:"Stage → "+stage }); patch.log=log;
+    if(stage==="Completed" && !c.completedAt){ patch.completedAt=Date.now(); }
+    if(stage==="Verified" && !c.verifiedAt){ patch.verifiedAt=Date.now(); }
+    c.stage=stage; c.log=log;
+    persist("calls",id,patch,function(){ openCall(id); }); toast("Stage updated");
+  }
+  function advanceCall(id){ var c=callObj(id); if(!c)return; var i=CALL_STAGES.indexOf(c.stage); if(i<CALL_STAGES.length-1) setCallStage(id,CALL_STAGES[i+1]); else toast("Already verified"); }
+  function reopenCall(id){ var c=callObj(id); if(!c)return; var log=(c.log||[]).slice(); log.push({t:Date.now(),m:"Reopened — signal still active",sig:true}); c.stage="On Site"; c.log=log; persist("calls",id,{stage:"On Site",log:log},function(){ openCall(id); }); toast("Reopened"); }
+  function verifyClose(id){ var c=callObj(id); if(!c)return; var log=(c.log||[]).slice(); log.push({t:Date.now(),m:"Data verified stable — call closed"}); c.stage="Verified"; c.log=log;
+    persist("calls",id,{stage:"Verified",verifiedAt:Date.now(),log:log},function(){ // clear linked signal
+      if(c.signalRef){ var sig=(STATE.cache.signals||[]).filter(function(s){return s.ref===c.signalRef;})[0]; if(sig){ persist("signals",sig.id,{status:"cleared"}); } }
+      openCall(id); }); toast("Verified & closed"); }
+  function addCallNote(id){ var v=($("logInput")||{}).value||""; if(!v.trim())return; var c=callObj(id); if(!c)return; var log=(c.log||[]).slice(); log.push({t:Date.now(),m:v.trim()}); c.log=log; persist("calls",id,{log:log},function(){ openCall(id); }); }
+
+  function assignCall(id){
+    var c=callObj(id); if(!c)return; var crews=STATE.cache.crews||[];
+    var body='<p class="small muted" style="margin-top:0">Assign to an internal crew or hand off to a vendor. Ownership stays continuous — the change is logged.</p>';
+    body+='<div class="form-row"><label class="f">Owner</label><select id="asgSel"><option value="">— Unassigned —</option>';
+    body+='<optgroup label="Internal">';
+    crews.filter(function(x){return x.kind==="internal";}).forEach(function(x){ var load=openCallsFor(x.id).length; body+='<option value="'+x.id+'"'+(c.assignedTo===x.id?" selected":"")+'>'+esc(x.name)+' · '+esc(x.role)+' ('+load+'/'+num(x.capacity)+')</option>'; });
+    body+='</optgroup><optgroup label="Vendors">';
+    crews.filter(function(x){return x.kind==="vendor";}).forEach(function(x){ var load=openCallsFor(x.id).length; body+='<option value="'+x.id+'"'+(c.assignedTo===x.id?" selected":"")+'>'+esc(x.name)+' · '+esc(x.company||x.role)+' ('+load+'/'+num(x.capacity)+')</option>'; });
+    body+='</optgroup></select></div>';
+    $("ovTitle").textContent="Assign "+c.num; $("ovBody").innerHTML=body; $("ovFoot").innerHTML='';
+    var cancel=el("button","btn","Cancel"); cancel.onclick=closeModal;
+    var go=el("button","btn pri","Assign"); go.onclick=function(){
+      var tid=$("asgSel").value; var cr=crewObj(tid); var log=(c.log||[]).slice();
+      var prev=c.assignedName;
+      log.push({ t:Date.now(), m: cr?((prev?("Reassigned from "+prev+" to "):"Assigned ")+cr.name+" ("+(cr.kind==="vendor"?"vendor":"internal")+")"):"Unassigned" });
+      c.assignedTo=tid; c.assignedName=cr?cr.name:""; c.assignedKind=cr?cr.kind:""; c.log=log;
+      var patch={ assignedTo:tid, assignedName:c.assignedName, assignedKind:c.assignedKind, log:log };
+      if(cr && c.stage==="New"){ patch.stage="Assigned"; c.stage="Assigned"; }
+      persist("calls",id,patch,function(){ closeModal(); openCall(id); toast("Ownership updated"); });
+    };
+    $("ovFoot").appendChild(cancel); $("ovFoot").appendChild(go); $("ov").className="ov on";
+  }
+
+  function scheduleCall(id){
+    var c=callObj(id); if(!c)return;
+    var body='<div class="form-2"><div class="form-row"><label class="f">Date</label><input id="sc_date" type="date"></div><div class="form-row"><label class="f">Time</label><input id="sc_time" type="time" value="09:00"></div></div>';
+    $("ovTitle").textContent="Schedule "+c.num; $("ovBody").innerHTML=body; $("ovFoot").innerHTML='';
+    var cancel=el("button","btn","Cancel"); cancel.onclick=closeModal;
+    var go=el("button","btn pri","Schedule"); go.onclick=function(){
+      var dv=$("sc_date").value, tv=$("sc_time").value||"09:00"; if(!dv){ toast("Pick a date"); return; }
+      var ms=new Date(dv+"T"+tv+":00").getTime(); var log=(c.log||[]).slice(); log.push({t:Date.now(),m:"Scheduled for "+fmtDT(ms)});
+      var patch={ scheduledAt:ms, log:log }; if(c.stage==="New"||c.stage==="Assigned"){ patch.stage="Scheduled"; c.stage="Scheduled"; }
+      c.scheduledAt=ms; c.log=log; persist("calls",id,patch,function(){ closeModal(); openCall(id); toast("Scheduled"); });
+    };
+    $("ovFoot").appendChild(cancel); $("ovFoot").appendChild(go); $("ov").className="ov on";
+  }
+
+  function notify(id){ var c=callObj(id); if(!c)return; if(DEMO){ toast("Demo: on-call notified via Slack/SMS"); return; }
+    fetch(ALERT_PROXY_URL,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({action:"alert",orgId:WS.orgId,kind:"dispatch",call:c.num,user:(USER&&USER.email)||""})}).then(function(){ toast("Notified"); }).catch(function(){ toast("Notify failed"); }); }
+
+  function newCall(prefill){
+    prefill=prefill||{};
+    var body='<div class="form-row"><label class="f">Title</label><input id="c_title" value="'+esc(prefill.title||"")+'"></div>';
+    body+='<div class="form-2"><div class="form-row"><label class="f">Site</label><input id="c_site" value="'+esc(prefill.site||"")+'" placeholder="Site name"></div>';
+    body+='<div class="form-row"><label class="f">Category</label><input id="c_cat" value="'+esc(prefill.category||"")+'" placeholder="Inverter / BESS / PV / Comms"></div></div>';
+    body+='<div class="form-3"><div class="form-row"><label class="f">Priority</label><select id="c_prio">'+PRIORITIES.map(function(p){return '<option'+(prefill.severity===p?" selected":"")+'>'+p+'</option>';}).join("")+'</select></div>';
+    body+='<div class="form-row"><label class="f">SLA (hrs)</label><input id="c_sla" type="number" value="'+(prefill.slaHours||24)+'"></div>';
+    body+='<div class="form-row"><label class="f">Rev Impact $</label><input id="c_rev" type="number" value="'+(prefill.revImpact||0)+'"></div></div>';
+    body+='<div class="form-row"><label class="f">Linked projectId (optional)</label><input id="c_pid" value="'+esc(prefill.editorProjectId||"")+'" placeholder="editor_…"></div>';
+    $("ovTitle").textContent="New Service Call"; $("ovBody").innerHTML=body; $("ovFoot").innerHTML='';
+    var cancel=el("button","btn","Cancel"); cancel.onclick=closeModal;
+    var go=el("button","btn pri","Create"); go.onclick=function(){
+      var num2="SC-"+(2043+Math.floor(Math.random()*900));
+      var o={ orgId:WS.orgId, num:num2, site:$("c_site").value||"—", siteId:prefill.siteId||"", editorProjectId:$("c_pid").value, source: prefill.source||($("c_pid").value?"repo":"repo"),
+        title:$("c_title").value||"Untitled", category:$("c_cat").value||"General", priority:$("c_prio").value,
+        stage:"New", assignedTo:"", assignedName:"", assignedKind:"", origin:prefill.origin||"manual", signalRef:prefill.signalRef||"",
+        slaHours:num($("c_sla").value,24), revImpact:num($("c_rev").value,0), downMwh:prefill.downMwh||0,
+        openedAt:Date.now(), createdAt:Date.now(),
+        log:[{t:Date.now(),m:prefill.origin==="signal"?("Created from verified signal "+prefill.signalRef):"Call created manually",sig:prefill.origin==="signal"}] };
+      if(prefill.mondayBoardId)o.mondayBoardId=prefill.mondayBoardId;
+      coll("calls").doc(uid("call")).set(o).then(function(){ invalidate("calls"); closeModal();
+        if(prefill._sigId){ persist("signals",prefill._sigId,{status:"ticketed"}); }
+        STATE.mod="dispatch"; render(); toast("Call "+num2+" created"); });
+    };
+    $("ovFoot").appendChild(cancel); $("ovFoot").appendChild(go); $("ov").className="ov on";
+  }
+
+  function signalToCall(id){
+    var s=(STATE.cache.signals||[]).filter(function(x){return x.id===id;})[0]; if(!s)return;
+    // link signal id so creating the call marks it ticketed; also stash callId back on signal
+    newCall({ title:s.metric+" — "+s.detail, site:s.site, siteId:s.siteId, category:s.metric, severity:s.severity,
+      origin:"signal", signalRef:s.ref, source:s.source, editorProjectId:s.editorProjectId, mondayBoardId:s.mondayBoardId,
+      slaHours: s.severity==="P1"?4:(s.severity==="P2"?24:48), _sigId:id });
+  }
+  function dismissSignal(id){
+    var s=(STATE.cache.signals||[]).filter(function(x){return x.id===id;})[0]; if(!s)return;
+    var body='<div class="form-row"><label class="f">Reason (audit)</label><input id="dsm" placeholder="e.g. Known curtailment, false positive"></div>';
+    $("ovTitle").textContent="Dismiss "+s.ref; $("ovBody").innerHTML=body; $("ovFoot").innerHTML='';
+    var cancel=el("button","btn","Cancel"); cancel.onclick=closeModal;
+    var go=el("button","btn pri","Dismiss"); go.onclick=function(){ persist("signals",id,{status:"dismissed",dismissReason:$("dsm").value||"",dismissedAt:Date.now()},function(){ closeModal(); renderSignals(); toast("Dismissed"); }); };
+    $("ovFoot").appendChild(cancel); $("ovFoot").appendChild(go); $("ov").className="ov on";
+  }
+
+  function newCrew(kind){ formCrew({ kind:kind||"internal" }); }
+  function editCrew(id){ formCrew(crewObj(id)); }
+  function formCrew(x){
+    x=x||{};
+    var body='<div class="form-2"><div class="form-row"><label class="f">Name</label><input id="k_name" value="'+esc(x.name||"")+'"></div>';
+    body+='<div class="form-row"><label class="f">Type</label><select id="k_kind"><option value="internal"'+(x.kind==="internal"?" selected":"")+'>Internal</option><option value="vendor"'+(x.kind==="vendor"?" selected":"")+'>Third-Party Vendor</option></select></div></div>';
+    body+='<div class="form-2"><div class="form-row"><label class="f">Role</label><input id="k_role" value="'+esc(x.role||"")+'"></div>';
+    body+='<div class="form-row"><label class="f">Company (vendors)</label><input id="k_co" value="'+esc(x.company||"")+'"></div></div>';
+    body+='<div class="form-3"><div class="form-row"><label class="f">Region</label><input id="k_region" value="'+esc(x.region||"")+'"></div>';
+    body+='<div class="form-row"><label class="f">Status</label><select id="k_status"><option'+(x.status==="Available"?" selected":"")+'>Available</option><option'+(x.status==="On Site"?" selected":"")+'>On Site</option><option'+(x.status==="Off"?" selected":"")+'>Off</option></select></div>';
+    body+='<div class="form-row"><label class="f">Capacity</label><input id="k_cap" type="number" value="'+num(x.capacity,5)+'"></div></div>';
+    body+='<div class="form-2"><div class="form-row"><label class="f">Phone</label><input id="k_phone" value="'+esc(x.phone||"")+'"></div>';
+    body+='<div class="form-row"><label class="f">Email</label><input id="k_email" value="'+esc(x.email||"")+'"></div></div>';
+    body+='<div class="form-row"><label class="f">Certifications</label><input id="k_certs" value="'+esc(x.certs||"")+'"></div>';
+    $("ovTitle").textContent=x.id?"Edit Crew":"Add Crew"; $("ovBody").innerHTML=body; $("ovFoot").innerHTML='';
+    var cancel=el("button","btn","Cancel"); cancel.onclick=closeModal;
+    var go=el("button","btn pri","Save"); go.onclick=function(){
+      var o={ orgId:WS.orgId, name:$("k_name").value||"New Crew", kind:$("k_kind").value, role:$("k_role").value, company:$("k_co").value,
+        region:$("k_region").value, status:$("k_status").value, capacity:num($("k_cap").value,5), phone:$("k_phone").value, email:$("k_email").value, certs:$("k_certs").value,
+        createdAt:x.createdAt||Date.now() };
+      var ref=x.id?coll("crews").doc(x.id):coll("crews").doc(uid("crew"));
+      ref.set(o).then(function(){ invalidate("crews"); closeModal(); STATE.mod="crews"; render(); toast("Crew saved"); });
+    };
+    $("ovFoot").appendChild(cancel); $("ovFoot").appendChild(go); $("ov").className="ov on";
+  }
+
+  function closeModal(){ $("ov").className="ov"; }
+  function back(){ STATE.sel={}; render(); }
+
+  /* ================= expose ================= */
+  window.UI = {
+    openCall:openCall, newCall:newCall, setCallStage:setCallStage, advanceCall:advanceCall,
+    assignCall:assignCall, scheduleCall:scheduleCall, addCallNote:addCallNote, notify:notify,
+    verifyClose:verifyClose, reopenCall:reopenCall,
+    openCrew:openCrew, newCrew:newCrew, editCrew:editCrew,
+    openSignals:openSignals, signalToCall:signalToCall, dismissSignal:dismissSignal,
+    back:back, closeModal:closeModal
+  };
+
+  boot();
+})();
+</script>
+</body>
+</html>

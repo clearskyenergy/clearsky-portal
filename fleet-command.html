@@ -1,0 +1,708 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ClearSky OMEGA — Fleet Command</title>
+<style>
+/* ===== ES5-only, no build step. OMEGA dark-navy topbar theme ===== */
+* { box-sizing: border-box; }
+html, body { margin:0; padding:0; height:100%; }
+body { font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif; color:#1b2733; background:#eef1f4; font-size:14px; }
+a { color:#1461d2; text-decoration:none; cursor:pointer; }
+a:hover { text-decoration:underline; }
+
+.tb { display:flex; align-items:center; height:52px; background:#0e1b33; color:#fff; padding:0 16px; position:sticky; top:0; z-index:50; }
+.tb-omega { height:26px; margin-right:9px; }
+.tb-logo-txt { font-weight:700; font-size:17px; letter-spacing:.3px; }
+.tb-logo-txt span { color:#4da3ff; }
+.tb-sep { width:1px; height:24px; background:#2a3c5c; margin:0 16px; }
+.tb-ws { font-size:13px; color:#9fb4d6; }
+.tb-ws b { color:#fff; }
+.tb-right { margin-left:auto; display:flex; align-items:center; gap:14px; font-size:12px; color:#9fb4d6; }
+.tb-badge { background:#123; border:1px solid #2a3c5c; color:#8fc0ff; padding:3px 9px; border-radius:20px; font-size:11px; font-weight:600; letter-spacing:.4px; }
+.tb-user { width:28px; height:28px; border-radius:50%; background:#2a3c5c; display:flex; align-items:center; justify-content:center; color:#cfe0ff; font-weight:700; font-size:12px; }
+
+.nav { display:flex; background:#12233f; padding:0 8px; flex-wrap:wrap; }
+.nav a { color:#a9bcd8; padding:11px 15px; font-size:13px; font-weight:600; border-bottom:3px solid transparent; }
+.nav a.on { color:#fff; border-bottom-color:#4da3ff; background:#0e1b33; }
+
+.wrap { padding:18px; max-width:1560px; margin:0 auto; }
+.row { display:flex; gap:18px; align-items:flex-start; }
+.col { flex:1; min-width:0; }
+
+.card { background:#fff; border:1px solid #dde3ea; border-radius:10px; box-shadow:0 1px 2px rgba(16,30,54,.05); margin-bottom:18px; }
+.card-h { padding:13px 16px; border-bottom:1px solid #edf1f5; display:flex; align-items:center; gap:10px; }
+.card-h h3 { margin:0; font-size:14px; font-weight:700; }
+.card-h .sub { font-size:12px; color:#7b8794; font-weight:400; }
+.card-b { padding:16px; }
+
+.btn { display:inline-flex; align-items:center; gap:6px; border:1px solid #cbd4de; background:#fff; color:#1b2733; padding:7px 13px; border-radius:7px; font-size:13px; font-weight:600; cursor:pointer; }
+.btn:hover { background:#f4f7fa; }
+.btn.pri { background:#1461d2; border-color:#1461d2; color:#fff; }
+.btn.pri:hover { background:#0f4fae; }
+.btn.dark { background:#0e1b33; border-color:#0e1b33; color:#fff; }
+.btn.sm { padding:4px 9px; font-size:12px; }
+.btn.ghost { border-color:transparent; background:transparent; color:#1461d2; }
+.btn.danger { background:#b42323; border-color:#b42323; color:#fff; }
+
+table { width:100%; border-collapse:collapse; font-size:13px; }
+th { text-align:left; font-size:11px; text-transform:uppercase; letter-spacing:.4px; color:#7b8794; padding:8px 10px; border-bottom:1px solid #e4e9ef; font-weight:700; cursor:pointer; }
+th.nosort { cursor:default; }
+td { padding:9px 10px; border-bottom:1px solid #eef2f6; vertical-align:middle; }
+tr:hover td { background:#f8fafc; }
+.tbl-wrap { overflow:auto; }
+
+.dl { display:grid; grid-template-columns:1fr 1fr; gap:12px 20px; }
+.dl .fld label { display:block; font-size:11px; color:#7b8794; text-transform:uppercase; letter-spacing:.4px; margin-bottom:3px; }
+.dl .fld .val { font-size:13px; color:#1b2733; }
+.section-h { font-size:12px; font-weight:700; color:#3a4a5c; margin:18px 0 8px; padding-bottom:5px; border-bottom:1px solid #edf1f5; display:flex; align-items:center; gap:6px; }
+
+.pill { display:inline-block; padding:2px 9px; border-radius:20px; font-size:11px; font-weight:600; }
+.pill.blue { background:#e3efff; color:#1461d2; }
+.pill.green { background:#e2f5ea; color:#137a44; }
+.pill.amber { background:#fff2d9; color:#9a6800; }
+.pill.red { background:#fde3e3; color:#b42323; }
+.pill.gray { background:#eceff3; color:#5b6b7c; }
+.pill.teal { background:#d9f5f2; color:#0d7d72; }
+.pill.purple { background:#efe6ff; color:#6b3fd4; }
+
+input, select, textarea { font-family:inherit; font-size:13px; padding:8px 10px; border:1px solid #cbd4de; border-radius:7px; width:100%; background:#fff; }
+input:focus, select:focus, textarea:focus { outline:none; border-color:#1461d2; box-shadow:0 0 0 3px rgba(20,97,210,.12); }
+label.f { display:block; font-size:11px; color:#7b8794; text-transform:uppercase; letter-spacing:.4px; margin:0 0 4px; }
+.form-row { margin-bottom:13px; }
+.form-2 { display:grid; grid-template-columns:1fr 1fr; gap:13px; }
+.form-3 { display:grid; grid-template-columns:1fr 1fr 1fr; gap:13px; }
+
+.ov { position:fixed; inset:0; background:rgba(14,27,51,.5); display:none; align-items:flex-start; justify-content:center; z-index:100; padding:40px 16px; overflow:auto; }
+.ov.on { display:flex; }
+.modal { background:#fff; border-radius:12px; width:100%; max-width:600px; box-shadow:0 20px 60px rgba(0,0,0,.3); }
+.modal-h { padding:16px 20px; border-bottom:1px solid #edf1f5; display:flex; align-items:center; }
+.modal-h h3 { margin:0; font-size:16px; }
+.modal-h .x { margin-left:auto; cursor:pointer; color:#7b8794; font-size:20px; line-height:1; }
+.modal-b { padding:20px; }
+.modal-f { padding:14px 20px; border-top:1px solid #edf1f5; display:flex; gap:10px; justify-content:flex-end; }
+
+.subtabs { display:flex; gap:2px; border-bottom:1px solid #e4e9ef; margin-bottom:16px; flex-wrap:wrap; }
+.subtabs a { padding:9px 15px; font-size:13px; font-weight:600; color:#5b6b7c; border-bottom:2px solid transparent; }
+.subtabs a.on { color:#1461d2; border-bottom-color:#1461d2; }
+
+.kpis { display:flex; gap:14px; margin-bottom:18px; flex-wrap:wrap; }
+.kpi { flex:1; min-width:150px; background:#fff; border:1px solid #dde3ea; border-radius:10px; padding:14px 16px; }
+.kpi .n { font-size:26px; font-weight:800; color:#0e1b33; }
+.kpi .n.good { color:#137a44; } .kpi .n.warn { color:#9a6800; } .kpi .n.bad { color:#b42323; }
+.kpi .l { font-size:11px; text-transform:uppercase; letter-spacing:.5px; color:#7b8794; margin-top:2px; }
+.kpi .d { font-size:11px; margin-top:3px; font-weight:600; }
+.kpi .d.up { color:#137a44; } .kpi .d.down { color:#b42323; }
+
+/* Source / vendor chips */
+.vchip { display:inline-flex; align-items:center; gap:5px; font-size:11px; font-weight:600; padding:2px 8px; border-radius:20px; border:1px solid #dde3ea; background:#fff; }
+.vchip .swatch { width:8px; height:8px; border-radius:50%; }
+.vstale { color:#b42323; }
+
+/* Health dot + status */
+.hd { width:10px; height:10px; border-radius:50%; display:inline-block; vertical-align:middle; margin-right:6px; }
+.hd.good { background:#137a44; } .hd.warn { background:#e08600; } .hd.bad { background:#b42323; } .hd.off { background:#8794a3; } .hd.unk { background:#cbd4de; }
+
+/* Asset-class mix bar */
+.mix { display:flex; height:12px; border-radius:6px; overflow:hidden; border:1px solid #e4e9ef; }
+.mix > span { display:block; height:100%; }
+
+/* Availability micro-bar */
+.abar { height:8px; border-radius:6px; background:#eceff3; overflow:hidden; min-width:80px; }
+.abar > span { display:block; height:100%; border-radius:6px; }
+
+/* Solar+storage split gauge */
+.split { display:flex; gap:10px; }
+.split .half { flex:1; border:1px solid #e4e9ef; border-radius:8px; padding:10px 12px; }
+.split .half .lab { font-size:11px; text-transform:uppercase; letter-spacing:.4px; color:#7b8794; }
+.split .half .big { font-size:20px; font-weight:800; }
+
+/* live tiles grid */
+.tiles { display:grid; grid-template-columns:repeat(auto-fill,minmax(230px,1fr)); gap:14px; }
+.tile { border:1px solid #dde3ea; border-radius:10px; padding:12px 14px; cursor:pointer; background:#fff; }
+.tile:hover { border-color:#b9d3f2; }
+.tile .th { display:flex; align-items:center; gap:6px; }
+.tile .tn { font-weight:700; font-size:13px; }
+.tile .tm { font-size:11px; color:#7b8794; margin-top:2px; }
+.tile .trow { display:flex; justify-content:space-between; font-size:12px; margin-top:8px; }
+.tile .trow b { font-weight:700; }
+
+.spark { display:flex; align-items:flex-end; gap:2px; height:30px; margin-top:8px; }
+.spark i { flex:1; background:#c7d6ec; border-radius:2px 2px 0 0; display:block; min-height:2px; }
+.spark i.lo { background:#f0b3b3; }
+.spark i.st { background:#a9dcc0; }
+
+.muted { color:#7b8794; }
+.empty { text-align:center; padding:34px 20px; color:#98a4b2; font-size:13px; }
+.flex { display:flex; align-items:center; gap:10px; }
+.spacer { flex:1; }
+.small { font-size:12px; }
+.toast { position:fixed; bottom:22px; right:22px; background:#0e1b33; color:#fff; padding:12px 18px; border-radius:9px; font-size:13px; box-shadow:0 8px 30px rgba(0,0,0,.3); z-index:200; display:none; }
+.toast.on { display:block; }
+.loading { padding:40px; text-align:center; color:#7b8794; }
+.info-lock { background:#e8f0fb; border:1px solid #b9d3f2; border-radius:8px; padding:10px 14px; font-size:12px; color:#1461d2; margin-bottom:16px; }
+.warn-lock { background:#fff7e6; border:1px solid #f0d492; border-radius:8px; padding:10px 14px; font-size:12px; color:#8a6400; margin-bottom:16px; }
+.ok-lock { background:#e2f5ea; border:1px solid #a8dcc0; border-radius:8px; padding:10px 14px; font-size:12px; color:#137a44; margin-bottom:16px; }
+.widget { border:1px dashed #b9d3f2; border-radius:10px; padding:14px 16px; background:#f7fafe; }
+.widget .wh { font-size:11px; text-transform:uppercase; letter-spacing:.5px; color:#1461d2; font-weight:700; margin-bottom:8px; }
+code { background:#eef2f6; padding:1px 5px; border-radius:4px; font-size:12px; }
+.filters { display:flex; gap:10px; flex-wrap:wrap; margin-bottom:14px; align-items:center; }
+.filters select, .filters input { width:auto; min-width:140px; }
+.legend { display:flex; gap:14px; flex-wrap:wrap; font-size:11px; color:#5b6b7c; }
+.legend span { display:inline-flex; align-items:center; gap:5px; }
+</style>
+</head>
+<body>
+
+<div class="tb">
+  <img src="/clearsky-omega-mark-white.png" alt="OMEGA" class="tb-omega">
+  <span class="tb-logo-txt">Clear<span>Sky</span> OMEGA</span>
+  <div class="tb-sep"></div>
+  <span class="tb-ws">Fleet Command &nbsp;·&nbsp; <b id="wsName">Loading…</b></span>
+  <div class="tb-right">
+    <button id="syncBtn" class="btn sm" style="background:#12233f;border-color:#2a3c5c;color:#cfe0ff" onclick="UI.refreshAll()">⟳ Refresh Feeds</button>
+    <span class="tb-badge" id="tierBadge">—</span>
+    <span id="userEmail">—</span>
+    <div class="tb-user" id="userInitial">?</div>
+  </div>
+</div>
+
+<div class="nav" id="nav">
+  <a data-mod="fleet" class="on">Single Pane</a>
+  <a data-mod="hybrid">Solar + Storage</a>
+  <a data-mod="live">Live Tiles</a>
+  <a data-mod="sources">Data Sources</a>
+  <a data-mod="settings" style="margin-left:auto">⚙ Settings</a>
+</div>
+
+<div class="wrap" id="app"><div class="loading">Connecting to workspace…</div></div>
+
+<div class="ov" id="ov">
+  <div class="modal">
+    <div class="modal-h"><h3 id="ovTitle">—</h3><span class="x" onclick="UI.closeModal()">&times;</span></div>
+    <div class="modal-b" id="ovBody"></div>
+    <div class="modal-f" id="ovFoot"></div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script src="/config.js"></script>
+<script src="https://tools.csebuilders.com/omega-tools.js"></script>
+<script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+<script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-auth.js"></script>
+<script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-firestore.js"></script>
+
+<script>
+/* ============================================================
+   ClearSky OMEGA — Fleet Command (single pane of glass)
+     · one normalized view across many OEM / monitoring portals
+       (SolarEdge, Fronius, Power Factors, AlsoEnergy, Gotion EMS,
+        Tesla, SMA…) — no jumping between vendor dashboards
+     · hybrid solar + storage health & availability in one view
+   Reads om_sites (O&M console) and augments with per-source
+   telemetry rows it owns (fc_sources, fc_assets). Namespace: fc_*
+   ES5-only, no build step. Firebase compat v8.
+   ============================================================ */
+(function () {
+  "use strict";
+
+  window.onerror = function(msg){
+    var app=document.getElementById("app");
+    if(app && app.querySelector(".loading")){ app.innerHTML='<div class="card"><div class="card-b"><h3>Something went wrong</h3><p class="muted small">'+String(msg)+'</p></div></div>'; }
+    return false;
+  };
+
+  var CSCONFIG=(typeof window!=="undefined"&&window.CLEARSKY_CONFIG)?window.CLEARSKY_CONFIG:null;
+  var FB=(CSCONFIG&&CSCONFIG.firebase)?CSCONFIG.firebase:{
+    apiKey:"AIzaSyABoM1lgOYUnd5ZadaoTMhYmA9cHa8Tyo0", authDomain:"clearsky-portal.firebaseapp.com",
+    projectId:"clearsky-portal", storageBucket:"clearsky-portal.firebasestorage.app",
+    messagingSenderId:"742134484347", appId:"1:742134484347:web:ab0f95fd221536158481de" };
+
+  var APP_KEY="fleetcommand";
+  var TIER_LABEL={ 0:"OMEGA (All)",1:"OMEGA Core",2:"OMEGA Performance",3:"Enterprise · Alpha & Omega" };
+  function tierName(n){ return TIER_LABEL[n]!=null?TIER_LABEL[n]:("Tier "+n); }
+  var ADMIN_DOMAINS={ "csebuilders.com":true,"clearsky-usa.com":true };
+  var COMPANY=(CSCONFIG&&CSCONFIG.companyName)?CSCONFIG.companyName:"ClearSky OMEGA";
+  var INTEG_PROXY_URL="https://tools.csebuilders.com/api/om-integrations";
+
+  /* Vendor / monitoring portals we normalize. Each has a brand swatch + the
+     deep-link pattern so a user can still jump to the native portal if needed. */
+  var VENDORS = {
+    powerfactors: { label:"Power Factors", color:"#1461d2", kind:"DAS", portal:"https://drive.powerfactors.com" },
+    alsoenergy:   { label:"AlsoEnergy",    color:"#e08600", kind:"DAS", portal:"https://www.alsoenergy.com" },
+    solaredge:    { label:"SolarEdge",     color:"#e2241a", kind:"Inverter", portal:"https://monitoring.solaredge.com" },
+    fronius:      { label:"Fronius",       color:"#0d7d72", kind:"Inverter", portal:"https://www.solarweb.com" },
+    sma:          { label:"SMA Sunny",     color:"#0a7bc2", kind:"Inverter", portal:"https://ennexos.sunnyportal.com" },
+    gotion_ems:   { label:"Gotion / Molecule EMS", color:"#6b3fd4", kind:"BESS", portal:"https://ems.molecule.systems" },
+    tesla:        { label:"Tesla Powerhub",color:"#b42323", kind:"BESS", portal:"https://powerhub.tesla.com" },
+    autel:        { label:"Autel Charge",  color:"#137a44", kind:"EV", portal:"https://cloud.autelenergy.com" }
+  };
+  function vendorOf(k){ return VENDORS[k] || { label:k||"Unknown", color:"#8794a3", kind:"—", portal:"" }; }
+
+  var CLASSES = { solar:{ label:"Solar", color:"#e0a63a" }, storage:{ label:"Storage", color:"#4a7fd6" }, ev:{ label:"EV", color:"#3fae6b" }, compute:{ label:"Compute", color:"#8a6fd4" } };
+
+  var db, auth, USER=null, WS=null;
+  var STATE={ mod:"fleet", sel:{}, cache:{}, sort:{ key:"name", dir:1 }, filter:{ vendor:"", cls:"", health:"" } };
+
+  /* ================= util ================= */
+  function $(id){ return document.getElementById(id); }
+  function el(t,c,h){ var e=document.createElement(t); if(c)e.className=c; if(h!=null)e.innerHTML=h; return e; }
+  function esc(s){ if(s==null)return ""; return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;"); }
+  function money(n){ if(n==null||n==="")return "—"; var x=Number(n); if(isNaN(x))return esc(n); return "$"+x.toLocaleString(undefined,{maximumFractionDigits:0}); }
+  function pct(n,d){ if(n==null)return "—"; return (Number(n)).toFixed(d==null?1:d)+"%"; }
+  function num(v,d){ var x=Number(v); return isNaN(x)?(d||0):x; }
+  function fmtDT(ms){ if(!ms)return "—"; var dt=new Date(ms); if(isNaN(dt))return "—"; return (dt.getMonth()+1)+"/"+dt.getDate()+" "+("0"+dt.getHours()).slice(-2)+":"+("0"+dt.getMinutes()).slice(-2); }
+  function ago(ms){ if(!ms)return "—"; var s=(Date.now()-ms)/1000; if(s<60)return Math.max(1,Math.floor(s))+"s ago"; if(s<3600)return Math.floor(s/60)+"m ago"; if(s<86400)return Math.floor(s/3600)+"h ago"; return Math.floor(s/86400)+"d ago"; }
+  function stale(ms){ return ms ? (Date.now()-ms > 60*60000) : true; } // >60min = stale feed
+  function uid(p){ return (p||"id")+"_"+Date.now().toString(36)+"_"+Math.random().toString(36).slice(2,7); }
+  function toast(m){ var t=$("toast"); t.textContent=m; t.className="toast on"; setTimeout(function(){ t.className="toast"; },2600); }
+
+  var DEMO=false;
+
+  /* ================= boot ================= */
+  function boot(){
+    var keyMissing=!FB.apiKey||FB.apiKey.indexOf("PLACEHOLDER")!==-1;
+    if(typeof firebase==="undefined"||keyMissing) return startDemo();
+    try{ firebase.initializeApp(FB); db=firebase.firestore(); auth=firebase.auth(); }catch(e){ return startDemo(); }
+    auth.onAuthStateChanged(function(u){ if(!u){ auth.signInAnonymously().catch(function(){ startDemo(); }); return; } onUser(u); }, function(){ startDemo(); });
+  }
+  function startDemo(){ DEMO=true; db=makeMemDb(); onUser({ email:"admin@csebuilders.com" }); }
+
+  function makeMemDb(){
+    var store={};
+    function collection(name){ store[name]=store[name]||{};
+      return { _name:name, doc:function(id){ id=id||uid("doc"); return docRef(name,id); },
+        where:function(f,op,v){ return query(name,[[f,op,v]]); }, limit:function(){ return query(name,[]); }, get:function(){ return query(name,[]).get(); } }; }
+    function docRef(name,id){ return { id:id,
+      set:function(o){ store[name][id]=clone(o); return Promise.resolve(); },
+      update:function(p){ var d=store[name][id]||{}; for(var k in p)d[k]=p[k]; store[name][id]=d; return Promise.resolve(); },
+      get:function(){ var d=store[name][id]; return Promise.resolve({ exists:!!d, id:id, data:function(){return clone(d);} }); } }; }
+    function query(name,conds){ return { where:function(f,op,v){ return query(name,conds.concat([[f,op,v]])); }, limit:function(){ return this; },
+      get:function(){ var out=[],bag=store[name]||{}; for(var id in bag){ var r=bag[id],ok=true;
+        for(var i=0;i<conds.length;i++){ var c=conds[i]; if(c[1]==="=="&&r[c[0]]!==c[2]){ ok=false; break; } }
+        if(ok) out.push({ id:id, data:(function(x){return function(){return clone(x);};})(r) }); }
+        return Promise.resolve({ empty:out.length===0, size:out.length, forEach:function(cb){ out.forEach(cb); } }); } }; }
+    function batch(){ var ops=[]; return { set:function(r,o){ ops.push(function(){ r.set(o); }); }, update:function(r,o){ ops.push(function(){ r.update(o); }); }, commit:function(){ ops.forEach(function(f){f();}); return Promise.resolve(); } }; }
+    function clone(o){ return o==null?o:JSON.parse(JSON.stringify(o)); }
+    return { collection:collection, batch:batch };
+  }
+
+  var OT=window.OMEGATools; var ORG=null;
+  function omegaOrgRef(orgId){ return db.collection("omega_orgs").doc(orgId); }
+  function workspaceOf(o){ return { orgId:o.orgId, tierLevel:o.tierLevel, unlockedTools:o.unlockedTools||[], requiredTools:o.requiredTools||[], customToolUrls:o.customToolUrls||{} }; }
+  function canOpenThisApp(o){ if(!OT)return o.tierLevel>=2; var t=OT.byKey(APP_KEY); if(!t)return o.tierLevel>=2; return OT.isUnlocked(t,workspaceOf(o)); }
+
+  function onUser(u){
+    USER=u; var email=u.email||"admin@csebuilders.com"; var domain=(email.split("@")[1]||"").toLowerCase();
+    if(!domain){ renderNoAuth(); return; }
+    $("userEmail").textContent=email; $("userInitial").textContent=(email[0]||"?").toUpperCase();
+    resolveOrg(domain,email).then(function(org){
+      ORG=org; WS={ orgId:org.orgId, name:(COMPANY||org.orgId) };
+      $("wsName").textContent=WS.name+(DEMO?" · DEMO":"");
+      var tb=$("tierBadge"); if(tb)tb.textContent=tierName(org.tierLevel).toUpperCase();
+      if(!canOpenThisApp(org)){ renderUpgrade(org); return; }
+      bindNav();
+      seedIfEmpty().then(function(){ render(); }).catch(function(e){ $("app").innerHTML='<div class="card"><div class="card-b"><h3>Couldn\'t load data</h3><p class="muted small">'+esc(String(e&&e.message||e))+'</p></div></div>'; });
+    });
+  }
+  function cfgTierLevel(){ var c=window.CLEARSKY_CONFIG; if(!c)return null;
+    if(typeof c.tierLevel==="number")return c.tierLevel; if(typeof c.tier==="number")return c.tier;
+    if(typeof c.tier==="string"){ var t=c.tier.toLowerCase(); if(t.indexOf("enter")===0||t.indexOf("alpha")===0)return 3; if(t.indexOf("perf")===0||t==="deluxe")return 2; if(t==="core"||t==="standard")return 1; } return null; }
+  function resolveOrg(domain){ var isAdmin=!!ADMIN_DOMAINS[domain]; var cfgTier=cfgTierLevel();
+    if(DEMO){ var lvl=isAdmin?3:(cfgTier!=null?cfgTier:2); var unl=(lvl<2)?[]:[APP_KEY]; return Promise.resolve({ orgId:domain, tierLevel:lvl, unlockedTools:unl, requiredTools:[], customToolUrls:{}, isAdmin:isAdmin }); }
+    return omegaOrgRef(domain).get().then(function(d){ if(d.exists){ var data=d.data(); var lvl=(typeof data.tierLevel==="number")?data.tierLevel:(cfgTier!=null?cfgTier:1);
+      return { orgId:domain, tierLevel:lvl, unlockedTools:data.unlockedTools||[], requiredTools:data.requiredTools||[], customToolUrls:data.customToolUrls||{}, isAdmin:isAdmin }; }
+      return { orgId:domain, tierLevel:(isAdmin?3:(cfgTier!=null?cfgTier:1)), unlockedTools:[], requiredTools:[], customToolUrls:{}, isAdmin:isAdmin };
+    }).catch(function(){ return { orgId:domain, tierLevel:(isAdmin?3:(cfgTier!=null?cfgTier:1)), unlockedTools:[], requiredTools:[], customToolUrls:{}, isAdmin:isAdmin }; });
+  }
+  function renderNoAuth(){ $("app").innerHTML='<div class="card"><div class="card-b"><h3>Sign-in required</h3><p class="muted">This console requires an authenticated account.</p></div></div>'; }
+  function renderUpgrade(org){ $("app").innerHTML='<div class="card"><div class="card-b" style="text-align:center;padding:50px 20px"><div style="font-size:40px">🔒</div><h3 style="margin:12px 0 6px">Fleet Command</h3><p class="muted">This is an <b>OMEGA Performance</b> &amp; <b>Enterprise</b> app.</p><p class="muted small">Your plan (<b>'+esc(tierName(org.tierLevel))+'</b>) doesn\'t include it yet.</p></div></div>'; }
+  function bindNav(){ var links=$("nav").getElementsByTagName("a"); for(var i=0;i<links.length;i++){ (function(a){ a.onclick=function(){ for(var j=0;j<links.length;j++)links[j].className=""; a.className="on"; STATE.mod=a.getAttribute("data-mod"); STATE.sel={}; render(); }; })(links[i]); } }
+
+  /* ================= seed ================= */
+  /* Owns fc_sources (connected portals) + fc_assets (normalized per-asset rows
+     joined to om_sites). In demo, seeds a realistic multi-vendor fleet. */
+  function seedIfEmpty(){
+    var org=WS.orgId;
+    return db.collection("fc_assets").where("orgId","==",org).limit(1).get().then(function(s){
+      if(!s.empty) return;
+      var batch=db.batch(); var now=Date.now(), H=3600000;
+      function ser(base,dips,st){ var arr=[]; for(var i=0;i<24;i++){ var v=base*(0.8+Math.random()*0.35); if(dips.indexOf(i)>=0)v*=0.3; arr.push({v:Math.round(v),st:st?(i%5===0):false}); } return arr; }
+
+      /* connected sources */
+      function SRC(k,extra){ var ref=db.collection("fc_sources").doc(uid("src")); var o={ orgId:org, vendor:k, status:"connected", lastPoll:now-Math.floor(Math.random()*40)*60000, assets:0, createdAt:Date.now() }; for(var x in (extra||{}))o[x]=extra[x]; batch.set(ref,o); return o; }
+      SRC("powerfactors",{ note:"Fleet DAS aggregation" });
+      SRC("solaredge",{ note:"OGI Solar inverters" });
+      SRC("gotion_ems",{ note:"BESS EMS (Molecule)" });
+      SRC("tesla",{ note:"Claremont Powerpack" });
+      SRC("fronius",{ note:"Bondi rooftop" });
+      SRC("alsoenergy",{ note:"Winnipeg" });
+      var stale1=db.collection("fc_sources").doc(uid("src")); batch.set(stale1,{ orgId:org, vendor:"sma", status:"error", lastPoll:now-5*H, assets:1, note:"Auth expired — reconnect", createdAt:Date.now() });
+
+      /* Normalized assets across sites and vendors. This is the point:
+         one row schema regardless of which portal the data came from. */
+      function A(o){ var ref=db.collection("fc_assets").doc(uid("ast")); o.orgId=org; o.createdAt=Date.now(); o.lastTelemetry=now-Math.floor(Math.random()*45)*60000; batch.set(ref,o); }
+
+      // Claremont — hybrid: SolarEdge PV + Tesla BESS
+      A({ site:"Claremont BESS — Berkeley", editorProjectId:"editor_clrmnt_001", name:"Claremont PV Array", cls:"solar", vendor:"solaredge", capKw:900, health:"good", avail:98.9, nowKw:612, soc:null, series:ser(280,[6,7],false) });
+      A({ site:"Claremont BESS — Berkeley", editorProjectId:"editor_clrmnt_001", name:"Claremont Powerpack", cls:"storage", vendor:"tesla", capKw:802, capKwh:5000, health:"warn", avail:96.1, nowKw:-140, soc:63, series:ser(150,[17],true) });
+      // Winnipeg — storage only via AlsoEnergy + Gotion EMS
+      A({ site:"Winnipeg BESS — Fort St", editorProjectId:"editor_wpg_001", name:"Winnipeg BESS Container", cls:"storage", vendor:"gotion_ems", capKw:1200, capKwh:5000, health:"good", avail:99.3, nowKw:410, soc:78, series:ser(300,[],true) });
+      A({ site:"Winnipeg BESS — Fort St", editorProjectId:"editor_wpg_001", name:"Winnipeg Site Meter", cls:"solar", vendor:"alsoenergy", capKw:0, health:"good", avail:99.9, nowKw:0, soc:null, series:ser(20,[],false) });
+      // Bondi — hybrid: Fronius PV + Gotion BESS (worst site)
+      A({ site:"Bondi Junction — Macro Colo", mondayBoardId:"7712345001", name:"Bondi Rooftop PV", cls:"solar", vendor:"fronius", capKw:420, health:"bad", avail:92.0, nowKw:118, soc:null, series:ser(160,[3,4,5,12,13],false) });
+      A({ site:"Bondi Junction — Macro Colo", mondayBoardId:"7712345001", name:"Bondi BESS", cls:"storage", vendor:"gotion_ems", capKw:640, capKwh:2560, health:"bad", avail:94.4, nowKw:0, soc:31, series:ser(120,[2,3,4],true) });
+      // OGI — solar only, SolarEdge + Power Factors
+      A({ site:"OGI Solar — Cedar Rapids", editorProjectId:"editor_ogi_014", name:"OGI Solar Field", cls:"solar", vendor:"solaredge", capKw:2100, health:"good", avail:98.6, nowKw:1520, soc:null, series:ser(720,[9],false) });
+      A({ site:"OGI Solar — Cedar Rapids", editorProjectId:"editor_ogi_014", name:"OGI DCFC Bank", cls:"ev", vendor:"autel", capKw:240, health:"good", avail:99.1, nowKw:96, soc:null, series:ser(60,[],false) });
+      // an offline asset behind the stale SMA feed
+      A({ site:"OGI Solar — Cedar Rapids", editorProjectId:"editor_ogi_014", name:"OGI Legacy String (SMA)", cls:"solar", vendor:"sma", capKw:300, health:"off", avail:0, nowKw:0, soc:null, series:ser(1,[],false), lastTelemetryOverride:now-5*H });
+
+      batch.commit();
+      return new Promise(function(r){ setTimeout(r,700); });
+    });
+  }
+
+  /* ================= loaders ================= */
+  function loadRaw(coll){
+    if(STATE.cache[coll]) return Promise.resolve(STATE.cache[coll]);
+    return db.collection(coll).where("orgId","==",WS.orgId).get().then(function(s){
+      var arr=[]; s.forEach(function(d){ var o=d.data(); o.id=d.id; arr.push(o); });
+      STATE.cache[coll]=arr; return arr;
+    }).catch(function(){ STATE.cache[coll]=[]; return []; });
+  }
+  function loadAll(){ return Promise.all([ loadRaw("fc_assets"), loadRaw("fc_sources"), loadRaw("om_sites") ]); }
+  function invalidate(n){ delete STATE.cache[n]; }
+  function assets(){ return STATE.cache.fc_assets||[]; }
+  function sources(){ return STATE.cache.fc_sources||[]; }
+  function lastTel(a){ return a.lastTelemetryOverride||a.lastTelemetry; }
+
+  /* ================= derived ================= */
+  function assetHealth(a){ if(stale(lastTel(a)))return "unk"; return a.health||"unk"; }
+  function siteRows(){
+    var bySite={}; var order=[];
+    assets().forEach(function(a){ var key=a.site; if(!bySite[key]){ bySite[key]={ site:key, editorProjectId:a.editorProjectId, mondayBoardId:a.mondayBoardId, list:[] }; order.push(key); } bySite[key].list.push(a); });
+    return order.map(function(k){ var g=bySite[k]; var la=g.list;
+      var avail= la.length? la.reduce(function(s,a){return s+num(a.avail);},0)/la.length : 0;
+      var nowKw= la.reduce(function(s,a){return s+num(a.nowKw);},0);
+      var capKw= la.reduce(function(s,a){return s+num(a.capKw);},0);
+      var vendors={}; la.forEach(function(a){ vendors[a.vendor]=true; });
+      var classes={}; la.forEach(function(a){ classes[a.cls]=(classes[a.cls]||0)+num(a.capKw); });
+      var worst = la.reduce(function(w,a){ var h=assetHealth(a); var rank={bad:0,off:1,warn:2,unk:3,good:4}; return rank[h]<rank[w]?h:w; }, "good");
+      var freshest = la.reduce(function(m,a){ return Math.max(m, lastTel(a)||0); }, 0);
+      var storage = la.filter(function(a){return a.cls==="storage";});
+      var solar = la.filter(function(a){return a.cls==="solar";});
+      var soc = storage.length? storage.reduce(function(s,a){return s+num(a.soc);},0)/storage.length : null;
+      g.avail=avail; g.nowKw=nowKw; g.capKw=capKw; g.vendors=Object.keys(vendors); g.classes=classes; g.worst=worst; g.freshest=freshest;
+      g.hasSolar=solar.length>0; g.hasStorage=storage.length>0; g.hybrid=(solar.length>0&&storage.length>0); g.soc=soc;
+      return g;
+    });
+  }
+  function filteredAssets(){
+    var f=STATE.filter;
+    return assets().filter(function(a){
+      if(f.vendor && a.vendor!==f.vendor) return false;
+      if(f.cls && a.cls!==f.cls) return false;
+      if(f.health && assetHealth(a)!==f.health) return false;
+      return true;
+    });
+  }
+
+  /* ================= render dispatch ================= */
+  function render(){
+    $("app").innerHTML='<div class="loading">Loading '+STATE.mod+'…</div>';
+    loadAll().then(function(){
+      if(STATE.mod==="fleet") renderFleet();
+      else if(STATE.mod==="hybrid") renderHybrid();
+      else if(STATE.mod==="live") renderLive();
+      else if(STATE.mod==="sources") renderSources();
+      else if(STATE.mod==="settings") renderSettings();
+    });
+  }
+  function info(t){ return '<div class="info-lock">◎ '+t+'</div>'; }
+  function kpi(n,l,cls){ return '<div class="kpi"><div class="n'+(cls?" "+cls:"")+'">'+(n==null?"—":n)+'</div><div class="l">'+esc(l)+'</div></div>'; }
+  function fld(l,v){ return '<div class="fld"><label>'+esc(l)+'</label><div class="val">'+esc(v||"—")+'</div></div>'; }
+  function vchip(k,fresh){ var v=vendorOf(k); return '<span class="vchip'+(fresh===false?" vstale":"")+'"><span class="swatch" style="background:'+v.color+'"></span>'+esc(v.label)+'</span>'; }
+  function hdot(h){ return '<span class="hd '+h+'"></span>'; }
+  function healthLabel(h){ return { good:"Healthy", warn:"Degraded", bad:"Fault", off:"Offline", unk:"Stale" }[h]||"—"; }
+  function availBar(a){ var c=a>=98?"#137a44":(a>=95?"#e08600":a>0?"#b42323":"#8794a3"); return '<div class="abar"><span style="width:'+Math.max(2,Math.min(100,a))+'%;background:'+c+'"></span></div>'; }
+  function spark(series){ if(!series||!series.length)return ""; var mx=1; series.forEach(function(p){ if(p.v>mx)mx=p.v; }); var h='<div class="spark">'; series.forEach(function(p){ var cl=p.st?"st":(p.v<mx*0.35?"lo":""); h+='<i class="'+cl+'" style="height:'+Math.max(6,Math.round(p.v/mx*100))+'%"></i>'; }); return h+'</div>'; }
+  function classMix(classes){ var total=0; for(var k in classes)total+=classes[k]; if(!total)return ''; var h='<div class="mix">'; for(var c in classes){ if(classes[c]<=0)continue; h+='<span style="width:'+(classes[c]/total*100)+'%;background:'+(CLASSES[c]?CLASSES[c].color:"#ccc")+'" title="'+(CLASSES[c]?CLASSES[c].label:c)+'"></span>'; } return h+'</div>'; }
+
+  /* ---------------- SINGLE PANE (site rollups) ---------------- */
+  function renderFleet(){
+    var rows=siteRows(); var srcs=sources();
+    var totCap=0, availSum=0, nowKw=0, faults=0, staleN=0;
+    rows.forEach(function(r){ totCap+=r.capKw; availSum+=r.avail; nowKw+=r.nowKw; if(r.worst==="bad"||r.worst==="off")faults++; });
+    assets().forEach(function(a){ if(stale(lastTel(a)))staleN++; });
+    var vendorCount=Object.keys((function(){ var v={}; assets().forEach(function(a){v[a.vendor]=1;}); return v; })()).length;
+
+    var h=info("One normalized view across every OEM and monitoring portal — no jumping between vendor dashboards. Each row unifies whatever mix of sources reports that site.");
+    h+='<div class="kpis">'
+      + kpi(rows.length,"Sites")
+      + kpi((totCap/1000).toFixed(1)+" MW","Capacity")
+      + kpi(pct(rows.length?availSum/rows.length:0),"Fleet Availability", (rows.length?availSum/rows.length:0)>=97?"good":"warn")
+      + kpi((nowKw/1000).toFixed(2)+" MW","Live Net Output")
+      + kpi(vendorCount,"Vendor Portals","teal")
+      + kpi(staleN,"Stale Feeds", staleN?"bad":"good")
+      + '</div>';
+
+    // filters
+    h+='<div class="card"><div class="card-h"><h3>Fleet — Single Pane</h3><span class="sub">'+assets().length+' assets across '+vendorCount+' portals</span><div class="spacer"></div>'
+      + '<button class="btn sm" onclick="UI.refreshAll()">⟳ Refresh</button></div><div class="card-b">';
+    h+=filterBar();
+    h+='<div class="tbl-wrap"><table><thead><tr>'
+      + th("Site","name")+'<th class="nosort">Type</th>'+th("Availability","avail")+'<th class="nosort">Live Output</th><th class="nosort">Asset Mix</th><th class="nosort">Source Portals</th>'+th("Health","health")+'<th class="nosort">Telemetry</th><th class="nosort"></th>'
+      + '</tr></thead><tbody>';
+    var sorted=applySort(rows.slice());
+    // apply asset-level filter to site view: hide sites with no matching assets
+    var f=STATE.filter;
+    sorted=sorted.filter(function(r){ if(!f.vendor&&!f.cls&&!f.health)return true; return r.list.some(function(a){ return (!f.vendor||a.vendor===f.vendor)&&(!f.cls||a.cls===f.cls)&&(!f.health||assetHealth(a)===f.health); }); });
+    sorted.forEach(function(r){
+      var type = r.hybrid?'<span class="pill purple">Solar + Storage</span>':(r.hasStorage?'<span class="pill blue">Storage</span>':(r.hasSolar?'<span class="pill amber">Solar</span>':'<span class="pill gray">Mixed</span>'));
+      var vends = r.vendors.map(function(v){ var fresh = r.list.filter(function(a){return a.vendor===v;}).every(function(a){ return !stale(lastTel(a)); }); return vchip(v,fresh); }).join(" ");
+      h+='<tr><td><a onclick="UI.openSite(\''+esc(r.site)+'\')"><b>'+esc(r.site)+'</b></a><div class="small muted">'+(r.capKw/1000).toFixed(2)+' MW · '+r.list.length+' assets</div></td>'
+        +'<td>'+type+'</td>'
+        +'<td style="min-width:120px">'+availBar(r.avail)+'<div class="small">'+pct(r.avail)+'</div></td>'
+        +'<td><b>'+(r.nowKw/1000).toFixed(2)+'</b> MW'+(r.soc!=null?'<div class="small muted">SoC '+r.soc.toFixed(0)+'%</div>':'')+'</td>'
+        +'<td style="min-width:90px">'+classMix(r.classes)+'</td>'
+        +'<td>'+vends+'</td>'
+        +'<td>'+hdot(r.worst)+'<span class="small">'+healthLabel(r.worst)+'</span></td>'
+        +'<td class="small '+(stale(r.freshest)?"vstale":"muted")+'">'+ago(r.freshest)+'</td>'
+        +'<td style="text-align:right"><button class="btn ghost sm" onclick="UI.openSite(\''+esc(r.site)+'\')">Open →</button></td></tr>';
+    });
+    h+='</tbody></table></div>';
+    if(!rows.length) h+='<div class="empty">No assets. Connect a monitoring source in Data Sources.</div>';
+    h+='<div class="legend" style="margin-top:12px"><span>'+hdot("good")+'Healthy</span><span>'+hdot("warn")+'Degraded</span><span>'+hdot("bad")+'Fault</span><span>'+hdot("off")+'Offline</span><span>'+hdot("unk")+'Stale feed</span></div>';
+    h+='</div></div>';
+
+    // portal widget
+    h+='<div class="card"><div class="card-h"><h3>Portal Widget Preview</h3><span class="sub">Fleet health as a dashboard datapoint</span></div><div class="card-b"><div class="row">';
+    h+='<div class="col widget"><div class="wh">Fleet · index datapoint</div><div style="font-size:22px;font-weight:800;color:'+(faults?"#b42323":"#137a44")+'">'+(nowKw/1000).toFixed(2)+' MW live</div><div class="small muted">'+rows.length+' sites · '+vendorCount+' portals unified · '+faults+' in fault</div><div class="small muted" style="margin-top:6px">Feed key: <code>fc_rollup/'+esc(WS.orgId)+'</code></div></div>';
+    h+='<div class="col widget"><div class="wh">Per-site datapoint</div><div class="small">Publishes <code>{liveKw, avail, worstHealth, vendors[], hybrid, soc}</code> joined by <code>projectId</code> — the portal shows unified health without the owner ever seeing a vendor login.</div></div>';
+    h+='</div></div></div>';
+    $("app").innerHTML=h;
+  }
+
+  function filterBar(){
+    var f=STATE.filter;
+    var vs=Object.keys(VENDORS).map(function(k){ return '<option value="'+k+'"'+(f.vendor===k?" selected":"")+'>'+esc(VENDORS[k].label)+'</option>'; }).join("");
+    var cs=Object.keys(CLASSES).map(function(k){ return '<option value="'+k+'"'+(f.cls===k?" selected":"")+'>'+esc(CLASSES[k].label)+'</option>'; }).join("");
+    var hs=["good","warn","bad","off","unk"].map(function(k){ return '<option value="'+k+'"'+(f.health===k?" selected":"")+'>'+healthLabel(k)+'</option>'; }).join("");
+    return '<div class="filters"><span class="small muted">Filter:</span>'
+      + '<select onchange="UI.setFilter(\'vendor\',this.value)"><option value="">All portals</option>'+vs+'</select>'
+      + '<select onchange="UI.setFilter(\'cls\',this.value)"><option value="">All classes</option>'+cs+'</select>'
+      + '<select onchange="UI.setFilter(\'health\',this.value)"><option value="">All health</option>'+hs+'</select>'
+      + ((f.vendor||f.cls||f.health)?'<button class="btn ghost sm" onclick="UI.clearFilter()">Clear</button>':'')
+      + '</div>';
+  }
+  function th(label,key){ var s=STATE.sort; var arrow=s.key===key?(s.dir>0?" ▲":" ▼"):""; return '<th onclick="UI.sortBy(\''+key+'\')">'+esc(label)+arrow+'</th>'; }
+  function applySort(rows){ var s=STATE.sort; rows.sort(function(a,b){ var av,bv;
+    if(s.key==="name"){ av=(a.site||"").toLowerCase(); bv=(b.site||"").toLowerCase(); return av<bv?-1*s.dir:av>bv?1*s.dir:0; }
+    if(s.key==="avail"){ av=a.avail; bv=b.avail; }
+    else if(s.key==="health"){ var rank={bad:0,off:1,warn:2,unk:3,good:4}; av=rank[a.worst]; bv=rank[b.worst]; }
+    else { av=a.capKw; bv=b.capKw; }
+    return (av-bv)*s.dir; }); return rows; }
+
+  /* ---------------- SITE DETAIL (asset breakdown) ---------------- */
+  function openSite(name){
+    var r=siteRows().filter(function(x){return x.site===name;})[0]; if(!r)return;
+    var h='<a class="btn sm" onclick="UI.back()">← Back to Fleet</a>';
+    h+='<div class="card" style="margin-top:12px"><div class="card-h"><h3>'+esc(r.site)+'</h3><span class="sub">'+(r.hybrid?"Solar + Storage":r.hasStorage?"Storage":"Solar")+' · '+(r.capKw/1000).toFixed(2)+' MW</span>'
+      +'<div class="spacer"></div>'+hdot(r.worst)+'<span class="small">'+healthLabel(r.worst)+'</span></div><div class="card-b">';
+    h+='<div class="kpis">'
+      + kpi(pct(r.avail),"Site Availability", r.avail>=98?"good":r.avail>=95?"warn":"bad")
+      + kpi((r.nowKw/1000).toFixed(2)+" MW","Live Net Output")
+      + kpi(r.vendors.length,"Source Portals","teal")
+      + kpi(r.soc!=null?r.soc.toFixed(0)+"%":"—","Avg Storage SoC")
+      + '</div>';
+
+    if(r.hybrid){
+      var solarKw=r.list.filter(function(a){return a.cls==="solar";}).reduce(function(s,a){return s+num(a.nowKw);},0);
+      var storKw=r.list.filter(function(a){return a.cls==="storage";}).reduce(function(s,a){return s+num(a.nowKw);},0);
+      h+='<div class="split" style="margin-bottom:16px">'
+        + '<div class="half"><div class="lab">☀ Solar generating</div><div class="big" style="color:#e0a63a">'+(solarKw/1000).toFixed(2)+' MW</div></div>'
+        + '<div class="half"><div class="lab">🔋 Storage '+(storKw>=0?"discharging":"charging")+'</div><div class="big" style="color:#4a7fd6">'+(Math.abs(storKw)/1000).toFixed(2)+' MW</div></div>'
+        + '</div>';
+    }
+
+    h+='<div class="section-h">Assets (normalized across portals)</div>';
+    h+='<div class="tbl-wrap"><table><thead><tr><th>Asset</th><th>Class</th><th>Source Portal</th><th>Capacity</th><th>Now</th><th>SoC</th><th>Avail</th><th>Health</th><th>24h</th><th>Telemetry</th></tr></thead><tbody>';
+    r.list.forEach(function(a){ var h2=assetHealth(a); var v=vendorOf(a.vendor); var fresh=!stale(lastTel(a));
+      h+='<tr><td><b>'+esc(a.name)+'</b></td>'
+        +'<td><span class="pill '+(a.cls==="solar"?"amber":a.cls==="storage"?"blue":a.cls==="ev"?"green":"purple")+'">'+(CLASSES[a.cls]?CLASSES[a.cls].label:a.cls)+'</span></td>'
+        +'<td>'+vchip(a.vendor,fresh)+'</td>'
+        +'<td class="small">'+num(a.capKw)+' kW'+(a.capKwh?(" / "+num(a.capKwh)+" kWh"):"")+'</td>'
+        +'<td>'+num(a.nowKw)+' kW</td>'
+        +'<td>'+(a.soc!=null?a.soc+"%":"—")+'</td>'
+        +'<td style="min-width:90px">'+availBar(num(a.avail))+'<div class="small">'+pct(a.avail)+'</div></td>'
+        +'<td>'+hdot(h2)+'<span class="small">'+healthLabel(h2)+'</span></td>'
+        +'<td style="min-width:80px">'+spark(a.series)+'</td>'
+        +'<td class="small '+(fresh?"muted":"vstale")+'">'+ago(lastTel(a))+(fresh?"":" ⚠")+'</td></tr>';
+    });
+    h+='</tbody></table></div>';
+    h+='<div class="section-h">Source Portals for this Site</div><div class="flex" style="flex-wrap:wrap">';
+    r.vendors.forEach(function(vk){ var v=vendorOf(vk); h+='<span class="vchip"><span class="swatch" style="background:'+v.color+'"></span>'+esc(v.label)+' · '+esc(v.kind)+(v.portal?' <a href="'+v.portal+'" target="_blank">↗</a>':'')+'</span>'; });
+    h+='</div>';
+    h+='<div class="small muted" style="margin-top:10px">Deep-links open the native OEM portal in a new tab when you need raw vendor detail — but the day-to-day view stays here.</div>';
+    h+='</div></div>';
+    $("app").innerHTML=h;
+  }
+
+  /* ---------------- HYBRID SOLAR+STORAGE ---------------- */
+  function renderHybrid(){
+    var rows=siteRows(); var hybrids=rows.filter(function(r){return r.hybrid;});
+    var solarKw=0, storKw=0, storCap=0, socSum=0, socN=0;
+    assets().forEach(function(a){ if(a.cls==="solar")solarKw+=num(a.nowKw); if(a.cls==="storage"){ storKw+=num(a.nowKw); storCap+=num(a.capKwh); if(a.soc!=null){socSum+=num(a.soc);socN++;} } });
+    var h=info("Hybrid solar + storage health and availability in one view — generation, state-of-charge, and net flow together, not split across two OEM portals.");
+    h+='<div class="kpis">'
+      + kpi(hybrids.length,"Hybrid Sites","purple")
+      + kpi((solarKw/1000).toFixed(2)+" MW","Solar Generating", "warn")
+      + kpi((storKw/1000).toFixed(2)+" MW","Storage Net", storKw>=0?"good":"warn")
+      + kpi((storCap/1000).toFixed(1)+" MWh","Storage Capacity")
+      + kpi(socN?(socSum/socN).toFixed(0)+"%":"—","Avg SoC")
+      + '</div>';
+
+    h+='<div class="card"><div class="card-h"><h3>Hybrid Site Health</h3><span class="sub">Solar &amp; storage side by side</span></div><div class="card-b"><div class="tbl-wrap"><table><thead><tr>'
+      +'<th>Site</th><th>Solar Avail</th><th>Solar Now</th><th>Storage Avail</th><th>Storage Now</th><th>SoC</th><th>Combined Health</th></tr></thead><tbody>';
+    if(!hybrids.length) h+='<tr><td colspan="7" class="empty">No hybrid solar+storage sites.</td></tr>';
+    hybrids.forEach(function(r){
+      var solar=r.list.filter(function(a){return a.cls==="solar";}); var stor=r.list.filter(function(a){return a.cls==="storage";});
+      var sAvail=solar.length?solar.reduce(function(s,a){return s+num(a.avail);},0)/solar.length:0;
+      var stAvail=stor.length?stor.reduce(function(s,a){return s+num(a.avail);},0)/stor.length:0;
+      var sNow=solar.reduce(function(s,a){return s+num(a.nowKw);},0); var stNow=stor.reduce(function(s,a){return s+num(a.nowKw);},0);
+      h+='<tr><td><a onclick="UI.openSite(\''+esc(r.site)+'\')"><b>'+esc(r.site)+'</b></a></td>'
+        +'<td style="min-width:100px">'+availBar(sAvail)+'<div class="small">'+pct(sAvail)+'</div></td>'
+        +'<td>'+(sNow/1000).toFixed(2)+' MW</td>'
+        +'<td style="min-width:100px">'+availBar(stAvail)+'<div class="small">'+pct(stAvail)+'</div></td>'
+        +'<td>'+(stNow>=0?"+":"")+(stNow/1000).toFixed(2)+' MW</td>'
+        +'<td>'+(r.soc!=null?r.soc.toFixed(0)+"%":"—")+'</td>'
+        +'<td>'+hdot(r.worst)+'<span class="small">'+healthLabel(r.worst)+'</span></td></tr>';
+    });
+    h+='</tbody></table></div></div></div>';
+
+    // storage-only + solar-only quick views
+    var storSites=rows.filter(function(r){return r.hasStorage&&!r.hasSolar;});
+    var solarSites=rows.filter(function(r){return r.hasSolar&&!r.hasStorage;});
+    h+='<div class="row">';
+    h+='<div class="col"><div class="card"><div class="card-h"><h3>🔋 Storage-only</h3></div><div class="card-b">';
+    if(!storSites.length)h+='<div class="empty">None</div>'; storSites.forEach(function(r){ h+='<div class="flex" style="padding:6px 0;border-bottom:1px solid #eef2f6"><a onclick="UI.openSite(\''+esc(r.site)+'\')">'+esc(r.site)+'</a><div class="spacer"></div>'+hdot(r.worst)+'<span class="small">'+pct(r.avail)+' · SoC '+(r.soc!=null?r.soc.toFixed(0)+"%":"—")+'</span></div>'; });
+    h+='</div></div></div>';
+    h+='<div class="col"><div class="card"><div class="card-h"><h3>☀ Solar-only</h3></div><div class="card-b">';
+    if(!solarSites.length)h+='<div class="empty">None</div>'; solarSites.forEach(function(r){ h+='<div class="flex" style="padding:6px 0;border-bottom:1px solid #eef2f6"><a onclick="UI.openSite(\''+esc(r.site)+'\')">'+esc(r.site)+'</a><div class="spacer"></div>'+hdot(r.worst)+'<span class="small">'+pct(r.avail)+' · '+(r.nowKw/1000).toFixed(2)+' MW</span></div>'; });
+    h+='</div></div></div>';
+    h+='</div>';
+    $("app").innerHTML=h;
+  }
+
+  /* ---------------- LIVE TILES ---------------- */
+  function renderLive(){
+    var list=applySortAssets(filteredAssets().slice());
+    var h=info("Every asset as a live tile, regardless of which portal it streams from. Filter by portal, class, or health.");
+    h+=filterBar();
+    h+='<div class="tiles">';
+    if(!list.length) h+='<div class="empty">No assets match.</div>';
+    list.forEach(function(a){ var hh=assetHealth(a); var v=vendorOf(a.vendor); var fresh=!stale(lastTel(a));
+      h+='<div class="tile" onclick="UI.openSite(\''+esc(a.site)+'\')"><div class="th">'+hdot(hh)+'<span class="tn">'+esc(a.name)+'</span></div>'
+        +'<div class="tm">'+esc(a.site)+'</div>'
+        +'<div class="trow"><span>'+vchip(a.vendor,fresh)+'</span><span class="pill '+(a.cls==="solar"?"amber":a.cls==="storage"?"blue":a.cls==="ev"?"green":"purple")+'">'+(CLASSES[a.cls]?CLASSES[a.cls].label:a.cls)+'</span></div>'
+        +'<div class="trow"><span class="muted">Now</span><b>'+num(a.nowKw)+' kW</b></div>'
+        +'<div class="trow"><span class="muted">Avail</span><b>'+pct(a.avail)+'</b></div>'
+        +(a.soc!=null?'<div class="trow"><span class="muted">SoC</span><b>'+a.soc+'%</b></div>':'')
+        +spark(a.series)
+        +'<div class="trow" style="margin-top:6px"><span class="'+(fresh?"muted":"vstale")+'">'+ago(lastTel(a))+(fresh?"":" ⚠ stale")+'</span></div>'
+        +'</div>';
+    });
+    h+='</div>';
+    $("app").innerHTML=h;
+  }
+  function applySortAssets(list){ list.sort(function(a,b){ var an=(a.site+a.name).toLowerCase(), bn=(b.site+b.name).toLowerCase(); return an<bn?-1:an>bn?1:0; }); return list; }
+
+  /* ---------------- DATA SOURCES ---------------- */
+  function renderSources(){
+    var srcs=sources();
+    var connected=srcs.filter(function(s){return s.status==="connected";}).length;
+    var errored=srcs.filter(function(s){return s.status==="error";}).length;
+    // count assets per source
+    var byV={}; assets().forEach(function(a){ byV[a.vendor]=(byV[a.vendor]||0)+1; });
+    var h=info("Every connected OEM / monitoring portal, in one place. This is what replaces logging into each vendor dashboard separately.");
+    h+='<div class="kpis">'
+      + kpi(srcs.length,"Connected Portals")
+      + kpi(connected,"Healthy","good")
+      + kpi(errored,"Needs Attention", errored?"bad":"good")
+      + kpi(assets().length,"Assets Ingested")
+      + '</div>';
+    h+='<div class="card"><div class="card-h"><h3>Connected Sources</h3><span class="sub">OEM &amp; monitoring portals feeding Fleet Command</span><div class="spacer"></div><button class="btn pri sm" onclick="UI.addSource()">+ Connect Portal</button></div><div class="card-b"><div class="tbl-wrap"><table><thead><tr>'
+      +'<th>Portal</th><th>Type</th><th>Assets</th><th>Last Poll</th><th>Status</th><th></th></tr></thead><tbody>';
+    if(!srcs.length) h+='<tr><td colspan="6" class="empty">No sources connected.</td></tr>';
+    srcs.forEach(function(s){ var v=vendorOf(s.vendor); var st=stale(s.lastPoll);
+      var status = s.status==="error"?'<span class="pill red">Error</span>':(st?'<span class="pill amber">Stale</span>':'<span class="pill green">Live</span>');
+      h+='<tr><td><span class="vchip"><span class="swatch" style="background:'+v.color+'"></span>'+esc(v.label)+'</span>'+(s.note?'<div class="small muted">'+esc(s.note)+'</div>':'')+'</td>'
+        +'<td class="small">'+esc(v.kind)+'</td><td>'+(byV[s.vendor]||0)+'</td>'
+        +'<td class="small '+(st?"vstale":"muted")+'">'+ago(s.lastPoll)+'</td>'
+        +'<td>'+status+'</td>'
+        +'<td style="text-align:right">'+(v.portal?'<a class="btn ghost sm" href="'+v.portal+'" target="_blank">Native ↗</a> ':'')+(s.status==="error"?'<button class="btn sm" onclick="UI.reconnect(\''+s.id+'\')">Reconnect</button>':'<button class="btn sm" onclick="UI.pollSource(\''+s.id+'\')">Poll now</button>')+'</td></tr>';
+    });
+    h+='</tbody></table></div>';
+    h+='<div class="small muted" style="margin-top:10px">Credentials are held server-side by the shared integration proxy — the same one the O&M Console manages. Fleet Command reads normalized telemetry, never raw vendor tokens.</div>';
+    h+='</div></div>';
+    $("app").innerHTML=h;
+  }
+
+  /* ---------------- SETTINGS ---------------- */
+  function renderSettings(){
+    var h=info("Fleet Command normalizes many vendor schemas into one asset model, then shares it with the rest of the O&M stack.");
+    h+='<div class="card"><div class="card-h"><h3>Normalization Model</h3><span class="sub">One schema, any portal</span></div><div class="card-b"><p class="small">Every source maps into a common asset row: <code>{site, cls, vendor, capKw, capKwh, nowKw, soc, avail, health, series, lastTelemetry}</code>. Whether a value comes from SolarEdge\'s API, a Gotion EMS endpoint, or Power Factors\' DAS, it lands in the same shape — which is what makes the single pane possible.</p>';
+    h+='<div class="section-h">Supported Portals</div><div class="flex" style="flex-wrap:wrap">';
+    for(var k in VENDORS){ var v=VENDORS[k]; h+='<span class="vchip"><span class="swatch" style="background:'+v.color+'"></span>'+esc(v.label)+' · '+esc(v.kind)+'</span>'; }
+    h+='</div></div></div>';
+    h+='<div class="card"><div class="card-h"><h3>Portal Data Feed</h3><span class="sub">How the tenant portal consumes fleet health</span></div><div class="card-b"><p class="small">Per-site rollup <code>{liveKw, avail, worstHealth, vendors[], hybrid, soc}</code> under <code>fc_sites/{projectId}</code>, plus an org aggregate at <code>fc_rollup/'+esc(WS.orgId)+'</code>. Joined by <code>editorProjectId</code> / <code>mondayBoardId</code> — the portal project card shows unified fleet health with no vendor login exposed to the owner.</p></div></div>';
+    $("app").innerHTML=h;
+  }
+
+  /* ================= actions ================= */
+  function setFilter(k,v){ STATE.filter[k]=v; render(); }
+  function clearFilter(){ STATE.filter={ vendor:"",cls:"",health:"" }; render(); }
+  function sortBy(k){ if(STATE.sort.key===k) STATE.sort.dir*=-1; else { STATE.sort.key=k; STATE.sort.dir=1; } render(); }
+
+  function refreshAll(){
+    // simulate a poll: bump lastTelemetry on all fresh assets
+    if(DEMO){ (STATE.cache.fc_assets||[]).forEach(function(a){ if(a.vendor!=="sma"){ a.lastTelemetry=Date.now(); } }); (STATE.cache.fc_sources||[]).forEach(function(s){ if(s.status==="connected")s.lastPoll=Date.now(); }); toast("Feeds refreshed"); render(); return; }
+    toast("Polling sources…");
+    fetch(INTEG_PROXY_URL,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({action:"poll_all",orgId:WS.orgId})}).then(function(){ invalidate("fc_assets"); invalidate("fc_sources"); toast("Feeds refreshed"); render(); }).catch(function(){ toast("Refresh failed — check proxy"); });
+  }
+  function pollSource(id){ if(DEMO){ var s=(STATE.cache.fc_sources||[]).filter(function(x){return x.id===id;})[0]; if(s)s.lastPoll=Date.now(); toast("Polled"); render(); return; } toast("Polling…"); }
+  function reconnect(id){ var s=(STATE.cache.fc_sources||[]).filter(function(x){return x.id===id;})[0]; if(!s)return; toast("Opening reconnect for "+vendorOf(s.vendor).label); }
+
+  function addSource(){
+    var body='<p class="small muted" style="margin-top:0">Connect a monitoring / OEM portal. Credentials are stored server-side by the shared integration proxy; Fleet Command only ingests normalized telemetry.</p>';
+    body+='<div class="form-row"><label class="f">Portal</label><select id="s_vendor">';
+    for(var k in VENDORS){ body+='<option value="'+k+'">'+esc(VENDORS[k].label)+' · '+esc(VENDORS[k].kind)+'</option>'; }
+    body+='</select></div><div class="form-row"><label class="f">Note (optional)</label><input id="s_note" placeholder="e.g. West portfolio inverters"></div>';
+    body+='<div class="warn-lock">Auth is completed in the O&M Console integration hub; adding here registers the portal for normalization.</div>';
+    $("ovTitle").textContent="Connect Portal"; $("ovBody").innerHTML=body; $("ovFoot").innerHTML='';
+    var cancel=el("button","btn","Cancel"); cancel.onclick=closeModal;
+    var go=el("button","btn pri","Register"); go.onclick=function(){
+      var o={ orgId:WS.orgId, vendor:$("s_vendor").value, status:"connected", lastPoll:Date.now(), note:$("s_note").value, assets:0, createdAt:Date.now() };
+      db.collection("fc_sources").doc(uid("src")).set(o).then(function(){ invalidate("fc_sources"); closeModal(); STATE.mod="sources"; render(); toast("Portal registered"); });
+    };
+    $("ovFoot").appendChild(cancel); $("ovFoot").appendChild(go); $("ov").className="ov on";
+  }
+
+  function closeModal(){ $("ov").className="ov"; }
+  function back(){ STATE.sel={}; render(); }
+
+  /* ================= expose ================= */
+  window.UI = {
+    openSite:openSite, setFilter:setFilter, clearFilter:clearFilter, sortBy:sortBy,
+    refreshAll:refreshAll, pollSource:pollSource, reconnect:reconnect, addSource:addSource,
+    back:back, closeModal:closeModal
+  };
+
+  boot();
+})();
+</script>
+</body>
+</html>
