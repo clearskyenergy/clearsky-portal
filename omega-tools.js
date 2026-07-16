@@ -176,6 +176,17 @@
       file:'/site-lifecycle.html', badge:'new', tier:TIER.DELUXE, custom:true, savesData:true,
       icon:'M3 21h18M5 21V7l8-4v18M19 21V11l-6-4M9 9v.01M9 12v.01M9 15v.01M9 18v.01' },
 
+    /* ── OMEGA SIGNAL ──
+       Account & integrations control plane. Available to EVERY tier — this is
+       where a tenant connects their own monitoring / ticketing / alert
+       providers. One connection here feeds all five O&M tools below (they read
+       the shared collections the proxy fills). The O&M tools deep-link here in
+       their "connect a source first" empty state. */
+    { key:'signal', name:'OMEGA Signal', category:'operations',
+      desc:'Connect your monitoring, EMS & alert providers — powers every OMEGA operations tool.',
+      file:'/account-settings.html', badge:'new', tier:TIER.ALL, savesData:true,
+      icon:'M4 12a8 8 0 0 1 8-8M4 12a8 8 0 0 0 8 8M12 12h.01M8 12a4 4 0 0 1 4-4M8 12a4 4 0 0 0 4 4' },
+
     /* ── O&M / OPERATIONS SUITE ──
        Post-COD asset operations. All gate at DELUXE (Performance) and above,
        matching each tool's isUnlocked() check. They share the om_integrations
