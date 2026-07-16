@@ -201,6 +201,7 @@ label.f { display:block; font-size:11px; color:#7b8794; text-transform:uppercase
 <script src="/config.js"></script>
 <!-- Shared tool registry + tier system (single source of truth) -->
 <script src="https://tools.csebuilders.com/omega-tools.js"></script>
+<script src="https://tools.csebuilders.com/om-telemetry-gate.js?v=1"></script>
 <!-- Firebase compat v8 -->
 <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
 <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-auth.js"></script>
@@ -400,6 +401,23 @@ label.f { display:block; font-size:11px; color:#7b8794; text-transform:uppercase
     return OT.isUnlocked(tool, workspaceOf(org));
   }
 
+  /* ---- Telemetry gate: real orgs with no connected source see the
+     "Connect in OMEGA Signal" state instead of demo data. Admins and
+     the in-memory DEMO mode bypass so ClearSky can always explore. ---- */
+  function __isAdminDomain(){ try{ var e=(USER&&USER.email)||""; var d=(e.split("@")[1]||"").toLowerCase(); return d==="csebuilders.com"||d==="clearsky-usa.com"; }catch(_){ return false; } }
+  function __telemetryGate(){
+    if(DEMO || __isAdminDomain()) return Promise.resolve(true);
+    if(!(root_OMEGASignal())) return Promise.resolve(true); // gate script missing -> don't block
+    return root_OMEGASignal().readStatus(db, WS.orgId).then(function(st){
+      if(st && st.hasTelemetry) return true;
+      var lbl = (typeof TOOL_LABEL!=="undefined") ? TOOL_LABEL : "This tool";
+      $("app").innerHTML = root_OMEGASignal().connectFirstHTML(lbl, WS.orgId);
+      return false;
+    }).catch(function(){ return true; });
+  }
+  function root_OMEGASignal(){ return (typeof window!=="undefined" && window.OMEGASignal) ? window.OMEGASignal : null; }
+  var TOOL_LABEL = "the O&M Console";
+
   function onUser(u){
     USER = u;
     var email = u.email || "admin@csebuilders.com";
@@ -415,8 +433,11 @@ label.f { display:block; font-size:11px; color:#7b8794; text-transform:uppercase
       var tb=$("tierBadge"); if(tb){ tb.textContent = tierName(org.tierLevel).toUpperCase(); }
       if(!canOpenThisApp(org)){ renderUpgrade(org, email); return; }
       bindNav();
-      seedIfEmpty().then(function(){ render(); }).catch(function(e){
+      __telemetryGate().then(function(ok){
+        if(ok===false){ return; }
+        seedIfEmpty().then(function(){ render(); }).catch(function(e){
         $("app").innerHTML='<div class="card"><div class="card-b"><h3>Couldn\'t load data</h3><p class="muted small">'+esc(String(e&&e.message||e))+'</p></div></div>';
+      });
       });
     });
   }

@@ -190,6 +190,7 @@ code { background:#eef2f6; padding:1px 5px; border-radius:4px; font-size:12px; }
 
 <script src="/config.js"></script>
 <script src="https://tools.csebuilders.com/omega-tools.js"></script>
+<script src="https://tools.csebuilders.com/om-telemetry-gate.js?v=1"></script>
 <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
 <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-auth.js"></script>
 <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-firestore.js"></script>
@@ -294,6 +295,23 @@ code { background:#eef2f6; padding:1px 5px; border-radius:4px; font-size:12px; }
   function workspaceOf(o){ return { orgId:o.orgId, tierLevel:o.tierLevel, unlockedTools:o.unlockedTools||[], requiredTools:o.requiredTools||[], customToolUrls:o.customToolUrls||{} }; }
   function canOpenThisApp(o){ if(!OT)return o.tierLevel>=2; var t=OT.byKey(APP_KEY); if(!t)return o.tierLevel>=2; return OT.isUnlocked(t,workspaceOf(o)); }
 
+  /* ---- Telemetry gate: real orgs with no connected source see the
+     "Connect in OMEGA Signal" state instead of demo data. Admins and
+     the in-memory DEMO mode bypass so ClearSky can always explore. ---- */
+  function __isAdminDomain(){ try{ var e=(USER&&USER.email)||""; var d=(e.split("@")[1]||"").toLowerCase(); return d==="csebuilders.com"||d==="clearsky-usa.com"; }catch(_){ return false; } }
+  function __telemetryGate(){
+    if(DEMO || __isAdminDomain()) return Promise.resolve(true);
+    if(!(root_OMEGASignal())) return Promise.resolve(true); // gate script missing -> don't block
+    return root_OMEGASignal().readStatus(db, WS.orgId).then(function(st){
+      if(st && st.hasTelemetry) return true;
+      var lbl = (typeof TOOL_LABEL!=="undefined") ? TOOL_LABEL : "This tool";
+      $("app").innerHTML = root_OMEGASignal().connectFirstHTML(lbl, WS.orgId);
+      return false;
+    }).catch(function(){ return true; });
+  }
+  function root_OMEGASignal(){ return (typeof window!=="undefined" && window.OMEGASignal) ? window.OMEGASignal : null; }
+  var TOOL_LABEL = "Fleet Command";
+
   function onUser(u){
     USER=u; var email=u.email||"admin@csebuilders.com"; var domain=(email.split("@")[1]||"").toLowerCase();
     if(!domain){ renderNoAuth(); return; }
@@ -304,7 +322,10 @@ code { background:#eef2f6; padding:1px 5px; border-radius:4px; font-size:12px; }
       var tb=$("tierBadge"); if(tb)tb.textContent=tierName(org.tierLevel).toUpperCase();
       if(!canOpenThisApp(org)){ renderUpgrade(org); return; }
       bindNav();
-      seedIfEmpty().then(function(){ render(); }).catch(function(e){ $("app").innerHTML='<div class="card"><div class="card-b"><h3>Couldn\'t load data</h3><p class="muted small">'+esc(String(e&&e.message||e))+'</p></div></div>'; });
+      __telemetryGate().then(function(ok){
+        if(ok===false){ return; }
+        seedIfEmpty().then(function(){ render(); }).catch(function(e){ $("app").innerHTML='<div class="card"><div class="card-b"><h3>Couldn\'t load data</h3><p class="muted small">'+esc(String(e&&e.message||e))+'</p></div></div>'; });
+      });
     });
   }
   function cfgTierLevel(){ var c=window.CLEARSKY_CONFIG; if(!c)return null;

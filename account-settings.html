@@ -1,0 +1,495 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ClearSky OMEGA — OMEGA Signal</title>
+<style>
+* { box-sizing: border-box; }
+html, body { margin:0; padding:0; height:100%; }
+body { font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif; color:#1b2733; background:#eef1f4; font-size:14px; }
+a { color:#1461d2; text-decoration:none; cursor:pointer; }
+a:hover { text-decoration:underline; }
+
+.tb { display:flex; align-items:center; height:52px; background:#0e1b33; color:#fff; padding:0 16px; position:sticky; top:0; z-index:50; }
+.tb-omega { height:26px; margin-right:9px; }
+.tb-logo-txt { font-weight:700; font-size:17px; letter-spacing:.3px; }
+.tb-logo-txt span { color:#4da3ff; }
+.tb-sep { width:1px; height:24px; background:#2a3c5c; margin:0 16px; }
+.tb-ws { font-size:13px; color:#9fb4d6; }
+.tb-ws b { color:#fff; }
+.tb-right { margin-left:auto; display:flex; align-items:center; gap:14px; font-size:12px; color:#9fb4d6; }
+.tb-badge { background:#123; border:1px solid #2a3c5c; color:#8fc0ff; padding:3px 9px; border-radius:20px; font-size:11px; font-weight:600; letter-spacing:.4px; }
+.tb-user { width:28px; height:28px; border-radius:50%; background:#2a3c5c; display:flex; align-items:center; justify-content:center; color:#cfe0ff; font-weight:700; font-size:12px; }
+
+.nav { display:flex; background:#12233f; padding:0 8px; flex-wrap:wrap; }
+.nav a { color:#a9bcd8; padding:11px 15px; font-size:13px; font-weight:600; border-bottom:3px solid transparent; }
+.nav a.on { color:#fff; border-bottom-color:#4da3ff; background:#0e1b33; }
+
+.wrap { padding:18px; max-width:1200px; margin:0 auto; }
+.card { background:#fff; border:1px solid #dde3ea; border-radius:10px; box-shadow:0 1px 2px rgba(16,30,54,.05); margin-bottom:18px; }
+.card-h { padding:13px 16px; border-bottom:1px solid #edf1f5; display:flex; align-items:center; gap:10px; }
+.card-h h3 { margin:0; font-size:14px; font-weight:700; }
+.card-h .sub { font-size:12px; color:#7b8794; font-weight:400; }
+.card-b { padding:16px; }
+
+.btn { display:inline-flex; align-items:center; gap:6px; border:1px solid #cbd4de; background:#fff; color:#1b2733; padding:7px 13px; border-radius:7px; font-size:13px; font-weight:600; cursor:pointer; }
+.btn:hover { background:#f4f7fa; }
+.btn.pri { background:#1461d2; border-color:#1461d2; color:#fff; }
+.btn.pri:hover { background:#0f4fae; }
+.btn.sm { padding:4px 9px; font-size:12px; }
+.btn.ghost { border-color:transparent; background:transparent; color:#1461d2; }
+.btn.danger { background:#fff; border-color:#e2b6b6; color:#b42323; }
+.btn.danger:hover { background:#fdecec; }
+.btn:disabled { opacity:.5; cursor:not-allowed; }
+
+input, select { font-family:inherit; font-size:13px; padding:8px 10px; border:1px solid #cbd4de; border-radius:7px; width:100%; background:#fff; }
+input:focus, select:focus { outline:none; border-color:#1461d2; box-shadow:0 0 0 3px rgba(20,97,210,.12); }
+label.f { display:block; font-size:11px; color:#7b8794; text-transform:uppercase; letter-spacing:.4px; margin:0 0 4px; }
+.form-row { margin-bottom:13px; }
+
+.pill { display:inline-block; padding:2px 9px; border-radius:20px; font-size:11px; font-weight:600; }
+.pill.green { background:#e2f5ea; color:#137a44; }
+.pill.amber { background:#fff2d9; color:#9a6800; }
+.pill.red { background:#fde3e3; color:#b42323; }
+.pill.gray { background:#eceff3; color:#5b6b7c; }
+
+.ov { position:fixed; inset:0; background:rgba(14,27,51,.5); display:none; align-items:flex-start; justify-content:center; z-index:100; padding:40px 16px; overflow:auto; }
+.ov.on { display:flex; }
+.modal { background:#fff; border-radius:12px; width:100%; max-width:520px; box-shadow:0 20px 60px rgba(0,0,0,.3); }
+.modal-h { padding:16px 20px; border-bottom:1px solid #edf1f5; display:flex; align-items:center; }
+.modal-h h3 { margin:0; font-size:16px; }
+.modal-h .x { margin-left:auto; cursor:pointer; color:#7b8794; font-size:20px; line-height:1; }
+.modal-b { padding:20px; }
+.modal-f { padding:14px 20px; border-top:1px solid #edf1f5; display:flex; gap:10px; justify-content:flex-end; }
+
+.grp-h { font-size:12px; font-weight:700; color:#3a4a5c; margin:20px 0 10px; text-transform:uppercase; letter-spacing:.5px; }
+.cards { display:grid; grid-template-columns:repeat(auto-fill,minmax(320px,1fr)); gap:14px; }
+.icard { border:1px solid #dde3ea; border-radius:10px; padding:14px 16px; background:#fff; display:flex; flex-direction:column; }
+.icard.conn { border-color:#a8dcc0; }
+.icard.err { border-color:#e2b6b6; }
+.icard .ih { display:flex; align-items:center; gap:10px; margin-bottom:6px; }
+.icard .in { font-weight:700; font-size:14px; }
+.icard .idesc { font-size:12px; color:#7b8794; flex:1; margin-bottom:12px; }
+.icard .iact { display:flex; gap:8px; align-items:center; }
+.icard .status { font-size:11px; margin-left:auto; }
+.swatch { width:34px; height:34px; border-radius:8px; display:flex; align-items:center; justify-content:center; font-weight:800; color:#fff; font-size:15px; flex-shrink:0; }
+
+.muted { color:#7b8794; }
+.small { font-size:12px; }
+.info-lock { background:#e8f0fb; border:1px solid #b9d3f2; border-radius:8px; padding:10px 14px; font-size:12px; color:#1461d2; margin-bottom:16px; }
+.warn-lock { background:#fff7e6; border:1px solid #f0d492; border-radius:8px; padding:10px 14px; font-size:12px; color:#8a6400; margin:0 0 14px; }
+.ok-lock { background:#e2f5ea; border:1px solid #a8dcc0; border-radius:8px; padding:10px 14px; font-size:12px; color:#137a44; margin:0 0 14px; }
+.secure-note { display:flex; gap:8px; align-items:flex-start; font-size:11px; color:#5b6b7c; margin-top:10px; padding:8px 10px; background:#f6f8fb; border-radius:7px; }
+.toast { position:fixed; bottom:22px; right:22px; background:#0e1b33; color:#fff; padding:12px 18px; border-radius:9px; font-size:13px; box-shadow:0 8px 30px rgba(0,0,0,.3); z-index:200; display:none; }
+.toast.on { display:block; }
+.loading { padding:40px; text-align:center; color:#7b8794; }
+.spacer { flex:1; }
+table { width:100%; border-collapse:collapse; font-size:13px; }
+th { text-align:left; font-size:11px; text-transform:uppercase; letter-spacing:.4px; color:#7b8794; padding:8px 10px; border-bottom:1px solid #e4e9ef; font-weight:700; }
+td { padding:9px 10px; border-bottom:1px solid #eef2f6; vertical-align:middle; }
+code { background:#eef2f6; padding:1px 5px; border-radius:4px; font-size:12px; }
+.kpis { display:flex; gap:14px; margin-bottom:18px; flex-wrap:wrap; }
+.kpi { flex:1; min-width:140px; background:#fff; border:1px solid #dde3ea; border-radius:10px; padding:14px 16px; }
+.kpi .n { font-size:24px; font-weight:800; color:#0e1b33; }
+.kpi .n.good { color:#137a44; } .kpi .n.warn { color:#9a6800; }
+.kpi .l { font-size:11px; text-transform:uppercase; letter-spacing:.5px; color:#7b8794; margin-top:2px; }
+</style>
+</head>
+<body>
+
+<div class="tb">
+  <img src="/clearsky-omega-mark-white.png" alt="OMEGA" class="tb-omega">
+  <span class="tb-logo-txt">Clear<span>Sky</span> OMEGA</span>
+  <div class="tb-sep"></div>
+  <span class="tb-ws">OMEGA Signal &nbsp;·&nbsp; <b id="wsName">Loading…</b></span>
+  <div class="tb-right">
+    <span class="tb-badge" id="tierBadge">—</span>
+    <span id="userEmail">—</span>
+    <div class="tb-user" id="userInitial">?</div>
+  </div>
+</div>
+
+<div class="nav" id="nav">
+  <a data-mod="integrations" class="on">Integrations</a>
+  <a data-mod="mapping">Site Mapping</a>
+  <a data-mod="status">Sync Status</a>
+</div>
+
+<div class="wrap" id="app"><div class="loading">Connecting to workspace…</div></div>
+
+<div class="ov" id="ov">
+  <div class="modal">
+    <div class="modal-h"><h3 id="ovTitle">—</h3><span class="x" onclick="UI.closeModal()">&times;</span></div>
+    <div class="modal-b" id="ovBody"></div>
+    <div class="modal-f" id="ovFoot"></div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script src="/config.js"></script>
+<script src="https://tools.csebuilders.com/omega-tools.js"></script>
+<script src="https://tools.csebuilders.com/om-telemetry-gate.js?v=1"></script>
+<script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+<script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-auth.js"></script>
+<script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-firestore.js"></script>
+
+<script>
+/* ============================================================
+   ClearSky OMEGA — Account & Integrations (per-tenant settings)
+   The single control panel where a customer connects THEIR OWN
+   monitoring / ticketing / alert providers. One connection here
+   feeds ALL five O&M tools, because they all read the shared
+   normalized collections (om_sites / fc_assets) and route actions
+   through the same /api/om-integrations proxy.
+
+   SECURITY MODEL (matches your slc_crm_config pattern):
+     · om_integrations/{orgId}  — NON-SECRET status/metadata.
+        Client-readable, scoped to org. Widget renders from this.
+     · om_secrets/{orgId}       — the actual API keys. SERVER-ONLY
+        (Firestore rule: allow read,write: if false). The browser
+        NEVER reads it. Secrets are POSTed to the proxy, which
+        stores them via the Firebase Admin SDK.
+
+   USE_MOCK=true ships a built-in fake proxy so this runs & demos
+   today. Flip to false when /api/om-integrations is live.
+   ES5-only, no build step. Firebase compat v8.
+   ============================================================ */
+(function () {
+  "use strict";
+
+  window.onerror = function(msg){
+    var app=document.getElementById("app");
+    if(app && app.querySelector(".loading")){ app.innerHTML='<div class="card"><div class="card-b"><h3>Something went wrong</h3><p class="muted small">'+String(msg)+'</p></div></div>'; }
+    return false;
+  };
+
+  var CSCONFIG=(typeof window!=="undefined"&&window.CLEARSKY_CONFIG)?window.CLEARSKY_CONFIG:null;
+  var FB=(CSCONFIG&&CSCONFIG.firebase)?CSCONFIG.firebase:{
+    apiKey:"AIzaSyABoM1lgOYUnd5ZadaoTMhYmA9cHa8Tyo0", authDomain:"clearsky-portal.firebaseapp.com",
+    projectId:"clearsky-portal", storageBucket:"clearsky-portal.firebasestorage.app",
+    messagingSenderId:"742134484347", appId:"1:742134484347:web:ab0f95fd221536158481de" };
+
+  var APP_KEY="signal";
+  var INTEG_PROXY_URL="https://tools.csebuilders.com/api/om-integrations";
+  /* ── Flip to false once the serverless proxy route is live. ── */
+  var USE_MOCK=true;
+
+  var TIER_LABEL={ 0:"OMEGA (All)",1:"OMEGA Core",2:"OMEGA Performance",3:"Enterprise · Alpha & Omega" };
+  function tierName(n){ return TIER_LABEL[n]!=null?TIER_LABEL[n]:("Tier "+n); }
+  var ADMIN_DOMAINS={ "csebuilders.com":true,"clearsky-usa.com":true };
+  var COMPANY=(CSCONFIG&&CSCONFIG.companyName)?CSCONFIG.companyName:"ClearSky OMEGA";
+
+  /* ── Provider catalog: identical to the INTEGRATIONS map the O&M
+       Console defines, so both tools agree on providers/fields. ── */
+  var INTEGRATIONS = (window.OMEGASignal && window.OMEGASignal.catalog) ? window.OMEGASignal.catalog() : {
+    powerfactors:  { group:"Monitoring", label:"Power Factors (Drive)", color:"#1461d2", feeds:"telemetry", fields:[
+      { key:"apiKey", label:"API Key", secret:true } ], note:"Asset performance / DAS aggregation." },
+    also:          { group:"Monitoring", label:"AlsoEnergy / PowerTrack", color:"#e08600", feeds:"telemetry", fields:[
+      { key:"apiKey", label:"API Key", secret:true },
+      { key:"siteId", label:"Site ID" } ], note:"Solar + storage monitoring." },
+    solaredge:     { group:"Monitoring", label:"SolarEdge Monitoring", color:"#e2241a", feeds:"telemetry", fields:[
+      { key:"apiKey", label:"API Key", secret:true } ], note:"Inverter-level production." },
+    fronius:       { group:"Monitoring", label:"Fronius Solar.web", color:"#0d7d72", feeds:"telemetry", fields:[
+      { key:"accessKeyId", label:"Access Key ID" },
+      { key:"accessKeyValue", label:"Access Key Value", secret:true } ], note:"Inverter telemetry." },
+    gotion_ems:    { group:"Monitoring", label:"Gotion / Molecule EMS", color:"#6b3fd4", feeds:"telemetry", fields:[
+      { key:"endpoint", label:"EMS Endpoint URL", ph:"https://ems.molecule…" },
+      { key:"token", label:"Bearer Token", secret:true } ], note:"BESS SoC, dispatch, availability." },
+    modbus_gw:     { group:"Monitoring", label:"Generic Modbus/SunSpec Gateway", color:"#5b6b7c", feeds:"telemetry", fields:[
+      { key:"endpoint", label:"Gateway URL" },
+      { key:"apiKey", label:"API Key", secret:true } ], note:"On-site datalogger bridge." },
+    servicenow:    { group:"Field Service", label:"ServiceNow", color:"#137a44", feeds:"tickets", fields:[
+      { key:"instanceUrl", label:"Instance URL", ph:"https://yourco.service-now.com" },
+      { key:"clientId", label:"Client ID", secret:true },
+      { key:"clientSecret", label:"Client Secret", secret:true } ], note:"Enterprise work-order sync." },
+    servicetitan:  { group:"Field Service", label:"ServiceTitan", color:"#e2241a", feeds:"tickets", fields:[
+      { key:"clientId", label:"Client ID", secret:true },
+      { key:"clientSecret", label:"Client Secret", secret:true },
+      { key:"tenantId", label:"Tenant ID" } ], note:"Dispatch & technician scheduling." },
+    monday_wo:     { group:"Field Service", label:"Monday.com (Work Orders)", color:"#ff3d57", feeds:"tickets", fields:[
+      { key:"apiToken", label:"API Token", secret:true } ], note:"Board-based ticket sync." },
+    slack:         { group:"Alerts", label:"Slack", color:"#4a154b", feeds:"alerts", fields:[
+      { key:"webhookUrl", label:"Incoming Webhook URL", secret:true } ], note:"Post P1 tickets & SLA-at-risk alerts." },
+    twilio:        { group:"Alerts", label:"Twilio SMS", color:"#f22f46", feeds:"alerts", fields:[
+      { key:"accountSid", label:"Account SID" },
+      { key:"authToken", label:"Auth Token", secret:true },
+      { key:"fromNumber", label:"From Number", ph:"+1…" } ], note:"On-call SMS for critical tickets." }
+  };
+  var GROUPS=["Monitoring","Field Service","Alerts"];
+  var GROUP_NOTE={
+    "Monitoring":"Pull telemetry (availability, production, SoC) into every O&M tool.",
+    "Field Service":"Push work orders out and pull status back for Field Service & the O&M Console.",
+    "Alerts":"Send SLA-breach and P1 notifications from SLA Intelligence and the O&M Console."
+  };
+
+  var db, auth, USER=null, WS=null;
+  var STATE={ mod:"integrations", config:null, sites:[], busy:{} };
+
+  function $(id){ return document.getElementById(id); }
+  function el(t,c,h){ var e=document.createElement(t); if(c)e.className=c; if(h!=null)e.innerHTML=h; return e; }
+  function esc(s){ if(s==null)return ""; return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;"); }
+  function ago(ms){ if(!ms)return "never"; var s=(Date.now()-ms)/1000; if(s<60)return Math.max(1,Math.floor(s))+"s ago"; if(s<3600)return Math.floor(s/60)+"m ago"; if(s<86400)return Math.floor(s/3600)+"h ago"; return Math.floor(s/86400)+"d ago"; }
+  function toast(m){ var t=$("toast"); t.textContent=m; t.className="toast on"; setTimeout(function(){ t.className="toast"; },2600); }
+  function uid(p){ return (p||"id")+"_"+Date.now().toString(36)+"_"+Math.random().toString(36).slice(2,7); }
+
+  var DEMO=false;
+
+  /* ================= boot ================= */
+  function boot(){
+    var keyMissing=!FB.apiKey||FB.apiKey.indexOf("PLACEHOLDER")!==-1;
+    if(typeof firebase==="undefined"||keyMissing) return startDemo();
+    try{ firebase.initializeApp(FB); db=firebase.firestore(); auth=firebase.auth(); }catch(e){ return startDemo(); }
+    auth.onAuthStateChanged(function(u){ if(!u){ auth.signInAnonymously().catch(function(){ startDemo(); }); return; } onUser(u); }, function(){ startDemo(); });
+  }
+  function startDemo(){ DEMO=true; db=makeMemDb(); onUser({ email:"admin@clearsky-usa.com" }); }
+
+  function makeMemDb(){
+    var store={};
+    function collection(name){ store[name]=store[name]||{};
+      return { doc:function(id){ id=id||uid("doc"); return docRef(name,id); },
+        where:function(f,op,v){ return query(name,[[f,op,v]]); }, get:function(){ return query(name,[]).get(); } }; }
+    function docRef(name,id){ return { id:id,
+      set:function(o){ store[name][id]=clone(o); return Promise.resolve(); },
+      update:function(p){ var d=store[name][id]||{}; for(var k in p)d[k]=p[k]; store[name][id]=d; return Promise.resolve(); },
+      get:function(){ var d=store[name][id]; return Promise.resolve({ exists:!!d, id:id, data:function(){return clone(d);} }); } }; }
+    function query(name,conds){ return { where:function(f,op,v){ return query(name,conds.concat([[f,op,v]])); },
+      get:function(){ var out=[],bag=store[name]||{}; for(var id in bag){ var r=bag[id],ok=true;
+        for(var i=0;i<conds.length;i++){ var c=conds[i]; if(c[1]==="=="&&r[c[0]]!==c[2]){ ok=false; break; } }
+        if(ok) out.push({ id:id, data:(function(x){return function(){return clone(x);};})(r) }); }
+        return Promise.resolve({ empty:out.length===0, size:out.length, forEach:function(cb){ out.forEach(cb); } }); } }; }
+    function clone(o){ return o==null?o:JSON.parse(JSON.stringify(o)); }
+    return { collection:collection };
+  }
+
+  var OT=window.OMEGATools;
+  function omegaOrgRef(orgId){ return db.collection("omega_orgs").doc(orgId); }
+  function workspaceOf(o){ return { orgId:o.orgId, tierLevel:o.tierLevel, unlockedTools:o.unlockedTools||[], requiredTools:o.requiredTools||[], customToolUrls:o.customToolUrls||{} }; }
+  /* Account settings is available to every tier (level >= 1). */
+  function canOpenThisApp(o){ return o.tierLevel>=1; }
+
+  function onUser(u){
+    USER=u; var email=u.email||"admin@clearsky-usa.com"; var domain=(email.split("@")[1]||"").toLowerCase();
+    if(!domain){ $("app").innerHTML='<div class="card"><div class="card-b"><h3>Sign-in required</h3></div></div>'; return; }
+    $("userEmail").textContent=email; $("userInitial").textContent=(email[0]||"?").toUpperCase();
+    resolveOrg(domain,email).then(function(org){
+      WS={ orgId:org.orgId, name:(COMPANY||org.orgId), tierLevel:org.tierLevel, isAdmin:org.isAdmin };
+      $("wsName").textContent=WS.name+(DEMO?" · DEMO":"");
+      var tb=$("tierBadge"); if(tb)tb.textContent=tierName(org.tierLevel).toUpperCase();
+      if(!canOpenThisApp(org)){ $("app").innerHTML='<div class="card"><div class="card-b" style="text-align:center;padding:50px"><div style="font-size:40px">🔒</div><h3>Account &amp; Integrations</h3><p class="muted">Available on all OMEGA plans.</p></div></div>'; return; }
+      bindNav();
+      loadConfig().then(function(){ render(); });
+    });
+  }
+  function cfgTierLevel(){ var c=window.CLEARSKY_CONFIG; if(!c)return null;
+    if(typeof c.tierLevel==="number")return c.tierLevel; if(typeof c.tier==="number")return c.tier;
+    if(typeof c.tier==="string"){ var t=c.tier.toLowerCase(); if(t.indexOf("enter")===0||t.indexOf("alpha")===0)return 3; if(t.indexOf("perf")===0||t==="deluxe")return 2; if(t==="core"||t==="standard")return 1; } return null; }
+  function resolveOrg(domain){ var isAdmin=!!ADMIN_DOMAINS[domain]; var cfgTier=cfgTierLevel();
+    if(DEMO){ return Promise.resolve({ orgId:domain, tierLevel:isAdmin?3:(cfgTier!=null?cfgTier:2), isAdmin:isAdmin }); }
+    return omegaOrgRef(domain).get().then(function(d){ if(d.exists){ var data=d.data(); return { orgId:domain, tierLevel:(typeof data.tierLevel==="number")?data.tierLevel:(cfgTier!=null?cfgTier:1), isAdmin:isAdmin }; }
+      return { orgId:domain, tierLevel:(isAdmin?3:(cfgTier!=null?cfgTier:1)), isAdmin:isAdmin };
+    }).catch(function(){ return { orgId:domain, tierLevel:(isAdmin?3:(cfgTier!=null?cfgTier:1)), isAdmin:isAdmin }; });
+  }
+  function bindNav(){ var links=$("nav").getElementsByTagName("a"); for(var i=0;i<links.length;i++){ (function(a){ a.onclick=function(){ for(var j=0;j<links.length;j++)links[j].className=""; a.className="on"; STATE.mod=a.getAttribute("data-mod"); render(); }; })(links[i]); } }
+
+  /* ================= mock proxy =================
+     Simulates the /api/om-integrations serverless route so the
+     widget is fully interactive before the real backend exists.
+     Contract mirrored EXACTLY so swapping to real is one flag. */
+  function mockProxy(body){
+    return new Promise(function(resolve){
+      setTimeout(function(){
+        if(body.action==="connect"){ resolve({ ok:true, connected:true, lastTest:Date.now(), maskedHint:maskHint(body.fields) }); return; }
+        if(body.action==="test"){ var ok=Math.random()>0.15; resolve({ ok:ok, lastTest:Date.now(), message: ok?"Handshake succeeded":"Auth rejected (mock)" }); return; }
+        if(body.action==="disconnect"){ resolve({ ok:true, connected:false }); return; }
+        if(body.action==="poll"){ resolve({ ok:true, polled:Date.now(), sites:3, note:"Mock poll — no live telemetry written" }); return; }
+        resolve({ ok:true });
+      }, 500+Math.random()*500);
+    });
+  }
+  function maskHint(fields){ // show only a tail hint, never the secret
+    for(var k in (fields||{})){ var v=String(fields[k]||""); if(v.length>4)return "···"+v.slice(-4); }
+    return "···set";
+  }
+  function callProxy(body){
+    body.orgId=WS.orgId;
+    if(USE_MOCK||DEMO) return mockProxy(body);
+    return fetch(INTEG_PROXY_URL,{ method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify(body) })
+      .then(function(r){ return r.json(); });
+  }
+
+  /* ================= config (non-secret status doc) ================= */
+  function integConfigRef(){ return db.collection("om_integrations").doc(WS.orgId); }
+  function loadConfig(){
+    return integConfigRef().get().then(function(d){
+      STATE.config = d.exists ? (d.data()||{}) : { orgId:WS.orgId, providers:{} };
+      if(!STATE.config.providers) STATE.config.providers={};
+      return loadSites();
+    }).catch(function(){ STATE.config={ orgId:WS.orgId, providers:{} }; return loadSites(); });
+  }
+  function loadSites(){
+    return db.collection("om_sites").where("orgId","==",WS.orgId).get().then(function(s){
+      var arr=[]; s.forEach(function(d){ var o=d.data(); o.id=d.id; arr.push(o); });
+      if(!arr.length && DEMO){ arr=[ {id:"s1",name:"Claremont BESS — Berkeley"},{id:"s2",name:"Winnipeg BESS — Fort St"},{id:"s3",name:"OGI Solar — Cedar Rapids"} ]; }
+      STATE.sites=arr;
+    }).catch(function(){ STATE.sites=[]; });
+  }
+  function __countConnected(){ var n=0; for(var k in STATE.config.providers){ var p=STATE.config.providers[k]; if(p&&p.connected)n++; } return n; }
+  function __countTelemetry(){ var n=0; for(var k in STATE.config.providers){ var p=STATE.config.providers[k]; if(p&&p.connected&&INTEGRATIONS[k]&&INTEGRATIONS[k].feeds==="telemetry")n++; } return n; }
+  /* Persist ONLY non-secret status back to the client-readable doc. */
+  function saveProviderStatus(key, patch){
+    var p=STATE.config.providers[key]||{};
+    for(var k in patch)p[k]=patch[k];
+    STATE.config.providers[key]=p;
+    var payload={ orgId:WS.orgId, providers:STATE.config.providers, updatedAt:Date.now() };
+    payload.hasTelemetry = __countTelemetry()>0;
+    payload.connectedCount = __countConnected();
+    return integConfigRef().set(payload).catch(function(){});
+  }
+
+  /* ================= render ================= */
+  function render(){
+    if(STATE.mod==="integrations") renderIntegrations();
+    else if(STATE.mod==="mapping") renderMapping();
+    else if(STATE.mod==="status") renderStatus();
+  }
+  function provStatus(key){ var p=STATE.config.providers[key]; if(!p||!p.connected)return "disconnected"; if(p.lastTestOk===false)return "error"; return "connected"; }
+  function statusPill(st){ return st==="connected"?'<span class="pill green">Connected</span>':st==="error"?'<span class="pill red">Needs attention</span>':'<span class="pill gray">Not connected</span>'; }
+
+  function renderIntegrations(){
+    var conn=0, err=0, tel=0;
+    for(var k in INTEGRATIONS){ var st=provStatus(k); if(st==="connected"){conn++; if(INTEGRATIONS[k].feeds==="telemetry")tel++;} if(st==="error")err++; }
+    var h='';
+    h+='<div class="info-lock">◎ Connect your own monitoring, ticketing, and alert providers here. <b>One connection feeds all five O&amp;M tools</b> — the O&amp;M Console, SLA Intelligence, Field Service, Owner Reporting, and Fleet Command all read the data these integrations bring in.</div>';
+    if(USE_MOCK) h+='<div class="warn-lock">⚙ <b>Preview mode.</b> Connections are simulated — no live data is pulled and no messages are sent yet. Your ClearSky rep will enable live sync when your backend route is provisioned.</div>';
+    h+='<div class="kpis">'
+      +'<div class="kpi"><div class="n'+(conn?" good":"")+'">'+conn+'</div><div class="l">Connected</div></div>'
+      +'<div class="kpi"><div class="n">'+tel+'</div><div class="l">Telemetry Sources</div></div>'
+      +'<div class="kpi"><div class="n'+(err?" warn":"")+'">'+err+'</div><div class="l">Need Attention</div></div>'
+      +'<div class="kpi"><div class="n">'+STATE.sites.length+'</div><div class="l">Sites</div></div>'
+      +'</div>';
+
+    for(var g=0; g<GROUPS.length; g++){
+      var grp=GROUPS[g];
+      h+='<div class="grp-h">'+esc(grp)+'</div>';
+      h+='<div class="small muted" style="margin:-4px 0 10px">'+esc(GROUP_NOTE[grp])+'</div>';
+      h+='<div class="cards">';
+      for(var key in INTEGRATIONS){ var it=INTEGRATIONS[key]; if(it.group!==grp)continue;
+        var st=provStatus(key); var p=STATE.config.providers[key]||{};
+        h+='<div class="icard '+(st==="connected"?"conn":st==="error"?"err":"")+'">'
+          +'<div class="ih"><span class="swatch" style="background:'+it.color+'">'+esc(it.label[0])+'</span><span class="in">'+esc(it.label)+'</span><span class="status">'+statusPill(st)+'</span></div>'
+          +'<div class="idesc">'+esc(it.note)+(p.maskedHint?'<br><span class="muted">Key '+esc(p.maskedHint)+' · tested '+ago(p.lastTest)+'</span>':'')+'</div>'
+          +'<div class="iact">';
+        if(st==="disconnected"){
+          h+='<button class="btn pri sm" onclick="UI.connect(\''+key+'\')">Connect</button>';
+        } else {
+          h+='<button class="btn sm" onclick="UI.test(\''+key+'\')">Test</button>'
+            +'<button class="btn sm" onclick="UI.connect(\''+key+'\')">Reconfigure</button>'
+            +'<button class="btn danger sm" onclick="UI.disconnect(\''+key+'\')">Disconnect</button>';
+        }
+        h+='</div></div>';
+      }
+      h+='</div>';
+    }
+    $("app").innerHTML=h;
+  }
+
+  function renderMapping(){
+    var telProviders=[]; for(var k in INTEGRATIONS){ if(INTEGRATIONS[k].feeds==="telemetry" && provStatus(k)==="connected") telProviders.push(k); }
+    var h='<div class="info-lock">◎ Map each of your sites to the monitoring account that reports it. This tells the sync where to write telemetry, so the right numbers land on the right site across every tool.</div>';
+    if(!telProviders.length){ h+='<div class="warn-lock">Connect at least one <b>Monitoring</b> provider first — then map your sites here.</div>'; }
+    if(!STATE.sites.length){ h+='<div class="card"><div class="card-b"><div class="muted small">No sites yet. Add sites in the O&amp;M Console, then return here to map them.</div></div></div>'; $("app").innerHTML=h; return; }
+    h+='<div class="card"><div class="card-h"><h3>Site → Source Mapping</h3><span class="sub">'+STATE.sites.length+' sites</span></div><div class="card-b"><table><thead><tr><th>Site</th><th>Monitoring Source</th><th>Remote Site / Asset ID</th><th></th></tr></thead><tbody>';
+    var maps=(STATE.config.siteMap)||{};
+    STATE.sites.forEach(function(s){
+      var m=maps[s.id]||{};
+      var opts='<option value="">— unmapped —</option>';
+      telProviders.forEach(function(pk){ opts+='<option value="'+pk+'"'+(m.provider===pk?" selected":"")+'>'+esc(INTEGRATIONS[pk].label)+'</option>'; });
+      h+='<tr><td><b>'+esc(s.name||s.id)+'</b></td>'
+        +'<td><select id="map_prov_'+s.id+'" '+(telProviders.length?"":"disabled")+'>'+opts+'</select></td>'
+        +'<td><input id="map_rid_'+s.id+'" value="'+esc(m.remoteId||"")+'" placeholder="e.g. 1234567" '+(telProviders.length?"":"disabled")+'></td>'
+        +'<td style="text-align:right"><button class="btn sm" onclick="UI.saveMap(\''+s.id+'\')">Save</button></td></tr>';
+    });
+    h+='</tbody></table></div></div>';
+    $("app").innerHTML=h;
+  }
+
+  function renderStatus(){
+    var h='<div class="info-lock">◎ Live sync status. Telemetry pulls run on a schedule once your backend route is provisioned; you can also trigger a manual poll per source.</div>';
+    h+='<div class="card"><div class="card-h"><h3>Sync Status</h3><div class="spacer"></div><button class="btn pri sm" onclick="UI.pollAll()">⟳ Poll all sources now</button></div><div class="card-b"><table><thead><tr><th>Provider</th><th>Type</th><th>Status</th><th>Last Sync</th><th></th></tr></thead><tbody>';
+    var any=false;
+    for(var k in INTEGRATIONS){ var st=provStatus(k); if(st==="disconnected")continue; any=true; var it=INTEGRATIONS[k]; var p=STATE.config.providers[k]||{};
+      h+='<tr><td><b>'+esc(it.label)+'</b></td><td class="small muted">'+esc(it.feeds)+'</td><td>'+statusPill(st)+'</td>'
+        +'<td class="small muted">'+ago(p.lastPoll)+'</td>'
+        +'<td style="text-align:right"><button class="btn sm" onclick="UI.poll(\''+k+'\')">Poll</button></td></tr>';
+    }
+    if(!any) h+='<tr><td colspan="5" class="muted small" style="text-align:center;padding:24px">No providers connected yet.</td></tr>';
+    h+='</tbody></table>';
+    h+='<div class="secure-note">🔒 <div>API keys are never stored in your browser or in readable data. They are sent over an encrypted channel to the ClearSky integration service and stored server-side. This settings page can display connection <b>status</b> only, never the keys themselves.</div></div>';
+    h+='</div></div>';
+    $("app").innerHTML=h;
+  }
+
+  /* ================= actions ================= */
+  function connect(key){
+    var it=INTEGRATIONS[key]; if(!it)return;
+    var body='<p class="small muted" style="margin-top:0">'+esc(it.note)+'</p>';
+    for(var i=0;i<it.fields.length;i++){ var f=it.fields[i];
+      body+='<div class="form-row"><label class="f">'+esc(f.label)+(f.secret?' 🔒':'')+'</label>'
+        +'<input id="fld_'+f.key+'" '+(f.secret?'type="password" autocomplete="off"':'')+' placeholder="'+esc(f.ph||"")+'"></div>';
+    }
+    body+='<div class="secure-note">🔒 <div>Keys are sent encrypted to the ClearSky integration service and stored server-side — never saved in this page or in readable data.</div></div>';
+    $("ovTitle").textContent="Connect "+it.label; $("ovBody").innerHTML=body; $("ovFoot").innerHTML="";
+    var cancel=el("button","btn","Cancel"); cancel.onclick=closeModal;
+    var save=el("button","btn pri","Connect &amp; Test"); save.onclick=function(){ doConnect(key); };
+    $("ovFoot").appendChild(cancel); $("ovFoot").appendChild(save); $("ov").className="ov on";
+  }
+  function doConnect(key){
+    var it=INTEGRATIONS[key]; var fields={}; var missing=false;
+    for(var i=0;i<it.fields.length;i++){ var f=it.fields[i]; var v=($("fld_"+f.key)||{}).value||""; if(!v){ missing=true; } fields[f.key]=v; }
+    if(missing){ toast("Fill in all fields"); return; }
+    var btn=$("ovFoot").querySelector(".pri"); if(btn){ btn.disabled=true; btn.textContent="Connecting…"; }
+    /* Secrets go ONLY to the proxy — never to Firestore from the client. */
+    callProxy({ action:"connect", provider:key, fields:fields }).then(function(res){
+      if(!res||!res.ok){ toast("Connection failed"); if(btn){btn.disabled=false; btn.innerHTML="Connect &amp; Test";} return; }
+      /* Persist non-secret status only. */
+      saveProviderStatus(key, { connected:true, lastTest:res.lastTest||Date.now(), lastTestOk:true, maskedHint:res.maskedHint||"···set" }).then(function(){
+        closeModal(); toast(INTEGRATIONS[key].label+" connected"); render();
+      });
+    });
+  }
+  function test(key){
+    if(STATE.busy[key])return; STATE.busy[key]=true; toast("Testing "+INTEGRATIONS[key].label+"…");
+    callProxy({ action:"test", provider:key }).then(function(res){ STATE.busy[key]=false;
+      var ok=res&&res.ok; saveProviderStatus(key,{ lastTest:Date.now(), lastTestOk:!!ok }).then(function(){ toast(ok?"Test passed":"Test failed — "+((res&&res.message)||"check credentials")); render(); });
+    });
+  }
+  function disconnect(key){
+    $("ovTitle").textContent="Disconnect "+INTEGRATIONS[key].label; $("ovBody").innerHTML='<p class="small">This removes the stored credentials and stops all sync for this provider. You can reconnect any time.</p>'; $("ovFoot").innerHTML="";
+    var cancel=el("button","btn","Cancel"); cancel.onclick=closeModal;
+    var go=el("button","btn danger","Disconnect"); go.onclick=function(){
+      callProxy({ action:"disconnect", provider:key }).then(function(){
+        STATE.config.providers[key]={ connected:false };
+        integConfigRef().set({ orgId:WS.orgId, providers:STATE.config.providers, hasTelemetry:__countTelemetry()>0, connectedCount:__countConnected(), updatedAt:Date.now() }).then(function(){ closeModal(); toast("Disconnected"); render(); });
+      });
+    };
+    $("ovFoot").appendChild(cancel); $("ovFoot").appendChild(go); $("ov").className="ov on";
+  }
+  function saveMap(siteId){
+    var prov=($("map_prov_"+siteId)||{}).value||""; var rid=($("map_rid_"+siteId)||{}).value||"";
+    STATE.config.siteMap=STATE.config.siteMap||{}; STATE.config.siteMap[siteId]={ provider:prov, remoteId:rid };
+    integConfigRef().set({ orgId:WS.orgId, providers:STATE.config.providers, siteMap:STATE.config.siteMap, updatedAt:Date.now() }).then(function(){ toast("Mapping saved"); });
+  }
+  function poll(key){ toast("Polling "+INTEGRATIONS[key].label+"…"); callProxy({ action:"poll", provider:key }).then(function(res){ saveProviderStatus(key,{ lastPoll:Date.now() }).then(function(){ toast(res&&res.note?res.note:"Poll complete"); render(); }); }); }
+  function pollAll(){ toast("Polling all sources…"); callProxy({ action:"poll_all" }).then(function(){ var now=Date.now(); for(var k in STATE.config.providers){ if(STATE.config.providers[k].connected)STATE.config.providers[k].lastPoll=now; } integConfigRef().set({ orgId:WS.orgId, providers:STATE.config.providers, siteMap:STATE.config.siteMap||{}, updatedAt:now }).then(function(){ toast("Sync triggered"); render(); }); }); }
+
+  function closeModal(){ $("ov").className="ov"; }
+
+  window.UI={ connect:connect, doConnect:doConnect, test:test, disconnect:disconnect, saveMap:saveMap, poll:poll, pollAll:pollAll, closeModal:closeModal };
+
+  boot();
+})();
+</script>
+</body>
+</html>
