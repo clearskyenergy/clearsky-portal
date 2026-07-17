@@ -44,12 +44,13 @@
 
   /* ── Categories drive the section grouping in the marketplace grid ── */
   var CATEGORIES = [
-    { key: 'design',      label: 'Design & Engineering' },
-    { key: 'finance',     label: 'Finance & Modeling' },
-    { key: 'sales',       label: 'Sales & Proposals' },
-    { key: 'permitting',  label: 'Permitting & AHJ' },
-    { key: 'operations',  label: 'Operations & Asset Management' },
-    { key: 'marketplace', label: 'Marketplace & Partners' }
+    { key: 'design',         label: 'Design & Engineering' },
+    { key: 'interconnection',label: 'Interconnection & Grid' },
+    { key: 'finance',        label: 'Finance & Modeling' },
+    { key: 'sales',          label: 'Sales & Proposals' },
+    { key: 'permitting',     label: 'Permitting' },
+    { key: 'operations',     label: 'Operations & Asset Management' },
+    { key: 'marketplace',    label: 'Marketplace & Partners' }
   ];
 
   /* ══════════════════════════════════════════════════════════════════
@@ -77,7 +78,7 @@
       action:'new:bess', tier:TIER.STANDARD, custom:true, savesData:true,
       icon:'M2 7h20v14H2zM16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16' },
 
-    { key:'gridatlas', name:'Grid Atlas', category:'design',
+    { key:'gridatlas', name:'Grid Atlas', category:'interconnection',
       desc:'Interconnection & grid-proximity site intel — substations, lines, plants, EIA.',
       file:'/grid-atlas.html', badge:'new', tier:TIER.ALL,
       icon:'M3 6l6-3 6 3 6-3v15l-6 3-6-3-6 3zM9 3v15M15 6v15' },
@@ -238,17 +239,17 @@
       icon:'M11 19a8 8 0 1 0 0-16 8 8 0 0 0 0 16zM21 21l-4.3-4.3' },
 
     /* ── PERMITTING & INTERCONNECTION ── */
-    { key:'conductorsizing', name:'Conductor & Transformer Sizing', category:'permitting',
+    { key:'conductorsizing', name:'Conductor & Transformer Sizing', category:'design',
       desc:'NEC 2023 feeder & transformer sizing — fills the conductor schedule for permit sets.',
       file:'/conductor-sizing.html', badge:'new', tier:TIER.DELUXE, savesData:true,
       icon:'M4 12h16M4 12l3-3M4 12l3 3M20 12l-3-3M20 12l-3 3' },
 
-    { key:'interconnect', name:'Interconnection Screener', category:'permitting',
+    { key:'interconnect', name:'Interconnection Screener', category:'interconnection',
       desc:'Screens a project against FERC Order 792 fast-track rules — study vs fast-track upfront.',
       file:'/interconnection-screener.html', badge:'new', tier:TIER.STANDARD, savesData:true,
       icon:'M12 2 2 7l10 5 10-5zM2 17l10 5 10-5M2 12l10 5 10-5' },
 
-    { key:'interconnectstudy', name:'Interconnection Study', category:'permitting',
+    { key:'interconnectstudy', name:'Interconnection Study', category:'interconnection',
       desc:'Distribution load-flow & short-circuit study — voltages and fault duty per bus.',
       file:'/interconnection-study.html', badge:'new', tier:TIER.ENTERPRISE, savesData:true,
       icon:'M13 2 3 14h7l-1 8 10-12h-7z' },
