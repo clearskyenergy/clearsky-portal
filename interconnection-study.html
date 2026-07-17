@@ -1,0 +1,353 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Interconnection Study · ClearSky-OMEGA</title>
+<script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+<script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-auth.js"></script>
+<script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-firestore.js"></script>
+<script src="/omega-settings.js"></script>
+<style>
+  :root{
+    --ink:#f5f7fb; --panel:#ffffff; --panel2:#f0f3f9; --line:#d9e0ec;
+    --txt:#16233d; --dim:#5d6b85; --accent:#1f9d5a; --accent2:#2563c7;
+    --warn:#b06a00; --bad:#c23434; --good:#1f9d5a;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--ink);color:var(--txt);
+    font:14px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif}
+  .wrap{max-width:1080px;margin:0 auto;padding:22px 18px 80px}
+  h1{font-size:22px;margin:0 0 2px;letter-spacing:.2px}
+  .sub{color:var(--dim);font-size:13px;margin-bottom:16px}
+  .tabs{display:flex;gap:4px;border-bottom:1px solid var(--line);margin-bottom:16px}
+  .tab{padding:9px 16px;font-size:13px;font-weight:600;color:var(--dim);cursor:pointer;border-bottom:2px solid transparent}
+  .tab.on{color:var(--txt);border-bottom-color:var(--accent)}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:16px;box-shadow:0 1px 3px rgba(22,35,61,.06);margin-bottom:16px}
+  .card h2{font-size:13px;text-transform:uppercase;letter-spacing:1.2px;color:var(--dim);margin:0 0 12px}
+  label{display:block;font-size:12px;color:var(--dim);margin:10px 0 4px}
+  input,select{width:100%;background:var(--panel2);border:1px solid var(--line);color:var(--txt);border-radius:8px;padding:8px 10px;font-size:13px}
+  .row{display:flex;gap:10px}.row>*{flex:1}
+  .btn{background:var(--accent);color:#fff;border:0;border-radius:9px;padding:11px 16px;font-weight:700;font-size:14px;cursor:pointer}
+  .btn.ghost{background:transparent;color:var(--accent2);border:1px solid var(--line)}
+  .btn.wide{width:100%;margin-top:6px}
+  table{width:100%;border-collapse:collapse;font-size:12px;margin-top:6px}
+  th,td{text-align:left;padding:7px 8px;border-bottom:1px solid var(--line)}
+  th{color:var(--dim);font-weight:600;text-transform:uppercase;font-size:10px;letter-spacing:.6px}
+  td.r,th.r{text-align:right}
+  .note{font-size:12px;color:var(--dim);margin-top:10px;line-height:1.5}
+  .hidden{display:none}
+  .muted{color:var(--dim);font-size:12px}
+  .topbar{display:flex;align-items:center;justify-content:space-between;margin-bottom:14px}
+  .tag{font-size:10px;padding:1px 6px;border-radius:10px}
+  .tag.ok{background:#eaf7f0;color:var(--good)}
+  .tag.warn{background:#fdf4e5;color:var(--warn)}
+  .tag.bad{background:#fbecec;color:var(--bad)}
+  .kpi{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin:6px 0 12px}
+  .kpi .b{background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:12px}
+  .kpi .n{font-size:20px;font-weight:700}
+  .kpi .l{font-size:10px;color:var(--dim);text-transform:uppercase;letter-spacing:.7px}
+  .busRow{display:flex;gap:8px;align-items:center;margin-bottom:8px}
+  .busRow input{font-size:12px;padding:6px 8px}
+  .del{background:transparent;border:0;color:var(--bad);cursor:pointer;font-size:16px;padding:0 6px}
+  .addbtn{background:transparent;border:1px dashed var(--line);color:var(--accent2);border-radius:8px;padding:8px;width:100%;margin-top:6px;cursor:pointer;font-size:13px}
+  a{color:var(--accent2)}
+
+  /* ===== OMEGA house style: dark-navy topbar + nav (matches fleet-command) ===== */
+  .tb{display:flex;align-items:center;height:52px;background:#0e1b33;color:#fff;padding:0 16px;position:sticky;top:0;z-index:50}
+  .tb-omega{height:26px;margin-right:9px}
+  .tb-logo-txt{font-weight:700;font-size:17px;letter-spacing:.3px}
+  .tb-logo-txt span{color:#4da3ff}
+  .tb-sep{width:1px;height:24px;background:#2a3c5c;margin:0 16px}
+  .tb-ws{font-size:13px;color:#b9c8e0}
+  .tb-ws b{color:#fff;font-weight:700}
+  .tb-right{margin-left:auto;display:flex;align-items:center;gap:12px}
+  .tb-badge{background:#12233f;border:1px solid #2a3c5c;color:#8fc0ff;padding:3px 9px;border-radius:20px;font-size:11px;font-weight:600;letter-spacing:.4px}
+  .tb-plat{color:#cfe0ff;text-decoration:none;font-size:12px;border:1px solid #2a3c5c;background:#12233f;padding:5px 11px;border-radius:7px;font-weight:600}
+  .tb-plat.off{opacity:.4;pointer-events:none}
+  .tb-user{width:28px;height:28px;border-radius:50%;background:#2a3c5c;display:flex;align-items:center;justify-content:center;color:#cfe0ff;font-weight:700;font-size:12px}
+  .nav{display:flex;background:#12233f;padding:0 8px;flex-wrap:wrap}
+  .nav a{color:#9fb2cf;padding:11px 15px;font-size:13px;font-weight:600;cursor:pointer;border-bottom:2px solid transparent;text-decoration:none}
+  .nav a.on{color:#fff;border-bottom-color:#4da3ff;background:#0e1b33}
+</style>
+</head>
+<body>
+<div class="tb">
+  <img src="/clearsky-omega-mark-white.png" alt="OMEGA" class="tb-omega">
+  <span class="tb-logo-txt">Clear<span>Sky</span> OMEGA</span>
+  <div class="tb-sep"></div>
+  <span class="tb-ws">Interconnection Study &nbsp;&middot;&nbsp; <b id="orgLabel">org: —</b></span>
+  <div class="tb-right">
+    <a href="#" id="portalLink" class="tb-plat off">&#9632; Platform</a>
+    <span class="tb-badge" id="tierBadge">OMEGA</span>
+    <div class="tb-user" id="userInitial">?</div>
+  </div>
+</div>
+<div class="nav">
+  <a class="tab on" data-tab="study">Study</a>
+  <a class="tab" data-tab="settings" style="margin-left:auto">&#9881; Settings</a>
+</div>
+<div class="wrap">
+  <!-- ===== STUDY TAB ===== -->
+  <div id="tab-study">
+    <div class="card">
+      <h2>Source &amp; system</h2>
+      <div class="row">
+        <div><label>Utility source short-circuit MVA</label><input id="srcMva" type="number" value="250"></div>
+        <div><label>Nominal voltage (kV, L-L)</label><input id="nomKv" type="number" step="0.1" value="12.47"></div>
+        <div><label>Source X/R ratio</label><input id="xr" type="number" step="0.1" value="10"></div>
+      </div>
+      <div class="note">Source strength drives fault current. If you don't have the utility's short-circuit duty, request it in the pre-application report — it's the single most important study input.</div>
+    </div>
+
+    <div class="card">
+      <h2>Feeder buses (radial)</h2>
+      <div id="buses"></div>
+      <button class="addbtn" id="addBus">+ Add bus</button>
+      <div class="note">Each bus: load kW, DER kW injected here, and the line to its parent (length ft, conductor R and X in ohms/1000 ft). Bus 1 is the POI. Defaults use typical 4/0 AL overhead impedances.</div>
+    </div>
+
+    <button class="btn wide" id="runBtn">Run study</button>
+
+    <div id="results" class="hidden" style="margin-top:16px">
+      <div class="card">
+        <h2>Study summary</h2>
+        <div class="kpi" id="kpi"></div>
+      </div>
+      <div class="card">
+        <h2>Load-flow: bus voltages</h2>
+        <table id="vTable"><thead><tr><th>Bus</th><th class="r">Load kW</th><th class="r">DER kW</th>
+          <th class="r">Voltage pu</th><th class="r">Voltage %</th><th class="r">ΔV from POI</th><th>Status</th></tr></thead><tbody></tbody></table>
+        <div class="note">Voltage computed by radial back/forward sweep. ANSI C84.1 Range A is 0.95–1.05 pu at the service. DER injection can raise voltage (the classic upstream-of-load rise) — flagged if over 1.05.</div>
+      </div>
+      <div class="card">
+        <h2>Short-circuit: fault duty</h2>
+        <table id="scTable"><thead><tr><th>Bus</th><th class="r">3Ø fault kA</th><th class="r">SLG fault kA</th>
+          <th class="r">DER contribution kA</th><th>Adequacy</th></tr></thead><tbody></tbody></table>
+        <div class="note">Three-phase and single-line-to-ground fault currents at each bus, including inverter DER fault contribution (~1.2× rated, per typical grid-following inverter behavior). Compare against equipment interrupting ratings.</div>
+      </div>
+      <div class="card">
+        <div class="row">
+          <button class="btn" id="saveBtn">Save study</button>
+        </div>
+        <div class="muted" id="saveMsg" style="margin-top:8px"></div>
+        <div class="note" style="margin-top:10px">This is a screening-grade study for developer decision-making. A utility-accepted study uses the utility's actual network model, protection settings, and validated source impedance. Use this to anticipate results and de-risk the application, not to replace the utility's study.</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== SETTINGS TAB ===== -->
+  <div id="tab-settings" class="hidden">
+    <div class="card">
+      <h2>API keys &amp; data sources</h2>
+      <div id="settingsPanel"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+/* ══════════════════════════════════════════════════════════════════
+   INTERCONNECTION STUDY  ·  ClearSky-OMEGA
+   ES5. Single-file. Firebase compat v8. Shared settings module.
+   Radial distribution load-flow (back/forward sweep) + short-circuit (MVA method).
+   ══════════════════════════════════════════════════════════════════ */
+(function(){
+  'use strict';
+
+  var ORG=(function(){var m=window.location.search.match(/[?&]org=([^&]+)/);return m?decodeURIComponent(m[1]):null;})();
+  var PROJECT=(function(){var m=window.location.search.match(/[?&]id=([^&]+)/);return m?decodeURIComponent(m[1]):null;})();
+  document.getElementById('orgLabel').textContent='org: '+(ORG||'—');
+
+  (function(){
+    var link=document.getElementById('portalLink');
+    var pm=window.location.search.match(/[?&]portal=([^&]+)/);var url=null;
+    if(pm){url=decodeURIComponent(pm[1]);}
+    else if(ORG){var slug=ORG.split('.')[0].toLowerCase();url='https://'+slug+'.csebuilders.com/';}
+    else if(document.referrer){try{var u=new URL(document.referrer);url=u.origin+'/';}catch(e){}}
+    if(url){link.href=url;link.className='tb-plat';link.title='Return to '+url;}
+    else{link.title='Open this tool from your portal to enable';}
+  })();
+
+  var _db=null;
+  try{if(!firebase.apps.length){firebase.initializeApp({apiKey:'AIzaSyB-PLACEHOLDER',authDomain:'clearsky-portal.firebaseapp.com',projectId:'clearsky-portal'});}
+    _db=firebase.firestore();}catch(e){_db=null;}
+
+  function $(id){return document.getElementById(id);}
+  function num(id){var v=parseFloat($(id).value);return isFinite(v)?v:0;}
+
+  /* tabs + settings */
+  var tabs=document.getElementsByClassName('tab');
+  for (var t=0;t<tabs.length;t++){
+    tabs[t].addEventListener('click', function(e){
+      var name=e.target.getAttribute('data-tab');
+      for (var i=0;i<tabs.length;i++) tabs[i].className='tab'+(tabs[i].getAttribute('data-tab')===name?' on':'');
+      $('tab-study').className = name==='study'?'':'hidden';
+      $('tab-settings').className = name==='settings'?'':'hidden';
+    });
+  }
+  if (global_OMEGASettings()){
+    OMEGASettings.init(_db, ORG).then(function(){ OMEGASettings.renderTab('settingsPanel'); });
+  } else {
+    $('settingsPanel').innerHTML='<div class="muted">Settings module not loaded (omega-settings.js). Deploy it alongside this tool.</div>';
+  }
+  function global_OMEGASettings(){ return (typeof OMEGASettings!=='undefined'); }
+
+  /* ── Buses UI ── */
+  var seq=0;
+  function addBus(cfg){
+    cfg=cfg||{};seq++;
+    var div=document.createElement('div');
+    div.className='busRow';
+    div.innerHTML=
+      '<input placeholder="Bus name" value="'+(cfg.name||('Bus '+seq))+'" style="flex:1.4">'+
+      '<input type="number" placeholder="Load kW" value="'+(cfg.load!=null?cfg.load:'')+'" style="flex:.9" title="load at this bus">'+
+      '<input type="number" placeholder="DER kW" value="'+(cfg.der!=null?cfg.der:'')+'" style="flex:.9" title="DER injected here">'+
+      '<input type="number" placeholder="Line ft" value="'+(cfg.len!=null?cfg.len:'')+'" style="flex:.8" title="length to parent">'+
+      '<input type="number" step="0.001" placeholder="R Ω/kft" value="'+(cfg.r!=null?cfg.r:'0.166')+'" style="flex:.8" title="resistance ohms per 1000 ft">'+
+      '<input type="number" step="0.001" placeholder="X Ω/kft" value="'+(cfg.x!=null?cfg.x:'0.126')+'" style="flex:.8" title="reactance ohms per 1000 ft">'+
+      '<button class="del">×</button>';
+    div.querySelector('.del').addEventListener('click',function(){div.parentNode.removeChild(div);});
+    $('buses').appendChild(div);
+  }
+  $('addBus').addEventListener('click',function(){addBus();});
+  // seed: POI -> midfeeder -> DER bus
+  addBus({name:'POI (Bus 1)',load:0,der:0,len:0,r:0,x:0});
+  addBus({name:'Feeder mid',load:400,der:0,len:2000,r:0.166,x:0.126});
+  addBus({name:'DER bus',load:150,der:802,len:1500,r:0.166,x:0.126});
+
+  /* ══════════ STUDY ENGINE ══════════
+     Load flow: radial back/forward sweep. Per-unit on source MVA base.
+     Voltage drop along each segment from current × impedance. DER injection
+     reduces (or reverses) segment current, which can raise downstream voltage.
+
+     Short circuit: MVA method. Source SC MVA at POI; each line adds impedance
+     that reduces available fault MVA downstream. Fault kA = MVA/(√3·kV).
+     Inverter DER adds a bounded fault contribution (~1.2× rated current). */
+  function run(){
+    var srcMva=num('srcMva'), kv=num('nomKv'), xr=num('xr');
+    if (kv<=0){ alert('Enter a nominal voltage.'); return; }
+
+    var rows=$('buses').getElementsByClassName('busRow');
+    var buses=[];
+    for (var i=0;i<rows.length;i++){
+      var inp=rows[i].getElementsByTagName('input');
+      buses.push({ name:inp[0].value||('Bus '+(i+1)),
+        load:parseFloat(inp[1].value)||0, der:parseFloat(inp[2].value)||0,
+        len:parseFloat(inp[3].value)||0, rk:parseFloat(inp[4].value)||0, xk:parseFloat(inp[5].value)||0,
+        idx:i });
+    }
+    if (!buses.length){ alert('Add at least the POI bus.'); return; }
+
+    var kvLL=kv, baseMVA=srcMva, sqrt3=1.732;
+    var baseZ=(kv*kv)/baseMVA;      // ohms base
+    var baseI=baseMVA*1000/(sqrt3*kv); // amps base
+
+    // ── LOAD FLOW: radial, each bus parent = previous (simple radial chain) ──
+    // segment impedance (ohms) from length × per-kft R,X
+    for (var b=0;b<buses.length;b++){
+      buses[b].R = buses[b].len/1000*buses[b].rk;
+      buses[b].X = buses[b].len/1000*buses[b].xk;
+    }
+    // net power at each bus (kW): load draws +, DER injects -
+    // cumulative downstream current on each segment (radial chain)
+    var vpu=[], cumKw=[];
+    // downstream net kW for segment feeding bus b = sum of (load-der) at b..end
+    for (var s=0;s<buses.length;s++){
+      var acc=0;
+      for (var d2=s;d2<buses.length;d2++){ acc += (buses[d2].load - buses[d2].der); }
+      cumKw[s]=acc;
+    }
+    // forward voltage: start at POI = 1.0 pu, drop along each segment
+    var v=1.0; vpu[0]=1.0;
+    for (var seg=1;seg<buses.length;seg++){
+      var pkw=cumKw[seg];                       // net kW flowing into this segment
+      var amps=Math.abs(pkw)*1000/(sqrt3*kvLL*1000); // approx current (kV*kV->kV)
+      // proper: I = P / (√3 · V_LL); use kV in volts
+      amps = Math.abs(pkw)*1000/(sqrt3*kvLL*1000);
+      var Iamps = Math.abs(pkw)/(sqrt3*kvLL); // kW/(√3·kV) = amps (since kW/kV = A·√3 term)
+      // voltage drop (volts L-N) = I·(Rcosθ+Xsinθ); assume pf 0.95
+      var pf=0.95, sinp=Math.sqrt(1-pf*pf);
+      var vdropV = Iamps*(buses[seg].R*pf + buses[seg].X*sinp);
+      var vLN = kvLL*1000/sqrt3;
+      var dropPu = vdropV/vLN;
+      // DER injection (net negative cumKw) raises voltage => sign follows pkw
+      if (pkw<0) dropPu = -dropPu;   // reverse flow raises downstream voltage
+      v = v - dropPu;
+      vpu[seg]=v;
+    }
+
+    // ── SHORT CIRCUIT: MVA method along the chain ──
+    // Z of source (pu on baseMVA) = 1.0 (since baseMVA = srcMva). Add line Z pu.
+    var scRows=[];
+    var zAccum=0; // accumulated line impedance magnitude in pu
+    for (var f=0;f<buses.length;f++){
+      if (f>0){
+        var zpu = Math.sqrt(buses[f].R*buses[f].R + buses[f].X*buses[f].X)/baseZ;
+        zAccum += zpu;
+      }
+      var zTotal = 1.0 + zAccum;                 // source(1.0) + lines
+      var faultMva = baseMVA/zTotal;
+      var i3ph = faultMva*1000/(sqrt3*kvLL);     // amps
+      // SLG approx ~ 1.15× of 3ph for solidly grounded distribution (rough)
+      var iSlg = i3ph*1.15;
+      // DER inverter contribution: ~1.2× rated current of DER at/below this bus
+      var derBelow=0; for (var g=f;g<buses.length;g++) derBelow+=buses[g].der;
+      var derI = derBelow>0 ? (derBelow/(sqrt3*kvLL))*1.2 : 0;
+      scRows.push({ name:buses[f].name, i3:i3ph/1000, islg:iSlg/1000, der:derI/1000 });
+    }
+
+    // ── render ──
+    var minV=1, maxV=0;
+    for (var vv=0;vv<vpu.length;vv++){ if(vpu[vv]<minV)minV=vpu[vv]; if(vpu[vv]>maxV)maxV=vpu[vv]; }
+    var poiFault=scRows[0].i3;
+
+    $('kpi').innerHTML=
+      kbox((Math.round(minV*1000)/1000)+' pu','Min bus voltage')+
+      kbox((Math.round(maxV*1000)/1000)+' pu','Max bus voltage')+
+      kbox((Math.round(poiFault*10)/10)+' kA','3Ø fault at POI')+
+      kbox((minV>=0.95&&maxV<=1.05)?'PASS':'REVIEW','ANSI C84.1 Range A');
+
+    var vtb='';
+    for (var r=0;r<buses.length;r++){
+      var vp=vpu[r], pct=vp*100, dv=(vp-1.0)*100;
+      var st = vp<0.95?'<span class="tag bad">under 0.95</span>':
+               vp>1.05?'<span class="tag bad">over 1.05 (DER rise)</span>':
+               '<span class="tag ok">in range</span>';
+      vtb+='<tr><td>'+buses[r].name+'</td><td class="r">'+buses[r].load+'</td><td class="r">'+
+        (buses[r].der||'—')+'</td><td class="r">'+(Math.round(vp*1000)/1000)+'</td><td class="r">'+
+        (Math.round(pct*10)/10)+'%</td><td class="r">'+(Math.round(dv*100)/100)+'%</td><td>'+st+'</td></tr>';
+    }
+    $('vTable').getElementsByTagName('tbody')[0].innerHTML=vtb;
+
+    var stb='';
+    for (var sc=0;sc<scRows.length;sc++){
+      var row=scRows[sc];
+      var adeq = row.i3<20?'<span class="tag ok">typ. gear OK</span>':
+                 row.i3<40?'<span class="tag warn">verify rating</span>':
+                 '<span class="tag bad">high — check IR</span>';
+      stb+='<tr><td>'+row.name+'</td><td class="r">'+(Math.round(row.i3*100)/100)+'</td><td class="r">'+
+        (Math.round(row.islg*100)/100)+'</td><td class="r">'+(row.der?(Math.round(row.der*100)/100):'—')+
+        '</td><td>'+adeq+'</td></tr>';
+    }
+    $('scTable').getElementsByTagName('tbody')[0].innerHTML=stb;
+
+    window._study={buses:buses,vpu:vpu,sc:scRows,src:{srcMva:srcMva,kv:kv,xr:xr}};
+    $('results').className='';
+    $('results').scrollIntoView({behavior:'smooth'});
+  }
+  function kbox(n,l){return '<div class="b"><div class="n">'+n+'</div><div class="l">'+l+'</div></div>';}
+
+  function saveData(){
+    if(!_db||!ORG){$('saveMsg').textContent='No org/DB scope — preview mode; not persisted.';return;}
+    var payload={data:{study:window._study,savedAt:Date.now(),project:PROJECT},updatedAt:firebase.firestore.FieldValue.serverTimestamp()};
+    _db.collection('toolData').doc(ORG).collection('tools').doc('interconnectstudy').set(payload,{merge:true})
+      .then(function(){$('saveMsg').textContent='Saved to '+ORG+'.';})
+      ['catch'](function(e){$('saveMsg').textContent='Save failed: '+e.message;});
+  }
+  $('runBtn').addEventListener('click',run);
+  $('saveBtn').addEventListener('click',saveData);
+
+})();
+</script>
+</body>
+</html>

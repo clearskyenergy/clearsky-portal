@@ -1,0 +1,878 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Site Optimizer · ClearSky-OMEGA</title>
+<!-- Firebase compat v8 (matches OMEGA convention) -->
+<script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+<script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-auth.js"></script>
+<script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-firestore.js"></script>
+<script src="/omega-settings.js"></script>
+<style>
+  :root{
+    --ink:#f5f7fb; --panel:#ffffff; --panel2:#f0f3f9; --line:#d9e0ec;
+    --txt:#16233d; --dim:#5d6b85; --accent:#1f9d5a; --accent2:#2563c7;
+    --warn:#b06a00; --bad:#c23434; --good:#1f9d5a;
+    --contracted:#1f9d5a; --modeled:#e0952b;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--ink);color:var(--txt);
+    font:14px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif}
+  .wrap{max-width:1180px;margin:0 auto;padding:22px 18px 80px}
+  h1{font-size:22px;margin:0 0 2px;letter-spacing:.2px}
+  .sub{color:var(--dim);font-size:13px;margin-bottom:18px}
+  .grid{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+  @media(max-width:820px){.grid{grid-template-columns:1fr}}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:16px 16px 18px;box-shadow:0 1px 3px rgba(22,35,61,.06)}
+  .card h2{font-size:13px;text-transform:uppercase;letter-spacing:1.2px;color:var(--dim);margin:0 0 12px}
+  label{display:block;font-size:12px;color:var(--dim);margin:10px 0 4px}
+  input,select{width:100%;background:var(--panel2);border:1px solid var(--line);color:var(--txt);
+    border-radius:8px;padding:8px 10px;font-size:13px}
+  input[type=file]{padding:6px}
+  .row{display:flex;gap:10px}.row>*{flex:1}
+  .src{display:flex;gap:6px;align-items:center;margin-top:4px}
+  .src select{max-width:150px;font-size:11px;padding:4px 6px}
+  .vflag{font-size:11px;display:flex;align-items:center;gap:4px;white-space:nowrap;color:var(--dim);cursor:pointer}
+  .vflag input{width:auto}
+  .btn{background:var(--accent);color:#ffffff;border:0;border-radius:9px;padding:11px 16px;
+    font-weight:700;font-size:14px;cursor:pointer;letter-spacing:.3px}
+  .btn:disabled{opacity:.5;cursor:default}
+  .btn.ghost{background:transparent;color:var(--accent2);border:1px solid var(--line)}
+  .btn.wide{width:100%;margin-top:14px}
+  .pill{display:inline-block;font-size:11px;padding:2px 8px;border-radius:20px;border:1px solid var(--line)}
+  .pill.ok{color:var(--good);border-color:#9fd7ba;background:#eaf7f0}
+  .pill.warn{color:var(--warn);border-color:#e6cba0;background:#fdf4e5}
+  .kpi{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin:6px 0 12px}
+  .kpi .b{background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:12px}
+  .kpi .n{font-size:22px;font-weight:700}
+  .kpi .l{font-size:11px;color:var(--dim);text-transform:uppercase;letter-spacing:.8px}
+  .bar{height:26px;border-radius:6px;overflow:hidden;display:flex;border:1px solid var(--line);margin:8px 0}
+  .bar .seg{display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:600;color:#ffffff}
+  .seg.c{background:var(--contracted)}.seg.m{background:var(--modeled)}
+  table{width:100%;border-collapse:collapse;font-size:12px;margin-top:6px}
+  th,td{text-align:left;padding:6px 8px;border-bottom:1px solid var(--line)}
+  th{color:var(--dim);font-weight:600;text-transform:uppercase;font-size:10px;letter-spacing:.6px}
+  .audit td:last-child{text-align:right}
+  .tag{font-size:10px;padding:1px 6px;border-radius:10px}
+  .tag.verified{background:#eaf7f0;color:var(--good)}
+  .tag.unverified{background:#fdf4e5;color:var(--warn)}
+  .note{font-size:12px;color:var(--dim);margin-top:10px;line-height:1.5}
+  .hidden{display:none}
+  .banner{border-radius:10px;padding:10px 12px;font-size:12px;margin-bottom:14px;border:1px solid}
+  .banner.warn{background:#fdf4e5;border-color:#e6cba0;color:#8a5300}
+  .topbar{display:flex;align-items:center;justify-content:space-between;margin-bottom:14px}
+  .muted{color:var(--dim);font-size:12px}
+  a{color:var(--accent2)}
+
+  /* ===== OMEGA house style: dark-navy topbar + nav (matches fleet-command) ===== */
+  .tb{display:flex;align-items:center;height:52px;background:#0e1b33;color:#fff;padding:0 16px;position:sticky;top:0;z-index:50}
+  .tb-omega{height:26px;margin-right:9px}
+  .tb-logo-txt{font-weight:700;font-size:17px;letter-spacing:.3px}
+  .tb-logo-txt span{color:#4da3ff}
+  .tb-sep{width:1px;height:24px;background:#2a3c5c;margin:0 16px}
+  .tb-ws{font-size:13px;color:#b9c8e0}
+  .tb-ws b{color:#fff;font-weight:700}
+  .tb-right{margin-left:auto;display:flex;align-items:center;gap:12px}
+  .tb-badge{background:#12233f;border:1px solid #2a3c5c;color:#8fc0ff;padding:3px 9px;border-radius:20px;font-size:11px;font-weight:600;letter-spacing:.4px}
+  .tb-plat{color:#cfe0ff;text-decoration:none;font-size:12px;border:1px solid #2a3c5c;background:#12233f;padding:5px 11px;border-radius:7px;font-weight:600}
+  .tb-plat.off{opacity:.4;pointer-events:none}
+  .tb-user{width:28px;height:28px;border-radius:50%;background:#2a3c5c;display:flex;align-items:center;justify-content:center;color:#cfe0ff;font-weight:700;font-size:12px}
+  .nav{display:flex;background:#12233f;padding:0 8px;flex-wrap:wrap}
+  .nav a{color:#9fb2cf;padding:11px 15px;font-size:13px;font-weight:600;cursor:pointer;border-bottom:2px solid transparent;text-decoration:none}
+  .nav a.on{color:#fff;border-bottom-color:#4da3ff;background:#0e1b33}
+</style>
+</head>
+<body>
+<div class="tb">
+  <img src="/clearsky-omega-mark-white.png" alt="OMEGA" class="tb-omega">
+  <span class="tb-logo-txt">Clear<span>Sky</span> OMEGA</span>
+  <div class="tb-sep"></div>
+  <span class="tb-ws">Site Optimizer &nbsp;&middot;&nbsp; <b id="orgLabel">org: —</b></span>
+  <div class="tb-right">
+    <a href="#" id="portalLink" class="tb-plat off">&#9632; Platform</a>
+    <span class="tb-badge" id="tierBadge">OMEGA</span>
+    <div class="tb-user" id="userInitial">?</div>
+  </div>
+</div>
+<div class="nav">
+  <a class="tab on" data-tab="tool">Optimizer</a>
+  <a class="tab" data-tab="settings" style="margin-left:auto">&#9881; Settings</a>
+</div>
+<div class="wrap">
+  <div id="tab-settings" class="hidden">
+    <div class="card"><h2>API keys &amp; data sources</h2><div id="settingsPanel"></div></div>
+  </div>
+
+  <div id="tab-tool">
+
+  <div class="banner warn" id="bankBanner">
+    <b>Bankability rule:</b> unverified inputs are excluded from the bankable summary and revenue shown as
+    <span style="color:var(--modeled)">modeled</span>, not <span style="color:var(--contracted)">contracted</span>.
+    Mark an input verified only when it's backed by real data (Green Button, signed tariff, contracted offtake, OEM datasheet).
+  </div>
+
+  <div class="grid">
+    <!-- ============ LOAD ============ -->
+    <div class="card">
+      <h2>1 · Load Profile <span class="pill warn" id="loadPill">not loaded</span></h2>
+      <label>Upload Green Button / AMI CSV (8760 hourly kWh)</label>
+      <input type="file" id="loadCsv" accept=".csv,text/csv">
+      <div class="src">
+        <select id="loadSrc">
+          <option value="greenbutton">Green Button (utility)</option>
+          <option value="ami">AMI interval export</option>
+          <option value="modeled">Modeled estimate</option>
+        </select>
+        <label class="vflag"><input type="checkbox" id="loadVer"> verified</label>
+      </div>
+      <label>…or model a profile: annual kWh</label>
+      <div class="row">
+        <input id="annualKwh" type="number" placeholder="e.g. 1,800,000">
+        <select id="loadShape">
+          <option value="flat">Flat</option>
+          <option value="commercial">Commercial (9–5 peak)</option>
+          <option value="ev">EV depot (evening peak)</option>
+        </select>
+      </div>
+      <div class="note" id="loadNote">No load yet. Real interval data makes the peak-demand and arbitrage numbers bankable; a modeled shape is an estimate only.</div>
+    </div>
+
+    <!-- ============ TARIFF ============ -->
+    <div class="card">
+      <h2>2 · Tariff <span class="pill warn" id="tariffPill">not set</span></h2>
+      <label>OpenEI URDB API key <span class="muted">(free — <a href="https://openei.org/services/api/signup/" target="_blank">get one</a>)</span></label>
+      <input id="urdbKey" placeholder="paste key">
+      <label>Utility rate name (URDB label)</label>
+      <div class="row">
+        <input id="rateName" placeholder="e.g. PG&E B-19">
+        <button class="btn ghost" id="fetchTariff">Fetch</button>
+      </div>
+      <div class="row" style="margin-top:10px">
+        <div><label>Energy $/kWh (blended)</label><input id="tEnergy" type="number" step="0.001"></div>
+        <div><label>Demand $/kW-mo</label><input id="tDemand" type="number" step="0.01"></div>
+      </div>
+      <label style="margin-top:8px">TOU pricing for dispatch <span class="muted">(drives arbitrage)</span></label>
+      <div class="row">
+        <div><label>On-peak $/kWh</label><input id="touPeak" type="number" step="0.001" placeholder="e.g. 0.28"></div>
+        <div><label>Off-peak $/kWh</label><input id="touOff" type="number" step="0.001" placeholder="e.g. 0.10"></div>
+      </div>
+      <div class="row">
+        <div><label>On-peak start (hr)</label><input id="peakStart" type="number" value="16"></div>
+        <div><label>On-peak end (hr)</label><input id="peakEnd" type="number" value="21"></div>
+      </div>
+      <div class="src">
+        <select id="tariffSrc">
+          <option value="urdb">URDB (fetched)</option>
+          <option value="bill">Customer bill</option>
+          <option value="manual">Manual entry</option>
+        </select>
+        <label class="vflag"><input type="checkbox" id="tariffVer"> verified</label>
+      </div>
+      <div class="note" id="tariffNote">Fetch pulls energy + demand from URDB. TOU on/off-peak spread drives the hourly arbitrage dispatch — leave blank to fall back to a flat ±35% band around the blended rate (clearly an estimate).</div>
+    </div>
+
+    <!-- ============ DER CANDIDATES ============ -->
+    <div class="card">
+      <h2>3 · DER Mix — search bounds</h2>
+      <div class="row">
+        <div><label>BESS power kW (min–max)</label>
+          <div class="row"><input id="bkwMin" type="number" value="250"><input id="bkwMax" type="number" value="1000"></div></div>
+      </div>
+      <div class="row">
+        <div><label>BESS duration hrs</label>
+          <div class="row"><input id="bhrMin" type="number" value="2"><input id="bhrMax" type="number" value="4"></div></div>
+      </div>
+      <div class="row">
+        <div><label>Solar kW (0 = none)</label>
+          <div class="row"><input id="skwMin" type="number" value="0"><input id="skwMax" type="number" value="500"></div></div>
+        <div><label>EV ports</label>
+          <div class="row"><input id="evMin" type="number" value="0"><input id="evMax" type="number" value="6"></div></div>
+      </div>
+      <label>Interconnection export limit (kW, blank = none)</label>
+      <input id="icLimit" type="number" placeholder="e.g. 0 for non-export">
+
+      <label style="margin-top:10px">Solar production source <span class="muted">(NREL PVWatts)</span> <span class="pill warn" id="pvPill">sine estimate</span></label>
+      <div class="row">
+        <div><input id="pvLat" type="number" step="0.0001" placeholder="Latitude (e.g. 41.84)"></div>
+        <div><input id="pvLon" type="number" step="0.0001" placeholder="Longitude (e.g. -90.19)"></div>
+      </div>
+      <div class="row">
+        <div><label>Array type</label>
+          <select id="pvArray">
+            <option value="0">Fixed open rack</option>
+            <option value="1">Fixed roof</option>
+            <option value="2">1-axis tracking</option>
+            <option value="3">1-axis backtrack</option>
+            <option value="4">2-axis tracking</option>
+          </select></div>
+        <div><label>Tilt°</label><input id="pvTilt" type="number" value="20"></div>
+        <div><label>Azimuth°</label><input id="pvAz" type="number" value="180"></div>
+      </div>
+      <button class="btn ghost" id="fetchPv" style="width:100%;margin-top:8px">Fetch real solar shape from NREL</button>
+      <div class="note" id="pvNote">Without this, solar uses a generic sine-curve estimate. Fetch pulls the true 8760 hourly production for this location from NREL's NSRDB weather data — real solar makes the solar-value stream bankable. Needs an NREL key (Settings tab).</div>
+      <div class="note">The optimizer searches within these bounds. Tighter bounds = faster, more relevant results.</div>
+    </div>
+
+    <!-- ============ ECONOMICS ============ -->
+    <div class="card">
+      <h2>4 · Economics &amp; Incentives</h2>
+      <div class="row">
+        <div><label>BESS $/kWh installed</label><input id="cBess" type="number" value="400"></div>
+        <div><label>Solar $/W installed</label><input id="cSolar" type="number" value="1.60"></div>
+      </div>
+      <div class="row">
+        <div><label>ITC %</label><input id="itc" type="number" value="30"></div>
+        <div><label>State rebate $/kWh</label><input id="rebate" type="number" value="0"></div>
+      </div>
+      <div class="src">
+        <select id="incSrc">
+          <option value="program">Program rules (cited)</option>
+          <option value="assumed">Assumed</option>
+        </select>
+        <label class="vflag"><input type="checkbox" id="incVer"> verified</label>
+      </div>
+      <div class="row" style="margin-top:10px">
+        <div><label>VPP / DR $/kW-yr <span class="muted">(contracted?)</span></label><input id="vpp" type="number" value="0"></div>
+        <div><label>Discount rate %</label><input id="disc" type="number" value="8"></div>
+      </div>
+      <label class="vflag" style="margin-top:6px"><input type="checkbox" id="vppVer"> VPP rate is contracted (not assumed)</label>
+
+      <label style="margin-top:12px">Objective</label>
+      <select id="objective">
+        <option value="irr">Maximize IRR / NPV</option>
+        <option value="cost">Minimize lifecycle cost</option>
+        <option value="resilience">Maximize resilience (backup hours)</option>
+      </select>
+    </div>
+  </div>
+
+  <button class="btn wide" id="runBtn">Run optimizer</button>
+
+  <!-- ============ RESULTS ============ -->
+  <div id="results" class="hidden" style="margin-top:22px">
+    <div class="card">
+      <h2>Recommended configuration</h2>
+      <div class="kpi" id="recKpi"></div>
+      <h2 style="margin-top:8px">Annual revenue — bankable split</h2>
+      <div class="bar" id="revBar"></div>
+      <table id="revTable"><thead><tr><th>Stream</th><th>Basis</th><th>Status</th><th style="text-align:right">$/yr</th></tr></thead><tbody></tbody></table>
+      <div class="note">Contracted = backed by a signed rate/offtake or verified program. Modeled = projection from estimated inputs. Lenders underwrite the contracted band; modeled is upside.</div>
+
+      <h2 style="margin-top:18px">Input audit</h2>
+      <table class="audit"><thead><tr><th>Input</th><th>Source</th><th>Status</th><th>Used?</th></tr></thead><tbody id="auditBody"></tbody></table>
+
+      <div class="row" style="margin-top:16px">
+        <button class="btn" id="saveBtn">Save to project</button>
+        <button class="btn ghost" id="toEditor">Send sizing to editor</button>
+        <button class="btn ghost" id="toProforma">Send to pro forma</button>
+      </div>
+      <div class="muted" id="saveMsg" style="margin-top:8px"></div>
+    </div>
+  </div>
+  </div><!-- /tab-tool -->
+</div>
+
+<script>
+/* ══════════════════════════════════════════════════════════════════
+   SITE OPTIMIZER v1  ·  ClearSky-OMEGA
+   ES5 only. Single-file. Firebase compat v8. toolData contract.
+   Bankability discipline: every input carries {value, source, verified}.
+   Unverified inputs => excluded from bankable band, revenue = "modeled".
+   ══════════════════════════════════════════════════════════════════ */
+(function(){
+  'use strict';
+
+  /* ---- OMEGA scope: read org from ?org= then email domain ---- */
+  var ORG = (function(){
+    var m = window.location.search.match(/[?&]org=([^&]+)/);
+    return m ? decodeURIComponent(m[1]) : null;
+  })();
+  var PROJECT = (function(){
+    var m = window.location.search.match(/[?&]id=([^&]+)/);
+    return m ? decodeURIComponent(m[1]) : null;
+  })();
+  document.getElementById('orgLabel').textContent = 'org: ' + (ORG || '—');
+
+  /* ---- Platform button: resolve destination from ?portal=, else org slug,
+         else document.referrer. If none resolve, leave the button greyed
+         (never guess a tenant URL that could be wrong). ---- */
+  (function(){
+    var link = document.getElementById('portalLink');
+    var pm = window.location.search.match(/[?&]portal=([^&]+)/);
+    var url = null;
+    if (pm) { url = decodeURIComponent(pm[1]); }
+    else if (ORG) {
+      var slug = ORG.split('.')[0].toLowerCase();
+      url = 'https://' + slug + '.csebuilders.com/';
+    } else if (document.referrer) {
+      try { var u = new URL(document.referrer); url = u.origin + '/'; } catch(e){}
+    }
+    if (url) {
+      link.href = url;
+      link.className = 'tb-plat';
+      link.title = 'Return to ' + url;
+    } else {
+      link.title = 'Open this tool from your portal to enable';
+    }
+  })();
+
+  /* ---- Firebase (shared clearsky-portal project) ---- */
+  var _db = null;
+  try {
+    if (!firebase.apps.length) {
+      firebase.initializeApp({
+        apiKey: 'AIzaSyB-PLACEHOLDER',      // uses portal config in real deploy
+        authDomain: 'clearsky-portal.firebaseapp.com',
+        projectId: 'clearsky-portal'
+      });
+    }
+    _db = firebase.firestore();
+  } catch(e){ _db = null; }
+
+  /* ---- shared settings (API keys per org) ---- */
+  if (typeof OMEGASettings !== 'undefined'){
+    OMEGASettings.init(_db, ORG).then(function(){
+      OMEGASettings.renderTab('settingsPanel');
+      var k = OMEGASettings.get('urdb');
+      if (k && !$('urdbKey').value) $('urdbKey').value = k;
+    });
+  }
+
+  /* ---- tabs ---- */
+  (function(){
+    var tabs=document.getElementsByClassName('tab');
+    for (var t=0;t<tabs.length;t++){
+      tabs[t].addEventListener('click', function(e){
+        var name=e.target.getAttribute('data-tab');
+        for (var i=0;i<tabs.length;i++){
+          tabs[i].className='tab'+(tabs[i].getAttribute('data-tab')===name?' on':'');
+        }
+        document.getElementById('tab-tool').className = name==='tool'?'':'hidden';
+        document.getElementById('tab-settings').className = name==='settings'?'':'hidden';
+      });
+    }
+  })();
+
+  /* ══════════ PVWatts v8: real 8760 solar shape ══════════
+     GET developer.nlr.gov/api/pvwatts/v8.json?timeframe=hourly&system_capacity=1...
+     Returns outputs.ac = 8760 hourly Wac for a 1 kW system. We normalize to
+     kW-per-installed-kW so it scales to any candidate solar size in dispatch.
+     (NREL retired developer.nrel.gov in May 2026 — must use developer.nlr.gov.) */
+  document.getElementById('fetchPv').addEventListener('click', function(){
+    var key = (typeof OMEGASettings!=='undefined') ? OMEGASettings.get('nrel') : '';
+    if (!key){ $('pvNote').innerHTML='<span style="color:var(--bad)">No NREL key — add one in the Settings tab (developer.nlr.gov, free).</span>'; return; }
+    var lat=num('pvLat'), lon=num('pvLon');
+    if (!lat || !lon){ $('pvNote').innerHTML='<span style="color:var(--bad)">Enter the site latitude and longitude.</span>'; return; }
+    $('pvNote').textContent='Fetching 8760 solar production from NREL…';
+    var u='https://developer.nlr.gov/api/pvwatts/v8.json?api_key='+encodeURIComponent(key)+
+      '&system_capacity=1&module_type=0&losses=14&dc_ac_ratio=1.2&inv_eff=96'+
+      '&array_type='+encodeURIComponent($('pvArray').value)+
+      '&tilt='+encodeURIComponent(num('pvTilt'))+'&azimuth='+encodeURIComponent(num('pvAz'))+
+      '&lat='+encodeURIComponent(lat)+'&lon='+encodeURIComponent(lon)+
+      '&timeframe=hourly&dataset=nsrdb&radius=0';
+    fetch(u).then(function(res){
+      if (!res.ok) throw new Error('HTTP '+res.status);
+      return res.json();
+    }).then(function(j){
+      if (j.errors && j.errors.length){ throw new Error(j.errors[0]); }
+      var ac = j.outputs && j.outputs.ac;
+      if (!ac || ac.length<8000){ throw new Error('no hourly data returned'); }
+      // normalize watts (for 1kW system) -> kW per installed kW
+      var perKw=new Array(8760);
+      for (var i=0;i<8760;i++){ perKw[i] = (ac[i]||0)/1000; }   // W -> kW (system is 1kW)
+      PV_SHAPE = { perKw:perKw, cf:j.outputs.capacity_factor, ac_annual:j.outputs.ac_annual,
+        station: j.station_info ? (j.station_info.state||'') : '', source:'NREL PVWatts v8 (NSRDB)' };
+      $('pvPill').className='pill ok'; $('pvPill').textContent='NREL real data';
+      $('pvNote').innerHTML='Loaded real 8760 production — capacity factor '+
+        (Math.round(j.outputs.capacity_factor*10)/10)+'%, '+
+        Math.round(j.outputs.ac_annual).toLocaleString()+' kWh/kW-yr'+
+        (PV_SHAPE.station?(' near '+PV_SHAPE.station):'')+'. Solar value stream is now bankable.';
+    })['catch'](function(err){
+      $('pvNote').innerHTML='<span style="color:var(--bad)">NREL fetch failed ('+err.message+'). '+
+        'Browsers may block cross-origin calls on some networks — if so, the solar stays on the sine estimate. Check the key and lat/lon.</span>';
+    });
+  });
+
+  /* ---- state ---- */
+  var LOAD = null;   // { hourly:[8760], peakKw, annualKwh, source, verified }
+  var LAST = null;   // last optimizer result (for handoff/save)
+  var PV_SHAPE = null; // { perKw:[8760] normalized AC kW per installed kW, cf, source } from NREL
+
+  function $(id){ return document.getElementById(id); }
+  function num(id){ var v = parseFloat($(id).value); return isFinite(v) ? v : 0; }
+  function fmt(n){ return '$' + Math.round(n).toLocaleString(); }
+  function fmt1(n){ return (Math.round(n*10)/10).toLocaleString(); }
+
+  /* ══════════ LOAD: Green Button CSV parse ══════════
+     Real utility interval CSVs vary; we accept the common shape:
+     a column of kWh values (hourly). We sum to annual, find peak,
+     and normalize to 8760 by resampling if needed. If we can't find
+     a numeric kWh column we say so rather than guessing. */
+  $('loadCsv').addEventListener('change', function(e){
+    var f = e.target.files[0]; if (!f) return;
+    var r = new FileReader();
+    r.onload = function(){
+      try {
+        var rows = String(r.result).split(/\r?\n/);
+        var vals = [];
+        for (var i=0;i<rows.length;i++){
+          var cells = rows[i].split(',');
+          // take the last numeric cell on each row as the kWh reading
+          for (var j=cells.length-1;j>=0;j--){
+            var v = parseFloat(String(cells[j]).replace(/[^0-9.\-]/g,''));
+            if (isFinite(v) && v>=0){ vals.push(v); break; }
+          }
+        }
+        if (vals.length < 24){
+          $('loadNote').innerHTML = '<span style="color:var(--bad)">Could not find a numeric kWh column. Check the file format — no data was assumed.</span>';
+          return;
+        }
+        var hourly = resampleTo8760(vals);
+        var annual = 0, peak = 0;
+        for (var k=0;k<hourly.length;k++){ annual+=hourly[k]; if (hourly[k]>peak) peak=hourly[k]; }
+        LOAD = { hourly:hourly, annualKwh:annual, peakKw:peak,
+                 source:$('loadSrc').value, verified:$('loadVer').checked };
+        $('loadPill').className='pill ok'; $('loadPill').textContent='loaded ('+vals.length+' pts)';
+        $('loadNote').innerHTML = 'Loaded '+vals.length+' readings · annual '+Math.round(annual).toLocaleString()+
+          ' kWh · peak '+fmt1(peak)+' kW. '+(LOAD.verified?'<span class="tag verified">verified</span>':'<span class="tag unverified">unverified — mark verified if this is real utility data</span>');
+      } catch(err){
+        $('loadNote').innerHTML = '<span style="color:var(--bad)">Parse error: '+err.message+'</span>';
+      }
+    };
+    r.readAsText(f);
+  });
+
+  function resampleTo8760(a){
+    if (a.length === 8760) return a.slice();
+    var out = new Array(8760), n=a.length;
+    for (var i=0;i<8760;i++){ out[i] = a[Math.floor(i*n/8760)]; }
+    return out;
+  }
+
+  /* Build a modeled hourly profile when no real data is present.
+     Clearly an ESTIMATE — LOAD.verified stays false. */
+  function modeledLoad(annualKwh, shape){
+    var base = annualKwh/8760, hourly = new Array(8760), peak=0;
+    for (var i=0;i<8760;i++){
+      var h = i%24, mult=1;
+      if (shape==='commercial') mult = (h>=9&&h<=17)?1.8:0.5;
+      else if (shape==='ev')    mult = (h>=17&&h<=22)?2.4:0.4;
+      var v = base*mult; hourly[i]=v; if (v>peak) peak=v;
+    }
+    return { hourly:hourly, annualKwh:annualKwh, peakKw:peak, source:'modeled', verified:false };
+  }
+
+  /* ══════════ TARIFF: URDB fetch ══════════
+     GET api.openei.org/utility_rates?version=latest&format=json&detail=full
+         &ratesforutility=... &api_key=...
+     We pull the first matching rate's energyratestructure (blended avg of
+     period rates) and demandratestructure (max demand $/kW). Exotic tiered
+     structures are approximated and flagged. */
+  $('fetchTariff').addEventListener('click', function(){
+    var key = $('urdbKey').value.trim();
+    if (!key && typeof OMEGASettings!=='undefined') key = OMEGASettings.get('urdb');
+    var name = $('rateName').value.trim();
+    if (!key){ $('tariffNote').innerHTML='<span style="color:var(--bad)">No URDB API key — add one in the Settings tab (or the field above).</span>'; return; }
+    if (!name){ $('tariffNote').innerHTML='<span style="color:var(--bad)">Enter a rate name to search.</span>'; return; }
+    // persist the key to shared settings so other tools can use it
+    if (typeof OMEGASettings!=='undefined' && key && key!==OMEGASettings.get('urdb')) OMEGASettings.set('urdb', key);
+    $('tariffNote').textContent = 'Fetching from URDB…';
+    var url = 'https://api.openei.org/utility_rates?version=latest&format=json&detail=full'+
+              '&limit=3&getpage=&sector=Commercial'+
+              '&ratesforutility='+encodeURIComponent(name)+'&api_key='+encodeURIComponent(key);
+    // URDB also supports free-text; fall back to a generic search param.
+    var url2 = 'https://api.openei.org/utility_rates?version=latest&format=json&detail=full'+
+               '&limit=5&api_key='+encodeURIComponent(key)+'&address='+encodeURIComponent(name);
+    fetchJson(url).then(function(j){
+      if (!j || !j.items || !j.items.length) return fetchJson(url2);
+      return j;
+    }).then(function(j){
+      if (!j || !j.items || !j.items.length){
+        $('tariffNote').innerHTML='<span style="color:var(--warn)">No rate matched "'+name+'". Enter energy & demand manually and mark the source as bill/manual.</span>';
+        return;
+      }
+      var rate = j.items[0];
+      var energy = avgEnergyRate(rate);
+      var demand = maxDemandRate(rate);
+      if (energy!=null){ $('tEnergy').value = (Math.round(energy*1000)/1000); }
+      if (demand!=null){ $('tDemand').value = (Math.round(demand*100)/100); }
+      $('tariffSrc').value='urdb';
+      $('tariffPill').className='pill ok'; $('tariffPill').textContent='fetched';
+      var notes = rate.name ? ('Matched: '+rate.name+'. ') : '';
+      var partial = (energy==null||demand==null);
+      $('tariffNote').innerHTML = notes + (partial
+        ? '<span style="color:var(--warn)">Partial parse — fill blanks from the bill and verify.</span>'
+        : 'Energy + demand parsed. <b>Verify against the customer bill</b> before marking verified.');
+    })['catch'](function(err){
+      // CORS or network — be honest about it
+      $('tariffNote').innerHTML='<span style="color:var(--bad)">Fetch failed ('+err.message+'). '+
+        'The browser may block cross-origin URDB calls on some networks — enter energy & demand manually from the bill.</span>';
+    });
+  });
+
+  function fetchJson(u){
+    return fetch(u).then(function(res){
+      if (!res.ok) throw new Error('HTTP '+res.status);
+      return res.json();
+    });
+  }
+  function avgEnergyRate(rate){
+    var s = rate.energyratestructure; if (!s||!s.length) return null;
+    var sum=0,n=0;
+    for (var i=0;i<s.length;i++){ var tier=s[i]; for (var t=0;t<tier.length;t++){
+      if (tier[t] && typeof tier[t].rate==='number'){ sum+=tier[t].rate; n++; } } }
+    return n? sum/n : null;
+  }
+  function maxDemandRate(rate){
+    var s = rate.demandratestructure; if (!s||!s.length) return null;
+    var mx=0,found=false;
+    for (var i=0;i<s.length;i++){ var tier=s[i]; for (var t=0;t<tier.length;t++){
+      if (tier[t] && typeof tier[t].rate==='number'){ if (tier[t].rate>mx) mx=tier[t].rate; found=true; } } }
+    return found? mx : null;
+  }
+
+  /* ══════════ OPTIMIZER ══════════
+     Bounded grid search. For each candidate (bess kW, hrs, solar kW, ev ports)
+     we run a simplified hourly dispatch and compute economics, then pick the
+     best per the objective. Revenue is split contracted vs modeled based on
+     which inputs are verified. */
+  function ensureLoad(){
+    if (LOAD) return LOAD;
+    var ann = num('annualKwh');
+    if (ann>0){ LOAD = modeledLoad(ann, $('loadShape').value); 
+      $('loadPill').className='pill warn'; $('loadPill').textContent='modeled';
+      return LOAD; }
+    return null;
+  }
+
+  function step(min,max,n){
+    var out=[], lo=Math.min(min,max), hi=Math.max(min,max);
+    if (lo===hi){ return [lo]; }
+    for (var i=0;i<n;i++){ out.push(lo + (hi-lo)*i/(n-1)); }
+    return out;
+  }
+
+  /* ══════════ 8760 HOURLY DISPATCH ENGINE ══════════
+     Simulates every hour of the year. Builds an hourly price vector from the
+     TOU schedule (on/off-peak windows) or a flat ±35% fallback. Then for each
+     hour co-optimizes three value streams against battery state-of-charge:
+
+       1. Solar self-consumption — PV offsets load first (avoids buying at the
+          hour's price), exports up to the interconnection limit.
+       2. Energy arbitrage — charge in the cheapest hours, discharge in the
+          priciest, bounded by power (kW), usable energy (kWh), round-trip
+          efficiency, and a daily-cycle budget.
+       3. Demand-charge reduction — reserve enough discharge headroom to shave
+          the monthly peak; tracked per-month so the demand saving is real.
+
+     Method: a per-day greedy that ranks the day's 24 hours by price, charges
+     up during the N cheapest below-median hours and discharges during the
+     priciest hours where net load is high, while holding a reserve for the
+     running monthly peak. This is a transparent dispatch (not an LP) but it
+     respects SoC, RTE, power limits, and export caps — defensible for
+     screening, and every kWh is traced to an hour and a price. */
+
+  function buildPriceVector(ctx){
+    /* returns { price:[8760], flat:bool } */
+    var peak = ctx.touPeak, off = ctx.touOff, flat=false;
+    if (!(peak>0) || !(off>0)){
+      // fallback: ±35% band around blended energy rate — ESTIMATE
+      peak = ctx.energy*1.35; off = ctx.energy*0.65; flat=true;
+    }
+    var ps=ctx.peakStart, pe=ctx.peakEnd;
+    var p=new Array(8760);
+    for (var i=0;i<8760;i++){
+      var h=i%24;
+      var onPeak = pe>=ps ? (h>=ps && h<pe) : (h>=ps || h<pe);
+      p[i]= onPeak ? peak : off;
+    }
+    return { price:p, flat:flat, peak:peak, off:off };
+  }
+
+  function dispatch(load, bessKw, bessKwh, solarKw, energy, demand, ctx){
+    var hrs = load.hourly;
+    var pv = buildPriceVector(ctx);
+    var price = pv.price;
+    var rte = 0.90, sqrtRte = Math.sqrt(rte);      // split RTE across charge/discharge
+    var usable = bessKwh * 0.90;                    // 90% depth of discharge
+    var maxCyclesDay = 1.5;                         // throughput budget/day
+    var expLimit = (ctx.icLimit===null) ? Infinity : ctx.icLimit;
+
+    // Solar production per hour. If NREL PVWatts data is loaded (PV_SHAPE),
+    // use the real 8760 shape (kW per installed kW × solarKw) — captures true
+    // seasonal + weather variation. Otherwise fall back to a sine bell scaled
+    // to ~19% CF (clearly an estimate).
+    var usingRealPv = !!(PV_SHAPE && PV_SHAPE.perKw && PV_SHAPE.perKw.length>=8000);
+    var SOLAR_DERATE = 0.42;
+    function solarAtIdx(idx){
+      if (solarKw<=0) return 0;
+      if (usingRealPv){ return solarKw * (PV_SHAPE.perKw[idx]||0); }
+      var h=idx%24;
+      var s = solarKw * Math.max(0, Math.sin((h-6)/12*Math.PI)) * SOLAR_DERATE;
+      return s<0?0:s;
+    }
+
+    var soc = usable*0.5;                            // start half full
+    var arbRevenue=0, solarValue=0, solarKwhYr=0, gridChargeCost=0;
+    var monthPeakBefore={}, monthPeakAfter={};
+    // approximate month index by day/30
+    function monthOf(i){ var day=Math.floor(i/24); return Math.min(11, Math.floor(day/30.4)); }
+
+    // Precompute each day's price ranking to pick charge/discharge hours.
+    for (var d=0; d<365; d++){
+      var base=d*24;
+      // gather this day's hours
+      var dayPrice=[], order=[];
+      for (var h=0; h<24; h++){ dayPrice.push(price[base+h]); order.push(h); }
+      // rank hours cheapest->priciest for charge/discharge selection
+      order.sort(function(a,b){return dayPrice[a]-dayPrice[b];});
+      // Pick charge hours = cheapest hours of the day; discharge hours =
+      // priciest hours. Require a real spread (discharge price > charge price
+      // after RTE) or the cycle isn't worth it. This works for any TOU shape,
+      // including two-tier where a median split would fail.
+      var chargeHours={}, dischHours={};
+      var budgetKwh = usable*maxCyclesDay;
+      var loPrice = dayPrice[order[0]];               // cheapest hour price
+      var hiPrice = dayPrice[order[order.length-1]];  // priciest hour price
+      // only cycle if the spread beats round-trip losses
+      if (hiPrice*rte > loPrice*1.001){
+        var cCharge=0;
+        for (var c=0;c<order.length && cCharge<budgetKwh;c++){
+          var hh=order[c];
+          if (dayPrice[hh] <= loPrice*1.05){ chargeHours[hh]=1; cCharge+=bessKw; }
+        }
+        var cDisch=0;
+        for (var e=order.length-1;e>=0 && cDisch<budgetKwh;e--){
+          var hd=order[e];
+          if (dayPrice[hd] >= hiPrice*0.95){ dischHours[hd]=1; cDisch+=bessKw; }
+        }
+      }
+
+      for (var h2=0; h2<24; h2++){
+        var idx=base+h2; if (idx>=8760) break;
+        var mo=monthOf(idx);
+        var solar=solarAtIdx(idx); solarKwhYr+=solar;
+        var rawLoad=hrs[idx];
+        var selfUsed = Math.min(rawLoad, solar);
+        solarValue += selfUsed * price[idx];     // value = avoided purchase at hour price
+        // export surplus solar up to interconnection limit (valued at off-peak proxy).
+        // On a non-export site (expLimit 0) surplus is curtailed = zero value.
+        var surplus = solar - selfUsed;
+        if (surplus>0 && expLimit>0){ var exp=Math.min(surplus, expLimit); solarValue += exp*pv.off*0.8; }
+        var netLoad=rawLoad - solar;             // solar offsets load first
+        if (netLoad<0) netLoad=0;
+
+        var battPower=0;      // + = discharge, - = charge (from grid)
+        var gridDraw=netLoad; // what the site pulls from the grid this hour
+        // charge: adds to grid draw
+        if (chargeHours[h2] && soc<usable){
+          var room=usable-soc;
+          var chg=Math.min(bessKw, room/sqrtRte);
+          soc += chg*sqrtRte;
+          gridChargeCost += chg*price[idx];
+          battPower = -chg;
+          gridDraw = netLoad + chg;         // charging increases the hour's demand
+        }
+        // discharge: serves load first (demand + energy benefit), remainder is
+        // arbitrage value at the hour price. Not capped by netLoad — a battery
+        // can discharge to offset load AND the spread is captured either way.
+        else if (dischHours[h2] && soc>0){
+          var out=Math.min(bessKw, soc*sqrtRte);
+          if (out<0) out=0;
+          soc -= out/sqrtRte;
+          arbRevenue += out*price[idx];     // value of energy delivered at this hour's price
+          battPower = out;
+          gridDraw = netLoad - out;         // discharge reduces grid demand
+          if (gridDraw<0) gridDraw=0;
+        }
+
+        // monthly peak tracking on the actual grid draw
+        if (!(mo in monthPeakBefore) || netLoad>monthPeakBefore[mo]) monthPeakBefore[mo]=netLoad;
+        if (!(mo in monthPeakAfter)  || gridDraw>monthPeakAfter[mo])  monthPeakAfter[mo]=gridDraw;
+      }
+    }
+
+    // arbitrage margin = discharge revenue minus grid-charge cost
+    var arbMargin = arbRevenue - gridChargeCost;
+    if (arbMargin<0) arbMargin=0;
+
+    // demand savings = sum of monthly (peakBefore - peakAfter) * demand rate
+    var demandSavedKw=0;
+    for (var m in monthPeakBefore){ if (monthPeakBefore.hasOwnProperty(m)){
+      var sv=(monthPeakBefore[m]-(monthPeakAfter[m]||monthPeakBefore[m]));
+      if (sv>0) demandSavedKw += sv; } }
+    var demandRevenue = demandSavedKw * demand;
+
+    return {
+      peakBefore: load.peakKw,
+      peakAfter: load.peakKw,   // annual peak informational; demand handled per-month
+      demandRevenue: demandRevenue,
+      arbRevenue: arbMargin,
+      solarRevenue: solarValue,
+      solarKwhYr: solarKwhYr,
+      priceFlat: pv.flat,
+      realPv: usingRealPv
+    };
+  }
+
+  function run(){
+    var load = ensureLoad();
+    if (!load){ alert('Add a load profile (upload CSV or enter annual kWh).'); return; }
+
+    var energy = num('tEnergy'), demand = num('tDemand');
+    if (energy<=0){ alert('Enter an energy rate ($/kWh) or fetch a tariff.'); return; }
+
+    var bKw = step(num('bkwMin'),num('bkwMax'),4);
+    var bHr = step(num('bhrMin'),num('bhrMax'),3);
+    var sKw = step(num('skwMin'),num('skwMax'),3);
+    var eP  = step(num('evMin'),num('evMax'),3);
+
+    var itc=num('itc')/100, rebate=num('rebate'), cBess=num('cBess'), cSolar=num('cSolar');
+    var vpp=num('vpp'), disc=num('disc')/100, obj=$('objective').value;
+    var icLimit = $('icLimit').value===''? null : num('icLimit');
+
+    // dispatch context: TOU pricing + limits shared across all candidates
+    var ctx = {
+      energy: energy,
+      touPeak: num('touPeak'), touOff: num('touOff'),
+      peakStart: Math.round(num('peakStart')), peakEnd: Math.round(num('peakEnd')),
+      icLimit: icLimit
+    };
+
+    var best=null, priceFlatSeen=false;
+    for (var a=0;a<bKw.length;a++) for (var b=0;b<bHr.length;b++)
+    for (var c=0;c<sKw.length;c++) for (var d=0;d<eP.length;d++){
+      var kw=Math.round(bKw[a]), hrs=bHr[b], kwh=Math.round(kw*hrs);
+      var solar=Math.round(sKw[c]), ev=Math.round(eP[d]);
+      if (kw<=0) continue;
+      var dsp = dispatch(load, kw, kwh, solar, energy, demand, ctx);
+      if (dsp.priceFlat) priceFlatSeen=true;
+
+      var capex = kwh*cBess + solar*1000*cSolar + ev*45000; // ~$45k/EV port
+      var incentive = capex*itc + kwh*rebate;
+      var netCapex = capex - incentive;
+
+      var vppRev = vpp*kw;              // contracted only if verified
+      var annual = dsp.demandRevenue + dsp.arbRevenue + dsp.solarRevenue + vppRev;
+
+      // simple 10-yr NPV of annual net (revenue treated as cash proxy)
+      var npv = -netCapex, r=1;
+      for (var y=1;y<=10;y++){ r*=(1+disc); npv += annual/r; }
+      var irr = annual/netCapex; // crude proxy: annual return on net capex
+
+      var backupHrs = kwh/Math.max(load.peakKw,1);
+
+      var score;
+      if (obj==='cost') score = -netCapex;
+      else if (obj==='resilience') score = backupHrs;
+      else score = npv; // irr/npv
+
+      var cand = { kw:kw, hrs:hrs, kwh:kwh, solar:solar, ev:ev,
+        capex:capex, incentive:incentive, netCapex:netCapex,
+        annual:annual, npv:npv, irr:irr, backupHrs:backupHrs, dsp:dsp,
+        vppRev:vppRev, score:score };
+      if (!best || cand.score>best.score) best=cand;
+    }
+
+    LAST = best;
+    render(best, {energy:energy, demand:demand, priceFlat:priceFlatSeen});
+  }
+
+  /* ══════════ RENDER + bankability split ══════════ */
+  function render(r, ctx){
+    $('results').className='';
+    // KPIs
+    var kpi = $('recKpi');
+    kpi.innerHTML =
+      box(r.kw+' kW', 'BESS power') +
+      box(r.kwh.toLocaleString()+' kWh', r.hrs+'-hr duration') +
+      box(r.solar? r.solar+' kW':'—', 'Solar') +
+      box(r.ev? r.ev+' ports':'—', 'EV charging') +
+      box(fmt(r.netCapex), 'Net capex (post-incentive)') +
+      box(fmt1(r.backupHrs)+' hrs', 'Backup at peak');
+
+    // Revenue split — verified inputs decide contracted vs modeled
+    var loadVer = LOAD && LOAD.verified;
+    var tariffVer = $('tariffVer').checked;
+    var vppVer = $('vppVer').checked;
+    var incVer = $('incVer').checked;
+
+    var streams = [
+      { name:'Demand charge reduction', basis:'monthly peak shave × demand $', amt:r.dsp.demandRevenue,
+        contracted: loadVer && tariffVer },
+      { name:'Energy arbitrage', basis:'8760 hourly TOU dispatch (net of charge cost)', amt:r.dsp.arbRevenue,
+        contracted: tariffVer && !ctx.priceFlat },
+      { name:'Solar self-consumption', basis:r.dsp.realPv?'NREL PVWatts 8760 × hour price':'sine estimate × hour price', amt:r.dsp.solarRevenue,
+        contracted: loadVer && tariffVer && r.dsp.realPv },
+      { name:'VPP / DR capacity', basis:'$/kW-yr × BESS kW', amt:r.vppRev,
+        contracted: vppVer }
+    ];
+    var contracted=0, modeled=0, tb='';
+    for (var i=0;i<streams.length;i++){
+      var s=streams[i]; if (s.amt<=0) continue;
+      if (s.contracted) contracted+=s.amt; else modeled+=s.amt;
+      tb += '<tr><td>'+s.name+'</td><td class="muted">'+s.basis+'</td><td>'+
+        (s.contracted?'<span class="tag verified">contracted</span>':'<span class="tag unverified">modeled</span>')+
+        '</td><td style="text-align:right">'+fmt(s.amt)+'</td></tr>';
+    }
+    $('revTable').getElementsByTagName('tbody')[0].innerHTML = tb ||
+      '<tr><td colspan="4" class="muted">No positive revenue streams for this config.</td></tr>';
+
+    var total = contracted+modeled;
+    var cPct = total? Math.round(contracted/total*100):0;
+    $('revBar').innerHTML =
+      (contracted>0?'<div class="seg c" style="width:'+cPct+'%">'+fmt(contracted)+' contracted</div>':'') +
+      (modeled>0?'<div class="seg m" style="width:'+(100-cPct)+'%">'+fmt(modeled)+' modeled</div>':'');
+
+    // Input audit
+    var rows = [
+      auditRow('Load profile', LOAD?LOAD.source:'—', loadVer, 'Peak, arbitrage, solar'),
+      auditRow('Tariff', $('tariffSrc').value, tariffVer, 'All $ streams'),
+      auditRow('TOU price vector', ctx.priceFlat?'flat ±35% estimate':'TOU schedule', !ctx.priceFlat, 'Arbitrage dispatch'),
+      auditRow('Solar production', r.dsp.realPv?'NREL PVWatts (NSRDB)':'sine estimate', r.dsp.realPv, 'Solar value'),
+      auditRow('Incentives (ITC/rebate)', $('incSrc').value, incVer, 'Net capex'),
+      auditRow('VPP / DR rate', vppVer?'contracted':'assumed', vppVer, 'VPP revenue')
+    ];
+    $('auditBody').innerHTML = rows.join('');
+
+    LAST.split = { contracted:contracted, modeled:modeled };
+    $('results').scrollIntoView({behavior:'smooth'});
+  }
+  function box(n,l){ return '<div class="b"><div class="n">'+n+'</div><div class="l">'+l+'</div></div>'; }
+  function auditRow(name, src, ver, used){
+    return '<tr><td>'+name+'</td><td class="muted">'+src+'</td><td>'+
+      (ver?'<span class="tag verified">verified</span>':'<span class="tag unverified">unverified</span>')+
+      '</td><td class="muted">'+used+'</td></tr>';
+  }
+
+  /* ══════════ SAVE + HANDOFF (toolData contract) ══════════ */
+  function saveData(){
+    if (!LAST){ return; }
+    if (!_db || !ORG){ $('saveMsg').textContent='No org/DB scope — running in preview mode; result not persisted.'; return; }
+    var payload = { data:{ config:LAST, savedAt: Date.now(), project:PROJECT },
+      updatedAt: firebase.firestore.FieldValue.serverTimestamp() };
+    _db.collection('toolData').doc(ORG).collection('tools').doc('siteoptimizer')
+      .set(payload,{merge:true})
+      .then(function(){ $('saveMsg').textContent='Saved to '+ORG+'.'; })
+      ['catch'](function(e){ $('saveMsg').textContent='Save failed: '+e.message; });
+  }
+
+  $('runBtn').addEventListener('click', run);
+  $('saveBtn') && $('saveBtn').addEventListener('click', saveData);
+  $('toEditor') && $('toEditor').addEventListener('click', function(){
+    if (!LAST) return;
+    // hand sizing to editor via a shared toolData doc it can read on load
+    saveData();
+    $('saveMsg').textContent='Sizing staged for editor — open the BESS Site Map to place '+LAST.kw+' kW / '+LAST.kwh+' kWh.';
+  });
+  $('toProforma') && $('toProforma').addEventListener('click', function(){
+    if (!LAST) return;
+    saveData();
+    $('saveMsg').textContent='Config staged for pro forma — net capex '+fmt(LAST.netCapex)+', annual '+fmt(LAST.annual)+'.';
+  });
+
+})();
+</script>
+</body>
+</html>

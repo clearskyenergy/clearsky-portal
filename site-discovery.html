@@ -1,0 +1,365 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Site Discovery &amp; Screening · ClearSky-OMEGA</title>
+<script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+<script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-auth.js"></script>
+<script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-firestore.js"></script>
+<script src="/omega-settings.js"></script>
+<style>
+  :root{
+    --ink:#f5f7fb; --panel:#ffffff; --panel2:#f0f3f9; --line:#d9e0ec;
+    --txt:#16233d; --dim:#5d6b85; --accent:#1f9d5a; --accent2:#2563c7;
+    --warn:#b06a00; --bad:#c23434; --good:#1f9d5a;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--ink);color:var(--txt);
+    font:14px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif}
+  .wrap{max-width:1180px;margin:0 auto;padding:22px 18px 80px}
+  h1{font-size:22px;margin:0 0 2px;letter-spacing:.2px}
+  .sub{color:var(--dim);font-size:13px;margin-bottom:18px}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:16px;box-shadow:0 1px 3px rgba(22,35,61,.06);margin-bottom:16px}
+  .card h2{font-size:13px;text-transform:uppercase;letter-spacing:1.2px;color:var(--dim);margin:0 0 12px}
+  label{display:block;font-size:12px;color:var(--dim);margin:10px 0 4px}
+  input,select{width:100%;background:var(--panel2);border:1px solid var(--line);color:var(--txt);border-radius:8px;padding:8px 10px;font-size:13px}
+  input[type=range]{padding:0}
+  input[type=file]{padding:6px}
+  .row{display:flex;gap:10px}.row>*{flex:1}
+  .btn{background:var(--accent);color:#fff;border:0;border-radius:9px;padding:11px 16px;font-weight:700;font-size:14px;cursor:pointer}
+  .btn.ghost{background:transparent;color:var(--accent2);border:1px solid var(--line)}
+  .btn.wide{width:100%;margin-top:6px}
+  table{width:100%;border-collapse:collapse;font-size:12px;margin-top:6px}
+  th,td{text-align:left;padding:7px 8px;border-bottom:1px solid var(--line)}
+  th{color:var(--dim);font-weight:600;text-transform:uppercase;font-size:10px;letter-spacing:.6px;cursor:pointer}
+  td.r,th.r{text-align:right}
+  .note{font-size:12px;color:var(--dim);margin-top:10px;line-height:1.5}
+  .hidden{display:none}
+  .muted{color:var(--dim);font-size:12px}
+  .topbar{display:flex;align-items:center;justify-content:space-between;margin-bottom:14px}
+  .siteRow{display:flex;gap:8px;align-items:center;margin-bottom:8px;flex-wrap:wrap}
+  .siteRow input{font-size:12px;padding:6px 8px}
+  .siteRow .nm{flex:1.6;min-width:120px}.siteRow .sm{flex:.8;min-width:70px}
+  .del{background:transparent;border:0;color:var(--bad);cursor:pointer;font-size:16px;padding:0 6px}
+  .addbtn{background:transparent;border:1px dashed var(--line);color:var(--accent2);border-radius:8px;padding:8px;width:100%;margin-top:6px;cursor:pointer;font-size:13px}
+  .wt{display:flex;align-items:center;gap:10px;margin-bottom:8px}
+  .wt label{margin:0;flex:0 0 190px;color:var(--txt);font-size:13px}
+  .wt input[type=range]{flex:1}
+  .wt .val{flex:0 0 42px;text-align:right;font-variant-numeric:tabular-nums;color:var(--dim)}
+  .score{display:inline-block;min-width:34px;padding:2px 8px;border-radius:20px;font-weight:700;color:#fff;text-align:center}
+  .rank{font-weight:700;color:var(--dim)}
+  .bar{height:6px;border-radius:4px;background:var(--panel2);overflow:hidden;margin-top:3px}
+  .bar>span{display:block;height:100%;background:var(--accent)}
+  a{color:var(--accent2)}
+  .tabs{display:flex;gap:4px;border-bottom:1px solid var(--line);margin-bottom:16px}
+  .tab{padding:9px 16px;font-size:13px;font-weight:600;color:var(--dim);cursor:pointer;border-bottom:2px solid transparent}
+  .tab.on{color:var(--txt);border-bottom-color:var(--accent)}
+
+  /* ===== OMEGA house style: dark-navy topbar + nav (matches fleet-command) ===== */
+  .tb{display:flex;align-items:center;height:52px;background:#0e1b33;color:#fff;padding:0 16px;position:sticky;top:0;z-index:50}
+  .tb-omega{height:26px;margin-right:9px}
+  .tb-logo-txt{font-weight:700;font-size:17px;letter-spacing:.3px}
+  .tb-logo-txt span{color:#4da3ff}
+  .tb-sep{width:1px;height:24px;background:#2a3c5c;margin:0 16px}
+  .tb-ws{font-size:13px;color:#b9c8e0}
+  .tb-ws b{color:#fff;font-weight:700}
+  .tb-right{margin-left:auto;display:flex;align-items:center;gap:12px}
+  .tb-badge{background:#12233f;border:1px solid #2a3c5c;color:#8fc0ff;padding:3px 9px;border-radius:20px;font-size:11px;font-weight:600;letter-spacing:.4px}
+  .tb-plat{color:#cfe0ff;text-decoration:none;font-size:12px;border:1px solid #2a3c5c;background:#12233f;padding:5px 11px;border-radius:7px;font-weight:600}
+  .tb-plat.off{opacity:.4;pointer-events:none}
+  .tb-user{width:28px;height:28px;border-radius:50%;background:#2a3c5c;display:flex;align-items:center;justify-content:center;color:#cfe0ff;font-weight:700;font-size:12px}
+  .nav{display:flex;background:#12233f;padding:0 8px;flex-wrap:wrap}
+  .nav a{color:#9fb2cf;padding:11px 15px;font-size:13px;font-weight:600;cursor:pointer;border-bottom:2px solid transparent;text-decoration:none}
+  .nav a.on{color:#fff;border-bottom-color:#4da3ff;background:#0e1b33}
+</style>
+</head>
+<body>
+<div class="tb">
+  <img src="/clearsky-omega-mark-white.png" alt="OMEGA" class="tb-omega">
+  <span class="tb-logo-txt">Clear<span>Sky</span> OMEGA</span>
+  <div class="tb-sep"></div>
+  <span class="tb-ws">Site Discovery &amp; Screening &nbsp;&middot;&nbsp; <b id="orgLabel">org: —</b></span>
+  <div class="tb-right">
+    <a href="#" id="portalLink" class="tb-plat off">&#9632; Platform</a>
+    <span class="tb-badge" id="tierBadge">OMEGA</span>
+    <div class="tb-user" id="userInitial">?</div>
+  </div>
+</div>
+<div class="nav">
+  <a class="tab on" data-tab="tool">Discovery</a>
+  <a class="tab" data-tab="settings" style="margin-left:auto">&#9881; Settings</a>
+</div>
+<div class="wrap">
+  <div id="tab-settings" class="hidden">
+    <div class="card"><h2>API keys &amp; data sources</h2><div id="settingsPanel"></div></div>
+  </div>
+  <div id="tab-tool">
+
+  <div class="card">
+    <h2>Scoring weights</h2>
+    <div class="note" style="margin-top:0;margin-bottom:12px">Transparent, adjustable weights — no black box. Each site scores 0–100 per factor, then we take the weighted average. Drag to match what your program values.</div>
+    <div id="weights"></div>
+    <div class="muted" id="wsum" style="margin-top:6px"></div>
+  </div>
+
+  <div class="card">
+    <h2>Candidate sites</h2>
+    <label>Upload CSV <span class="muted">(columns: name, load_kw, grid_dist_mi, incentive_score, land_score, offtake_score, interconnect_score — 0–100 for score columns)</span></label>
+    <input type="file" id="csv" accept=".csv,text/csv">
+    <div id="sites" style="margin-top:12px"></div>
+    <button class="addbtn" id="addSite">+ Add site</button>
+    <div class="note">Enter each candidate's raw metrics. Grid distance is in miles (closer = better, auto-scored). The four score columns are your 0–100 assessments of incentive strength, land/siting, offtake demand, and interconnection ease.</div>
+  </div>
+
+  <button class="btn wide" id="runBtn">Rank sites</button>
+
+  <div id="results" class="hidden">
+    <div class="card">
+      <h2>Ranked pipeline</h2>
+      <table id="rankTable">
+        <thead><tr>
+          <th>#</th><th>Site</th><th class="r">Load kW</th><th class="r">Grid mi</th>
+          <th class="r">Incentive</th><th class="r">Land</th><th class="r">Offtake</th>
+          <th class="r">Interconnect</th><th class="r">Score</th>
+        </tr></thead>
+        <tbody></tbody>
+      </table>
+      <div class="note" id="rankNote"></div>
+      <div class="row" style="margin-top:14px">
+        <button class="btn" id="saveBtn">Save ranking</button>
+        <button class="btn ghost" id="exportCsv">Export CSV</button>
+      </div>
+      <div class="muted" id="saveMsg" style="margin-top:8px"></div>
+    </div>
+  </div>
+  </div><!-- /tab-tool -->
+</div>
+
+<script>
+/* ══════════════════════════════════════════════════════════════════
+   SITE DISCOVERY & SCREENING  ·  ClearSky-OMEGA
+   ES5 only. Single-file. Firebase compat v8.
+   Weighted multi-factor ranking of a candidate-site pipeline. No black box.
+   ══════════════════════════════════════════════════════════════════ */
+(function(){
+  'use strict';
+
+  var ORG=(function(){var m=window.location.search.match(/[?&]org=([^&]+)/);return m?decodeURIComponent(m[1]):null;})();
+  var PROJECT=(function(){var m=window.location.search.match(/[?&]id=([^&]+)/);return m?decodeURIComponent(m[1]):null;})();
+  document.getElementById('orgLabel').textContent='org: '+(ORG||'—');
+
+
+  (function(){
+    var link=document.getElementById('portalLink');
+    var pm=window.location.search.match(/[?&]portal=([^&]+)/);var url=null;
+    if(pm){url=decodeURIComponent(pm[1]);}
+    else if(ORG){var slug=ORG.split('.')[0].toLowerCase();url='https://'+slug+'.csebuilders.com/';}
+    else if(document.referrer){try{var u=new URL(document.referrer);url=u.origin+'/';}catch(e){}}
+    if(url){link.href=url;link.className='tb-plat';link.title='Return to '+url;}
+    else{link.title='Open this tool from your portal to enable';}
+  })();
+
+  var _db=null;
+  try{if(!firebase.apps.length){firebase.initializeApp({apiKey:'AIzaSyB-PLACEHOLDER',authDomain:'clearsky-portal.firebaseapp.com',projectId:'clearsky-portal'});}
+    _db=firebase.firestore();}catch(e){_db=null;}
+
+  if (typeof OMEGASettings!=='undefined'){
+    OMEGASettings.init(_db, ORG).then(function(){ OMEGASettings.renderTab('settingsPanel'); });
+  }
+  (function(){
+    var _tabs=document.getElementsByClassName('tab');
+    for (var _t=0;_t<_tabs.length;_t++){
+      _tabs[_t].addEventListener('click', function(e){
+        var name=e.target.getAttribute('data-tab');
+        for (var i=0;i<_tabs.length;i++) _tabs[i].className='tab'+(_tabs[i].getAttribute('data-tab')===name?' on':'');
+        document.getElementById('tab-tool').className=name==='tool'?'':'hidden';
+        document.getElementById('tab-settings').className=name==='settings'?'':'hidden';
+      });
+    }
+  })();
+
+  function $(id){return document.getElementById(id);}
+
+  /* ── Factors & default weights ── */
+  var FACTORS=[
+    {key:'grid',    label:'Grid proximity',     w:25},
+    {key:'incentive',label:'Incentive strength', w:20},
+    {key:'offtake', label:'Offtake demand',      w:20},
+    {key:'interconnect',label:'Interconnect ease',w:20},
+    {key:'land',    label:'Land / siting',       w:10},
+    {key:'size',    label:'Project size (load)',  w:5}
+  ];
+
+  /* ── Weight sliders ── */
+  function buildWeights(){
+    var h='';
+    for(var i=0;i<FACTORS.length;i++){var f=FACTORS[i];
+      h+='<div class="wt"><label>'+f.label+'</label>'+
+         '<input type="range" min="0" max="50" value="'+f.w+'" data-wk="'+f.key+'">'+
+         '<span class="val" id="wv_'+f.key+'">'+f.w+'</span></div>';
+    }
+    $('weights').innerHTML=h;
+    var sliders=$('weights').querySelectorAll('input[type=range]');
+    for(var s=0;s<sliders.length;s++){ sliders[s].addEventListener('input',onWeight); }
+    updateSum();
+  }
+  function onWeight(e){
+    var k=e.target.getAttribute('data-wk');
+    $('wv_'+k).textContent=e.target.value;
+    for(var i=0;i<FACTORS.length;i++){ if(FACTORS[i].key===k) FACTORS[i].w=parseFloat(e.target.value); }
+    updateSum();
+  }
+  function updateSum(){
+    var t=0;for(var i=0;i<FACTORS.length;i++)t+=FACTORS[i].w;
+    $('wsum').textContent='Total weight: '+t+' (weights are normalized, so relative size is what matters).';
+  }
+
+  /* ── Sites UI ── */
+  var seq=0;
+  function addSite(cfg){
+    cfg=cfg||{};seq++;
+    var div=document.createElement('div');
+    div.className='siteRow';
+    div.innerHTML=
+      '<input class="nm" placeholder="Site name" value="'+(cfg.name||('Site '+seq))+'">'+
+      '<input class="sm" type="number" placeholder="Load kW" value="'+(cfg.load_kw!=null?cfg.load_kw:'')+'">'+
+      '<input class="sm" type="number" placeholder="Grid mi" value="'+(cfg.grid_dist_mi!=null?cfg.grid_dist_mi:'')+'">'+
+      '<input class="sm" type="number" placeholder="Incent 0-100" value="'+(cfg.incentive_score!=null?cfg.incentive_score:'')+'">'+
+      '<input class="sm" type="number" placeholder="Land 0-100" value="'+(cfg.land_score!=null?cfg.land_score:'')+'">'+
+      '<input class="sm" type="number" placeholder="Offtake 0-100" value="'+(cfg.offtake_score!=null?cfg.offtake_score:'')+'">'+
+      '<input class="sm" type="number" placeholder="Interc 0-100" value="'+(cfg.interconnect_score!=null?cfg.interconnect_score:'')+'">'+
+      '<button class="del">×</button>';
+    div.querySelector('.del').addEventListener('click',function(){div.parentNode.removeChild(div);});
+    $('sites').appendChild(div);
+  }
+  $('addSite').addEventListener('click',function(){addSite();});
+
+  /* CSV import */
+  $('csv').addEventListener('change',function(e){
+    var f=e.target.files[0];if(!f)return;
+    var r=new FileReader();
+    r.onload=function(){
+      var lines=String(r.result).split(/\r?\n/).filter(function(x){return x.trim();});
+      if(!lines.length)return;
+      var head=lines[0].split(',').map(function(x){return x.trim().toLowerCase();});
+      function col(row,name){var i=head.indexOf(name);return i>=0?row[i]:'';}
+      $('sites').innerHTML='';seq=0;
+      for(var i=1;i<lines.length;i++){
+        var row=lines[i].split(',');
+        addSite({
+          name:col(row,'name')||('Site '+i),
+          load_kw:col(row,'load_kw'), grid_dist_mi:col(row,'grid_dist_mi'),
+          incentive_score:col(row,'incentive_score'), land_score:col(row,'land_score'),
+          offtake_score:col(row,'offtake_score'), interconnect_score:col(row,'interconnect_score')
+        });
+      }
+    };
+    r.readAsText(f);
+  });
+
+  /* seed examples */
+  addSite({name:'Clinton IA depot',load_kw:750,grid_dist_mi:0.4,incentive_score:60,land_score:80,offtake_score:70,interconnect_score:75});
+  addSite({name:'Berkeley CA (PG&E)',load_kw:802,grid_dist_mi:1.2,incentive_score:95,land_score:55,offtake_score:85,interconnect_score:45});
+  addSite({name:'ComEd IL C&I',load_kw:1200,grid_dist_mi:0.8,incentive_score:90,land_score:65,offtake_score:60,interconnect_score:70});
+
+  /* ── Scoring ──
+     grid: closer is better -> score = clamp(100 - dist*20, 0..100) (5mi -> 0)
+     size: larger load better up to a cap -> score = clamp(load/2000*100,0..100)
+     others: user-entered 0..100 directly.
+     Final = weighted average normalized by total weight. */
+  function clamp(v){return v<0?0:(v>100?100:v);}
+  function scoreSite(s){
+    var grid=clamp(100 - (parseFloat(s.grid_dist_mi)||0)*20);
+    var size=clamp((parseFloat(s.load_kw)||0)/2000*100);
+    var parts={
+      grid:grid, size:size,
+      incentive:clamp(parseFloat(s.incentive_score)||0),
+      land:clamp(parseFloat(s.land_score)||0),
+      offtake:clamp(parseFloat(s.offtake_score)||0),
+      interconnect:clamp(parseFloat(s.interconnect_score)||0)
+    };
+    var tw=0,acc=0;
+    for(var i=0;i<FACTORS.length;i++){var f=FACTORS[i];tw+=f.w;acc+=f.w*parts[f.key];}
+    return {parts:parts, total: tw? acc/tw : 0};
+  }
+
+  function scoreColor(v){
+    // red(0)->amber(50)->green(100)
+    var r,g;
+    if(v<50){ r=194; g=Math.round(52+(154-52)*(v/50)); }
+    else { r=Math.round(194-(194-31)*((v-50)/50)); g=Math.round(154+(157-154)*((v-50)/50)); }
+    return 'rgb('+r+','+g+',80)';
+  }
+
+  var LAST=[];
+  function run(){
+    var rows=$('sites').getElementsByClassName('siteRow');
+    var sites=[];
+    for(var i=0;i<rows.length;i++){
+      var inp=rows[i].getElementsByTagName('input');
+      var name=inp[0].value||('Site '+(i+1));
+      var s={name:name,load_kw:inp[1].value,grid_dist_mi:inp[2].value,
+        incentive_score:inp[3].value,land_score:inp[4].value,
+        offtake_score:inp[5].value,interconnect_score:inp[6].value};
+      var sc=scoreSite(s);
+      s.score=sc.total;s.parts=sc.parts;
+      sites.push(s);
+    }
+    sites.sort(function(a,b){return b.score-a.score;});
+    LAST=sites;
+
+    var tb='';
+    for(var r=0;r<sites.length;r++){
+      var s2=sites[r];
+      tb+='<tr><td class="rank">'+(r+1)+'</td><td>'+s2.name+'</td>'+
+        '<td class="r">'+(s2.load_kw||'—')+'</td>'+
+        '<td class="r">'+(s2.grid_dist_mi||'—')+'</td>'+
+        '<td class="r">'+Math.round(s2.parts.incentive)+'</td>'+
+        '<td class="r">'+Math.round(s2.parts.land)+'</td>'+
+        '<td class="r">'+Math.round(s2.parts.offtake)+'</td>'+
+        '<td class="r">'+Math.round(s2.parts.interconnect)+'</td>'+
+        '<td class="r"><span class="score" style="background:'+scoreColor(s2.score)+'">'+
+          Math.round(s2.score)+'</span></td></tr>';
+    }
+    $('rankTable').getElementsByTagName('tbody')[0].innerHTML=tb||
+      '<tr><td colspan="9" class="muted">No sites entered.</td></tr>';
+    $('rankNote').innerHTML='Ranked '+sites.length+' site(s) by weighted score. Grid proximity auto-scored (closer = higher, 5+ mi = 0). '+
+      'Project size auto-scored against a 2 MW reference. Adjust weights above and re-rank to test sensitivity.';
+    $('results').className='';
+    $('results').scrollIntoView({behavior:'smooth'});
+  }
+
+  function exportCsv(){
+    if(!LAST.length)return;
+    var h='rank,name,load_kw,grid_dist_mi,incentive,land,offtake,interconnect,score\n';
+    for(var i=0;i<LAST.length;i++){var s=LAST[i];
+      h+=(i+1)+','+'"'+s.name+'",'+(s.load_kw||'')+','+(s.grid_dist_mi||'')+','+
+        Math.round(s.parts.incentive)+','+Math.round(s.parts.land)+','+
+        Math.round(s.parts.offtake)+','+Math.round(s.parts.interconnect)+','+
+        Math.round(s.score)+'\n';
+    }
+    var blob=new Blob([h],{type:'text/csv'});
+    var a=document.createElement('a');a.href=URL.createObjectURL(blob);
+    a.download='site-ranking.csv';a.click();
+  }
+
+  function saveData(){
+    if(!_db||!ORG){$('saveMsg').textContent='No org/DB scope — preview mode; not persisted.';return;}
+    var slim=[];for(var i=0;i<LAST.length;i++){var s=LAST[i];slim.push({rank:i+1,name:s.name,score:Math.round(s.score),parts:s.parts,load_kw:s.load_kw,grid_dist_mi:s.grid_dist_mi});}
+    var weights={};for(var w=0;w<FACTORS.length;w++)weights[FACTORS[w].key]=FACTORS[w].w;
+    var payload={data:{ranking:slim,weights:weights,savedAt:Date.now(),project:PROJECT},updatedAt:firebase.firestore.FieldValue.serverTimestamp()};
+    _db.collection('toolData').doc(ORG).collection('tools').doc('sitediscovery').set(payload,{merge:true})
+      .then(function(){$('saveMsg').textContent='Saved to '+ORG+'.';})
+      ['catch'](function(e){$('saveMsg').textContent='Save failed: '+e.message;});
+  }
+
+  buildWeights();
+  $('runBtn').addEventListener('click',run);
+  $('saveBtn').addEventListener('click',saveData);
+  $('exportCsv').addEventListener('click',exportCsv);
+
+})();
+</script>
+</body>
+</html>

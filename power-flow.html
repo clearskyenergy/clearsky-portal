@@ -1,0 +1,399 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Multi-Node Power Flow · ClearSky-OMEGA</title>
+<script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+<script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-auth.js"></script>
+<script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-firestore.js"></script>
+<script src="/omega-settings.js"></script>
+<style>
+  :root{
+    --ink:#f5f7fb; --panel:#ffffff; --panel2:#f0f3f9; --line:#d9e0ec;
+    --txt:#16233d; --dim:#5d6b85; --accent:#1f9d5a; --accent2:#2563c7;
+    --warn:#b06a00; --bad:#c23434; --good:#1f9d5a; --src:#2563c7; --load:#c23434; --bess:#7a3fc7;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--ink);color:var(--txt);
+    font:14px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif}
+  .wrap{max-width:1180px;margin:0 auto;padding:22px 18px 80px}
+  h1{font-size:22px;margin:0 0 2px;letter-spacing:.2px}
+  .sub{color:var(--dim);font-size:13px;margin-bottom:18px}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:16px;box-shadow:0 1px 3px rgba(22,35,61,.06);margin-bottom:16px}
+  .card h2{font-size:13px;text-transform:uppercase;letter-spacing:1.2px;color:var(--dim);margin:0 0 12px}
+  label{display:block;font-size:12px;color:var(--dim);margin:10px 0 4px}
+  input,select{width:100%;background:var(--panel2);border:1px solid var(--line);color:var(--txt);
+    border-radius:8px;padding:8px 10px;font-size:13px}
+  .row{display:flex;gap:10px}.row>*{flex:1}
+  .btn{background:var(--accent);color:#fff;border:0;border-radius:9px;padding:11px 16px;font-weight:700;font-size:14px;cursor:pointer}
+  .btn.ghost{background:transparent;color:var(--accent2);border:1px solid var(--line)}
+  .btn.wide{width:100%;margin-top:6px}
+  table{width:100%;border-collapse:collapse;font-size:12px;margin-top:6px}
+  th,td{text-align:left;padding:6px 8px;border-bottom:1px solid var(--line)}
+  th{color:var(--dim);font-weight:600;text-transform:uppercase;font-size:10px;letter-spacing:.6px}
+  td.r,th.r{text-align:right}
+  .note{font-size:12px;color:var(--dim);margin-top:10px;line-height:1.5}
+  .hidden{display:none}
+  .tag{font-size:10px;padding:1px 6px;border-radius:10px}
+  .tag.ok{background:#eaf7f0;color:var(--good)}
+  .tag.warn{background:#fdf4e5;color:var(--warn)}
+  .tag.bad{background:#fbecec;color:var(--bad)}
+  .muted{color:var(--dim);font-size:12px}
+  .topbar{display:flex;align-items:center;justify-content:space-between;margin-bottom:14px}
+  .nodeRow{display:flex;gap:8px;align-items:center;margin-bottom:8px}
+  .nodeRow input,.nodeRow select{font-size:12px;padding:6px 8px}
+  .nodeRow .nm{flex:1.4}.nodeRow .sm{flex:.9}
+  .del{background:transparent;border:0;color:var(--bad);cursor:pointer;font-size:16px;padding:0 6px}
+  .addbtn{background:transparent;border:1px dashed var(--line);color:var(--accent2);border-radius:8px;padding:8px;width:100%;margin-top:6px;cursor:pointer;font-size:13px}
+  .legend{display:flex;gap:16px;font-size:11px;margin:6px 0 2px}
+  .dot{display:inline-block;width:9px;height:9px;border-radius:50%;margin-right:4px;vertical-align:middle}
+  svg{width:100%;height:auto;background:var(--panel2);border:1px solid var(--line);border-radius:10px}
+  a{color:var(--accent2)}
+  .tabs{display:flex;gap:4px;border-bottom:1px solid var(--line);margin-bottom:16px}
+  .tab{padding:9px 16px;font-size:13px;font-weight:600;color:var(--dim);cursor:pointer;border-bottom:2px solid transparent}
+  .tab.on{color:var(--txt);border-bottom-color:var(--accent)}
+
+  /* ===== OMEGA house style: dark-navy topbar + nav (matches fleet-command) ===== */
+  .tb{display:flex;align-items:center;height:52px;background:#0e1b33;color:#fff;padding:0 16px;position:sticky;top:0;z-index:50}
+  .tb-omega{height:26px;margin-right:9px}
+  .tb-logo-txt{font-weight:700;font-size:17px;letter-spacing:.3px}
+  .tb-logo-txt span{color:#4da3ff}
+  .tb-sep{width:1px;height:24px;background:#2a3c5c;margin:0 16px}
+  .tb-ws{font-size:13px;color:#b9c8e0}
+  .tb-ws b{color:#fff;font-weight:700}
+  .tb-right{margin-left:auto;display:flex;align-items:center;gap:12px}
+  .tb-badge{background:#12233f;border:1px solid #2a3c5c;color:#8fc0ff;padding:3px 9px;border-radius:20px;font-size:11px;font-weight:600;letter-spacing:.4px}
+  .tb-plat{color:#cfe0ff;text-decoration:none;font-size:12px;border:1px solid #2a3c5c;background:#12233f;padding:5px 11px;border-radius:7px;font-weight:600}
+  .tb-plat.off{opacity:.4;pointer-events:none}
+  .tb-user{width:28px;height:28px;border-radius:50%;background:#2a3c5c;display:flex;align-items:center;justify-content:center;color:#cfe0ff;font-weight:700;font-size:12px}
+  .nav{display:flex;background:#12233f;padding:0 8px;flex-wrap:wrap}
+  .nav a{color:#9fb2cf;padding:11px 15px;font-size:13px;font-weight:600;cursor:pointer;border-bottom:2px solid transparent;text-decoration:none}
+  .nav a.on{color:#fff;border-bottom-color:#4da3ff;background:#0e1b33}
+</style>
+</head>
+<body>
+<div class="tb">
+  <img src="/clearsky-omega-mark-white.png" alt="OMEGA" class="tb-omega">
+  <span class="tb-logo-txt">Clear<span>Sky</span> OMEGA</span>
+  <div class="tb-sep"></div>
+  <span class="tb-ws">Multi-Node Power Flow &nbsp;&middot;&nbsp; <b id="orgLabel">org: —</b></span>
+  <div class="tb-right">
+    <a href="#" id="portalLink" class="tb-plat off">&#9632; Platform</a>
+    <span class="tb-badge" id="tierBadge">OMEGA</span>
+    <div class="tb-user" id="userInitial">?</div>
+  </div>
+</div>
+<div class="nav">
+  <a class="tab on" data-tab="tool">Power Flow</a>
+  <a class="tab" data-tab="settings" style="margin-left:auto">&#9881; Settings</a>
+</div>
+<div class="wrap">
+  <div id="tab-settings" class="hidden">
+    <div class="card"><h2>API keys &amp; data sources</h2><div id="settingsPanel"></div></div>
+  </div>
+  <div id="tab-tool">
+
+  <div class="card">
+    <h2>Network</h2>
+    <div class="row" style="margin-bottom:8px">
+      <div><label>System voltage (L-L)</label>
+        <select id="voltage"><option value="480">480V 3Ø</option><option value="208">208V 3Ø</option><option value="240">240V 1Ø</option></select></div>
+      <div><label>Phase</label><select id="phase"><option value="3">3-phase</option><option value="1">1-phase</option></select></div>
+      <div><label>Conductor material</label><select id="material"><option value="cu">Copper</option><option value="al">Aluminum</option></select></div>
+      <div><label>VD alert threshold %</label><input id="vdThresh" type="number" step="0.5" value="3"></div>
+    </div>
+    <div class="legend">
+      <span><span class="dot" style="background:var(--src)"></span>Source (utility/PV)</span>
+      <span><span class="dot" style="background:var(--load)"></span>Load</span>
+      <span><span class="dot" style="background:var(--bess)"></span>BESS (bidirectional)</span>
+    </div>
+    <div id="nodes"></div>
+    <button class="addbtn" id="addNode">+ Add node</button>
+    <div class="note">Each node connects to a parent (its upstream node) via a conductor of a given size and length. The root (utility POI) has no parent. Set kW at source/load/BESS nodes; the solver pushes flow up the radial tree.</div>
+  </div>
+
+  <button class="btn wide" id="runBtn">Solve power flow</button>
+
+  <div id="results" class="hidden">
+    <div class="card">
+      <h2>Node results</h2>
+      <table id="nodeTable">
+        <thead><tr><th>Node</th><th>Type</th><th class="r">Net kW</th><th class="r">Segment A</th>
+          <th>Conductor</th><th class="r">Ampacity A</th><th class="r">Loading %</th>
+          <th class="r">Seg VD %</th><th class="r">Cum VD %</th><th>Status</th></tr></thead>
+        <tbody></tbody>
+      </table>
+      <div class="note" id="flowNote"></div>
+    </div>
+    <div class="card">
+      <h2>One-line flow</h2>
+      <svg id="diagram" viewBox="0 0 900 460" preserveAspectRatio="xMidYMid meet"></svg>
+    </div>
+    <div class="card">
+      <div class="row">
+        <button class="btn" id="saveBtn">Save to project</button>
+        <button class="btn ghost" id="toSizing">Send segment amps to conductor sizing</button>
+      </div>
+      <div class="muted" id="saveMsg" style="margin-top:8px"></div>
+    </div>
+  </div>
+  </div><!-- /tab-tool -->
+</div>
+
+<script>
+/* ══════════════════════════════════════════════════════════════════
+   MULTI-NODE POWER FLOW  ·  ClearSky-OMEGA
+   ES5 only. Single-file. Firebase compat v8.
+   Radial DER network: sources inject kW, loads draw, BESS bidirectional.
+   Solves segment current (root-directed), per-segment & cumulative VD,
+   and conductor loading %. Feeds the conductor sizing tool.
+   ══════════════════════════════════════════════════════════════════ */
+(function(){
+  'use strict';
+
+  var ORG=(function(){var m=window.location.search.match(/[?&]org=([^&]+)/);return m?decodeURIComponent(m[1]):null;})();
+  var PROJECT=(function(){var m=window.location.search.match(/[?&]id=([^&]+)/);return m?decodeURIComponent(m[1]):null;})();
+  document.getElementById('orgLabel').textContent='org: '+(ORG||'—');
+
+
+  (function(){
+    var link=document.getElementById('portalLink');
+    var pm=window.location.search.match(/[?&]portal=([^&]+)/);var url=null;
+    if(pm){url=decodeURIComponent(pm[1]);}
+    else if(ORG){var slug=ORG.split('.')[0].toLowerCase();url='https://'+slug+'.csebuilders.com/';}
+    else if(document.referrer){try{var u=new URL(document.referrer);url=u.origin+'/';}catch(e){}}
+    if(url){link.href=url;link.className='tb-plat';link.title='Return to '+url;}
+    else{link.title='Open this tool from your portal to enable';}
+  })();
+
+  var _db=null;
+  try{if(!firebase.apps.length){firebase.initializeApp({apiKey:'AIzaSyB-PLACEHOLDER',authDomain:'clearsky-portal.firebaseapp.com',projectId:'clearsky-portal'});}
+    _db=firebase.firestore();}catch(e){_db=null;}
+
+  if (typeof OMEGASettings!=='undefined'){
+    OMEGASettings.init(_db, ORG).then(function(){ OMEGASettings.renderTab('settingsPanel'); });
+  }
+  (function(){
+    var _tabs=document.getElementsByClassName('tab');
+    for (var _t=0;_t<_tabs.length;_t++){
+      _tabs[_t].addEventListener('click', function(e){
+        var name=e.target.getAttribute('data-tab');
+        for (var i=0;i<_tabs.length;i++) _tabs[i].className='tab'+(_tabs[i].getAttribute('data-tab')===name?' on':'');
+        document.getElementById('tab-tool').className=name==='tool'?'':'hidden';
+        document.getElementById('tab-settings').className=name==='settings'?'':'hidden';
+      });
+    }
+  })();
+
+  function $(id){return document.getElementById(id);}
+  function num(id){var v=parseFloat($(id).value);return isFinite(v)?v:0;}
+
+  /* NEC 310.16 ampacity (75C col used for loading %), cmil for VD */
+  var SIZES=['14','12','10','8','6','4','3','2','1','1/0','2/0','3/0','4/0','250','300','350','400','500','600','750','1000'];
+  var A75_CU={'14':20,'12':25,'10':35,'8':50,'6':65,'4':85,'3':100,'2':115,'1':130,'1/0':150,'2/0':175,'3/0':200,'4/0':230,'250':255,'300':285,'350':310,'400':335,'500':380,'600':420,'750':475,'1000':545};
+  var A75_AL={'14':0,'12':20,'10':30,'8':40,'6':50,'4':65,'3':75,'2':90,'1':100,'1/0':120,'2/0':135,'3/0':155,'4/0':180,'250':205,'300':230,'350':250,'400':270,'500':310,'600':340,'750':385,'1000':445};
+  var CMIL={'14':4110,'12':6530,'10':10380,'8':16510,'6':26240,'4':41740,'3':52620,'2':66360,'1':83690,'1/0':105600,'2/0':133100,'3/0':167800,'4/0':211600,'250':250000,'300':300000,'350':350000,'400':400000,'500':500000,'600':600000,'750':750000,'1000':1000000};
+  var K_CU=12.9,K_AL=21.2;
+
+  function sizeOptions(sel){
+    var h='';for(var i=0;i<SIZES.length;i++){h+='<option value="'+SIZES[i]+'"'+(SIZES[i]===sel?' selected':'')+'>'+SIZES[i]+'</option>';}
+    return h;
+  }
+
+  /* ── NODES UI ── */
+  var seq=0, NODES=[];
+  function addNode(cfg){
+    cfg=cfg||{}; seq++;
+    var id='n'+seq;
+    var div=document.createElement('div');
+    div.className='nodeRow'; div.setAttribute('data-id',id);
+    div.innerHTML=
+      '<input class="nm" placeholder="Node name" value="'+(cfg.name||('Node '+seq))+'">'+
+      '<select class="sm type">'+
+        '<option value="root"'+(cfg.type==='root'?' selected':'')+'>Root/POI</option>'+
+        '<option value="bus"'+(cfg.type==='bus'?' selected':'')+'>Bus/Panel</option>'+
+        '<option value="source"'+(cfg.type==='source'?' selected':'')+'>Source</option>'+
+        '<option value="load"'+(cfg.type==='load'?' selected':'')+'>Load</option>'+
+        '<option value="bess"'+(cfg.type==='bess'?' selected':'')+'>BESS</option>'+
+      '</select>'+
+      '<select class="sm parent"></select>'+
+      '<input class="sm kw" type="number" placeholder="kW" value="'+(cfg.kw!=null?cfg.kw:'')+'" title="+ source/discharge, load draws">'+
+      '<select class="sm size">'+sizeOptions(cfg.size||'4/0')+'</select>'+
+      '<input class="sm len" type="number" placeholder="ft" value="'+(cfg.len!=null?cfg.len:'')+'" title="length to parent">'+
+      '<button class="del">×</button>';
+    div.querySelector('.del').addEventListener('click',function(){div.parentNode.removeChild(div);refreshParents();});
+    div.querySelector('.nm').addEventListener('input',refreshParents);
+    $('nodes').appendChild(div);
+    refreshParents();
+  }
+  function refreshParents(){
+    var rows=document.querySelectorAll('[data-id]');
+    var opts=[{id:'',nm:'(none / root)'}];
+    for(var i=0;i<rows.length;i++){opts.push({id:rows[i].getAttribute('data-id'),nm:rows[i].querySelector('.nm').value});}
+    for(var r=0;r<rows.length;r++){
+      var sel=rows[r].querySelector('.parent');var cur=sel.value;var myId=rows[r].getAttribute('data-id');
+      var h='';
+      for(var o=0;o<opts.length;o++){ if(opts[o].id===myId)continue;
+        h+='<option value="'+opts[o].id+'"'+(opts[o].id===cur?' selected':'')+'>'+opts[o].nm+'</option>'; }
+      sel.innerHTML=h;
+    }
+  }
+  $('addNode').addEventListener('click',function(){addNode();});
+
+  /* seed a realistic BESS+EV site */
+  addNode({name:'Utility POI',type:'root'});
+  var rootId='n'+seq;
+  addNode({name:'Main MDP',type:'bus',size:'600',len:25});
+  var mdpId='n'+seq;
+  addNode({name:'BESS 500kW',type:'bess',kw:500,size:'4/0',len:120});
+  addNode({name:'Solar 300kW',type:'source',kw:300,size:'3/0',len:90});
+  addNode({name:'EV DCFC 150kW',type:'load',kw:150,size:'2/0',len:60});
+  addNode({name:'House load',type:'load',kw:200,size:'2/0',len:40});
+  // wire parents after DOM exists
+  setTimeout(function(){
+    var rows=document.querySelectorAll('[data-id]');
+    // rows[1..] parent = MDP except MDP parent = root
+    if(rows.length>=6){
+      rows[1].querySelector('.parent').value=rootId;      // MDP -> root
+      for(var i=2;i<rows.length;i++){ rows[i].querySelector('.parent').value=mdpId; }
+    }
+  },0);
+
+  /* ── SOLVE ──
+     Build tree, compute each node's NET kW (source +, load -). For each
+     node's segment to its parent, the current it carries = |sum of net kW
+     of the node's whole subtree| converted to amps. This is the radial
+     flow magnitude on that conductor. VD per segment uses that current. */
+  function solve(){
+    var rows=document.querySelectorAll('[data-id]');
+    var nodes={}, order=[];
+    for(var i=0;i<rows.length;i++){
+      var id=rows[i].getAttribute('data-id');
+      var q=rows[i].querySelector.bind(rows[i]);
+      nodes[id]={ id:id, name:q('.nm').value, type:q('.type').value,
+        parent:q('.parent').value, kw:parseFloat(q('.kw').value)||0,
+        size:q('.size').value, len:parseFloat(q('.len').value)||0,
+        net:0, subKw:0, children:[] };
+      order.push(id);
+    }
+    // net kW sign: source/bess-discharge positive (inject toward root),
+    // load negative (draw from root). For flow magnitude the sign cancels;
+    // we track absolute subtree power on each segment.
+    for(var k=0;k<order.length;k++){
+      var nd=nodes[order[k]];
+      if(nd.type==='source') nd.net=Math.abs(nd.kw);
+      else if(nd.type==='load') nd.net=-Math.abs(nd.kw);
+      else if(nd.type==='bess') nd.net=nd.kw; // signed by user (+ discharge / - charge)
+      else nd.net=0;
+    }
+    // link children
+    for(var c=0;c<order.length;c++){var n2=nodes[order[c]];if(n2.parent&&nodes[n2.parent])nodes[n2.parent].children.push(n2.id);}
+    // subtree net (post-order)
+    function subtree(id){var n=nodes[id];var s=n.net;for(var i=0;i<n.children.length;i++){s+=subtree(n.children[i]);}n.subKw=s;return s;}
+    for(var rt=0;rt<order.length;rt++){ if(!nodes[order[rt]].parent) subtree(order[rt]); }
+
+    var V=num('voltage'),ph=$('phase').value,mat=$('material').value;
+    var mult=ph==='3'?1.732:2, K=mat==='al'?K_AL:K_CU;
+    var ampTbl=mat==='al'?A75_AL:A75_CU;
+    var vdThresh=num('vdThresh');
+
+    // cumulative VD from root: walk parent chain summing segment VD
+    function segAmps(n){ var kw=Math.abs(n.subKw); return (kw*1000)/(mult/1.732* (ph==='3'?1.732:1) *V) ; }
+    // simpler correct amps: P(W)= sqrt3*V*I (3ph) or V*I (1ph)
+    function ampsOf(kw){ var w=Math.abs(kw)*1000; return ph==='3'? w/(1.732*V) : w/V; }
+
+    var results=[];
+    for(var d=0;d<order.length;d++){
+      var n=nodes[order[d]];
+      var amps = n.parent ? ampsOf(n.subKw) : ampsOf(n.subKw); // segment to parent
+      var cmil=CMIL[n.size]||211600;
+      var segVD = n.parent ? (mult*K*amps*n.len)/(cmil*V)*100 : 0;
+      n._amps=amps; n._segVD=segVD;
+      results.push(n);
+    }
+    // cumulative VD
+    function cumVD(id){var n=nodes[id];var v=n._segVD;var p=n.parent;while(p&&nodes[p]){v+=nodes[p]._segVD;p=nodes[p].parent;}return v;}
+
+    var tb='';
+    for(var e=0;e<results.length;e++){
+      var n3=results[e];
+      var amp=n3._amps;
+      var cap=ampTbl[n3.size]||0;
+      var loading=cap?amp/cap*100:0;
+      var cvd=cumVD(n3.id);
+      var status;
+      if(loading>100) status='<span class="tag bad">overloaded</span>';
+      else if(cvd>vdThresh) status='<span class="tag warn">VD high</span>';
+      else if(!n3.parent) status='<span class="tag ok">root</span>';
+      else status='<span class="tag ok">OK</span>';
+      var mm=mat==='al'?'AL':'CU';
+      tb+='<tr><td>'+n3.name+'</td><td>'+n3.type+'</td><td class="r">'+
+        (Math.round(n3.subKw*10)/10)+'</td><td class="r">'+
+        (n3.parent?Math.round(amp):'—')+'</td><td>'+
+        (n3.parent?(n3.size+' '+mm):'—')+'</td><td class="r">'+
+        (n3.parent?cap:'—')+'</td><td class="r">'+
+        (n3.parent?Math.round(loading):'—')+'</td><td class="r">'+
+        (n3.parent?(Math.round(n3._segVD*100)/100):'—')+'</td><td class="r">'+
+        (n3.parent?(Math.round(cvd*100)/100):'0')+'</td><td>'+status+'</td></tr>';
+    }
+    $('nodeTable').getElementsByTagName('tbody')[0].innerHTML=tb;
+    $('flowNote').innerHTML='Segment current = subtree net power ÷ ('+(ph==='3'?'√3·':'')+'V). '+
+      'Loading vs 75°C ampacity (110.14(C) terminal column). Cumulative VD summed along the path to the POI. '+
+      'BESS kW is signed: positive = discharge (source), negative = charge (load).';
+
+    window._pf={nodes:nodes,order:order,results:results};
+    drawDiagram(nodes,order,mat);
+    $('results').className='';
+    $('results').scrollIntoView({behavior:'smooth'});
+  }
+
+  /* ── DIAGRAM: simple radial layout by depth ── */
+  function drawDiagram(nodes,order,mat){
+    var svg=$('diagram');
+    // depth of each node
+    function depth(id){var d=0,p=nodes[id].parent;while(p&&nodes[p]){d++;p=nodes[p].parent;}return d;}
+    var byDepth={},maxD=0;
+    for(var i=0;i<order.length;i++){var dp=depth(order[i]);byDepth[dp]=byDepth[dp]||[];byDepth[dp].push(order[i]);if(dp>maxD)maxD=dp;}
+    var W=900,H=460,colW=W/(maxD+1),pos={};
+    for(var d2=0;d2<=maxD;d2++){var arr=byDepth[d2]||[];var rowH=H/(arr.length+1);
+      for(var j=0;j<arr.length;j++){pos[arr[j]]={x:colW*d2+colW/2,y:rowH*(j+1)};}}
+    var s='';
+    // edges
+    for(var e=0;e<order.length;e++){var n=nodes[order[e]];if(n.parent&&pos[n.parent]){
+      var a=pos[n.parent],b=pos[n.id];
+      var over=n._amps && (A75_CU[n.size]||A75_AL[n.size]) && (n._amps/((mat==='al'?A75_AL:A75_CU)[n.size])>1);
+      s+='<line x1="'+a.x+'" y1="'+a.y+'" x2="'+b.x+'" y2="'+b.y+'" stroke="'+(over?'#c23434':'#9fb0cc')+'" stroke-width="'+(over?3:2)+'"/>';
+      var mx=(a.x+b.x)/2,my=(a.y+b.y)/2;
+      s+='<text x="'+mx+'" y="'+(my-4)+'" font-size="10" fill="#5d6b85" text-anchor="middle">'+Math.round(n._amps)+'A</text>';
+    }}
+    // nodes
+    var color={source:'#2563c7',load:'#c23434',bess:'#7a3fc7',bus:'#16233d',root:'#1f9d5a'};
+    for(var f=0;f<order.length;f++){var n2=nodes[order[f]];var p=pos[n2.id];
+      s+='<circle cx="'+p.x+'" cy="'+p.y+'" r="9" fill="'+(color[n2.type]||'#16233d')+'"/>';
+      s+='<text x="'+p.x+'" y="'+(p.y+22)+'" font-size="11" fill="#16233d" text-anchor="middle">'+n2.name+'</text>';
+      s+='<text x="'+p.x+'" y="'+(p.y+35)+'" font-size="9" fill="#5d6b85" text-anchor="middle">'+(Math.round(n2.subKw))+' kW</text>';
+    }
+    svg.innerHTML=s;
+  }
+
+  function saveData(){
+    if(!_db||!ORG){$('saveMsg').textContent='No org/DB scope — preview mode; not persisted.';return;}
+    var slim=[];var r=window._pf.results;
+    for(var i=0;i<r.length;i++){slim.push({name:r[i].name,type:r[i].type,subKw:r[i].subKw,amps:r[i]._amps,size:r[i].size,len:r[i].len,segVD:r[i]._segVD});}
+    var payload={data:{network:slim,savedAt:Date.now(),project:PROJECT},updatedAt:firebase.firestore.FieldValue.serverTimestamp()};
+    _db.collection('toolData').doc(ORG).collection('tools').doc('powerflow').set(payload,{merge:true})
+      .then(function(){$('saveMsg').textContent='Saved to '+ORG+'.';})
+      ['catch'](function(e){$('saveMsg').textContent='Save failed: '+e.message;});
+  }
+  $('runBtn').addEventListener('click',solve);
+  $('saveBtn').addEventListener('click',saveData);
+  $('toSizing').addEventListener('click',function(){
+    saveData();
+    $('saveMsg').textContent='Segment amps staged — open Conductor Sizing to size each run from the solved flow.';
+  });
+
+})();
+</script>
+</body>
+</html>

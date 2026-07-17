@@ -1,0 +1,455 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Conductor &amp; Transformer Sizing · ClearSky-OMEGA</title>
+<script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+<script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-auth.js"></script>
+<script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-firestore.js"></script>
+<script src="/omega-settings.js"></script>
+<style>
+  :root{
+    --ink:#f5f7fb; --panel:#ffffff; --panel2:#f0f3f9; --line:#d9e0ec;
+    --txt:#16233d; --dim:#5d6b85; --accent:#1f9d5a; --accent2:#2563c7;
+    --warn:#b06a00; --bad:#c23434; --good:#1f9d5a;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--ink);color:var(--txt);
+    font:14px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif}
+  .wrap{max-width:1180px;margin:0 auto;padding:22px 18px 80px}
+  h1{font-size:22px;margin:0 0 2px;letter-spacing:.2px}
+  .sub{color:var(--dim);font-size:13px;margin-bottom:18px}
+  .grid{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+  @media(max-width:820px){.grid{grid-template-columns:1fr}}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:16px 16px 18px;box-shadow:0 1px 3px rgba(22,35,61,.06)}
+  .card h2{font-size:13px;text-transform:uppercase;letter-spacing:1.2px;color:var(--dim);margin:0 0 12px}
+  label{display:block;font-size:12px;color:var(--dim);margin:10px 0 4px}
+  input,select{width:100%;background:var(--panel2);border:1px solid var(--line);color:var(--txt);
+    border-radius:8px;padding:8px 10px;font-size:13px}
+  .row{display:flex;gap:10px}.row>*{flex:1}
+  .btn{background:var(--accent);color:#fff;border:0;border-radius:9px;padding:11px 16px;
+    font-weight:700;font-size:14px;cursor:pointer;letter-spacing:.3px}
+  .btn.ghost{background:transparent;color:var(--accent2);border:1px solid var(--line)}
+  .btn.wide{width:100%;margin-top:14px}
+  table{width:100%;border-collapse:collapse;font-size:12px;margin-top:6px}
+  th,td{text-align:left;padding:6px 8px;border-bottom:1px solid var(--line)}
+  th{color:var(--dim);font-weight:600;text-transform:uppercase;font-size:10px;letter-spacing:.6px}
+  td.r,th.r{text-align:right}
+  .note{font-size:12px;color:var(--dim);margin-top:10px;line-height:1.5}
+  .hidden{display:none}
+  .banner{border-radius:10px;padding:10px 12px;font-size:12px;margin-bottom:14px;border:1px solid;
+    background:#eef3fb;border-color:#cddcf2;color:#274a86}
+  .tag{font-size:10px;padding:1px 6px;border-radius:10px}
+  .tag.ok{background:#eaf7f0;color:var(--good)}
+  .tag.warn{background:#fdf4e5;color:var(--warn)}
+  .tag.bad{background:#fbecec;color:var(--bad)}
+  .muted{color:var(--dim);font-size:12px}
+  .runrow{display:flex;gap:10px;align-items:center;margin-top:8px}
+  .runrow input{flex:2}.runrow .len{flex:1}
+  .addbtn{background:transparent;border:1px dashed var(--line);color:var(--accent2);border-radius:8px;padding:8px;width:100%;margin-top:8px;cursor:pointer;font-size:13px}
+  .del{background:transparent;border:0;color:var(--bad);cursor:pointer;font-size:16px;padding:0 6px}
+  .topbar{display:flex;align-items:center;justify-content:space-between;margin-bottom:14px}
+  a{color:var(--accent2)}
+  .tabs{display:flex;gap:4px;border-bottom:1px solid var(--line);margin-bottom:16px}
+  .tab{padding:9px 16px;font-size:13px;font-weight:600;color:var(--dim);cursor:pointer;border-bottom:2px solid transparent}
+  .tab.on{color:var(--txt);border-bottom-color:var(--accent)}
+
+  /* ===== OMEGA house style: dark-navy topbar + nav (matches fleet-command) ===== */
+  .tb{display:flex;align-items:center;height:52px;background:#0e1b33;color:#fff;padding:0 16px;position:sticky;top:0;z-index:50}
+  .tb-omega{height:26px;margin-right:9px}
+  .tb-logo-txt{font-weight:700;font-size:17px;letter-spacing:.3px}
+  .tb-logo-txt span{color:#4da3ff}
+  .tb-sep{width:1px;height:24px;background:#2a3c5c;margin:0 16px}
+  .tb-ws{font-size:13px;color:#b9c8e0}
+  .tb-ws b{color:#fff;font-weight:700}
+  .tb-right{margin-left:auto;display:flex;align-items:center;gap:12px}
+  .tb-badge{background:#12233f;border:1px solid #2a3c5c;color:#8fc0ff;padding:3px 9px;border-radius:20px;font-size:11px;font-weight:600;letter-spacing:.4px}
+  .tb-plat{color:#cfe0ff;text-decoration:none;font-size:12px;border:1px solid #2a3c5c;background:#12233f;padding:5px 11px;border-radius:7px;font-weight:600}
+  .tb-plat.off{opacity:.4;pointer-events:none}
+  .tb-user{width:28px;height:28px;border-radius:50%;background:#2a3c5c;display:flex;align-items:center;justify-content:center;color:#cfe0ff;font-weight:700;font-size:12px}
+  .nav{display:flex;background:#12233f;padding:0 8px;flex-wrap:wrap}
+  .nav a{color:#9fb2cf;padding:11px 15px;font-size:13px;font-weight:600;cursor:pointer;border-bottom:2px solid transparent;text-decoration:none}
+  .nav a.on{color:#fff;border-bottom-color:#4da3ff;background:#0e1b33}
+</style>
+</head>
+<body>
+<div class="tb">
+  <img src="/clearsky-omega-mark-white.png" alt="OMEGA" class="tb-omega">
+  <span class="tb-logo-txt">Clear<span>Sky</span> OMEGA</span>
+  <div class="tb-sep"></div>
+  <span class="tb-ws">Conductor &amp; Transformer Sizing &nbsp;&middot;&nbsp; <b id="orgLabel">org: —</b></span>
+  <div class="tb-right">
+    <a href="#" id="portalLink" class="tb-plat off">&#9632; Platform</a>
+    <span class="tb-badge" id="tierBadge">OMEGA</span>
+    <div class="tb-user" id="userInitial">?</div>
+  </div>
+</div>
+<div class="nav">
+  <a class="tab on" data-tab="tool">Sizing</a>
+  <a class="tab" data-tab="settings" style="margin-left:auto">&#9881; Settings</a>
+</div>
+<div class="wrap">
+  <div id="tab-settings" class="hidden">
+    <div class="card"><h2>API keys &amp; data sources</h2><div id="settingsPanel"></div></div>
+  </div>
+  <div id="tab-tool">
+
+  <div class="banner">
+    <b>Code basis:</b> NEC 2023 Table 310.16 ampacity, 310.15(B)(1) ambient correction, 310.15(C)(1) bundling,
+    110.14(C) termination limits, 240.4(D) small-conductor OCPD caps, and the 125% continuous-load rule.
+    Output is an engineering aid — the EOR stamps the final design.
+  </div>
+
+  <div class="grid">
+    <!-- CONDITIONS -->
+    <div class="card">
+      <h2>Install conditions</h2>
+      <div class="row">
+        <div><label>Conductor material</label>
+          <select id="material"><option value="cu">Copper</option><option value="al">Aluminum</option></select></div>
+        <div><label>Insulation / temp column</label>
+          <select id="tempCol">
+            <option value="90">90°C (THWN-2, XHHW-2)</option>
+            <option value="75" selected>75°C (THWN, XHHW)</option>
+            <option value="60">60°C (TW)</option>
+          </select></div>
+      </div>
+      <div class="row">
+        <div><label>Termination rating (110.14(C))</label>
+          <select id="termCol">
+            <option value="60">60°C</option>
+            <option value="75" selected>75°C</option>
+            <option value="90">90°C</option>
+          </select></div>
+        <div><label>Ambient °C</label><input id="ambient" type="number" value="30"></div>
+      </div>
+      <div class="row">
+        <div><label>System voltage (L-L)</label>
+          <select id="voltage">
+            <option value="480">480V 3Ø</option>
+            <option value="208">208V 3Ø</option>
+            <option value="240">240V 1Ø</option>
+            <option value="120">120V 1Ø</option>
+          </select></div>
+        <div><label>Phase</label>
+          <select id="phase"><option value="3">3-phase</option><option value="1">1-phase</option></select></div>
+      </div>
+      <label>Max voltage-drop target %</label>
+      <input id="vdTarget" type="number" step="0.5" value="2">
+      <div class="note">Termination column caps the usable ampacity per 110.14(C): even 90°C wire is limited to the terminal's rating for final sizing. Derates use the insulation column, then we compare.</div>
+    </div>
+
+    <!-- RUNS -->
+    <div class="card">
+      <h2>Feeder runs</h2>
+      <div id="runs"></div>
+      <button class="addbtn" id="addRun">+ Add run</button>
+      <div class="note">Enter each run's continuous load (amps) and one-way length (ft). Non-continuous loads: uncheck "continuous" to skip the 125% factor. Conductor count sets bundling derate.</div>
+    </div>
+  </div>
+
+  <!-- TRANSFORMER -->
+  <div class="card" style="margin-top:16px">
+    <h2>Transformer sizing (optional)</h2>
+    <div class="row">
+      <div><label>Connected load (kVA)</label><input id="xfkva" type="number" placeholder="e.g. 500"></div>
+      <div><label>Load diversity / demand factor</label><input id="xfdiv" type="number" step="0.05" value="1.0"></div>
+      <div><label>Future growth headroom %</label><input id="xfgrow" type="number" value="25"></div>
+    </div>
+    <div class="note">Recommends the next standard kVA rating above (connected × demand × (1+growth)). Standard sizes: 15, 30, 45, 75, 112.5, 150, 225, 300, 500, 750, 1000, 1500, 2000, 2500 kVA.</div>
+  </div>
+
+  <button class="btn wide" id="runBtn">Size everything</button>
+
+  <div id="results" class="hidden" style="margin-top:22px">
+    <div class="card">
+      <h2>Conductor schedule</h2>
+      <table id="schedule">
+        <thead><tr>
+          <th>Run</th><th class="r">Load A</th><th class="r">Design A (125%)</th>
+          <th>Conductor</th><th>EGC (250.122)</th><th class="r">Derated A</th>
+          <th class="r">OCPD A</th><th class="r">VD %</th><th>Status</th>
+        </tr></thead>
+        <tbody></tbody>
+      </table>
+      <div class="note" id="schedNote"></div>
+
+      <div id="xfResult" class="hidden" style="margin-top:16px">
+        <h2>Transformer</h2>
+        <div id="xfBox"></div>
+      </div>
+
+      <div class="runrow" style="margin-top:16px">
+        <button class="btn" id="saveBtn">Save to project</button>
+        <button class="btn ghost" id="toPermit">Push to permit schedule</button>
+      </div>
+      <div class="muted" id="saveMsg" style="margin-top:8px"></div>
+    </div>
+  </div>
+  </div><!-- /tab-tool -->
+</div>
+
+<script>
+/* ══════════════════════════════════════════════════════════════════
+   CONDUCTOR & TRANSFORMER SIZING  ·  ClearSky-OMEGA
+   ES5 only. Single-file. Firebase compat v8. NEC 2023.
+   ══════════════════════════════════════════════════════════════════ */
+(function(){
+  'use strict';
+
+  var ORG = (function(){ var m=window.location.search.match(/[?&]org=([^&]+)/);
+    return m?decodeURIComponent(m[1]):null; })();
+  var PROJECT = (function(){ var m=window.location.search.match(/[?&]id=([^&]+)/);
+    return m?decodeURIComponent(m[1]):null; })();
+  document.getElementById('orgLabel').textContent='org: '+(ORG||'—');
+
+
+  /* ---- Back-to-portal link ---- */
+  (function(){
+    var link=document.getElementById('portalLink');
+    var pm=window.location.search.match(/[?&]portal=([^&]+)/);
+    var url=null;
+    if (pm){ url=decodeURIComponent(pm[1]); }
+    else if (ORG){ var slug=ORG.split('.')[0].toLowerCase(); url='https://'+slug+'.csebuilders.com/'; }
+    else if (document.referrer){ try{ var u=new URL(document.referrer); url=u.origin+'/'; }catch(e){} }
+    if (url){ link.href=url; link.className='tb-plat'; link.title='Return to '+url; }
+    else { link.title='Open this tool from your portal to enable'; }
+  })();
+
+  var _db=null;
+  try{ if(!firebase.apps.length){ firebase.initializeApp({
+    apiKey:'AIzaSyB-PLACEHOLDER', authDomain:'clearsky-portal.firebaseapp.com', projectId:'clearsky-portal'});}
+    _db=firebase.firestore(); }catch(e){ _db=null; }
+
+  if (typeof OMEGASettings!=='undefined'){
+    OMEGASettings.init(_db, ORG).then(function(){ OMEGASettings.renderTab('settingsPanel'); });
+  }
+  (function(){
+    var _tabs=document.getElementsByClassName('tab');
+    for (var _t=0;_t<_tabs.length;_t++){
+      _tabs[_t].addEventListener('click', function(e){
+        var name=e.target.getAttribute('data-tab');
+        for (var i=0;i<_tabs.length;i++) _tabs[i].className='tab'+(_tabs[i].getAttribute('data-tab')===name?' on':'');
+        document.getElementById('tab-tool').className=name==='tool'?'':'hidden';
+        document.getElementById('tab-settings').className=name==='settings'?'':'hidden';
+      });
+    }
+  })();
+
+  function $(id){ return document.getElementById(id); }
+  function num(id){ var v=parseFloat($(id).value); return isFinite(v)?v:0; }
+
+  /* ══════════ NEC DATA (2023) ══════════ */
+  /* Table 310.16 ampacity by AWG/kcmil. [60C,75C,90C] */
+  var SIZES=['14','12','10','8','6','4','3','2','1','1/0','2/0','3/0','4/0','250','300','350','400','500','600','750','1000'];
+  var AMP_CU={
+    '14':[15,20,25],'12':[20,25,30],'10':[30,35,40],'8':[40,50,55],'6':[55,65,75],
+    '4':[70,85,95],'3':[85,100,115],'2':[95,115,130],'1':[110,130,145],
+    '1/0':[125,150,170],'2/0':[145,175,195],'3/0':[165,200,225],'4/0':[195,230,260],
+    '250':[215,255,290],'300':[240,285,320],'350':[260,310,350],'400':[280,335,380],
+    '500':[320,380,430],'600':[355,420,475],'750':[400,475,535],'1000':[455,545,615]
+  };
+  var AMP_AL={
+    '14':[0,0,0],'12':[15,20,25],'10':[25,30,35],'8':[35,40,45],'6':[40,50,55],
+    '4':[55,65,75],'3':[65,75,85],'2':[75,90,100],'1':[85,100,115],
+    '1/0':[100,120,135],'2/0':[115,135,150],'3/0':[130,155,175],'4/0':[150,180,205],
+    '250':[170,205,230],'300':[195,230,260],'350':[210,250,280],'400':[225,270,305],
+    '500':[260,310,350],'600':[285,340,385],'750':[320,385,435],'1000':[375,445,500]
+  };
+  /* circular mils for VD calc */
+  var CMIL={'14':4110,'12':6530,'10':10380,'8':16510,'6':26240,'4':41740,'3':52620,
+    '2':66360,'1':83690,'1/0':105600,'2/0':133100,'3/0':167800,'4/0':211600,
+    '250':250000,'300':300000,'350':350000,'400':400000,'500':500000,'600':600000,
+    '750':750000,'1000':1000000};
+  /* K (ohm-cmil/ft) */
+  var K_CU=12.9, K_AL=21.2;
+  /* EGC min size by OCPD rating (250.122), copper */
+  var EGC=[[15,'14'],[20,'12'],[60,'10'],[100,'8'],[200,'6'],[300,'4'],[400,'3'],
+    [500,'2'],[600,'1'],[800,'1/0'],[1000,'2/0'],[1200,'3/0']];
+  /* Standard OCPD ratings (240.6) */
+  var OCPD=[15,20,25,30,35,40,45,50,60,70,80,90,100,110,125,150,175,200,225,250,300,
+    350,400,450,500,600,700,800,1000,1200];
+  /* 240.4(D) small-conductor max OCPD, copper */
+  var SMALL_CU={'14':15,'12':20,'10':30};
+  var XF_STD=[15,30,45,75,112.5,150,225,300,500,750,1000,1500,2000,2500];
+
+  function ampFactorAmbient(amb, col){
+    /* Table 310.15(B)(1) based on 30C ambient. col = insulation temp column. */
+    var t=[
+      [10,{60:1.29,75:1.20,90:1.15}],[15,{60:1.22,75:1.15,90:1.12}],
+      [20,{60:1.15,75:1.11,90:1.08}],[25,{60:1.08,75:1.05,90:1.04}],
+      [30,{60:1.00,75:1.00,90:1.00}],[35,{60:0.91,75:0.94,90:0.96}],
+      [40,{60:0.82,75:0.88,90:0.91}],[45,{60:0.71,75:0.82,90:0.87}],
+      [50,{60:0.58,75:0.75,90:0.82}],[55,{60:0.41,75:0.67,90:0.76}],
+      [60,{60:0,75:0.58,90:0.71}],[65,{60:0,75:0.47,90:0.65}],
+      [70,{60:0,75:0.33,90:0.58}],[75,{60:0,75:0,90:0.50}],[80,{60:0,75:0,90:0.41}]
+    ];
+    var f=1;
+    for (var i=0;i<t.length;i++){ if (amb<=t[i][0]){ f=t[i][1][col]; break; } if (i===t.length-1) f=t[i][1][col]; }
+    return f||0.01;
+  }
+  function bundleFactor(n){
+    /* Table 310.15(C)(1) */
+    if (n<=3) return 1.0;
+    if (n<=6) return 0.8;
+    if (n<=9) return 0.7;
+    if (n<=20) return 0.5;
+    if (n<=30) return 0.45;
+    if (n<=40) return 0.4;
+    return 0.35;
+  }
+  function ampOf(size, material, col){
+    var tbl = material==='al'?AMP_AL:AMP_CU;
+    var idx = col==='60'?0:(col==='75'?1:2);
+    return tbl[size]?tbl[size][idx]:0;
+  }
+  function nextOcpd(a){ for (var i=0;i<OCPD.length;i++){ if (OCPD[i]>=a) return OCPD[i]; } return OCPD[OCPD.length-1]; }
+  function egcFor(ocpd){ for (var i=0;i<EGC.length;i++){ if (ocpd<=EGC[i][0]) return EGC[i][1]; } return '3/0'; }
+
+  /* ══════════ RUNS UI ══════════ */
+  var runSeq=0;
+  function addRun(name, amps, len){
+    runSeq++;
+    var div=document.createElement('div');
+    div.className='runrow'; div.setAttribute('data-run','1');
+    div.innerHTML=
+      '<input placeholder="Run name" value="'+(name||('Run '+runSeq))+'">'+
+      '<input class="len" type="number" placeholder="Load A" value="'+(amps||'')+'">'+
+      '<input class="len" type="number" placeholder="Length ft" value="'+(len||'')+'">'+
+      '<input class="len" type="number" title="# current-carrying conductors in raceway" value="3">'+
+      '<label class="muted" style="flex:0 0 auto;margin:0;display:flex;align-items:center;gap:4px">'+
+        '<input type="checkbox" checked style="width:auto"> cont.</label>'+
+      '<button class="del" title="remove">×</button>';
+    div.querySelector('.del').addEventListener('click', function(){ div.parentNode.removeChild(div); });
+    $('runs').appendChild(div);
+  }
+  $('addRun').addEventListener('click', function(){ addRun(); });
+  addRun('BESS AC feeder', 385, 120);
+  addRun('EV DCFC feeder', 90, 60);
+
+  /* ══════════ SIZE ══════════ */
+  function sizeRun(loadA, lenFt, ccc, continuous, cfg){
+    var designA = continuous ? loadA*1.25 : loadA;
+    var ambF = ampFactorAmbient(cfg.ambient, cfg.tempCol);
+    var bunF = bundleFactor(ccc);
+    var material=cfg.material;
+
+    /* Walk sizes; pick smallest whose DERATED ampacity (insulation column ×
+       ambient × bundling) >= designA, AND whose TERMINATION-column ampacity
+       >= designA per 110.14(C). Then apply 240.4(D) small-conductor OCPD cap
+       and voltage-drop upsize. This mirrors the NEC "take the larger" rule. */
+    var chosen=null, derated=0, termAmp=0;
+    for (var i=0;i<SIZES.length;i++){
+      var s=SIZES[i];
+      var baseIns = ampOf(s, material, cfg.tempCol);
+      if (!baseIns) continue;
+      var der = baseIns*ambF*bunF;
+      var baseTerm = ampOf(s, material, cfg.termCol);
+      if (der>=designA && baseTerm>=designA){
+        chosen=s; derated=der; termAmp=baseTerm; break;
+      }
+    }
+    if (!chosen){ chosen='1000'; derated=ampOf('1000',material,cfg.tempCol)*ambF*bunF;
+      termAmp=ampOf('1000',material,cfg.termCol); }
+
+    /* OCPD: next standard >= designA, but not above conductor capacity. */
+    var ocpd=nextOcpd(designA);
+    if (SMALL_CU[chosen] && material==='cu' && ocpd>SMALL_CU[chosen]) ocpd=SMALL_CU[chosen];
+
+    /* Voltage drop: upsize until under target. VD% = (sqrt3 or 2)*K*I*L/(cmil*V) */
+    var mult = cfg.phase==='3'?1.732:2;
+    var K = material==='al'?K_AL:K_CU;
+    var vd, vsize=chosen, si=SIZES.indexOf(chosen);
+    while (true){
+      vd = (mult*K*loadA*lenFt)/(CMIL[vsize]*cfg.voltage)*100;
+      if (vd<=cfg.vdTarget || si>=SIZES.length-1) break;
+      si++; vsize=SIZES[si];
+    }
+    var vdUpsized = vsize!==chosen;
+    if (vdUpsized){ chosen=vsize; }
+
+    return {
+      loadA:loadA, designA:designA, size:chosen, egc:egcFor(ocpd),
+      derated:Math.round(derated), termAmp:termAmp, ocpd:ocpd, vd:vd,
+      vdUpsized:vdUpsized, ambF:ambF, bunF:bunF
+    };
+  }
+
+  function run(){
+    var cfg={ material:$('material').value, tempCol:$('tempCol').value,
+      termCol:$('termCol').value, ambient:num('ambient'), voltage:num('voltage'),
+      phase:$('phase').value, vdTarget:num('vdTarget') };
+
+    var rows=document.querySelectorAll('[data-run]');
+    var out=[], tb='';
+    for (var i=0;i<rows.length;i++){
+      var inp=rows[i].getElementsByTagName('input');
+      var name=inp[0].value||('Run '+(i+1));
+      var amps=parseFloat(inp[1].value)||0;
+      var len=parseFloat(inp[2].value)||0;
+      var ccc=parseInt(inp[3].value,10)||3;
+      var cont=inp[4].checked;
+      if (amps<=0) continue;
+      var r=sizeRun(amps, len, ccc, cont, cfg);
+      r.name=name; out.push(r);
+
+      var status = r.vd>cfg.vdTarget
+        ? '<span class="tag warn">VD over target</span>'
+        : (r.vdUpsized?'<span class="tag ok">VD-upsized</span>':'<span class="tag ok">OK</span>');
+      var mat=cfg.material==='al'?'AL':'CU';
+      tb+='<tr><td>'+name+'</td><td class="r">'+amps+'</td><td class="r">'+Math.round(r.designA)+
+        '</td><td>'+r.size+' '+mat+'</td><td>'+r.egc+' CU</td><td class="r">'+r.derated+
+        '</td><td class="r">'+r.ocpd+'</td><td class="r">'+(Math.round(r.vd*100)/100)+
+        '</td><td>'+status+'</td></tr>';
+    }
+    $('schedule').getElementsByTagName('tbody')[0].innerHTML = tb ||
+      '<tr><td colspan="9" class="muted">No runs with a load entered.</td></tr>';
+    $('schedNote').innerHTML='Ambient factor '+out.length+' run(s): base ampacity × ambient × bundling, '+
+      'compared against the '+cfg.termCol+'°C termination limit (110.14(C)); OCPD per 240.6 / 240.4(D); EGC per 250.122. '+
+      'Conductor grown for voltage drop where flagged.';
+
+    /* Transformer */
+    var kva=num('xfkva');
+    if (kva>0){
+      var div=num('xfdiv')||1, grow=num('xfgrow')/100;
+      var need=kva*div*(1+grow);
+      var pick=XF_STD[XF_STD.length-1];
+      for (var x=0;x<XF_STD.length;x++){ if (XF_STD[x]>=need){ pick=XF_STD[x]; break; } }
+      var secA = cfg.phase==='3' ? (pick*1000)/(1.732*cfg.voltage) : (pick*1000)/cfg.voltage;
+      $('xfResult').className='';
+      $('xfBox').innerHTML=
+        '<table><tr><th>Connected</th><th>Demand-adjusted</th><th>With '+num('xfgrow')+'% growth</th>'+
+        '<th>Recommended</th><th class="r">Sec. FLA</th></tr>'+
+        '<tr><td>'+kva+' kVA</td><td>'+(Math.round(kva*div))+' kVA</td><td>'+(Math.round(need))+
+        ' kVA</td><td><b>'+pick+' kVA</b></td><td class="r">'+Math.round(secA)+' A</td></tr></table>'+
+        '<div class="note">Next standard rating above the demand-adjusted load with growth headroom. Verify primary OCPD and secondary conductors against the chosen rating.</div>';
+      window._xfPick=pick;
+    } else { $('xfResult').className='hidden'; }
+
+    window._schedule=out;
+    $('results').className='';
+    $('results').scrollIntoView({behavior:'smooth'});
+  }
+
+  function saveData(){
+    if (!_db||!ORG){ $('saveMsg').textContent='No org/DB scope — preview mode; not persisted.'; return; }
+    var payload={ data:{ schedule:window._schedule, transformer:window._xfPick||null,
+      savedAt:Date.now(), project:PROJECT },
+      updatedAt:firebase.firestore.FieldValue.serverTimestamp() };
+    _db.collection('toolData').doc(ORG).collection('tools').doc('conductorsizing')
+      .set(payload,{merge:true})
+      .then(function(){ $('saveMsg').textContent='Saved to '+ORG+'.'; })
+      ['catch'](function(e){ $('saveMsg').textContent='Save failed: '+e.message; });
+  }
+  $('runBtn').addEventListener('click', run);
+  $('saveBtn').addEventListener('click', saveData);
+  $('toPermit').addEventListener('click', function(){
+    saveData();
+    $('saveMsg').textContent='Schedule staged — open the Permit Creator to drop it into the conductor schedule table.';
+  });
+
+})();
+</script>
+</body>
+</html>
