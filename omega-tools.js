@@ -214,7 +214,50 @@
     { key:'fleetcommand', name:'Fleet Command', category:'operations',
       desc:'Single pane across every OEM/monitoring portal — hybrid solar+storage in one view.',
       file:'/fleet-command.html', badge:'new', tier:TIER.DELUXE, savesData:true,
-      icon:'M3 3h8v8H3zM13 3h8v8h-8zM3 13h8v8H3zM13 13h8v8h-8z' }
+      icon:'M3 3h8v8H3zM13 3h8v8h-8zM3 13h8v8H3zM13 13h8v8h-8z' },
+
+    /* ── DESIGN & ENGINEERING SUITE (Xendee-gap tools) ──
+       Optimizer -> Power Flow -> Conductor Sizing form a reinforcing chain:
+       the Optimizer sizes the DER mix, Power Flow solves the resulting network,
+       and Conductor Sizing turns that flow into a permit-ready schedule. All
+       are shared single-file tools on TOOL_HOST with a per-org Settings tab
+       (API keys stored at toolData/{orgId}/prefs/apiSettings via omega-settings.js). */
+    { key:'siteoptimizer', name:'Site Optimizer', category:'design',
+      desc:'Solves the optimal DER mix (BESS+solar+EV) with 8760 hourly dispatch — real NREL solar, bankable revenue split.',
+      file:'/site-optimizer.html', badge:'new', tier:TIER.DELUXE, savesData:true,
+      icon:'M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20zM12 6v6l4 2' },
+
+    { key:'powerflow', name:'Multi-Node Power Flow', category:'design',
+      desc:'Solves current, voltage drop & loading at every node of a radial DER network.',
+      file:'/power-flow.html', badge:'new', tier:TIER.DELUXE, savesData:true,
+      icon:'M3 3h8v8H3zM13 13h8v8h-8zM11 7h2M7 11v2' },
+
+    { key:'sitediscovery', name:'Site Discovery & Screening', category:'design',
+      desc:'Ranks a pipeline of candidate sites by weighted fit — chase the winners first.',
+      file:'/site-discovery.html', badge:'new', tier:TIER.DELUXE, savesData:true,
+      icon:'M11 19a8 8 0 1 0 0-16 8 8 0 0 0 0 16zM21 21l-4.3-4.3' },
+
+    /* ── PERMITTING & INTERCONNECTION ── */
+    { key:'conductorsizing', name:'Conductor & Transformer Sizing', category:'permitting',
+      desc:'NEC 2023 feeder & transformer sizing — fills the conductor schedule for permit sets.',
+      file:'/conductor-sizing.html', badge:'new', tier:TIER.DELUXE, savesData:true,
+      icon:'M4 12h16M4 12l3-3M4 12l3 3M20 12l-3-3M20 12l-3 3' },
+
+    { key:'interconnect', name:'Interconnection Screener', category:'permitting',
+      desc:'Screens a project against FERC Order 792 fast-track rules — study vs fast-track upfront.',
+      file:'/interconnection-screener.html', badge:'new', tier:TIER.STANDARD, savesData:true,
+      icon:'M12 2 2 7l10 5 10-5zM2 17l10 5 10-5M2 12l10 5 10-5' },
+
+    { key:'interconnectstudy', name:'Interconnection Study', category:'permitting',
+      desc:'Distribution load-flow & short-circuit study — voltages and fault duty per bus.',
+      file:'/interconnection-study.html', badge:'new', tier:TIER.ENTERPRISE, savesData:true,
+      icon:'M13 2 3 14h7l-1 8 10-12h-7z' },
+
+    /* ── OPERATIONS ── */
+    { key:'degradation', name:'BESS Degradation & Warranty', category:'operations',
+      desc:'Capacity fade over project life vs OEM warranty envelope, with augmentation planning.',
+      file:'/degradation-warranty.html', badge:'new', tier:TIER.DELUXE, savesData:true,
+      icon:'M6 7h12v10a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2zM9 7V5a3 3 0 0 1 6 0v2M9 15l6-4' }
   ];
 
   /* ══════════════════════════════════════════════════════════════════
