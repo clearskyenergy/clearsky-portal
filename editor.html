@@ -14938,6 +14938,17 @@ async function _loadProject(id){
               }catch(e){}
             }, _d);
           });
+          // Keep the loading cover up until the LAST view-restore nudge has
+          // run, so the user never watches the map jump/settle into place.
+          try{
+            if(typeof window._projLoadVeilHoldFor==='function'){ window._projLoadVeilHoldFor(1700); }
+            if(typeof window._projLoadVeilHide==='function'){
+              setTimeout(function(){
+                window._projLoadVeilHold = 0;      // release the hold
+                window._projLoadVeilHide();
+              }, 1750);
+            }
+          }catch(e){}
         }).catch(function(e){ console.warn('View restore failed, falling back:', e&&e.message); });
       }, 200);
       _loadReady = true;
@@ -36966,6 +36977,120 @@ window._crmToastModal=_crmToastModal;
       }
     }catch(err){}
   });
+})();
+
+/* =====================================================================
+   PROJECT LOAD OVERLAY                                   (customer polish)
+   ---------------------------------------------------------------------
+   Loading a project assembles the canvas in stages: the map/plot image
+   paints, then shapes, then elements, and rotations settle last. Watching
+   that happen looks unfinished. This drops a branded cover over the canvas
+   for the duration and lifts it once everything has settled, so the user
+   sees a clean "Loading project..." and then the finished drawing.
+
+   Driven by window._loadReady (already maintained by _loadProject): the
+   overlay shows when a load starts and hides a beat after _loadReady flips
+   back to true, which is also when the delayed map-view restore has run.
+   A hard safety timeout guarantees it can never get stuck on screen.
+   ===================================================================== */
+(function(){
+  var EL_ID = 'proj-load-veil';
+  var _hideTimer = null, _safety = null, _watch = null;
+
+  function _veil(){
+    var sc = document.getElementById('sc');
+    if(!sc) return null;
+    var v = document.getElementById(EL_ID);
+    if(!v){
+      v = document.createElement('div');
+      v.id = EL_ID;
+      v.style.cssText =
+        'position:absolute;inset:0;z-index:120;display:none;'
+        + 'align-items:center;justify-content:center;flex-direction:column;gap:14px;'
+        + 'background:#1b2436;'
+        + 'font-family:inherit;color:#cfe0ff;user-select:none;'
+        + 'transition:opacity .28s ease;opacity:0';
+      var ring = document.createElement('div');
+      ring.style.cssText =
+        'width:38px;height:38px;border-radius:50%;'
+        + 'border:3px solid rgba(255,255,255,.15);border-top-color:#4C8DFF;'
+        + 'animation:pv-spin .9s linear infinite';
+      var label = document.createElement('div');
+      label.id = EL_ID + '-label';
+      label.textContent = 'Loading project\u2026';
+      label.style.cssText = 'font-size:13px;font-weight:600;letter-spacing:.02em;opacity:.85';
+      v.appendChild(ring); v.appendChild(label);
+      // Keyframes (injected once).
+      if(!document.getElementById('pv-spin-kf')){
+        var st = document.createElement('style');
+        st.id = 'pv-spin-kf';
+        st.textContent = '@keyframes pv-spin{to{transform:rotate(360deg)}}';
+        document.head.appendChild(st);
+      }
+      sc.appendChild(v);
+    }
+    return v;
+  }
+
+  function show(msg){
+    var v = _veil(); if(!v) return;
+    if(_hideTimer){ clearTimeout(_hideTimer); _hideTimer=null; }
+    var lb = document.getElementById(EL_ID+'-label');
+    if(lb && msg) lb.textContent = msg;
+    v.style.display = 'flex';
+    // Force a reflow so the opacity transition runs.
+    void v.offsetWidth;
+    v.style.opacity = '1';
+    // Safety: never let the veil stick around longer than 12s.
+    if(_safety) clearTimeout(_safety);
+    _safety = setTimeout(function(){ hide(true); }, 12000);
+  }
+
+  function hide(immediate){
+    var v = document.getElementById(EL_ID); if(!v) return;
+    // An explicit hold (set by a slow path like the map-view restore) beats
+    // the _loadReady watcher, so the veil stays up until that path says go.
+    if(window._projLoadVeilHold && !immediate){
+      if(Date.now() < window._projLoadVeilHold) return;
+      window._projLoadVeilHold = 0;
+    }
+    if(_safety){ clearTimeout(_safety); _safety=null; }
+    var go = function(){
+      v.style.opacity = '0';
+      setTimeout(function(){ if(v.style.opacity==='0') v.style.display='none'; }, 300);
+    };
+    if(immediate){ go(); return; }
+    // Small settle delay so the last rotation/render pass lands under cover.
+    if(_hideTimer) clearTimeout(_hideTimer);
+    _hideTimer = setTimeout(go, 420);
+  }
+
+  /* Ask the veil to stay up for at least `ms` more (slow load paths). */
+  function hold(ms){
+    window._projLoadVeilHold = Date.now() + (ms||0);
+  }
+
+  window._projLoadVeilShow = show;
+  window._projLoadVeilHide = hide;
+  window._projLoadVeilHold = 0;
+  window._projLoadVeilHoldFor = hold;
+
+  /* Watch _loadReady so we don't have to touch the three separate exit
+     paths inside _loadProject (normal, map-restore, and error). */
+  function startWatch(){
+    if(_watch) return;
+    var wasReady = (typeof _loadReady==='undefined') ? true : _loadReady;
+    _watch = setInterval(function(){
+      var now = (typeof _loadReady==='undefined') ? true : _loadReady;
+      if(wasReady && !now){ show('Loading project\u2026'); }        // load started
+      else if(!wasReady && now){ hide(); }                          // load finished
+      wasReady = now;
+    }, 120);
+  }
+
+  if(document.readyState==='loading'){
+    document.addEventListener('DOMContentLoaded', startWatch);
+  } else { startWatch(); }
 })();
 </script>
 
