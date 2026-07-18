@@ -385,9 +385,11 @@ body{font-family:'IBM Plex Sans',sans-serif;background:var(--bg);color:var(--tex
 @media (max-width:820px){
   #ribbon-hamburger{ display:flex !important; }
   #ribbon-tabs{ display:none !important; }
-  /* Guided-build panels must not swallow a phone screen while telling the user
-     to draw on the map. Cap width and height; the body scrolls if needed and
-     the header stays reachable for drag + minimize. */
+}
+/* Guided-build panels (EV Build, BESS Build) must not swallow a small screen
+   while telling the user to draw on the map. 900px matches the platform's
+   existing mobile breakpoint used by the estimate/#rp bottom sheet. */
+@media (max-width:900px){
   #dcfc-guide{
     max-width:min(88vw,340px) !important;
     max-height:52vh !important;
@@ -33365,14 +33367,20 @@ function _bgbGuideRender(){
   el.innerHTML=''
     +'<div id="dcfc-guide-drag" title="Drag to move" style="padding:11px 14px;border-bottom:1px solid #26364d;display:flex;align-items:center;justify-content:space-between;background:rgba(34,197,94,.08);cursor:move;user-select:none">'
       +'<div style="font-size:12px;font-weight:800;color:#22C55E;pointer-events:none"><span style="color:#8FA3B8;margin-right:4px">\u283f</span>\ud83d\udd0b BESS Build \u00b7 '+BGB.mode+'</div>'
-      +'<button onclick="_bgbCancel()" title="Cancel" style="background:none;border:none;color:#64748B;font-size:16px;cursor:pointer;line-height:1">\u00d7</button>'
+      +'<div style="display:flex;align-items:center;gap:2px">'
+        +'<button onclick="_dcfcGuideToggleMin(event)" id="dcfc-guide-min" title="Minimize / expand" style="background:none;border:none;color:#8FA3B8;font-size:15px;cursor:pointer;line-height:1;padding:4px 8px;min-width:32px;min-height:32px">\u2013</button>'
+        +'<button onclick="_bgbCancel()" title="Cancel" style="background:none;border:none;color:#64748B;font-size:16px;cursor:pointer;line-height:1;padding:4px 8px;min-width:32px;min-height:32px">\u00d7</button>'
+      +'</div>'
     +'</div>'
+    +'<div class="dcfc-guide-body">'
     +'<div style="padding:9px 14px">'+rows+'</div>'
     +'<div style="padding:9px 14px;border-top:1px solid #26364d;background:rgba(0,0,0,.2);font-size:10px;color:#B7C6D8;line-height:1.5">'+hint+'</div>'
     +'<div style="padding:9px 14px 12px">'+actions
-      +'<button onclick="_bgbCancel()" style="width:100%;padding:6px;background:none;border:1px solid #26364d;color:#64748B;border-radius:6px;font-size:10px;font-weight:700;cursor:pointer;font-family:inherit;margin-top:2px">Cancel (Esc)</button></div>';
+      +'<button onclick="_bgbCancel()" style="width:100%;padding:6px;background:none;border:1px solid #26364d;color:#64748B;border-radius:6px;font-size:10px;font-weight:700;cursor:pointer;font-family:inherit;margin-top:2px">Cancel (Esc)</button></div>'
+    +'</div>';
   el.style.display='block';
   if(typeof _dcfcGuideAttachDrag==='function') _dcfcGuideAttachDrag(el);
+  if(typeof _dcfcGuideApplyMin==='function') _dcfcGuideApplyMin(el);
 }
 window._bgbGuideRender=_bgbGuideRender;
 
@@ -37729,10 +37737,14 @@ window._crmToastModal=_crmToastModal;
           window._plotView = snap.plotView || { z:1, tx:0, ty:0 };
           // Freeze the live map under this tab's plot.
           var blk=document.getElementById('gmap-block'); if(blk) blk.style.display='block';
+          // Keep the global lock flag in step so the Lock Map button and any
+          // other code that reads window._mapLocked agree with reality.
+          window._mapLocked = true;
           if(window._gmap){
             try{ _gmap.setOptions({ gestureHandling:'none', zoomControl:false, scrollwheel:false,
               draggable:false, disableDoubleClickZoom:true, keyboardShortcuts:false }); }catch(e){}
           }
+          if(typeof _lockSyncUI==='function'){ try{ _lockSyncUI(); }catch(e){} }
           var _b=document.getElementById('rb-setplot');
           if(_b){ _b.classList.add('active-tool'); }
 
@@ -37755,10 +37767,26 @@ window._crmToastModal=_crmToastModal;
           window._committedPlot = null;
           window._plotView = { z:1, tx:0, ty:0 };
           var blk2=document.getElementById('gmap-block'); if(blk2) blk2.style.display='none';
+          // The map instance is SHARED across tabs, and the separate Lock Map
+          // machinery keys off window._mapLocked (+ the iframe's pointer-events).
+          // Set Plot / project load can leave _mapLocked true, so a tab WITHOUT
+          // a plot inherited a frozen map and couldn't be panned at all. Clear
+          // the whole lock state here, not just the gesture options.
+          window._mapLocked = false;
+          var _fr2=document.getElementById('gmap-frame');
+          if(_fr2) _fr2.style.pointerEvents='auto';
+          var _md2=document.getElementById('map-div');
+          if(_md2) _md2.style.pointerEvents='auto';
           if(window._gmap){
             try{ _gmap.setOptions({ gestureHandling:'greedy', zoomControl:true, scrollwheel:true,
               draggable:true, disableDoubleClickZoom:false, keyboardShortcuts:true }); }catch(e){}
           }
+          // Re-sync the Lock Map button so its icon/label matches reality.
+          if(typeof _lockSyncUI==='function'){ try{ _lockSyncUI(); }catch(e){} }
+          // Restore the legacy frozen-map layer visibility decision to the
+          // normal (non-plot) path so this tab renders its own backdrop.
+          var _legacy2=document.getElementById('frozen-map-img');
+          if(_legacy2 && !window._frozenMapImg){ _legacy2.style.display='none'; }
           var _b2=document.getElementById('rb-setplot');
           if(_b2){ _b2.classList.remove('active-tool'); }
         }
