@@ -3074,7 +3074,7 @@ const _CFG = {
     apiKey:            "AIzaSyABoM1lgOYUnd5ZadaoTMhYmA9cHa8Tyo0",
     authDomain:        "clearsky-portal.firebaseapp.com",
     projectId:         "clearsky-portal",
-    storageBucket:     "clearsky-portal.appspot.com",
+    storageBucket:     "clearsky-portal.firebasestorage.app",
     messagingSenderId: "742134484347",
     appId:             "1:742134484347:web:ab0f95fd221536158481de"
   },
@@ -36751,20 +36751,32 @@ window._crmToastModal=_crmToastModal;
       }catch(e){ /* quota / private-mode: durable upload below still runs */ }
     }
     return new Promise(function(resolve){
+      // Hard timeout so a misconfigured bucket / offline device can NEVER
+      // hang the save forever -- we fall back to the local cache instead.
+      var done=false;
+      var finish=function(v){ if(!done){ done=true; resolve(v); } };
+      var timer=setTimeout(function(){
+        if(!done && window.console){
+          console.warn('Storage upload timed out ('+kind+') after 20s -- cached locally only. '
+            + 'Check that firebaseConfig.storageBucket matches your real bucket.');
+        }
+        finish(null);
+      }, 20000);
       try{
-        if(!_storage || !_projectId || !dataUrl){ resolve(null); return; }
+        if(!_storage || !_projectId || !dataUrl){ clearTimeout(timer); finish(null); return; }
         var blob = _dataUrlToBlob(dataUrl);
-        if(!blob){ resolve(null); return; }
+        if(!blob){ clearTimeout(timer); finish(null); return; }
         var ref = _storage.ref().child(_imgPath(kind, tabId));
         var task = ref.put(blob, { contentType: blob.type || 'image/jpeg' });
         task.then(function(){
-          ref.getDownloadURL().then(function(url){ resolve(url||null); })
-                              .catch(function(){ resolve(null); });
+          ref.getDownloadURL().then(function(url){ clearTimeout(timer); finish(url||null); })
+                              .catch(function(){ clearTimeout(timer); finish(null); });
         }).catch(function(err){
+          clearTimeout(timer);
           if(window.console) console.warn('Storage upload failed ('+kind+'), cached locally:', err&&err.message);
-          resolve(null);
+          finish(null);
         });
-      }catch(e){ resolve(null); }
+      }catch(e){ clearTimeout(timer); finish(null); }
     });
   }
 
@@ -37449,6 +37461,19 @@ window._crmToastModal=_crmToastModal;
     var msgs=[];
     if(!out.storageHandle) msgs.push('X Storage NOT initialized -> plots save to localStorage only (per-device). Check firebase-storage-compat SDK + storage rules.');
     else msgs.push('OK Storage ready (durable, cross-device).');
+    try{
+      var _cfgBucket = (window.firebase && firebase.app && firebase.app().options)
+                        ? firebase.app().options.storageBucket : '';
+      out.storageBucket = _cfgBucket || '(unknown)';
+      if(_cfgBucket && _storage && _storage.ref){
+        var _liveBucket = '';
+        try{ _liveBucket = _storage.ref().bucket || ''; }catch(e){}
+        out.liveBucket = _liveBucket || '(unknown)';
+        if(_liveBucket && _cfgBucket && _liveBucket !== _cfgBucket){
+          msgs.push('X storageBucket MISMATCH: config="'+_cfgBucket+'" but live="'+_liveBucket+'" -> uploads will fail/hang.');
+        }
+      }
+    }catch(e){}
     if(!out.projectId) msgs.push('!! No projectId yet -> save the project once so plots get a home.');
     var committedTabs = out.tabs.filter(function(t){return t.plotCommitted;}).length;
     msgs.push(committedTabs + ' of ' + out.tabs.length + ' tab(s) have a committed plot.');
