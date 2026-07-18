@@ -1341,13 +1341,14 @@ window.onerror = function(msg, src, line, col, err) {
       <div class="rpanel-body">
         <button class="rbtn" onclick="rbRun(ovUpload)" title="Upload a site plan / survey / aerial image to trace over"><span class="rb-ico" style="color:#60A5FA">⬆</span><span class="rb-lbl">Upload<br>Image</span></button>
         <button class="rbtn" id="rb-ov-stencil" onclick="rbRun(ovStencil)" title="Convert the uploaded image to a clean black &amp; white engineering stencil to trace over"><span class="rb-ico" style="color:#E8F0FE">◨</span><span class="rb-lbl">Stencil<br>B&amp;W</span></button>
-        <button class="rbtn" id="rb-ov-lock" onclick="rbRun(ovLock)" title="Lock the background (satellite map or uploaded image) in place so it can't pan, zoom, or move while you place elements &amp; layers"><span class="rb-ico">🔓</span><span class="rb-lbl">Lock<br>Map</span></button>
+        <button class="rbtn" id="rb-ov-lock" onclick="rbRun(ovLock)" title="Lock the image in place so it can't move while you place elements &amp; layers"><span class="rb-ico">🔓</span><span class="rb-lbl">Lock<br>Image</span></button>
         <button class="rbtn" onclick="rbRun(startCal)" title="Set the real-world scale: trace a known length (parking stall = 18ft, door = 3ft) so equipment drops at the correct size"><span class="rb-ico">📏</span><span class="rb-lbl">Calibrate<br>Scale</span></button>
       </div>
       <div class="rpanel-cap">Site Overlay</div>
     </div>
     <div class="rpanel">
       <div class="rpanel-body">
+        <button class="rbtn" id="rb-lockmap" onclick="nnToggleMapLock()" title="Lock the map/background in place so it can't pan or zoom while you place elements"><span class="rb-ico">🔓</span><span class="rb-lbl">Lock<br>Map</span></button>
         <button class="rbtn" id="rb-setplot" onclick="setPlot()" title="Capture &amp; lock the current satellite view as a fixed, calibrated plot layer — nothing moves and +/- zooms the plot and your drawings together"><span class="rb-ico" style="color:#00D4FF">📌</span><span class="rb-lbl">Set<br>Plot</span></button>
         <button class="rbtn" id="rb-clearplot" onclick="clearPlot()" title="Clear the committed plot and return to the live interactive map"><span class="rb-ico">✕</span><span class="rb-lbl">Clear<br>Plot</span></button>
         <button class="rbtn" id="rb-crosshair" onclick="nnToggleCrosshair()" title="Toggle the AutoCAD-style crosshair cursor in draw/placement modes"><span class="rb-ico">✛</span><span class="rb-lbl">Crosshair</span></button>
@@ -3073,7 +3074,7 @@ const _CFG = {
     apiKey:            "AIzaSyABoM1lgOYUnd5ZadaoTMhYmA9cHa8Tyo0",
     authDomain:        "clearsky-portal.firebaseapp.com",
     projectId:         "clearsky-portal",
-    storageBucket:     "clearsky-portal.firebasestorage.app",
+    storageBucket:     "clearsky-portal.appspot.com",
     messagingSenderId: "742134484347",
     appId:             "1:742134484347:web:ab0f95fd221536158481de"
   },
@@ -5697,34 +5698,15 @@ async function toggleMapLock(){
       const W    = sc.clientWidth  || 900;
       const H    = sc.clientHeight || 600;
       const MAXD = 640;
-      let mW = W, mH = H, _shrink = 1;
-      if (mW > MAXD || mH > MAXD) { _shrink = MAXD/Math.max(mW,mH); mW=Math.round(mW*_shrink); mH=Math.round(mH*_shrink); }
+      let mW = W, mH = H;
+      if (mW > MAXD || mH > MAXD) { const f = MAXD/Math.max(mW,mH); mW=Math.round(mW*f); mH=Math.round(mH*f); }
       mW = Math.max(1, mW); mH = Math.max(1, mH);
       const key = (typeof _CFG!=='undefined' && _CFG.googleMapsKey) ? _CFG.googleMapsKey : null;
       if (key && window._gmap) {
         var _c=_gmap.getCenter();
         if(_c){
           var _lat=_c.lat(), _lng=_c.lng();
-          // Use the map's ACTUAL zoom, not one recomputed from the (often
-          // stale) calibrated scale, then compensate for the 640px downscale
-          // so the snapshot covers the same ground as the on-screen view.
-          var _zl=_gmap.getZoom();
-          var _z=(_zl!=null && isFinite(_zl)) ? Math.round(_zl) : 18;
-          if(_shrink<1){
-            var _zEx=_z + Math.log(_shrink)/Math.log(2);
-            var _zRd=Math.round(_zEx);
-            var _cmp=Math.pow(2,_zRd-_zEx);
-            var _cW=Math.round(mW*_cmp), _cH=Math.round(mH*_cmp);
-            if(_cW>0 && _cH>0 && _cW<=MAXD && _cH<=MAXD){ mW=_cW; mH=_cH; _z=_zRd; }
-            else {
-              _zRd=_zRd-1; _cmp=Math.pow(2,_zRd-_zEx);
-              _cW=Math.round(mW*_cmp); _cH=Math.round(mH*_cmp);
-              if(_cW>0 && _cH>0 && _cW<=MAXD && _cH<=MAXD){ mW=_cW; mH=_cH; }
-              _z=_zRd;
-            }
-          }
-          mW=Math.max(1,mW); mH=Math.max(1,mH);
-          if(_z<1) _z=1; if(_z>21) _z=21;
+          var _z=(typeof zoomForPxPerFt==='function' && S && S.pxPerFt) ? zoomForPxPerFt(S.pxPerFt,_lat) : Math.floor(_gmap.getZoom());
           var _su='https://maps.googleapis.com/maps/api/staticmap?center='+_lat+','+_lng+'&zoom='+_z+'&size='+mW+'x'+mH+'&scale=2&maptype=satellite&key='+key;
           var _r=await fetch(_su);
           if(_r.ok){ var _b=await _r.blob(); if(_b.size>=1200){
@@ -14403,36 +14385,13 @@ async function saveProject(){
       try{
         var _ssc=document.getElementById('sc');
         var _sW=(_ssc&&_ssc.clientWidth)||900, _sH=(_ssc&&_ssc.clientHeight)||600;
-        var _smW=_sW, _smH=_sH, _sShrink=1;
-        if(_smW>640||_smH>640){
-          _sShrink=640/Math.max(_smW,_smH);
-          _smW=Math.round(_smW*_sShrink); _smH=Math.round(_smH*_sShrink);
-        }
+        var _smW=_sW, _smH=_sH;
+        if(_smW>640||_smH>640){ var _sf=640/Math.max(_smW,_smH); _smW=Math.round(_smW*_sf); _smH=Math.round(_smH*_sf); }
         _smW=Math.max(1,_smW); _smH=Math.max(1,_smH);
-        // Use the map's ACTUAL zoom (what the user is looking at), NOT a zoom
-        // recomputed from S.pxPerFt -- the calibrated scale goes stale as soon
-        // as the user pans/zooms, which made saved projects reopen at a wildly
-        // different (over-zoomed) view than the one they saved.
-        var _sZoom = (mapState.zoom!=null && isFinite(mapState.zoom))
-                     ? Math.round(mapState.zoom)
-                     : (window._lastZoom || 18);
-        if(_sShrink<1){
-          var _szExact = _sZoom + Math.log(_sShrink)/Math.log(2);
-          var _szRound = Math.round(_szExact);
-          var _sComp = Math.pow(2, _szRound - _szExact);
-          var _scW = Math.round(_smW*_sComp), _scH = Math.round(_smH*_sComp);
-          if(_scW>0 && _scH>0 && _scW<=640 && _scH<=640){ _smW=_scW; _smH=_scH; _sZoom=_szRound; }
-          else {
-            _szRound = _szRound - 1;
-            _sComp = Math.pow(2, _szRound - _szExact);
-            _scW = Math.round(_smW*_sComp); _scH = Math.round(_smH*_sComp);
-            if(_scW>0 && _scH>0 && _scW<=640 && _scH<=640){ _smW=_scW; _smH=_scH; }
-            _sZoom = _szRound;
-          }
-        }
-        if(!_sZoom || !isFinite(_sZoom)) _sZoom = 18;
-        if(_sZoom<1) _sZoom=1; if(_sZoom>21) _sZoom=21;
-        _smW=Math.max(1,_smW); _smH=Math.max(1,_smH);
+        var _sZoom=(typeof zoomForPxPerFt==='function' && S && S.pxPerFt && mapState.lat)
+                   ? zoomForPxPerFt(S.pxPerFt, mapState.lat)
+                   : (mapState.zoom ? Math.floor(mapState.zoom) : 18);
+        if(!_sZoom) _sZoom = mapState.zoom ? Math.floor(mapState.zoom) : 18;
         var _sUrl='https://maps.googleapis.com/maps/api/staticmap?center='
           + mapState.lat + ',' + mapState.lng + '&zoom=' + _sZoom
           + '&size=' + _smW + 'x' + _smH + '&scale=2&maptype=satellite&key=' + _CFG.googleMapsKey;
@@ -14768,18 +14727,6 @@ async function _loadProject(id){
         if(d.brand.hasLogo && id){ try{ _BRAND.logoDataUrl = localStorage.getItem('cs_brand_logo_'+id) || ''; }catch(e){} }
         if(typeof _brandSyncUI==='function') try{ _brandSyncUI(); }catch(e){}
       }
-      // Shape geometry (and its rotation pivot) is derived from _shapeBBox(),
-      // which depends on S.pxPerFt and silently falls back to 6 px/ft when that
-      // isn't set yet. If pxPerFt arrived from mapState AFTER the first shape
-      // render, shapes rotate about the wrong center and land misaligned (the
-      // "have to double-click it to fix" symptom). Now that everything is
-      // restored, repaint shapes once with the correct scale.
-      try{
-        if(typeof renderShape==='function' && S.shapes && S.shapes.length){
-          S.shapes.forEach(function(sh){ try{ renderShape(sh); }catch(e){} });
-          if(typeof updShapeCount==='function') updShapeCount();
-        }
-      }catch(e){ if(window.console) console.warn('shape settle:', e&&e.message); }
       // Load fully rendered -- saves are now safe.
       _loadReady = true;
       _setSaved('saved');
@@ -14949,17 +14896,6 @@ async function _loadProject(id){
               }catch(e){}
             }, _d);
           });
-          // Keep the loading cover up until the LAST view-restore nudge has
-          // run, so the user never watches the map jump/settle into place.
-          try{
-            if(typeof window._projLoadVeilHoldFor==='function'){ window._projLoadVeilHoldFor(1700); }
-            if(typeof window._projLoadVeilHide==='function'){
-              setTimeout(function(){
-                window._projLoadVeilHold = 0;      // release the hold
-                window._projLoadVeilHide();
-              }, 1750);
-            }
-          }catch(e){}
         }).catch(function(e){ console.warn('View restore failed, falling back:', e&&e.message); });
       }, 200);
       _loadReady = true;
@@ -34744,17 +34680,12 @@ function _chBind(){
    ========================================================================= */
 function _lockSyncUI(){
   var locked = !!(window._mapLocked);
-  // Single lock button (Site Overlay panel) now covers both the live map and
-  // an uploaded photo; the old separate Canvas "Lock Map" button was removed
-  // because on a satellite project it did exactly the same thing.
-  var rb=document.getElementById('rb-ov-lock');
+  var rb=document.getElementById('rb-lockmap');
   if(rb){
     rb.classList.toggle('active-tool',locked);
-    var noun = window._isUploadedPhoto ? 'Image' : 'Map';
     var ico=rb.querySelector('.rb-ico'), lbl=rb.querySelector('.rb-lbl');
     if(ico) ico.textContent = locked?'🔒':'🔓';
-    if(lbl) lbl.innerHTML = (locked?'Unlock<br>':'Lock<br>') + noun;
-    rb.style.background = locked ? 'rgba(0,212,255,.14)' : '';
+    if(lbl) lbl.innerHTML = locked?'Unlock<br>Map':'Lock<br>Map';
   }
   var ind=document.getElementById('nn-lock-ind');
   if(ind) ind.textContent = locked ? '🔒 Map locked' : '🔓 Map unlocked';
@@ -36255,13 +36186,13 @@ window.ovLock=function(){
 
 function _ovReflectLock(btn, locked){
   if(!btn) return;
-  // One button now covers BOTH cases (live satellite map and uploaded photo),
-  // so the label names whichever backdrop is actually in play.
-  var noun = window._isUploadedPhoto ? 'Image' : 'Map';
   var ico=btn.querySelector('.rb-ico'), lbl=btn.querySelector('.rb-lbl');
   if(ico) ico.textContent = locked ? '🔒' : '🔓';
-  if(lbl) lbl.innerHTML = (locked ? 'Unlock<br>' : 'Lock<br>') + noun;
+  if(lbl) lbl.innerHTML = locked ? 'Unlock<br>Image' : 'Lock<br>Image';
   btn.style.background = locked ? 'rgba(0,212,255,.14)' : '';
+  // keep the Canvas "Lock Map" button visually in sync
+  var lm=document.getElementById('rb-lockmap');
+  if(lm){ var li=lm.querySelector('.rb-ico'); if(li) li.textContent = locked?'🔒':'🔓'; }
 }
 
 })();
@@ -36820,32 +36751,20 @@ window._crmToastModal=_crmToastModal;
       }catch(e){ /* quota / private-mode: durable upload below still runs */ }
     }
     return new Promise(function(resolve){
-      // Hard timeout so a misconfigured bucket / offline device can NEVER
-      // hang the save forever -- we fall back to the local cache instead.
-      var done=false;
-      var finish=function(v){ if(!done){ done=true; resolve(v); } };
-      var timer=setTimeout(function(){
-        if(!done && window.console){
-          console.warn('Storage upload timed out ('+kind+') after 20s -- cached locally only. '
-            + 'Check that firebaseConfig.storageBucket matches your real bucket.');
-        }
-        finish(null);
-      }, 20000);
       try{
-        if(!_storage || !_projectId || !dataUrl){ clearTimeout(timer); finish(null); return; }
+        if(!_storage || !_projectId || !dataUrl){ resolve(null); return; }
         var blob = _dataUrlToBlob(dataUrl);
-        if(!blob){ clearTimeout(timer); finish(null); return; }
+        if(!blob){ resolve(null); return; }
         var ref = _storage.ref().child(_imgPath(kind, tabId));
         var task = ref.put(blob, { contentType: blob.type || 'image/jpeg' });
         task.then(function(){
-          ref.getDownloadURL().then(function(url){ clearTimeout(timer); finish(url||null); })
-                              .catch(function(){ clearTimeout(timer); finish(null); });
+          ref.getDownloadURL().then(function(url){ resolve(url||null); })
+                              .catch(function(){ resolve(null); });
         }).catch(function(err){
-          clearTimeout(timer);
           if(window.console) console.warn('Storage upload failed ('+kind+'), cached locally:', err&&err.message);
-          finish(null);
+          resolve(null);
         });
-      }catch(e){ clearTimeout(timer); finish(null); }
+      }catch(e){ resolve(null); }
     });
   }
 
@@ -36994,159 +36913,6 @@ window._crmToastModal=_crmToastModal;
     }catch(err){}
   });
 })();
-
-/* =====================================================================
-   PROJECT LOAD OVERLAY                                   (customer polish)
-   ---------------------------------------------------------------------
-   Loading a project assembles the canvas in stages: the map/plot image
-   paints, then shapes, then elements, and rotations settle last. Watching
-   that happen looks unfinished. This drops a branded cover over the canvas
-   for the duration and lifts it once everything has settled, so the user
-   sees a clean "Loading project..." and then the finished drawing.
-
-   Driven by window._loadReady (already maintained by _loadProject): the
-   overlay shows when a load starts and hides a beat after _loadReady flips
-   back to true, which is also when the delayed map-view restore has run.
-   A hard safety timeout guarantees it can never get stuck on screen.
-   ===================================================================== */
-(function(){
-  var EL_ID = 'proj-load-veil';
-  var _hideTimer = null, _safety = null, _watch = null;
-
-  function _veil(){
-    var sc = document.getElementById('sc');
-    if(!sc) return null;
-    var v = document.getElementById(EL_ID);
-    if(!v){
-      v = document.createElement('div');
-      v.id = EL_ID;
-      v.style.cssText =
-        'position:absolute;inset:0;z-index:120;display:none;'
-        + 'align-items:center;justify-content:center;flex-direction:column;gap:14px;'
-        + 'background:#1b2436;'
-        + 'font-family:inherit;color:#cfe0ff;user-select:none;'
-        + 'transition:opacity .28s ease;opacity:0';
-      var ring = document.createElement('div');
-      ring.style.cssText =
-        'width:38px;height:38px;border-radius:50%;'
-        + 'border:3px solid rgba(255,255,255,.15);border-top-color:#4C8DFF;'
-        + 'animation:pv-spin .9s linear infinite';
-      var label = document.createElement('div');
-      label.id = EL_ID + '-label';
-      label.textContent = 'Loading project\u2026';
-      label.style.cssText = 'font-size:13px;font-weight:600;letter-spacing:.02em;opacity:.85';
-      v.appendChild(ring); v.appendChild(label);
-      // Keyframes (injected once).
-      if(!document.getElementById('pv-spin-kf')){
-        var st = document.createElement('style');
-        st.id = 'pv-spin-kf';
-        st.textContent = '@keyframes pv-spin{to{transform:rotate(360deg)}}';
-        document.head.appendChild(st);
-      }
-      sc.appendChild(v);
-    }
-    return v;
-  }
-
-  function show(msg){
-    var v = _veil(); if(!v) return;
-    if(_hideTimer){ clearTimeout(_hideTimer); _hideTimer=null; }
-    var lb = document.getElementById(EL_ID+'-label');
-    if(lb && msg) lb.textContent = msg;
-    v.style.display = 'flex';
-    // Force a reflow so the opacity transition runs.
-    void v.offsetWidth;
-    v.style.opacity = '1';
-    // Safety: never let the veil stick around longer than 12s.
-    if(_safety) clearTimeout(_safety);
-    _safety = setTimeout(function(){ hide(true); }, 12000);
-  }
-
-  function hide(immediate){
-    var v = document.getElementById(EL_ID); if(!v) return;
-    // An explicit hold (set by a slow path like the map-view restore) beats
-    // the _loadReady watcher, so the veil stays up until that path says go.
-    if(window._projLoadVeilHold && !immediate){
-      if(Date.now() < window._projLoadVeilHold) return;
-      window._projLoadVeilHold = 0;
-    }
-    if(_safety){ clearTimeout(_safety); _safety=null; }
-    var go = function(){
-      // Final clean repaint while still covered, so rotations/scales are
-      // already correct the moment the veil comes off.
-      settleRender();
-      v.style.opacity = '0';
-      setTimeout(function(){ if(v.style.opacity==='0') v.style.display='none'; }, 300);
-    };
-    if(immediate){ go(); return; }
-    // Small settle delay so the last rotation/render pass lands under cover.
-    if(_hideTimer) clearTimeout(_hideTimer);
-    _hideTimer = setTimeout(go, 420);
-  }
-
-  /* Ask the veil to stay up for at least `ms` more (slow load paths). */
-  function hold(ms){
-    window._projLoadVeilHold = Date.now() + (ms||0);
-  }
-
-  /* Force a clean, final repaint of every element/conduit/shape.
-
-     WHY THIS EXISTS: shape geometry (and therefore the rotation pivot) is
-     derived from _shapeBBox(), which depends on S.pxPerFt and silently falls
-     back to 6 px/ft when that isn't set yet. During a project load, shapes can
-     render BEFORE _loadProject restores pxPerFt from mapState, so they rotate
-     about the wrong center and land visibly misaligned (e.g. a rooftop array
-     drawn flat instead of matching the angled roof). Touching the shape later
-     re-renders it correctly, which is why double-clicking "fixed" it.
-
-     Re-rendering here -- after pxPerFt is settled and while the veil still
-     covers the canvas -- means the user only ever sees the correct geometry. */
-  function settleRender(){
-    try{
-      if(typeof S==='undefined' || !S) return;
-      var elsHost=document.getElementById('els');
-      var svgHost=document.getElementById('csvg');
-      if(!elsHost || !svgHost) return;
-      if(typeof renderEl!=='function') return;
-      elsHost.innerHTML=''; svgHost.innerHTML='';
-      (S.elements||[]).forEach(function(el){ try{ renderEl(el); }catch(e){} });
-      if(typeof renderConduit==='function'){
-        (S.conduits||[]).forEach(function(c){ try{ renderConduit(c); }catch(e){} });
-      }
-      if(typeof renderTrenchSpine==='function' && S._trench){ try{ renderTrenchSpine(); }catch(e){} }
-      if(typeof renderShape==='function'){
-        (S.shapes||[]).forEach(function(sh){ try{ renderShape(sh); }catch(e){} });
-      }
-      if(typeof renderLegend==='function') try{ renderLegend(); }catch(e){}
-      if(typeof updCount==='function') try{ updCount(); }catch(e){}
-      if(typeof updCondStat==='function') try{ updCondStat(); }catch(e){}
-      if(typeof updShapeCount==='function') try{ updShapeCount(); }catch(e){}
-    }catch(e){ if(window.console) console.warn('settle render:', e&&e.message); }
-  }
-
-  window._projLoadVeilShow = show;
-  window._projLoadVeilHide = hide;
-  window._projLoadVeilHold = 0;
-  window._projLoadVeilHoldFor = hold;
-  window._projSettleRender = settleRender;
-
-  /* Watch _loadReady so we don't have to touch the three separate exit
-     paths inside _loadProject (normal, map-restore, and error). */
-  function startWatch(){
-    if(_watch) return;
-    var wasReady = (typeof _loadReady==='undefined') ? true : _loadReady;
-    _watch = setInterval(function(){
-      var now = (typeof _loadReady==='undefined') ? true : _loadReady;
-      if(wasReady && !now){ show('Loading project\u2026'); }        // load started
-      else if(!wasReady && now){ hide(); }                          // load finished
-      wasReady = now;
-    }, 120);
-  }
-
-  if(document.readyState==='loading'){
-    document.addEventListener('DOMContentLoaded', startWatch);
-  } else { startWatch(); }
-})();
 </script>
 
 <script>
@@ -37184,33 +36950,12 @@ window._crmToastModal=_crmToastModal;
     var sc = document.getElementById('sc');
     if(!sc) return null;
     var view = document.getElementById('plot-view');
-    if(view){
-      // Self-heal wrappers built by an older build that set pointer-events:none
-      // on the wrapper (which made every element unclickable) or appended the
-      // children in the wrong order (conduits painting over equipment).
-      try{
-        if(view.style && view.style.pointerEvents === 'none'){ view.style.pointerEvents = ''; }
-        var _e=document.getElementById('els'), _c=document.getElementById('csvg');
-        if(_e && _c && _e.parentNode===view && _c.parentNode===view){
-          // els must come AFTER csvg in DOM order.
-          if(_e.compareDocumentPosition(_c) & Node.DOCUMENT_POSITION_FOLLOWING){
-            view.appendChild(_e);   // move els to the end (on top)
-          }
-        }
-      }catch(e){}
-    }
     if(!view){
       view = document.createElement('div');
       view.id = 'plot-view';
-      // IMPORTANT: the wrapper must NOT be pointer-events:none. #els and #csvg
-      // get reparented inside it, and a 'none' wrapper blocks hit-testing for
-      // its whole subtree -- which made every element unclickable once a plot
-      // was set. Keep the wrapper transparent to hits ('auto' here just means
-      // "don't block"), and let each child decide for itself: the plot IMAGE
-      // stays none, #els/#csvg restore their normal behaviour.
       view.style.cssText = 'position:absolute;top:0;left:0;width:100%;height:100%;'
-        + 'transform-origin:0 0;z-index:4';
-      // Plot image sits at the bottom of the wrapper and never takes clicks.
+        + 'transform-origin:0 0;pointer-events:none;z-index:4';
+      // Plot image sits at the bottom of the wrapper.
       var img = document.createElement('img');
       img.id = 'plot-layer';
       img.style.cssText = 'position:absolute;top:0;left:0;width:100%;height:100%;'
@@ -37219,13 +36964,10 @@ window._crmToastModal=_crmToastModal;
       // Insert the wrapper just before #els so drawings render above the image.
       var els = document.getElementById('els');
       sc.insertBefore(view, els);
-      // Move csvg + els INTO the wrapper so they transform with the image.
-      // ORDER MATTERS: csvg (conduits) first, then els (equipment) on top --
-      // matching their original z-index relationship (csvg:4 < els:5). If els
-      // went first, conduits would paint over equipment and steal its clicks.
+      // Move els + csvg INTO the wrapper so they transform with the image.
       var csvg = document.getElementById('csvg');
+      if(els){ els.style.pointerEvents='auto'; view.appendChild(els); }
       if(csvg){ view.appendChild(csvg); }
-      if(els){ view.appendChild(els); }
     }
     return view;
   }
@@ -37269,77 +37011,22 @@ window._crmToastModal=_crmToastModal;
   window._hasPlot = _hasPlot;
 
   // ---- Capture current satellite view to a data URL -------------------
-  // Returns the live JS Maps instance ONLY if it's fully usable. The
-  // address-search <iframe> embed path can leave window._gmap set to a
-  // partial/stale object with no getCenter(), which used to throw
-  // "Cannot read properties of null (reading 'getCenter')" and abort
-  // Set Plot before it ever saved. Everything below routes through this.
-  function _liveMap(){
-    try{
-      var m = window._gmap;
-      if(!m) return null;
-      if(typeof m.getCenter!=='function') return null;
-      if(typeof m.getZoom!=='function')  return null;
-      var c = m.getCenter();
-      if(!c || typeof c.lat!=='function' || typeof c.lng!=='function') return null;
-      return m;
-    }catch(e){ return null; }
-  }
-  window._liveMap = _liveMap;
-
   async function _capturePlotImage(){
     var sc = document.getElementById('sc');
     var W = (sc && sc.clientWidth)  || 900;
     var H = (sc && sc.clientHeight) || 600;
 
-    // 1) Static Maps API (crisp) when a key + a FULLY USABLE live map exist.
+    // 1) Static Maps API (crisp) when a key + live map are available.
     try{
       var key = (typeof _CFG!=='undefined' && _CFG.googleMapsKey) ? _CFG.googleMapsKey : null;
-      var lm  = _liveMap();
-      if(key && lm){
-        var c = lm.getCenter();
+      if(key && window._gmap && _gmap.getCenter){
+        var c = _gmap.getCenter();
         if(c){
           var lat=c.lat(), lng=c.lng();
-          // Capture WHAT THE USER SEES. Use the live map's actual zoom --
-          // NOT a zoom recomputed from S.pxPerFt. The calibrated scale is
-          // frequently stale relative to the current view (the user pans and
-          // zooms after calibrating), and trusting it made Set Plot capture a
-          // wildly different, over-zoomed crop than what was on screen.
-          var zLive = lm.getZoom();
-          var z = (zLive!=null && isFinite(zLive)) ? Math.round(zLive) : 18;
-          if(z<1) z=1; if(z>21) z=21;
-          // Static Maps caps a single dimension at 640 (before scale=2).
-          // CRITICAL: at a fixed zoom, a SMALLER image covers LESS ground.
-          // Naively shrinking to fit the cap therefore produces a tight,
-          // over-zoomed crop instead of the view on screen. Two corrections:
-          //  1) drop the zoom by log2(shrink) to widen coverage back out;
-          //  2) Static Maps only takes INTEGER zooms, so after rounding we
-          //     scale the requested SIZE by 2^(zRounded - zExact), which
-          //     restores the exact ground coverage the user was looking at.
-          var MAXD=640, mW=Math.round(W), mH=Math.round(H), shrink=1;
-          if(mW>MAXD||mH>MAXD){
-            shrink = MAXD/Math.max(mW,mH);
-            mW=Math.round(mW*shrink); mH=Math.round(mH*shrink);
-          }
-          if(shrink<1){
-            var zExact = z + Math.log(shrink)/Math.log(2);
-            var zRound = Math.round(zExact);
-            var sizeComp = Math.pow(2, zRound - zExact);
-            var cW = Math.round(mW*sizeComp), cH = Math.round(mH*sizeComp);
-            if(cW>0 && cH>0 && cW<=MAXD && cH<=MAXD){
-              mW=cW; mH=cH; z=zRound;
-            } else {
-              // Compensated size would exceed the cap -- step one zoom lower
-              // and rescale from there so we still cover the full view.
-              zRound = zRound - 1;
-              sizeComp = Math.pow(2, zRound - zExact);
-              cW = Math.round(mW*sizeComp); cH = Math.round(mH*sizeComp);
-              if(cW>0 && cH>0 && cW<=MAXD && cH<=MAXD){ mW=cW; mH=cH; }
-              z = zRound;
-            }
-          }
-          if(mW<1) mW=1; if(mH<1) mH=1;
-          if(z<1) z=1; if(z>21) z=21;
+          var z = (typeof zoomForPxPerFt==='function' && S && S.pxPerFt)
+                    ? zoomForPxPerFt(S.pxPerFt, lat) : Math.floor(_gmap.getZoom());
+          var MAXD=640, mW=W, mH=H;
+          if(mW>MAXD||mH>MAXD){ var f=MAXD/Math.max(mW,mH); mW=Math.round(mW*f); mH=Math.round(mH*f); }
           var su='https://maps.googleapis.com/maps/api/staticmap?center='+lat+','+lng
                +'&zoom='+z+'&size='+mW+'x'+mH+'&scale=2&maptype=satellite&key='+key;
           var r=await fetch(su);
@@ -37402,14 +37089,13 @@ window._crmToastModal=_crmToastModal;
       window._committedPlot = url;
 
       // Freeze the live map underneath so it can't pan/zoom or drift.
-      var _fm = (typeof _liveMap==='function') ? _liveMap() : null;
-      if(_fm){
+      if(window._gmap){
         try{
-          var pz=_fm.getZoom(), pc=_fm.getCenter();
-          _fm.setOptions({ gestureHandling:'none', zoomControl:false, scrollwheel:false,
+          var pz=_gmap.getZoom(), pc=_gmap.getCenter();
+          _gmap.setOptions({ gestureHandling:'none', zoomControl:false, scrollwheel:false,
             draggable:false, disableDoubleClickZoom:true, keyboardShortcuts:false });
-          if(pz!=null) _fm.setZoom(pz);
-          if(pc) _fm.setCenter(pc);
+          if(pz!=null) _gmap.setZoom(pz);
+          if(pc) _gmap.setCenter(pc);
         }catch(e){}
       }
       var blk=document.getElementById('gmap-block'); if(blk) blk.style.display='block';
@@ -37423,13 +37109,6 @@ window._crmToastModal=_crmToastModal;
       var bd=document.getElementById('backdrop'); if(bd) bd.src=url;
 
       if(typeof showBanner==='function') showBanner('cal','  Plot set \u2014 map is locked as a layer. Use the +/- zoom to scale the plot and your drawings together.');
-    } catch(err) {
-      // Never leave the UI stuck on "Capturing…" if anything throws.
-      if(window.console) console.error('Set Plot failed:', err);
-      if(btn){ btn.classList.remove('active-tool'); }
-      if(typeof showBanner==='function'){
-        showBanner('wiz','!! Set Plot failed: '+((err&&err.message)||'unknown error')+'. Try Lock Map first, or upload a site photo.');
-      }
     } finally {
       if(btn){ btn.disabled=false; }
     }
@@ -37743,19 +37422,6 @@ window._crmToastModal=_crmToastModal;
     var msgs=[];
     if(!out.storageHandle) msgs.push('X Storage NOT initialized -> plots save to localStorage only (per-device). Check firebase-storage-compat SDK + storage rules.');
     else msgs.push('OK Storage ready (durable, cross-device).');
-    try{
-      var _cfgBucket = (window.firebase && firebase.app && firebase.app().options)
-                        ? firebase.app().options.storageBucket : '';
-      out.storageBucket = _cfgBucket || '(unknown)';
-      if(_cfgBucket && _storage && _storage.ref){
-        var _liveBucket = '';
-        try{ _liveBucket = _storage.ref().bucket || ''; }catch(e){}
-        out.liveBucket = _liveBucket || '(unknown)';
-        if(_liveBucket && _cfgBucket && _liveBucket !== _cfgBucket){
-          msgs.push('X storageBucket MISMATCH: config="'+_cfgBucket+'" but live="'+_liveBucket+'" -> uploads will fail/hang.');
-        }
-      }
-    }catch(e){}
     if(!out.projectId) msgs.push('!! No projectId yet -> save the project once so plots get a home.');
     var committedTabs = out.tabs.filter(function(t){return t.plotCommitted;}).length;
     msgs.push(committedTabs + ' of ' + out.tabs.length + ' tab(s) have a committed plot.');
@@ -37770,3 +37436,6 @@ window._crmToastModal=_crmToastModal;
 
 </body>
 </html>
+
+
+
