@@ -15244,7 +15244,12 @@ const _origTML=toggleMapLock;window.toggleMapLock=function(){
   const _p=_origTML();
   const _applyPE=function(){
     const md=document.getElementById('_gmapDiv');
-    if(md)md.style.pointerEvents=window._mapLocked?'none':'auto';
+    if(md){
+      md.style.pointerEvents=window._mapLocked?'none':'auto';
+      /* The map must own its touch gestures when unlocked; #sc no longer sets
+         touch-action:none globally, so make the intent explicit here. */
+      md.style.touchAction=window._mapLocked?'none':'auto';
+    }
   };
   if(_p && typeof _p.then==='function'){
     return _p.then(function(v){_applyPE();return v;},function(e){_applyPE();throw e;});
@@ -34850,6 +34855,38 @@ function _chBind(){
 /* =========================================================================
    2) MAP LOCK -- ribbon + status-bar sync wrapper around toggleMapLock()
    ========================================================================= */
+/* =====================================================================
+   SINGLE SOURCE OF TRUTH for map interactivity.
+   ---------------------------------------------------------------------
+   Map panning was blocked by FOUR independent layers (_gmapDiv
+   pointer-events/touch-action, gmap-wrap, gmap-frame, the gmap-block
+   overlay) plus the gestureHandling option and the window._mapLocked flag.
+   Fixing them piecemeal kept missing one. This sets all of them together.
+   Call setMapInteractive(true) to unlock, (false) to freeze.
+   ===================================================================== */
+function setMapInteractive(on){
+  try{
+    window._mapLocked = !on;
+    var pe = on ? 'auto' : 'none';
+    var ta = on ? 'auto' : 'none';
+    var gmd  = document.getElementById('_gmapDiv');
+    var wrap = document.getElementById('gmap-wrap');
+    var fr   = document.getElementById('gmap-frame');
+    var blk  = document.getElementById('gmap-block');
+    if(gmd){ gmd.style.pointerEvents=pe; gmd.style.touchAction=ta; }
+    if(wrap) wrap.style.pointerEvents=pe;
+    if(fr)   fr.style.pointerEvents=pe;
+    if(blk)  blk.style.display = on ? 'none' : 'block';
+    if(window._gmap && _gmap.setOptions){
+      _gmap.setOptions(on
+        ? { gestureHandling:'greedy', zoomControl:true,  scrollwheel:true,  draggable:true,  disableDoubleClickZoom:false, keyboardShortcuts:true }
+        : { gestureHandling:'none',   zoomControl:false, scrollwheel:false, draggable:false, disableDoubleClickZoom:true,  keyboardShortcuts:false });
+    }
+    if(typeof _lockSyncUI==='function'){ try{ _lockSyncUI(); }catch(e){} }
+  }catch(e){ if(window.console) console.warn('setMapInteractive:', e&&e.message); }
+}
+window.setMapInteractive = setMapInteractive;
+
 function _lockSyncUI(){
   var locked = !!(window._mapLocked);
   // Single lock button (Site Overlay panel) now covers both the live map and
@@ -37738,20 +37775,12 @@ window._crmToastModal=_crmToastModal;
             }
           }
           window._plotView = snap.plotView || { z:1, tx:0, ty:0 };
-          // Freeze the live map under this tab's plot.
-          var blk=document.getElementById('gmap-block'); if(blk) blk.style.display='block';
-          // Keep the global lock flag in step so the Lock Map button and any
-          // other code that reads window._mapLocked agree with reality.
-          window._mapLocked = true;
-          // Re-assert the wrapper block so a plotted tab's frozen map can't be
-          // panned underneath its committed image.
-          var _wrap1=document.getElementById('gmap-wrap');
-          if(_wrap1) _wrap1.style.pointerEvents='none';
-          if(window._gmap){
-            try{ _gmap.setOptions({ gestureHandling:'none', zoomControl:false, scrollwheel:false,
-              draggable:false, disableDoubleClickZoom:true, keyboardShortcuts:false }); }catch(e){}
+          // Freeze the live map under this tab's plot (all layers at once).
+          if(typeof setMapInteractive==='function'){ setMapInteractive(false); }
+          else {
+            var blk=document.getElementById('gmap-block'); if(blk) blk.style.display='block';
+            window._mapLocked = true;
           }
-          if(typeof _lockSyncUI==='function'){ try{ _lockSyncUI(); }catch(e){} }
           var _b=document.getElementById('rb-setplot');
           if(_b){ _b.classList.add('active-tool'); }
 
@@ -37773,30 +37802,16 @@ window._crmToastModal=_crmToastModal;
           if(img2){ img2.src=''; img2.style.display='none'; }
           window._committedPlot = null;
           window._plotView = { z:1, tx:0, ty:0 };
-          var blk2=document.getElementById('gmap-block'); if(blk2) blk2.style.display='none';
-          // The map instance is SHARED across tabs, and the separate Lock Map
-          // machinery keys off window._mapLocked (+ the iframe's pointer-events).
-          // Set Plot / project load can leave _mapLocked true, so a tab WITHOUT
-          // a plot inherited a frozen map and couldn't be panned at all. Clear
-          // the whole lock state here, not just the gesture options.
-          window._mapLocked = false;
-          // #gmap-wrap is the PARENT of both the map div and the iframe, and it
-          // ships with inline pointer-events:none. While that's set, NO touch
-          // reaches the map no matter what gestureHandling or the frame's own
-          // pointer-events say -- which is why an unplotted tab stayed frozen.
-          var _wrap2=document.getElementById('gmap-wrap');
-          if(_wrap2) _wrap2.style.pointerEvents='auto';
-          var _fr2=document.getElementById('gmap-frame');
-          if(_fr2) _fr2.style.pointerEvents='auto';
-          var _md2=document.getElementById('map-div');
-          if(_md2) _md2.style.pointerEvents='auto';
-          var _gm2=document.getElementById('gmap');
-          if(_gm2) _gm2.style.pointerEvents='auto';
-          if(window._gmap){
-            try{ _gmap.setOptions({ gestureHandling:'greedy', zoomControl:true, scrollwheel:true,
-              draggable:true, disableDoubleClickZoom:false, keyboardShortcuts:true }); }catch(e){}
+          // Release EVERY blocking layer at once (map div pointer-events +
+          // touch-action, wrapper, iframe, block overlay, gesture options and
+          // the _mapLocked flag). Fixing these one at a time kept missing one.
+          if(typeof setMapInteractive==='function'){ setMapInteractive(true); }
+          else {
+            window._mapLocked = false;
+            var blk2=document.getElementById('gmap-block'); if(blk2) blk2.style.display='none';
+            var _gmd=document.getElementById('_gmapDiv');
+            if(_gmd){ _gmd.style.pointerEvents='auto'; _gmd.style.touchAction='auto'; }
           }
-          // Re-sync the Lock Map button so its icon/label matches reality.
           if(typeof _lockSyncUI==='function'){ try{ _lockSyncUI(); }catch(e){} }
           // Restore the legacy frozen-map layer visibility decision to the
           // normal (non-plot) path so this tab renders its own backdrop.
@@ -37904,12 +37919,18 @@ window._crmToastModal=_crmToastModal;
       var _f=document.getElementById('gmap-frame');
       var _bk=document.getElementById('gmap-block');
       out.mapLocked      = !!window._mapLocked;
+      var _gd=document.getElementById('_gmapDiv');
+      out.mapDivPointerEv= _gd ? (_gd.style.pointerEvents||'(unset)') : '(missing)';
+      out.mapDivTouchAct = _gd ? (_gd.style.touchAction||'(unset)') : '(missing)';
       out.wrapPointerEv  = _w ? (_w.style.pointerEvents||'(unset)') : '(missing)';
       out.framePointerEv = _f ? (_f.style.pointerEvents||'(unset)') : '(missing)';
       out.blockOverlay   = _bk ? (_bk.style.display||'(unset)') : '(missing)';
       out.gestureHandling= (window._gmap && _gmap.get) ? (_gmap.get('gestureHandling')||'(unset)') : '(no map)';
+      if(out.mapDivPointerEv==='none' && !out.committedPlot){
+        msgs.push('X _gmapDiv is pointer-events:none with NO plot -> map cannot be panned. Run setMapInteractive(true).');
+      }
       if(out.wrapPointerEv==='none' && !out.committedPlot){
-        msgs.push('X gmap-wrap is pointer-events:none with NO plot -> map cannot be panned.');
+        msgs.push('X gmap-wrap is pointer-events:none with NO plot.');
       }
     }catch(e){}
       out.touchDevice     = ('ontouchstart' in window) || (navigator.maxTouchPoints>0);
