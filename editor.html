@@ -1341,14 +1341,13 @@ window.onerror = function(msg, src, line, col, err) {
       <div class="rpanel-body">
         <button class="rbtn" onclick="rbRun(ovUpload)" title="Upload a site plan / survey / aerial image to trace over"><span class="rb-ico" style="color:#60A5FA">⬆</span><span class="rb-lbl">Upload<br>Image</span></button>
         <button class="rbtn" id="rb-ov-stencil" onclick="rbRun(ovStencil)" title="Convert the uploaded image to a clean black &amp; white engineering stencil to trace over"><span class="rb-ico" style="color:#E8F0FE">◨</span><span class="rb-lbl">Stencil<br>B&amp;W</span></button>
-        <button class="rbtn" id="rb-ov-lock" onclick="rbRun(ovLock)" title="Lock the image in place so it can't move while you place elements &amp; layers"><span class="rb-ico">🔓</span><span class="rb-lbl">Lock<br>Image</span></button>
+        <button class="rbtn" id="rb-ov-lock" onclick="rbRun(ovLock)" title="Lock the background (satellite map or uploaded image) in place so it can't pan, zoom, or move while you place elements &amp; layers"><span class="rb-ico">🔓</span><span class="rb-lbl">Lock<br>Map</span></button>
         <button class="rbtn" onclick="rbRun(startCal)" title="Set the real-world scale: trace a known length (parking stall = 18ft, door = 3ft) so equipment drops at the correct size"><span class="rb-ico">📏</span><span class="rb-lbl">Calibrate<br>Scale</span></button>
       </div>
       <div class="rpanel-cap">Site Overlay</div>
     </div>
     <div class="rpanel">
       <div class="rpanel-body">
-        <button class="rbtn" id="rb-lockmap" onclick="nnToggleMapLock()" title="Lock the map/background in place so it can't pan or zoom while you place elements"><span class="rb-ico">🔓</span><span class="rb-lbl">Lock<br>Map</span></button>
         <button class="rbtn" id="rb-setplot" onclick="setPlot()" title="Capture &amp; lock the current satellite view as a fixed, calibrated plot layer — nothing moves and +/- zooms the plot and your drawings together"><span class="rb-ico" style="color:#00D4FF">📌</span><span class="rb-lbl">Set<br>Plot</span></button>
         <button class="rbtn" id="rb-clearplot" onclick="clearPlot()" title="Clear the committed plot and return to the live interactive map"><span class="rb-ico">✕</span><span class="rb-lbl">Clear<br>Plot</span></button>
         <button class="rbtn" id="rb-crosshair" onclick="nnToggleCrosshair()" title="Toggle the AutoCAD-style crosshair cursor in draw/placement modes"><span class="rb-ico">✛</span><span class="rb-lbl">Crosshair</span></button>
@@ -34733,12 +34732,17 @@ function _chBind(){
    ========================================================================= */
 function _lockSyncUI(){
   var locked = !!(window._mapLocked);
-  var rb=document.getElementById('rb-lockmap');
+  // Single lock button (Site Overlay panel) now covers both the live map and
+  // an uploaded photo; the old separate Canvas "Lock Map" button was removed
+  // because on a satellite project it did exactly the same thing.
+  var rb=document.getElementById('rb-ov-lock');
   if(rb){
     rb.classList.toggle('active-tool',locked);
+    var noun = window._isUploadedPhoto ? 'Image' : 'Map';
     var ico=rb.querySelector('.rb-ico'), lbl=rb.querySelector('.rb-lbl');
     if(ico) ico.textContent = locked?'🔒':'🔓';
-    if(lbl) lbl.innerHTML = locked?'Unlock<br>Map':'Lock<br>Map';
+    if(lbl) lbl.innerHTML = (locked?'Unlock<br>':'Lock<br>') + noun;
+    rb.style.background = locked ? 'rgba(0,212,255,.14)' : '';
   }
   var ind=document.getElementById('nn-lock-ind');
   if(ind) ind.textContent = locked ? '🔒 Map locked' : '🔓 Map unlocked';
@@ -36239,13 +36243,13 @@ window.ovLock=function(){
 
 function _ovReflectLock(btn, locked){
   if(!btn) return;
+  // One button now covers BOTH cases (live satellite map and uploaded photo),
+  // so the label names whichever backdrop is actually in play.
+  var noun = window._isUploadedPhoto ? 'Image' : 'Map';
   var ico=btn.querySelector('.rb-ico'), lbl=btn.querySelector('.rb-lbl');
   if(ico) ico.textContent = locked ? '🔒' : '🔓';
-  if(lbl) lbl.innerHTML = locked ? 'Unlock<br>Image' : 'Lock<br>Image';
+  if(lbl) lbl.innerHTML = (locked ? 'Unlock<br>' : 'Lock<br>') + noun;
   btn.style.background = locked ? 'rgba(0,212,255,.14)' : '';
-  // keep the Canvas "Lock Map" button visually in sync
-  var lm=document.getElementById('rb-lockmap');
-  if(lm){ var li=lm.querySelector('.rb-ico'); if(li) li.textContent = locked?'🔒':'🔓'; }
 }
 
 })();
@@ -37056,6 +37060,9 @@ window._crmToastModal=_crmToastModal;
     }
     if(_safety){ clearTimeout(_safety); _safety=null; }
     var go = function(){
+      // Final clean repaint while still covered, so rotations/scales are
+      // already correct the moment the veil comes off.
+      settleRender();
       v.style.opacity = '0';
       setTimeout(function(){ if(v.style.opacity==='0') v.style.display='none'; }, 300);
     };
@@ -37070,10 +37077,40 @@ window._crmToastModal=_crmToastModal;
     window._projLoadVeilHold = Date.now() + (ms||0);
   }
 
+  /* Force a clean, final repaint of every element/conduit/shape. Elements bake
+     their rotation into an inline transform at render time, so if any of them
+     were first painted before the canvas geometry settled, they can sit
+     unrotated (or mis-scaled) until something touches them. Re-rendering once
+     here -- while the veil is still covering the canvas -- guarantees the user
+     only ever sees the finished, correctly-rotated drawing. */
+  function settleRender(){
+    try{
+      if(typeof S==='undefined' || !S) return;
+      var elsHost=document.getElementById('els');
+      var svgHost=document.getElementById('csvg');
+      if(!elsHost || !svgHost) return;
+      if(typeof renderEl!=='function') return;
+      elsHost.innerHTML=''; svgHost.innerHTML='';
+      (S.elements||[]).forEach(function(el){ try{ renderEl(el); }catch(e){} });
+      if(typeof renderConduit==='function'){
+        (S.conduits||[]).forEach(function(c){ try{ renderConduit(c); }catch(e){} });
+      }
+      if(typeof renderTrenchSpine==='function' && S._trench){ try{ renderTrenchSpine(); }catch(e){} }
+      if(typeof renderShape==='function'){
+        (S.shapes||[]).forEach(function(sh){ try{ renderShape(sh); }catch(e){} });
+      }
+      if(typeof renderLegend==='function') try{ renderLegend(); }catch(e){}
+      if(typeof updCount==='function') try{ updCount(); }catch(e){}
+      if(typeof updCondStat==='function') try{ updCondStat(); }catch(e){}
+      if(typeof updShapeCount==='function') try{ updShapeCount(); }catch(e){}
+    }catch(e){ if(window.console) console.warn('settle render:', e&&e.message); }
+  }
+
   window._projLoadVeilShow = show;
   window._projLoadVeilHide = hide;
   window._projLoadVeilHold = 0;
   window._projLoadVeilHoldFor = hold;
+  window._projSettleRender = settleRender;
 
   /* Watch _loadReady so we don't have to touch the three separate exit
      paths inside _loadProject (normal, map-restore, and error). */
