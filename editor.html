@@ -14768,6 +14768,18 @@ async function _loadProject(id){
         if(d.brand.hasLogo && id){ try{ _BRAND.logoDataUrl = localStorage.getItem('cs_brand_logo_'+id) || ''; }catch(e){} }
         if(typeof _brandSyncUI==='function') try{ _brandSyncUI(); }catch(e){}
       }
+      // Shape geometry (and its rotation pivot) is derived from _shapeBBox(),
+      // which depends on S.pxPerFt and silently falls back to 6 px/ft when that
+      // isn't set yet. If pxPerFt arrived from mapState AFTER the first shape
+      // render, shapes rotate about the wrong center and land misaligned (the
+      // "have to double-click it to fix" symptom). Now that everything is
+      // restored, repaint shapes once with the correct scale.
+      try{
+        if(typeof renderShape==='function' && S.shapes && S.shapes.length){
+          S.shapes.forEach(function(sh){ try{ renderShape(sh); }catch(e){} });
+          if(typeof updShapeCount==='function') updShapeCount();
+        }
+      }catch(e){ if(window.console) console.warn('shape settle:', e&&e.message); }
       // Load fully rendered -- saves are now safe.
       _loadReady = true;
       _setSaved('saved');
@@ -37077,12 +37089,18 @@ window._crmToastModal=_crmToastModal;
     window._projLoadVeilHold = Date.now() + (ms||0);
   }
 
-  /* Force a clean, final repaint of every element/conduit/shape. Elements bake
-     their rotation into an inline transform at render time, so if any of them
-     were first painted before the canvas geometry settled, they can sit
-     unrotated (or mis-scaled) until something touches them. Re-rendering once
-     here -- while the veil is still covering the canvas -- guarantees the user
-     only ever sees the finished, correctly-rotated drawing. */
+  /* Force a clean, final repaint of every element/conduit/shape.
+
+     WHY THIS EXISTS: shape geometry (and therefore the rotation pivot) is
+     derived from _shapeBBox(), which depends on S.pxPerFt and silently falls
+     back to 6 px/ft when that isn't set yet. During a project load, shapes can
+     render BEFORE _loadProject restores pxPerFt from mapState, so they rotate
+     about the wrong center and land visibly misaligned (e.g. a rooftop array
+     drawn flat instead of matching the angled roof). Touching the shape later
+     re-renders it correctly, which is why double-clicking "fixed" it.
+
+     Re-rendering here -- after pxPerFt is settled and while the veil still
+     covers the canvas -- means the user only ever sees the correct geometry. */
   function settleRender(){
     try{
       if(typeof S==='undefined' || !S) return;
