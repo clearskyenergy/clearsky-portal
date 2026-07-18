@@ -385,6 +385,15 @@ body{font-family:'IBM Plex Sans',sans-serif;background:var(--bg);color:var(--tex
 @media (max-width:820px){
   #ribbon-hamburger{ display:flex !important; }
   #ribbon-tabs{ display:none !important; }
+  /* Guided-build panels must not swallow a phone screen while telling the user
+     to draw on the map. Cap width and height; the body scrolls if needed and
+     the header stays reachable for drag + minimize. */
+  #dcfc-guide{
+    max-width:min(88vw,340px) !important;
+    max-height:52vh !important;
+    overflow-y:auto !important;
+    -webkit-overflow-scrolling:touch;
+  }
 }
 #zpct{text-align:center;font-size:9px;color:var(--accent);font-weight:700;font-family:'IBM Plex Mono',monospace}
 
@@ -32466,15 +32475,45 @@ function _dcfcGuideRender(){
   el.innerHTML=''
     +'<div id="dcfc-guide-drag" title="Drag to move" style="padding:11px 14px;border-bottom:1px solid #26364d;display:flex;align-items:center;justify-content:space-between;background:rgba(245,166,35,.08);cursor:move;user-select:none">'
       +'<div style="font-size:12px;font-weight:800;color:#F5A623;pointer-events:none"><span style="color:#8FA3B8;margin-right:4px">\u283f</span>\ud83d\ude97 EV Build</div>'
-      +'<button onclick="_dcfcCancel()" title="Cancel" style="background:none;border:none;color:#64748B;font-size:16px;cursor:pointer;line-height:1">\u00d7</button>'
+      +'<div style="display:flex;align-items:center;gap:2px">'
+        +'<button onclick="_dcfcGuideToggleMin(event)" id="dcfc-guide-min" title="Minimize / expand" style="background:none;border:none;color:#8FA3B8;font-size:15px;cursor:pointer;line-height:1;padding:4px 8px;min-width:32px;min-height:32px">\u2013</button>'
+        +'<button onclick="_dcfcCancel()" title="Cancel" style="background:none;border:none;color:#64748B;font-size:16px;cursor:pointer;line-height:1;padding:4px 8px;min-width:32px;min-height:32px">\u00d7</button>'
+      +'</div>'
     +'</div>'
+    +'<div class="dcfc-guide-body">'
     +'<div style="padding:9px 14px">'+rows+'</div>'
     +'<div style="padding:9px 14px;border-top:1px solid #26364d;background:rgba(0,0,0,.2);font-size:10px;color:#B7C6D8;line-height:1.5">'+hint+'</div>'
     +'<div style="padding:9px 14px 12px">'+actions
-      +'<button onclick="_dcfcCancel()" style="width:100%;padding:6px;background:none;border:1px solid #26364d;color:#64748B;border-radius:6px;font-size:10px;font-weight:700;cursor:pointer;font-family:inherit;margin-top:2px">Cancel (Esc)</button></div>';
+      +'<button onclick="_dcfcCancel()" style="width:100%;padding:6px;background:none;border:1px solid #26364d;color:#64748B;border-radius:6px;font-size:10px;font-weight:700;cursor:pointer;font-family:inherit;margin-top:2px">Cancel (Esc)</button></div>'
+    +'</div>';
   el.style.display='block';
   _dcfcGuideAttachDrag(el);
+  _dcfcGuideApplyMin(el);     // honour the user's collapsed choice across re-renders
 }
+
+/* Collapse the guide to just its header bar so it stops covering the map on a
+   phone. The choice persists across the innerHTML re-render that happens on
+   every placement step (same reason position is remembered). */
+var _dcfcGuideMin = false;
+function _dcfcGuideToggleMin(ev){
+  if(ev && ev.stopPropagation) ev.stopPropagation();
+  _dcfcGuideMin = !_dcfcGuideMin;
+  var el = document.getElementById('dcfc-guide');
+  if(el) _dcfcGuideApplyMin(el);
+}
+function _dcfcGuideApplyMin(el){
+  try{
+    if(!el) return;
+    var body = el.querySelector('.dcfc-guide-body');
+    var btn  = el.querySelector('#dcfc-guide-min');
+    if(body) body.style.display = _dcfcGuideMin ? 'none' : '';
+    if(btn){
+      btn.textContent = _dcfcGuideMin ? '\u25a1' : '\u2013';
+      btn.title = _dcfcGuideMin ? 'Expand' : 'Minimize';
+    }
+  }catch(e){}
+}
+window._dcfcGuideToggleMin = _dcfcGuideToggleMin;
 /* Make the EV Build guide panel draggable by its header. Position persists
    across the innerHTML re-renders that happen on every placement step. */
 var _dcfcGuidePos=null;   // {left, top} once the user has moved it
@@ -32489,24 +32528,58 @@ function _dcfcGuideAttachDrag(el){
   }
   var handle=document.getElementById('dcfc-guide-drag');
   if(!handle) return;
-  handle.onmousedown=function(e){
-    if(e.button!==0) return;
-    e.preventDefault();
+
+  /* Shared drag logic for both mouse and touch. The panel was mouse-only
+     (onmousedown), so on a phone it couldn't be moved at all -- which matters
+     because it covers most of a small screen while telling you to draw. */
+  function _startDrag(clientX, clientY, isTouch){
     var r=el.getBoundingClientRect();
     // Switch to left/top anchoring so dragging is absolute, not right-anchored.
     el.style.left=r.left+'px'; el.style.top=r.top+'px'; el.style.right='auto';
-    var ox=e.clientX-r.left, oy=e.clientY-r.top;
-    function mv(ev){
-      var nx=ev.clientX-ox, ny=ev.clientY-oy;
+    var ox=clientX-r.left, oy=clientY-r.top;
+    function moveTo(cx, cy){
+      var nx=cx-ox, ny=cy-oy;
       var maxX=window.innerWidth-el.offsetWidth, maxY=window.innerHeight-el.offsetHeight;
-      nx=Math.max(0,Math.min(nx,maxX)); ny=Math.max(0,Math.min(ny,maxY));
+      nx=Math.max(0,Math.min(nx,Math.max(0,maxX)));
+      ny=Math.max(0,Math.min(ny,Math.max(0,maxY)));
       el.style.left=nx+'px'; el.style.top=ny+'px';
       _dcfcGuidePos={left:nx, top:ny};
     }
-    function up(){ document.removeEventListener('mousemove',mv); document.removeEventListener('mouseup',up); }
-    document.addEventListener('mousemove',mv);
-    document.addEventListener('mouseup',up);
+    if(isTouch){
+      function tmv(ev){
+        if(!ev.touches || !ev.touches.length) return;
+        ev.preventDefault();                       // don't pan the map behind
+        moveTo(ev.touches[0].clientX, ev.touches[0].clientY);
+      }
+      function tup(){
+        document.removeEventListener('touchmove',tmv,{passive:false});
+        document.removeEventListener('touchend',tup);
+        document.removeEventListener('touchcancel',tup);
+      }
+      document.addEventListener('touchmove',tmv,{passive:false});
+      document.addEventListener('touchend',tup);
+      document.addEventListener('touchcancel',tup);
+    } else {
+      function mv(ev){ moveTo(ev.clientX, ev.clientY); }
+      function up(){ document.removeEventListener('mousemove',mv); document.removeEventListener('mouseup',up); }
+      document.addEventListener('mousemove',mv);
+      document.addEventListener('mouseup',up);
+    }
+  }
+
+  handle.onmousedown=function(e){
+    if(e.button!==0) return;
+    e.preventDefault();
+    _startDrag(e.clientX, e.clientY, false);
   };
+  handle.addEventListener('touchstart', function(e){
+    // Ignore touches that landed on the minimize/close buttons.
+    if(e.target && e.target.tagName === 'BUTTON') return;
+    if(!e.touches || e.touches.length!==1) return;
+    e.preventDefault();
+    _startDrag(e.touches[0].clientX, e.touches[0].clientY, true);
+  }, { passive:false });
+  handle.style.touchAction='none';   // header owns the gesture while dragging
 }
 function _dcfcToggleTrenchSurface(){ if(typeof toggleTrenchSurface==='function') toggleTrenchSurface(); }
 window._dcfcToggleTrenchSurface=_dcfcToggleTrenchSurface;
@@ -33006,14 +33079,20 @@ _dcfcGuideRender=function(){
   el.innerHTML=''
     +'<div id="dcfc-guide-drag" title="Drag to move" style="padding:11px 14px;border-bottom:1px solid #26364d;display:flex;align-items:center;justify-content:space-between;background:rgba(245,166,35,.08);cursor:move;user-select:none">'
       +'<div style="font-size:12px;font-weight:800;color:#F5A623;pointer-events:none"><span style="color:#8FA3B8;margin-right:4px">\u283f</span>\ud83d\ude97 EV Build</div>'
-      +'<button onclick="_dcfcCancel()" title="Cancel" style="background:none;border:none;color:#64748B;font-size:16px;cursor:pointer;line-height:1">\u00d7</button>'
+      +'<div style="display:flex;align-items:center;gap:2px">'
+        +'<button onclick="_dcfcGuideToggleMin(event)" id="dcfc-guide-min" title="Minimize / expand" style="background:none;border:none;color:#8FA3B8;font-size:15px;cursor:pointer;line-height:1;padding:4px 8px;min-width:32px;min-height:32px">\u2013</button>'
+        +'<button onclick="_dcfcCancel()" title="Cancel" style="background:none;border:none;color:#64748B;font-size:16px;cursor:pointer;line-height:1;padding:4px 8px;min-width:32px;min-height:32px">\u00d7</button>'
+      +'</div>'
     +'</div>'
+    +'<div class="dcfc-guide-body">'
     +'<div style="padding:9px 14px">'+rows+'</div>'
     +'<div style="padding:9px 14px;border-top:1px solid #26364d;background:rgba(0,0,0,.2);font-size:10px;color:#B7C6D8;line-height:1.5">'+hint+'</div>'
     +'<div style="padding:9px 14px 12px">'+actions
-      +'<button onclick="_dcfcCancel()" style="width:100%;padding:6px;background:none;border:1px solid #26364d;color:#64748B;border-radius:6px;font-size:10px;font-weight:700;cursor:pointer;font-family:inherit;margin-top:2px">Cancel (Esc)</button></div>';
+      +'<button onclick="_dcfcCancel()" style="width:100%;padding:6px;background:none;border:1px solid #26364d;color:#64748B;border-radius:6px;font-size:10px;font-weight:700;cursor:pointer;font-family:inherit;margin-top:2px">Cancel (Esc)</button></div>'
+    +'</div>';
   el.style.display='block';
   if(typeof _dcfcGuideAttachDrag==='function') _dcfcGuideAttachDrag(el);
+  if(typeof _dcfcGuideApplyMin==='function') _dcfcGuideApplyMin(el);
 };
 window._dcfcGuideRender=_dcfcGuideRender;
 
