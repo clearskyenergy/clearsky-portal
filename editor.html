@@ -269,13 +269,15 @@ body{font-family:'IBM Plex Sans',sans-serif;background:var(--bg);color:var(--tex
 /* -- CANVAS -- */
 #cw{flex:1;position:relative;overflow:hidden;background:var(--bg);transition:outline .15s}
 #cw-grid{position:absolute;inset:0;background-image:radial-gradient(circle,#243B55 1px,transparent 1px);background-size:20px 20px;pointer-events:none;z-index:0}
-#sc{position:absolute;top:0;left:0;width:100%;height:100%;touch-action:none}
+#sc{position:absolute;top:0;left:0;width:100%;height:100%}
 #backdrop{position:absolute;top:0;left:0;width:100%;height:100%;object-fit:cover;transform-origin:center;pointer-events:none;display:none;z-index:1}
 /* Conduit SVG -- BELOW equipment so lines go under icons */
 #csvg{position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none;overflow:visible;z-index:4;touch-action:none}
 /* Equipment elements -- ABOVE conduit lines */
 #els{position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none;z-index:5;touch-action:none}
-#cov{position:absolute;inset:0;display:none;cursor:crosshair;z-index:50}
+/* When a drawing tool is active #cov covers the canvas and MUST swallow
+   gestures, otherwise a drag intended to draw would pan the map instead. */
+#cov{position:absolute;inset:0;display:none;cursor:crosshair;z-index:50;touch-action:none}
 #cov.on{display:block}
 #snapring{position:absolute;border-radius:50%;border:2px solid var(--accent);background:rgba(0,212,255,.12);pointer-events:none;display:none;z-index:60;transform:translate(-50%,-50%);width:26px;height:26px}
 
@@ -291,7 +293,12 @@ body{font-family:'IBM Plex Sans',sans-serif;background:var(--bg);color:var(--tex
 .ce-unit{font-size:10px;color:var(--sub);white-space:nowrap}
 .cost-sub-tab:hover{color:var(--text)!important}
 .ctx-btn:hover{background:rgba(255,255,255,.06)!important}
-.cel{position:absolute;pointer-events:auto;z-index:10}
+/* Draggable items declare touch-action:none THEMSELVES. #sc must stay gesture-
+   permissive so a one-finger drag on empty map area pans the Google map
+   (gestureHandling:'greedy'); suppressing it on the container blocked map
+   panning entirely on touch devices. */
+.cel{position:absolute;pointer-events:auto;z-index:10;touch-action:none}
+.shape-g{touch-action:none}
 .cel.sel .elbody{outline:2px solid var(--accent);outline-offset:2px}
 
 /* Resize/rotate/delete handles */
