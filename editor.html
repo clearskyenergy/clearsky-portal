@@ -37011,20 +37011,39 @@ window._crmToastModal=_crmToastModal;
   window._hasPlot = _hasPlot;
 
   // ---- Capture current satellite view to a data URL -------------------
+  // Returns the live JS Maps instance ONLY if it's fully usable. The
+  // address-search <iframe> embed path can leave window._gmap set to a
+  // partial/stale object with no getCenter(), which used to throw
+  // "Cannot read properties of null (reading 'getCenter')" and abort
+  // Set Plot before it ever saved. Everything below routes through this.
+  function _liveMap(){
+    try{
+      var m = window._gmap;
+      if(!m) return null;
+      if(typeof m.getCenter!=='function') return null;
+      if(typeof m.getZoom!=='function')  return null;
+      var c = m.getCenter();
+      if(!c || typeof c.lat!=='function' || typeof c.lng!=='function') return null;
+      return m;
+    }catch(e){ return null; }
+  }
+  window._liveMap = _liveMap;
+
   async function _capturePlotImage(){
     var sc = document.getElementById('sc');
     var W = (sc && sc.clientWidth)  || 900;
     var H = (sc && sc.clientHeight) || 600;
 
-    // 1) Static Maps API (crisp) when a key + live map are available.
+    // 1) Static Maps API (crisp) when a key + a FULLY USABLE live map exist.
     try{
       var key = (typeof _CFG!=='undefined' && _CFG.googleMapsKey) ? _CFG.googleMapsKey : null;
-      if(key && window._gmap && _gmap.getCenter){
-        var c = _gmap.getCenter();
+      var lm  = _liveMap();
+      if(key && lm){
+        var c = lm.getCenter();
         if(c){
           var lat=c.lat(), lng=c.lng();
           var z = (typeof zoomForPxPerFt==='function' && S && S.pxPerFt)
-                    ? zoomForPxPerFt(S.pxPerFt, lat) : Math.floor(_gmap.getZoom());
+                    ? zoomForPxPerFt(S.pxPerFt, lat) : Math.floor(lm.getZoom());
           var MAXD=640, mW=W, mH=H;
           if(mW>MAXD||mH>MAXD){ var f=MAXD/Math.max(mW,mH); mW=Math.round(mW*f); mH=Math.round(mH*f); }
           var su='https://maps.googleapis.com/maps/api/staticmap?center='+lat+','+lng
@@ -37089,13 +37108,14 @@ window._crmToastModal=_crmToastModal;
       window._committedPlot = url;
 
       // Freeze the live map underneath so it can't pan/zoom or drift.
-      if(window._gmap){
+      var _fm = (typeof _liveMap==='function') ? _liveMap() : null;
+      if(_fm){
         try{
-          var pz=_gmap.getZoom(), pc=_gmap.getCenter();
-          _gmap.setOptions({ gestureHandling:'none', zoomControl:false, scrollwheel:false,
+          var pz=_fm.getZoom(), pc=_fm.getCenter();
+          _fm.setOptions({ gestureHandling:'none', zoomControl:false, scrollwheel:false,
             draggable:false, disableDoubleClickZoom:true, keyboardShortcuts:false });
-          if(pz!=null) _gmap.setZoom(pz);
-          if(pc) _gmap.setCenter(pc);
+          if(pz!=null) _fm.setZoom(pz);
+          if(pc) _fm.setCenter(pc);
         }catch(e){}
       }
       var blk=document.getElementById('gmap-block'); if(blk) blk.style.display='block';
@@ -37109,6 +37129,13 @@ window._crmToastModal=_crmToastModal;
       var bd=document.getElementById('backdrop'); if(bd) bd.src=url;
 
       if(typeof showBanner==='function') showBanner('cal','  Plot set \u2014 map is locked as a layer. Use the +/- zoom to scale the plot and your drawings together.');
+    } catch(err) {
+      // Never leave the UI stuck on "Capturing…" if anything throws.
+      if(window.console) console.error('Set Plot failed:', err);
+      if(btn){ btn.classList.remove('active-tool'); }
+      if(typeof showBanner==='function'){
+        showBanner('wiz','!! Set Plot failed: '+((err&&err.message)||'unknown error')+'. Try Lock Map first, or upload a site photo.');
+      }
     } finally {
       if(btn){ btn.disabled=false; }
     }
@@ -37436,6 +37463,3 @@ window._crmToastModal=_crmToastModal;
 
 </body>
 </html>
-
-
-
