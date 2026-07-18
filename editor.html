@@ -37054,10 +37054,31 @@ window._crmToastModal=_crmToastModal;
         var c = lm.getCenter();
         if(c){
           var lat=c.lat(), lng=c.lng();
-          var z = (typeof zoomForPxPerFt==='function' && S && S.pxPerFt)
-                    ? zoomForPxPerFt(S.pxPerFt, lat) : Math.floor(lm.getZoom());
-          var MAXD=640, mW=W, mH=H;
-          if(mW>MAXD||mH>MAXD){ var f=MAXD/Math.max(mW,mH); mW=Math.round(mW*f); mH=Math.round(mH*f); }
+          // Capture WHAT THE USER SEES. Use the live map's actual zoom --
+          // NOT a zoom recomputed from S.pxPerFt. The calibrated scale is
+          // frequently stale relative to the current view (the user pans and
+          // zooms after calibrating), and trusting it made Set Plot capture a
+          // wildly different, over-zoomed crop than what was on screen.
+          var zLive = lm.getZoom();
+          var z = (zLive!=null && isFinite(zLive)) ? Math.round(zLive) : 18;
+          if(z<1) z=1; if(z>21) z=21;
+          // Static Maps caps a single dimension at 640 (before scale=2).
+          // CRITICAL: at a fixed zoom, a SMALLER image covers LESS ground.
+          // Naively shrinking to fit the cap therefore produces a tight,
+          // over-zoomed crop instead of the view on screen. To keep the same
+          // geographic coverage we drop the zoom by log2 of the shrink factor,
+          // which widens the ground area back out to match what the user sees.
+          var MAXD=640, mW=Math.round(W), mH=Math.round(H), shrink=1;
+          if(mW>MAXD||mH>MAXD){
+            shrink = MAXD/Math.max(mW,mH);
+            mW=Math.round(mW*shrink); mH=Math.round(mH*shrink);
+          }
+          if(mW<1) mW=1; if(mH<1) mH=1;
+          if(shrink<1){
+            z = z + Math.log(shrink)/Math.log(2);   // log2(shrink), negative
+            z = Math.round(z);
+            if(z<1) z=1; if(z>21) z=21;
+          }
           var su='https://maps.googleapis.com/maps/api/staticmap?center='+lat+','+lng
                +'&zoom='+z+'&size='+mW+'x'+mH+'&scale=2&maptype=satellite&key='+key;
           var r=await fetch(su);
