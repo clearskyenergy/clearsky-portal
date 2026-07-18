@@ -5698,15 +5698,34 @@ async function toggleMapLock(){
       const W    = sc.clientWidth  || 900;
       const H    = sc.clientHeight || 600;
       const MAXD = 640;
-      let mW = W, mH = H;
-      if (mW > MAXD || mH > MAXD) { const f = MAXD/Math.max(mW,mH); mW=Math.round(mW*f); mH=Math.round(mH*f); }
+      let mW = W, mH = H, _shrink = 1;
+      if (mW > MAXD || mH > MAXD) { _shrink = MAXD/Math.max(mW,mH); mW=Math.round(mW*_shrink); mH=Math.round(mH*_shrink); }
       mW = Math.max(1, mW); mH = Math.max(1, mH);
       const key = (typeof _CFG!=='undefined' && _CFG.googleMapsKey) ? _CFG.googleMapsKey : null;
       if (key && window._gmap) {
         var _c=_gmap.getCenter();
         if(_c){
           var _lat=_c.lat(), _lng=_c.lng();
-          var _z=(typeof zoomForPxPerFt==='function' && S && S.pxPerFt) ? zoomForPxPerFt(S.pxPerFt,_lat) : Math.floor(_gmap.getZoom());
+          // Use the map's ACTUAL zoom, not one recomputed from the (often
+          // stale) calibrated scale, then compensate for the 640px downscale
+          // so the snapshot covers the same ground as the on-screen view.
+          var _zl=_gmap.getZoom();
+          var _z=(_zl!=null && isFinite(_zl)) ? Math.round(_zl) : 18;
+          if(_shrink<1){
+            var _zEx=_z + Math.log(_shrink)/Math.log(2);
+            var _zRd=Math.round(_zEx);
+            var _cmp=Math.pow(2,_zRd-_zEx);
+            var _cW=Math.round(mW*_cmp), _cH=Math.round(mH*_cmp);
+            if(_cW>0 && _cH>0 && _cW<=MAXD && _cH<=MAXD){ mW=_cW; mH=_cH; _z=_zRd; }
+            else {
+              _zRd=_zRd-1; _cmp=Math.pow(2,_zRd-_zEx);
+              _cW=Math.round(mW*_cmp); _cH=Math.round(mH*_cmp);
+              if(_cW>0 && _cH>0 && _cW<=MAXD && _cH<=MAXD){ mW=_cW; mH=_cH; }
+              _z=_zRd;
+            }
+          }
+          mW=Math.max(1,mW); mH=Math.max(1,mH);
+          if(_z<1) _z=1; if(_z>21) _z=21;
           var _su='https://maps.googleapis.com/maps/api/staticmap?center='+_lat+','+_lng+'&zoom='+_z+'&size='+mW+'x'+mH+'&scale=2&maptype=satellite&key='+key;
           var _r=await fetch(_su);
           if(_r.ok){ var _b=await _r.blob(); if(_b.size>=1200){
@@ -14385,13 +14404,36 @@ async function saveProject(){
       try{
         var _ssc=document.getElementById('sc');
         var _sW=(_ssc&&_ssc.clientWidth)||900, _sH=(_ssc&&_ssc.clientHeight)||600;
-        var _smW=_sW, _smH=_sH;
-        if(_smW>640||_smH>640){ var _sf=640/Math.max(_smW,_smH); _smW=Math.round(_smW*_sf); _smH=Math.round(_smH*_sf); }
+        var _smW=_sW, _smH=_sH, _sShrink=1;
+        if(_smW>640||_smH>640){
+          _sShrink=640/Math.max(_smW,_smH);
+          _smW=Math.round(_smW*_sShrink); _smH=Math.round(_smH*_sShrink);
+        }
         _smW=Math.max(1,_smW); _smH=Math.max(1,_smH);
-        var _sZoom=(typeof zoomForPxPerFt==='function' && S && S.pxPerFt && mapState.lat)
-                   ? zoomForPxPerFt(S.pxPerFt, mapState.lat)
-                   : (mapState.zoom ? Math.floor(mapState.zoom) : 18);
-        if(!_sZoom) _sZoom = mapState.zoom ? Math.floor(mapState.zoom) : 18;
+        // Use the map's ACTUAL zoom (what the user is looking at), NOT a zoom
+        // recomputed from S.pxPerFt -- the calibrated scale goes stale as soon
+        // as the user pans/zooms, which made saved projects reopen at a wildly
+        // different (over-zoomed) view than the one they saved.
+        var _sZoom = (mapState.zoom!=null && isFinite(mapState.zoom))
+                     ? Math.round(mapState.zoom)
+                     : (window._lastZoom || 18);
+        if(_sShrink<1){
+          var _szExact = _sZoom + Math.log(_sShrink)/Math.log(2);
+          var _szRound = Math.round(_szExact);
+          var _sComp = Math.pow(2, _szRound - _szExact);
+          var _scW = Math.round(_smW*_sComp), _scH = Math.round(_smH*_sComp);
+          if(_scW>0 && _scH>0 && _scW<=640 && _scH<=640){ _smW=_scW; _smH=_scH; _sZoom=_szRound; }
+          else {
+            _szRound = _szRound - 1;
+            _sComp = Math.pow(2, _szRound - _szExact);
+            _scW = Math.round(_smW*_sComp); _scH = Math.round(_smH*_sComp);
+            if(_scW>0 && _scH>0 && _scW<=640 && _scH<=640){ _smW=_scW; _smH=_scH; }
+            _sZoom = _szRound;
+          }
+        }
+        if(!_sZoom || !isFinite(_sZoom)) _sZoom = 18;
+        if(_sZoom<1) _sZoom=1; if(_sZoom>21) _sZoom=21;
+        _smW=Math.max(1,_smW); _smH=Math.max(1,_smH);
         var _sUrl='https://maps.googleapis.com/maps/api/staticmap?center='
           + mapState.lat + ',' + mapState.lng + '&zoom=' + _sZoom
           + '&size=' + _smW + 'x' + _smH + '&scale=2&maptype=satellite&key=' + _CFG.googleMapsKey;
@@ -36962,12 +37004,33 @@ window._crmToastModal=_crmToastModal;
     var sc = document.getElementById('sc');
     if(!sc) return null;
     var view = document.getElementById('plot-view');
+    if(view){
+      // Self-heal wrappers built by an older build that set pointer-events:none
+      // on the wrapper (which made every element unclickable) or appended the
+      // children in the wrong order (conduits painting over equipment).
+      try{
+        if(view.style && view.style.pointerEvents === 'none'){ view.style.pointerEvents = ''; }
+        var _e=document.getElementById('els'), _c=document.getElementById('csvg');
+        if(_e && _c && _e.parentNode===view && _c.parentNode===view){
+          // els must come AFTER csvg in DOM order.
+          if(_e.compareDocumentPosition(_c) & Node.DOCUMENT_POSITION_FOLLOWING){
+            view.appendChild(_e);   // move els to the end (on top)
+          }
+        }
+      }catch(e){}
+    }
     if(!view){
       view = document.createElement('div');
       view.id = 'plot-view';
+      // IMPORTANT: the wrapper must NOT be pointer-events:none. #els and #csvg
+      // get reparented inside it, and a 'none' wrapper blocks hit-testing for
+      // its whole subtree -- which made every element unclickable once a plot
+      // was set. Keep the wrapper transparent to hits ('auto' here just means
+      // "don't block"), and let each child decide for itself: the plot IMAGE
+      // stays none, #els/#csvg restore their normal behaviour.
       view.style.cssText = 'position:absolute;top:0;left:0;width:100%;height:100%;'
-        + 'transform-origin:0 0;pointer-events:none;z-index:4';
-      // Plot image sits at the bottom of the wrapper.
+        + 'transform-origin:0 0;z-index:4';
+      // Plot image sits at the bottom of the wrapper and never takes clicks.
       var img = document.createElement('img');
       img.id = 'plot-layer';
       img.style.cssText = 'position:absolute;top:0;left:0;width:100%;height:100%;'
@@ -36976,10 +37039,13 @@ window._crmToastModal=_crmToastModal;
       // Insert the wrapper just before #els so drawings render above the image.
       var els = document.getElementById('els');
       sc.insertBefore(view, els);
-      // Move els + csvg INTO the wrapper so they transform with the image.
+      // Move csvg + els INTO the wrapper so they transform with the image.
+      // ORDER MATTERS: csvg (conduits) first, then els (equipment) on top --
+      // matching their original z-index relationship (csvg:4 < els:5). If els
+      // went first, conduits would paint over equipment and steal its clicks.
       var csvg = document.getElementById('csvg');
-      if(els){ els.style.pointerEvents='auto'; view.appendChild(els); }
       if(csvg){ view.appendChild(csvg); }
+      if(els){ view.appendChild(els); }
     }
     return view;
   }
@@ -37065,20 +37131,35 @@ window._crmToastModal=_crmToastModal;
           // Static Maps caps a single dimension at 640 (before scale=2).
           // CRITICAL: at a fixed zoom, a SMALLER image covers LESS ground.
           // Naively shrinking to fit the cap therefore produces a tight,
-          // over-zoomed crop instead of the view on screen. To keep the same
-          // geographic coverage we drop the zoom by log2 of the shrink factor,
-          // which widens the ground area back out to match what the user sees.
+          // over-zoomed crop instead of the view on screen. Two corrections:
+          //  1) drop the zoom by log2(shrink) to widen coverage back out;
+          //  2) Static Maps only takes INTEGER zooms, so after rounding we
+          //     scale the requested SIZE by 2^(zRounded - zExact), which
+          //     restores the exact ground coverage the user was looking at.
           var MAXD=640, mW=Math.round(W), mH=Math.round(H), shrink=1;
           if(mW>MAXD||mH>MAXD){
             shrink = MAXD/Math.max(mW,mH);
             mW=Math.round(mW*shrink); mH=Math.round(mH*shrink);
           }
-          if(mW<1) mW=1; if(mH<1) mH=1;
           if(shrink<1){
-            z = z + Math.log(shrink)/Math.log(2);   // log2(shrink), negative
-            z = Math.round(z);
-            if(z<1) z=1; if(z>21) z=21;
+            var zExact = z + Math.log(shrink)/Math.log(2);
+            var zRound = Math.round(zExact);
+            var sizeComp = Math.pow(2, zRound - zExact);
+            var cW = Math.round(mW*sizeComp), cH = Math.round(mH*sizeComp);
+            if(cW>0 && cH>0 && cW<=MAXD && cH<=MAXD){
+              mW=cW; mH=cH; z=zRound;
+            } else {
+              // Compensated size would exceed the cap -- step one zoom lower
+              // and rescale from there so we still cover the full view.
+              zRound = zRound - 1;
+              sizeComp = Math.pow(2, zRound - zExact);
+              cW = Math.round(mW*sizeComp); cH = Math.round(mH*sizeComp);
+              if(cW>0 && cH>0 && cW<=MAXD && cH<=MAXD){ mW=cW; mH=cH; }
+              z = zRound;
+            }
           }
+          if(mW<1) mW=1; if(mH<1) mH=1;
+          if(z<1) z=1; if(z>21) z=21;
           var su='https://maps.googleapis.com/maps/api/staticmap?center='+lat+','+lng
                +'&zoom='+z+'&size='+mW+'x'+mH+'&scale=2&maptype=satellite&key='+key;
           var r=await fetch(su);
