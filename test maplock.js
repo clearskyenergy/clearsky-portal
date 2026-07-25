@@ -362,6 +362,79 @@ t('the round-trip is algebraically consistent', ()=>{
     ? true : 'coordinate formula drifted';
 });
 
+console.log('\n=== M. Live-map pan + recenter ===');
+t('one-finger drag on a live map does NOT pan the canvas', ()=>{
+  const i=h.indexOf('function initPinchZoom()');
+  const seg=h.slice(i, i+3000);
+  return (seg.includes('_liveUnfrozen') && seg.includes('let the Google Map handle the drag'))
+    ? true : 'canvas still hijacks the map pan';
+});
+t('live-map detection uses mapLockState', ()=>{
+  const i=h.indexOf('function initPinchZoom()');
+  const seg=h.slice(i, i+3000);
+  return seg.includes('mapLockState') && seg.includes('window._gmap') ? true : 'no live-map guard';
+});
+t('recenterOnEquipment exists and is exported', ()=>{
+  return h.includes('window.recenterOnEquipment =') ? true : 'no recenter function';
+});
+t('Recenter button wired in the ribbon', ()=>{
+  return h.includes('recenterOnEquipment()') && h.includes('rb-recenter') ? true : 'no button';
+});
+t('recenter frames the equipment bounding box at viewport center', ()=>{
+  function recenter(els, vw, vh){
+    var minX=Infinity,minY=Infinity,maxX=-Infinity,maxY=-Infinity;
+    els.forEach(function(el){var w=el.w||60,hh=el.h||el.w||60;
+      if(el.x<minX)minX=el.x;if(el.y<minY)minY=el.y;
+      if(el.x+w>maxX)maxX=el.x+w;if(el.y+hh>maxY)maxY=el.y+hh;});
+    var bw=Math.max(1,maxX-minX),bh=Math.max(1,maxY-minY);
+    var z=Math.min(vw/(bw*1.3),vh/(bh*1.3));z=Math.max(0.15,Math.min(3,z));
+    var mcx=(minX+maxX)/2,mcy=(minY+maxY)/2;
+    var tx=vw/2-mcx*z,ty=vh/2-mcy*z;
+    return {z,tx,ty,mcx,mcy};
+  }
+  const r=recenter([{x:2000,y:1400,w:80},{x:2400,y:1600,w:120}],390,700);
+  const sx=r.tx+r.mcx*r.z, sy=r.ty+r.mcy*r.z;
+  return (Math.abs(sx-195)<1 && Math.abs(sy-350)<1) ? true : 'recenter math off';
+});
+t('recenter clamps zoom to a sane range', ()=>{
+  const seg=grab('window.recenterOnEquipment','window._plotUnproject');
+  return (seg.includes('Math.max(0.15') && seg.includes('Math.min(3')) ? true : 'no zoom clamp';
+});
+t('recenter syncs BOTH plotView and #sc transform', ()=>{
+  const seg=grab('window.recenterOnEquipment','window._plotUnproject');
+  return (seg.includes('window._plotView.z=z') && seg.includes("sc.style.transform"))
+    ? true : 'transforms could disagree after recenter';
+});
+
+console.log('\n=== N. Pinch-zoom passes through to the live map ===');
+t('two-finger pinch is NOT intercepted on a live unfrozen map', ()=>{
+  const i=h.indexOf('function initPinchZoom()');
+  const seg=h.slice(i, i+4000);
+  // touchmove branch must early-return for live maps
+  return (seg.includes('if(_lz){ S.lastD=null; S.lastM=null; return; }'))
+    ? true : 'pinch still CSS-scales the canvas over a live map';
+});
+t('two-finger touchstart does not preventDefault on a live map', ()=>{
+  const i=h.indexOf('function initPinchZoom()');
+  const seg=h.slice(i, i+4000);
+  return seg.includes('if(_lz2){ S.lastD=null; S.lastM=null; S.panning=false; return; }')
+    ? true : 'touchstart blocks the map pinch';
+});
+t('pinch guard uses the same live-map detection as pan', ()=>{
+  const i=h.indexOf('function initPinchZoom()');
+  const seg=h.slice(i, i+4000);
+  return (seg.match(/window\._gmap/g)||[]).length>=3 ? true : 'inconsistent live-map detection';
+});
+t('button/wheel zoom still guarded to upload mode only (not live map)', ()=>{
+  return (h.includes("function zoomBg(d){if(mapMode!=='upload')return;")) ? true : 'zoomBg would scale a live map';
+});
+t('when frozen (Set Plot), pinch DOES zoom the canvas/plot', ()=>{
+  const i=h.indexOf('function initPinchZoom()');
+  const seg=h.slice(i, i+4000);
+  // the guard is conditional on !locked && !hasPlot, so frozen plots still pinch-zoom
+  return seg.includes('!_lzst.locked && !_lzst.hasPlot') ? true : 'frozen plot lost pinch-zoom';
+});
+
 console.log('\n---------------------------------------');
 console.log('PASS '+pass+'   FAIL '+fail);
 process.exit(fail?1:0);

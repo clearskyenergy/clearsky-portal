@@ -1421,6 +1421,7 @@ window.onerror = function(msg, src, line, col, err) {
         <button class="rbtn" id="rb-setplot" onclick="setPlot()" title="Capture &amp; lock the current satellite view as a fixed, calibrated plot layer — nothing moves and +/- zooms the plot and your drawings together"><span class="rb-ico" style="color:#00D4FF">📌</span><span class="rb-lbl">Set<br>Plot</span></button>
         <button class="rbtn" id="rb-gps" onclick="openGpsPlacement()" title="GPS Placement — drop equipment by latitude/longitude on a live Google Map. Markers lock perfectly to their coordinates at any zoom (no drift), then apply to the canvas."><span class="rb-ico" style="color:#4285F4">📍</span><span class="rb-lbl">GPS<br>Place</span></button>
         <button class="rbtn" id="rb-clearplot" onclick="clearPlot()" title="Clear the committed plot and return to the live interactive map"><span class="rb-ico">✕</span><span class="rb-lbl">Clear<br>Plot</span></button>
+        <button class="rbtn" id="rb-recenter" onclick="recenterOnEquipment()" title="Recenter the view on your placed equipment — brings any off-screen equipment back into the window"><span class="rb-ico" style="color:#34A853">⊕</span><span class="rb-lbl">Recenter</span></button>
         <button class="rbtn" id="rb-crosshair" onclick="nnToggleCrosshair()" title="Toggle the AutoCAD-style crosshair cursor in draw/placement modes"><span class="rb-ico">✛</span><span class="rb-lbl">Crosshair</span></button>
       </div>
       <div class="rpanel-cap">Canvas</div>
@@ -33733,13 +33734,33 @@ function initPinchZoom(){
   function ptMid(a,b){return{x:(a.clientX+b.clientX)/2,y:(a.clientY+b.clientY)/2};}
   sc.addEventListener('touchstart',function(e){
     if(e.touches.length===2){
+      /* On a live map, let the map own the pinch (see touchmove note). */
+      var _lz2=false;
+      try{
+        var _lzs=(typeof mapLockState==='function')?mapLockState():null;
+        _lz2 = !!window._gmap && (!_lzs || (!_lzs.locked && !_lzs.hasPlot));
+      }catch(_e){}
+      if(_lz2){ S.lastD=null; S.lastM=null; S.panning=false; return; }
       e.preventDefault();
       S.lastD=ptDist(e.touches[0],e.touches[1]);
       S.lastM=ptMid(e.touches[0],e.touches[1]);
       S.panning=false;
     } else if(e.touches.length===1){
       var el2=document.elementFromPoint(e.touches[0].clientX,e.touches[0].clientY);
-      if(!el2||el2===sc||el2.id==='sc'||el2.id==='csvg'||el2.id==='cw-grid'){
+      /* When a LIVE (unfrozen) Google Map is behind the canvas, a one-finger
+         drag should navigate the MAP, not translate the whole canvas panel.
+         The old behavior moved #sc (map + equipment together), so the user
+         "moved the whole panel" and couldn't scroll around the satellite.
+         Detect the live-map state and skip canvas panning so the gesture
+         falls through to the map's own greedy gestureHandling. */
+      var _liveUnfrozen=false;
+      try{
+        var _st=(typeof mapLockState==='function')?mapLockState():null;
+        _liveUnfrozen = !!window._gmap && (!_st || (!_st.locked && !_st.hasPlot));
+      }catch(_e){}
+      if(_liveUnfrozen){
+        S.panning=false;   /* let the Google Map handle the drag */
+      } else if(!el2||el2===sc||el2.id==='sc'||el2.id==='csvg'||el2.id==='cw-grid'){
         S.panning=true;
         S.ps={x:e.touches[0].clientX-S.tx,y:e.touches[0].clientY-S.ty};
       }
@@ -33751,6 +33772,17 @@ function initPinchZoom(){
   },{passive:false});
   sc.addEventListener('touchmove',function(e){
     if(e.touches.length===2){
+      /* On a LIVE (unfrozen) Google Map, let the map handle pinch-zoom — it
+         loads more tiles to show more area. CSS-scaling #sc here instead just
+         shrinks the whole canvas (map + equipment) down to a tiny spot in an
+         empty area, which is the "zooms out to a little spot, not the whole
+         site" bug. So on a live map we do NOT intercept the pinch. */
+      var _lz=false;
+      try{
+        var _lzst=(typeof mapLockState==='function')?mapLockState():null;
+        _lz = !!window._gmap && (!_lzst || (!_lzst.locked && !_lzst.hasPlot));
+      }catch(_e){}
+      if(_lz){ S.lastD=null; S.lastM=null; return; }
       e.preventDefault();
       var d=ptDist(e.touches[0],e.touches[1]);
       var m=ptMid(e.touches[0],e.touches[1]);
@@ -42321,6 +42353,43 @@ window._crmToastModal=_crmToastModal;
     if(zp) zp.textContent = Math.round(v.z*100)+'%';
   }
   window._applyPlotView = _applyPlotView;
+
+  /* Bring all placed equipment back into view. Computes the bounding box of
+     every element in model space, then sets the plot-view transform so that
+     box is centered and comfortably fits the visible canvas. This is the
+     "how do I get that back" fix: when equipment ends up off-screen (e.g.
+     placed far from the current pan), one tap frames it. */
+  window.recenterOnEquipment = function(){
+    try{
+      var els=(typeof S!=='undefined' && S.elements)?S.elements:[];
+      if(!els.length){ if(typeof showBanner==='function') showBanner('wiz','  Nothing placed yet to recenter on.'); return; }
+      var minX=Infinity,minY=Infinity,maxX=-Infinity,maxY=-Infinity;
+      els.forEach(function(el){
+        var w=el.w||60, hh=el.h||el.w||60;
+        if(el.x<minX)minX=el.x; if(el.y<minY)minY=el.y;
+        if(el.x+w>maxX)maxX=el.x+w; if(el.y+hh>maxY)maxY=el.y+hh;
+      });
+      if(!isFinite(minX)) return;
+      var bw=Math.max(1,maxX-minX), bh=Math.max(1,maxY-minY);
+      var cw=document.getElementById('cw')||document.getElementById('sc');
+      var vw=cw?cw.clientWidth:window.innerWidth;
+      var vh=cw?cw.clientHeight:window.innerHeight;
+      /* Fit with 15% padding, clamp zoom to a sane range. */
+      var z=Math.min(vw/(bw*1.3), vh/(bh*1.3));
+      z=Math.max(0.15, Math.min(3, z));
+      /* Center of the equipment box in model space. */
+      var mcx=(minX+maxX)/2, mcy=(minY+maxY)/2;
+      /* We want model center to land at viewport center: screen = t + model*z */
+      var tx=vw/2 - mcx*z, ty=vh/2 - mcy*z;
+      window._plotView = window._plotView || { z:1, tx:0, ty:0 };
+      window._plotView.z=z; window._plotView.tx=tx; window._plotView.ty=ty;
+      if(typeof _applyPlotView==='function') _applyPlotView();
+      /* Also sync the touch-zoom layer (#sc) so both transforms agree. */
+      var sc=document.getElementById('sc');
+      if(sc){ sc.style.transform='translate('+tx+'px,'+ty+'px) scale('+z+')'; sc.style.transformOrigin='0 0'; }
+      if(typeof showBanner==='function') showBanner('cal','  Recentered on '+els.length+' item'+(els.length===1?'':'s')+'.');
+    }catch(e){}
+  };
 
   // Convert an #sc-relative point (natural click space, since #cov is a direct
   // child of #sc and is NOT transformed) into MODEL coordinates inside the
