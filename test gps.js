@@ -196,6 +196,41 @@ t('separate runs do NOT falsely merge', ()=>{
   return rc([{x:0,y:0},{x:10,y:0}],[{x:0,y:500},{x:10,y:500}])===false ? true : 'false merge';
 });
 
+console.log('\n=== H. Mobile / tablet layout + map render ===');
+t('map div has explicit min-height (not collapse to 0 on mobile)', ()=>{
+  return h.includes("id=\"gps-map\" style=\"flex:1 1 auto;min-height:320px") ? true : 'map can collapse to zero height';
+});
+t('map triggers a resize after the container is shown', ()=>{
+  const seg=grab('function _gpsInitMap','_gpsMode.map.addListener');
+  return (seg.includes("trigger(_gpsMode.map,'resize')") && seg.includes('addListenerOnce'))
+    ? true : 'no resize nudge -> blank tiles on open';
+});
+t('header controls are in a horizontally-scrollable strip', ()=>{
+  const seg=grab('host.innerHTML=','id=\"gps-addrbar\"');
+  return seg.includes('overflow-x:auto') && seg.includes('-webkit-overflow-scrolling:touch')
+    ? true : 'controls not scrollable -> cramped on phone';
+});
+t('control buttons do not wrap (white-space:nowrap)', ()=>{
+  const seg=grab('host.innerHTML=','id=\"gps-addrbar\"');
+  return seg.includes('white-space:nowrap') ? true : 'buttons wrap to multiple lines';
+});
+t('address input is 16px (no iOS zoom-on-focus)', ()=>{
+  const seg=grab('id=\"gps-addr-in\"','gps-palette');
+  return seg.includes('font-size:16px') ? true : 'address field triggers iOS zoom';
+});
+t('modal sections are fixed-height, map takes the rest', ()=>{
+  const seg=grab('host.innerHTML=','_gpsMode.map=');
+  // header, addrbar, palette, status all flex:0 0 auto; only map grows
+  const fixed=(seg.match(/flex:0 0 auto/g)||[]).length;
+  return fixed>=4 ? true : 'layout will fight for space on small screens';
+});
+t('palette + map build even with no location set', ()=>{
+  const seg=grab('await _gpsEnsureMapsLibs','_gpsShowAddressBar(false)');
+  // in the no-location branch it still calls _gpsInitMap
+  return (seg.includes('_gpsBuildPalette()') && seg.match(/_gpsInitMap\(/g).length>=1)
+    ? true : 'blank screen when no address';
+});
+
 console.log('\n---------------------------------------');
 console.log('PASS '+pass+'   FAIL '+fail);
 process.exit(fail?1:0);

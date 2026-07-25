@@ -18928,26 +18928,28 @@ async function openGpsPlacement(){
   }
   host.style.display='flex';
   host.innerHTML=
-    '<div style="padding:12px 16px;background:#0F1D30;border-bottom:1px solid #26364d;display:flex;align-items:center;justify-content:space-between;gap:12px">'
-    + '<div><div style="font-size:14px;font-weight:800;color:#4285F4">\ud83d\udccd GPS Placement</div>'
-    +   '<div style="font-size:9px;color:#8FA3B8;margin-top:2px">Tap the map to drop equipment by coordinate \u2014 locks perfectly at any zoom</div></div>'
-    + '<div style="display:flex;gap:8px">'
-    +   '<button id="gps-3d-btn" onclick="_gpsToggle3D()" title="Toggle 3D oblique view (needs a vector Map ID)" style="padding:9px 12px;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.16);color:#8FA3B8;border-radius:7px;cursor:pointer;font-family:inherit;font-size:11px;font-weight:700">3D</button>'
-    +   '<button id="gps-3dobj-btn" onclick="_gpsToggle3DObjects()" title="Render equipment as 3D massing boxes in the scene (needs a vector Map ID + three.js)" style="padding:9px 10px;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.16);color:#8FA3B8;border-radius:7px;cursor:pointer;font-family:inherit;font-size:10px;font-weight:700">3D Obj</button>'
-    +   '<button onclick="_gpsRotate(-45)" title="Rotate view left" style="padding:9px 11px;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.16);color:#8FA3B8;border-radius:7px;cursor:pointer;font-family:inherit;font-size:12px">\u21ba</button>'
-    +   '<button onclick="_gpsRotate(45)" title="Rotate view right" style="padding:9px 11px;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.16);color:#8FA3B8;border-radius:7px;cursor:pointer;font-family:inherit;font-size:12px">\u21bb</button>'
-    +   '<label style="display:flex;align-items:center;gap:5px;font-size:9.5px;color:#8FA3B8;cursor:pointer;padding:0 4px"><input type="checkbox" id="gps-autotrench" style="width:15px;height:15px"> auto-trench</label>'
-    +   '<button onclick="_gpsApplyToCanvas()" style="padding:9px 14px;background:linear-gradient(135deg,#4285F4,#34A853);color:#fff;font-weight:800;font-size:11px;border:none;border-radius:7px;cursor:pointer;font-family:inherit">\u2713 Apply to canvas</button>'
-    +   '<button onclick="_gpsClose()" style="padding:9px 12px;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.16);color:#8FA3B8;border-radius:7px;cursor:pointer;font-family:inherit;font-size:11px">Close</button>'
-    + '</div></div>'
-    + '<div id="gps-addrbar" style="display:none;gap:8px;padding:8px 16px;background:#0D1B2A;border-bottom:1px solid #1A2A3E">'
-    +   '<input id="gps-addr-in" placeholder="Type a site address\u2026" onkeydown="if(event.key===\'Enter\')_gpsGeocode()" '
-    +     'style="flex:1;background:#0B1626;border:1px solid #26364d;color:#E2EEF9;border-radius:6px;padding:9px 11px;font-size:16px;font-family:inherit">'
-    +   '<button onclick="_gpsGeocode()" style="padding:9px 14px;background:#4285F4;color:#fff;font-weight:700;font-size:11px;border:none;border-radius:6px;cursor:pointer;font-family:inherit">Go</button>'
+    '<div style="padding:10px 14px;background:#0F1D30;border-bottom:1px solid #26364d;display:flex;flex-direction:column;gap:8px;flex:0 0 auto">'
+    + '<div style="display:flex;align-items:center;justify-content:space-between;gap:10px">'
+    +   '<div style="min-width:0"><div style="font-size:14px;font-weight:800;color:#4285F4;white-space:nowrap">\ud83d\udccd GPS Placement</div>'
+    +     '<div style="font-size:9px;color:#8FA3B8;margin-top:1px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">Tap the map to drop equipment \u2014 locks at any zoom</div></div>'
+    +   '<button onclick="_gpsApplyToCanvas()" style="flex:0 0 auto;padding:9px 13px;background:linear-gradient(135deg,#4285F4,#34A853);color:#fff;font-weight:800;font-size:11px;border:none;border-radius:7px;cursor:pointer;font-family:inherit;white-space:nowrap">\u2713 Apply</button>'
     + '</div>'
-    + '<div style="display:flex;gap:8px;padding:8px 16px;background:#0D1B2A;border-bottom:1px solid #1A2A3E;overflow-x:auto" id="gps-palette"></div>'
-    + '<div id="gps-map" style="flex:1;width:100%"></div>'
-    + '<div id="gps-status" style="padding:8px 16px;background:#0F1D30;border-top:1px solid #26364d;font-size:10px;color:#8FA3B8;min-height:16px"></div>';
+    + '<div style="display:flex;gap:6px;overflow-x:auto;-webkit-overflow-scrolling:touch;padding-bottom:2px">'
+    +   '<button id="gps-3d-btn" onclick="_gpsToggle3D()" style="flex:0 0 auto;padding:8px 12px;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.16);color:#B8C6D6;border-radius:7px;cursor:pointer;font-family:inherit;font-size:11px;font-weight:700;white-space:nowrap">3D</button>'
+    +   '<button id="gps-3dobj-btn" onclick="_gpsToggle3DObjects()" style="flex:0 0 auto;padding:8px 12px;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.16);color:#B8C6D6;border-radius:7px;cursor:pointer;font-family:inherit;font-size:11px;font-weight:700;white-space:nowrap">3D Obj</button>'
+    +   '<button onclick="_gpsRotate(-45)" style="flex:0 0 auto;padding:8px 12px;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.16);color:#B8C6D6;border-radius:7px;cursor:pointer;font-family:inherit;font-size:13px;white-space:nowrap">\u21ba</button>'
+    +   '<button onclick="_gpsRotate(45)" style="flex:0 0 auto;padding:8px 12px;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.16);color:#B8C6D6;border-radius:7px;cursor:pointer;font-family:inherit;font-size:13px;white-space:nowrap">\u21bb</button>'
+    +   '<label style="flex:0 0 auto;display:flex;align-items:center;gap:5px;font-size:10px;color:#8FA3B8;cursor:pointer;padding:0 8px;white-space:nowrap;border:1px solid rgba(255,255,255,.16);border-radius:7px"><input type="checkbox" id="gps-autotrench" style="width:16px;height:16px"> auto-trench</label>'
+    +   '<button onclick="_gpsClose()" style="flex:0 0 auto;margin-left:auto;padding:8px 12px;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.16);color:#8FA3B8;border-radius:7px;cursor:pointer;font-family:inherit;font-size:11px;white-space:nowrap">Close</button>'
+    + '</div></div>'
+    + '<div id="gps-addrbar" style="display:none;gap:8px;padding:8px 14px;background:#0D1B2A;border-bottom:1px solid #1A2A3E;flex:0 0 auto">'
+    +   '<input id="gps-addr-in" placeholder="Type a site address\u2026" onkeydown="if(event.key===\'Enter\')_gpsGeocode()" '
+    +     'style="flex:1;min-width:0;background:#0B1626;border:1px solid #26364d;color:#E2EEF9;border-radius:6px;padding:9px 11px;font-size:16px;font-family:inherit">'
+    +   '<button onclick="_gpsGeocode()" style="flex:0 0 auto;padding:9px 14px;background:#4285F4;color:#fff;font-weight:700;font-size:11px;border:none;border-radius:6px;cursor:pointer;font-family:inherit">Go</button>'
+    + '</div>'
+    + '<div style="display:flex;gap:8px;padding:8px 14px;background:#0D1B2A;border-bottom:1px solid #1A2A3E;overflow-x:auto;-webkit-overflow-scrolling:touch;flex:0 0 auto" id="gps-palette"></div>'
+    + '<div id="gps-map" style="flex:1 1 auto;min-height:320px;width:100%"></div>'
+    + '<div id="gps-status" style="padding:8px 14px;background:#0F1D30;border-top:1px solid #26364d;font-size:10px;color:#8FA3B8;min-height:16px;flex:0 0 auto"></div>';
 
   var statusEl=document.getElementById('gps-status');
   statusEl.textContent='Loading map\u2026';
@@ -19091,6 +19093,19 @@ function _gpsInitMap(ms){
     streetViewControl:false, fullscreenControl:false,
     mapId: (typeof _CFG!=='undefined' && _CFG.googleMapsMapId) ? _CFG.googleMapsMapId : undefined
   });
+  /* The container was display:none until this modal opened, so Maps may have
+     measured it at zero size. Once it's laid out, tell Maps to re-measure and
+     recenter — without this the tiles often render blank on first open,
+     especially on mobile Safari. */
+  var _gpsResize=function(){
+    try{
+      google.maps.event.trigger(_gpsMode.map,'resize');
+      _gpsMode.map.setCenter({lat:ms.lat,lng:ms.lng});
+    }catch(e){}
+  };
+  setTimeout(_gpsResize, 60);
+  setTimeout(_gpsResize, 300);
+  try{ google.maps.event.addListenerOnce(_gpsMode.map,'idle',_gpsResize); }catch(e){}
   try{
     (S.elements||[]).forEach(function(el){
       if(el._geoLat && el._geoLng){ _gpsAddMarker(el._geoLat, el._geoLng, el.label||_gpsEqLabel(el.eqId)||'', el.eqId, el.id); }
