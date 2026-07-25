@@ -280,8 +280,10 @@ t('user-facing blocker text updated', ()=>{
 
 console.log('\n=== K. Build ribbon consolidation ===');
 function buildRibbon(){
-  const lines=h.split('\n');
-  return lines.slice(1050,1090).join('\n');
+  // Anchor on content, not fixed line numbers (edits shift line offsets).
+  const start=h.indexOf('ribbon-page active" data-page="home"');
+  const end=h.indexOf('class="ribbon-page" data-page="insert"', start);
+  return h.slice(start, end>start?end:start+8000);
 }
 t('no duplicate destinations in the Build ribbon', ()=>{
   const hs=(buildRibbon().match(/onclick="([^"]*)"/g)||[]);

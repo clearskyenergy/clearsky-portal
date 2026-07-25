@@ -76,7 +76,7 @@ window.addEventListener('unhandledrejection', function(e) {
   --border:#3A3A3A;      /* hairline rules                      */
   --text:#E0E0E0;        /* primary type                        */
   --sub:#9A9A9A;         /* secondary / captions                */
-  --lw:270px;--th:30px;--ribbon-h:96px;
+  --lw:270px;--th:30px;--ribbon-h:82px;
   /* "gold" section-header accent -> NextNRG green */
   --gold:#2FB54A;--gold-dark:#1F8A37;--gold-pale:#8FE0A3;--gold-faint:rgba(47,181,74,.08);
   --shadow-gold:0 0 0 2px rgba(47,181,74,.30);
@@ -701,6 +701,13 @@ input[type=range]::-moz-range-thumb{width:15px;height:15px;background:linear-gra
   background-attachment:local, local, scroll, scroll;
 }
 #ribbon::-webkit-scrollbar{ height:5px; }
+/* Collapsed ribbon: hide the big icon row entirely so the canvas gets that
+   vertical space back. The tab bar (#tb) stays visible so the user can still
+   switch tabs / reopen. Toggled by the chevron on the tab bar. */
+body.ribbon-collapsed #ribbon{ height:0 !important; min-height:0 !important; overflow:hidden !important; border-bottom:none !important; padding:0 !important; }
+#ribbon-collapse-btn{ display:flex;align-items:center;justify-content:center;width:30px;height:30px;margin-left:auto;margin-right:6px;border-radius:6px;cursor:pointer;color:var(--sub);flex-shrink:0;user-select:none;font-size:15px;transition:background .15s; }
+#ribbon-collapse-btn:hover{ background:rgba(255,255,255,.08);color:var(--text); }
+body.ribbon-collapsed #ribbon-collapse-btn{ transform:rotate(180deg); }
 #ribbon::-webkit-scrollbar-thumb{ background:var(--border);border-radius:3px; }
 /* On touch devices give the scrollbar a bit more presence + snap to panels. */
 @media (pointer:coarse){
@@ -723,17 +730,17 @@ input[type=range]::-moz-range-thumb{width:15px;height:15px;background:linear-gra
 /* a large ribbon button (icon over label) */
 .rbtn{
   display:flex;flex-direction:column;align-items:center;justify-content:flex-start;
-  gap:3px;min-width:52px;max-width:74px;padding:5px 6px 4px;cursor:pointer;
+  gap:2px;min-width:46px;max-width:66px;padding:4px 5px 3px;cursor:pointer;
   background:none;border:1px solid transparent;border-radius:var(--radius-sm);
   color:var(--text);font-family:inherit;transition:background .08s,border-color .08s;
 }
 .rbtn:hover{ background:var(--hl-dim);border-color:var(--border); }
 .rbtn.active-tool{ background:var(--hl-dim);border-color:var(--hl); }
 .rbtn .rb-ico{
-  font-size:20px;line-height:1;height:24px;display:flex;align-items:center;
+  font-size:17px;line-height:1;height:20px;display:flex;align-items:center;
   justify-content:center;color:var(--text);font-family:var(--font-mono);font-weight:400;
 }
-.rbtn .rb-lbl{ font-size:9.5px;line-height:1.1;text-align:center;color:var(--sub); }
+.rbtn .rb-lbl{ font-size:9px;line-height:1.05;text-align:center;color:var(--sub); }
 .rbtn:hover .rb-lbl,.rbtn.active-tool .rb-lbl{ color:var(--text); }
 /* Home launcher: hero Guided Build + recent-project rows */
 .rbtn.home-hero{ min-width:72px;max-width:92px;background:var(--hl-dim);border-color:var(--border); }
@@ -792,7 +799,7 @@ input[type=range]::-moz-range-thumb{width:15px;height:15px;background:linear-gra
 #pname{ height:22px; }
 
 @media (max-width:768px){
-  :root{ --ribbon-h:86px; }
+  :root{ --ribbon-h:74px; }
   .rtab{ padding:0 10px;font-size:10px; }
   #tb .tb-right{ display:none; }
   .rbtn{ min-width:46px;padding:4px; }
@@ -1011,6 +1018,7 @@ window.onerror = function(msg, src, line, col, err) {
     <div class="rtab"        data-page="output"  onclick="rbTab('output')">Output</div>
     <div class="rtab"        data-page="settings" onclick="rbTab('settings')">Settings</div>
   </div>
+  <div id="ribbon-collapse-btn" onclick="toggleRibbon()" title="Collapse the toolbar to enlarge the map (tabs stay). Tap again to reopen.">▲</div>
   <!-- Mobile/touch dropdown listing every ribbon tab (populated to mirror the row above) -->
   <div id="ribbon-tab-menu" style="display:none;position:absolute;top:100%;left:6px;background:var(--navy);border:1px solid var(--border);border-radius:0 0 8px 8px;box-shadow:0 8px 24px rgba(0,0,0,.4);z-index:500;min-width:180px;overflow:hidden">
     <button class="rtm-item" onclick="rbHamburgerPick('__file')">File</button>
@@ -1507,7 +1515,31 @@ window.onerror = function(msg, src, line, col, err) {
    closes the app menu (same non-racing pattern as the old controller). */
 var _rbArmed=false;
 
+/* Collapse / expand the ribbon icon row to give the canvas more height. The
+   tab bar stays so tabs remain switchable; tapping a tab while collapsed
+   reopens the ribbon on that tab. State persists across sessions. */
+function toggleRibbon(force){
+  var collapsed = (typeof force==='boolean') ? force : !document.body.classList.contains('ribbon-collapsed');
+  document.body.classList.toggle('ribbon-collapsed', collapsed);
+  try{ localStorage.setItem('ribbonCollapsed', collapsed?'1':'0'); }catch(e){}
+  /* The canvas just changed size — nudge the live map + plot view to remeasure
+     so tiles fill the newly available space instead of leaving a gap. */
+  setTimeout(function(){
+    try{ if(window._gmap && google && google.maps) google.maps.event.trigger(_gmap,'resize'); }catch(e){}
+    try{ if(typeof _applyPlotView==='function') _applyPlotView(); }catch(e){}
+    try{ window.dispatchEvent(new Event('resize')); }catch(e){}
+  }, 60);
+}
+window.toggleRibbon=toggleRibbon;
+
+/* Reopen the ribbon automatically when a tab is clicked while collapsed, so
+   switching tabs feels natural (the icons come back for the chosen tab). */
+function _ribbonReopenOnTab(){
+  if(document.body.classList.contains('ribbon-collapsed')) toggleRibbon(false);
+}
+
 function rbTab(page){
+  _ribbonReopenOnTab();
   if(page==='__file'){ return; } /* File is a menu, not a page */
   var tabs=document.querySelectorAll('#ribbon-tabs .rtab');
   for(var i=0;i<tabs.length;i++){
@@ -5138,6 +5170,8 @@ function _utilityIsSet(){
 
 // == INIT ===================================================
 function initApp(){
+  /* Restore the user's ribbon collapse preference before first paint. */
+  try{ if(localStorage.getItem('ribbonCollapsed')==='1') document.body.classList.add('ribbon-collapsed'); }catch(e){}
   renderEqGrid();renderCtypes();renderWizard();renderBessList();renderLegend();
   if(typeof renderDocTabs==='function') renderDocTabs();
   /* Conduits restored from a saved project were rendered under whatever
