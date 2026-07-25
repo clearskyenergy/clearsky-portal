@@ -6408,15 +6408,18 @@ function dropLogo(e){e.preventDefault();const f=e.dataTransfer.files[0];if(!f)re
    unlocked map (an uncommitted plot); a plotted or locked tab is fine. */
 function _warnIfMapUnlocked(){
   try{
-    if(window._placeUnlockedWarned) return;
     if(typeof mapLockState!=='function') return;
     var st=mapLockState();
     if(st.locked || st.hasPlot) return;
     /* Only meaningful when a live map is actually behind the canvas. */
     if(!window._gmap && !window._isUploadedPhoto) return;
-    window._placeUnlockedWarned=true;
+    /* Re-warn at most every 8s (not just once). The old one-time latch meant
+       users who missed the first banner never saw it again, then hit drift. */
+    var now=Date.now();
+    if(window._placeUnlockedWarnedAt && (now-window._placeUnlockedWarnedAt)<8000) return;
+    window._placeUnlockedWarnedAt=now;
     if(typeof showBanner==='function'){
-      showBanner('wiz','  Map is unlocked \u2014 lock it before placing, or the layout will drift if the map moves.');
+      showBanner('wiz','  Live map isn\u2019t frozen \u2014 tap \ud83d\udccc Set Plot to lock the satellite to your equipment. Until then, panning or zooming the map moves it out from under the layout.');
     }
   }catch(e){}
 }
@@ -19156,7 +19159,18 @@ function _gpsAddMarker(lat, lng, label, eqId, existingId){
 /* Convert every GPS placement to canvas x,y via the existing projection and
    write into S.elements. New placements are added; existing ones updated. */
 function _gpsApplyToCanvas(){
-  var ms=_gpsMapState();
+  /* Prefer the anchor the GPS map is actually showing, so the projection the
+     canvas uses matches exactly where the user placed markers. Persist it as
+     the frozen map state so the pixel canvas and GPS agree on lat/lng->pixel. */
+  var ms=null;
+  try{
+    if(_gpsMode.map && _gpsMode.map.getCenter){
+      var c=_gpsMode.map.getCenter();
+      ms={ lat:c.lat(), lng:c.lng(), zoom:_gpsMode.map.getZoom() };
+      window._frozenMapState=ms;
+    }
+  }catch(e){}
+  if(!ms || !ms.lat) ms=_gpsMapState();
   if(!ms || !ms.lat){ return; }
   var size=(typeof _getCanvasSize==='function')?_getCanvasSize():{w:1200,h:800};
   var added=0, updated=0;
@@ -42478,6 +42492,12 @@ window._crmToastModal=_crmToastModal;
             draggable:false, disableDoubleClickZoom:true, keyboardShortcuts:false });
           if(pz!=null) _fm.setZoom(pz);
           if(pc) _fm.setCenter(pc);
+          /* Record the exact frozen anchor so any lat/lng->pixel projection
+             (GPS placement apply) uses the SAME center/zoom the backdrop was
+             captured at. Without this, equipment projected against a different
+             center lands offset from the map (the "system out to the side"
+             bug). */
+          if(pc){ window._frozenMapState={ lat:pc.lat(), lng:pc.lng(), zoom:(pz!=null?pz:19) }; }
         }catch(e){}
       }
       var blk=document.getElementById('gmap-block'); if(blk) blk.style.display='block';

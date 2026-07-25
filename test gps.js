@@ -231,6 +231,42 @@ t('palette + map build even with no location set', ()=>{
     ? true : 'blank screen when no address';
 });
 
+console.log('\n=== I. Anchor consistency (fixes equipment-out-to-the-side) ===');
+t('GPS apply sets _frozenMapState from the GPS map', ()=>{
+  const seg=grab('function _gpsApplyToCanvas','var size=');
+  return seg.includes('window._frozenMapState=ms') ? true : 'apply does not persist the anchor';
+});
+t('Set Plot records the frozen map anchor', ()=>{
+  const seg=grab('Freeze the live map underneath','var blk=document.getElementById');
+  return seg.includes('window._frozenMapState=') ? true : 'Set Plot loses the anchor';
+});
+t('shared anchor -> placed marker lands where it was placed (no offset)', ()=>{
+  const src=grab('function _mapMetersPerPx','function _getCanvasSize')+grab('function _pxToLatLng','function _encodeElementsToGeo');
+  const F=new Function(src+'; return {_pxToLatLng,_latLngToPx};')();
+  const frozen={lat:33.5,lng:-84.2,zoom:19}, W=1200,H=800;
+  const ll=F._pxToLatLng(W/2+200,H/2+100,frozen,W,H);
+  const px=F._latLngToPx(ll.lat,ll.lng,frozen,W,H);
+  return (Math.abs(px.x-(W/2+200))<1 && Math.abs(px.y-(H/2+100))<1) ? true : 'offset even with shared anchor';
+});
+t('mismatched anchor is what caused the off-screen placement', ()=>{
+  const src=grab('function _mapMetersPerPx','function _getCanvasSize')+grab('function _pxToLatLng','function _encodeElementsToGeo');
+  const F=new Function(src+'; return {_pxToLatLng,_latLngToPx};')();
+  const W=1200,H=800;
+  const ll=F._pxToLatLng(W/2+200,H/2+100,{lat:33.5,lng:-84.2,zoom:19},W,H);
+  const bad=F._latLngToPx(ll.lat,ll.lng,{lat:33.6,lng:-84.1,zoom:19},W,H);
+  // proves the diagnosis: different anchor throws it far off screen
+  return (Math.abs(bad.x-(W/2+200))>1000) ? true : 'mismatch no longer explains the bug';
+});
+t('unlocked-map warning re-fires (not one-time latch)', ()=>{
+  const seg=grab('function _warnIfMapUnlocked','function addEl');
+  return (seg.includes('_placeUnlockedWarnedAt') && !seg.includes('_placeUnlockedWarned=true'))
+    ? true : 'still a one-time warning';
+});
+t('warning points at Set Plot as the fix', ()=>{
+  const seg=grab('function _warnIfMapUnlocked','function addEl');
+  return seg.includes('Set Plot') ? true : 'warning not actionable';
+});
+
 console.log('\n---------------------------------------');
 console.log('PASS '+pass+'   FAIL '+fail);
 process.exit(fail?1:0);
