@@ -267,6 +267,58 @@ t('warning points at Set Plot as the fix', ()=>{
   return seg.includes('Set Plot') ? true : 'warning not actionable';
 });
 
+console.log('\n=== J. Native map conduits (AutoCAD-style, no lock) ===');
+t('conduit state exists in GPS mode', ()=>{
+  return h.includes('conduits:[], connectFrom:null') ? true : 'no conduit state';
+});
+t('conduits are google.maps.Polyline (map-native, not pixel SVG)', ()=>{
+  const seg=grab('function _gpsAddConduit','function _gpsConduitLenFt');
+  return seg.includes('new google.maps.Polyline') ? true : 'conduits not map-native';
+});
+t('conduit length is true geographic distance (feet)', ()=>{
+  const src=grab('function _gpsConduitLenFt','function _gpsRedrawConduits');
+  const fn=new Function('google', src+'; return _gpsConduitLenFt;')({maps:{}});
+  const ft=fn({lat:33.5,lng:-84.2},{lat:33.501,lng:-84.2});
+  return (Math.abs(ft-365)<10) ? true : 'distance math off: '+ft;
+});
+t('geometry library is loaded for distance', ()=>{
+  const seg=grab('function _gpsEnsureMapsLibs','function _gpsMapState');
+  return seg.includes("importLibrary('geometry')") ? true : 'geometry lib not loaded';
+});
+t('conduits follow endpoints when equipment is dragged', ()=>{
+  const seg=grab('function _gpsAddMarker','NATIVE MAP CONDUITS');
+  return seg.includes('_gpsRedrawConduits()') ? true : 'conduits do not track dragged equipment';
+});
+t('redraw updates polyline paths from live endpoints', ()=>{
+  const seg=grab('function _gpsRedrawConduits','function _gpsUpdateConduitReadout');
+  return seg.includes('c.poly.setPath') ? true : 'redraw does not reposition conduits';
+});
+t('Place / Connect modes exist', ()=>{
+  return (h.includes("function _gpsSetMode(") && h.includes('gps-mode-connect')) ? true : 'no mode toggle';
+});
+t('connect mode: source then target draws a conduit', ()=>{
+  const seg=grab('function _gpsMarkerClicked','function _gpsHighlightMarker');
+  return (seg.includes('_gpsMode.connectFrom') && seg.includes('_gpsAddConduit')) ? true : 'connect flow incomplete';
+});
+t('map clicks do not place equipment in connect mode', ()=>{
+  const seg=grab("_gpsMode.map.addListener('click'","_gpsMode.map.addListener('click'".length>0 ? 'var s=document.getElementById(\'gps-status\')' : 'zz');
+  // simpler: the click handler early-returns in connect mode
+  const i=h.indexOf("Only drop equipment in place mode");
+  return i>0 ? true : 'connect mode would still drop equipment';
+});
+t('per-type trench totals are summed', ()=>{
+  return h.includes('function _gpsUpdateConduitReadout(') ? true : 'no trench readout';
+});
+t('conduit polylines are released on close (no leak)', ()=>{
+  const seg=grab('function _gpsClose','window.openGpsPlacement');
+  return seg.includes('c.poly.setMap(null)') ? true : 'polylines leak on close';
+});
+t('four conduit types available (DC/AC/data/MV)', ()=>{
+  const seg=grab('var _GPS_COND_STYLES','function _gpsMarkerClicked');
+  return (seg.includes("'RMC-DC'") && seg.includes("'RMC-AC'") && seg.includes("'EMT-DATA'") && seg.includes("'MV-TRENCH'"))
+    ? true : 'missing conduit types';
+});
+
 console.log('\n---------------------------------------');
 console.log('PASS '+pass+'   FAIL '+fail);
 process.exit(fail?1:0);

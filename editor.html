@@ -18890,7 +18890,8 @@ let _gmap=null,_gmapMarkers=[],_gmapLoaded=false,_gmapLoading=false;
    uses) and reuses _latLngToPx / mapState. It does NOT touch the 42k-line
    canvas rendering — it's an additional placement surface.
    ══════════════════════════════════════════════════════════════════════ */
-var _gpsMode = { active:false, map:null, markers:[], pendingEqId:null, placed:[] };
+var _gpsMode = { active:false, map:null, markers:[], pendingEqId:null, placed:[],
+                 conduits:[], connectFrom:null, mode:'place', condType:'RMC-DC' };
 
 /* Load Maps with the marker library (AdvancedMarkerElement needs it). The
    base loader only asks for 'places', so we ensure 'marker' too. */
@@ -18899,12 +18900,16 @@ function _gpsEnsureMapsLibs(){
     if(typeof _CFG==='undefined' || !_CFG.googleMapsKey){
       rej(new Error('no-key')); return;
     }
-    if(window.google && google.maps && google.maps.marker){ res(); return; }
+    if(window.google && google.maps && google.maps.marker && google.maps.geometry){ res(); return; }
     if(typeof _loadMapsAPI==='function'){
       _loadMapsAPI().then(function(){
+        var need=[];
         if(google.maps.importLibrary){
-          google.maps.importLibrary('marker').then(function(){res();}).catch(rej);
-        } else { res(); }
+          if(!google.maps.marker) need.push(google.maps.importLibrary('marker'));
+          if(!google.maps.geometry) need.push(google.maps.importLibrary('geometry'));
+        }
+        if(need.length){ Promise.all(need).then(function(){res();}).catch(rej); }
+        else { res(); }
       }).catch(rej);
     } else { rej(new Error('no-loader')); }
   });
@@ -18950,6 +18955,17 @@ async function openGpsPlacement(){
     +   '<input id="gps-addr-in" placeholder="Type a site address\u2026" onkeydown="if(event.key===\'Enter\')_gpsGeocode()" '
     +     'style="flex:1;min-width:0;background:#0B1626;border:1px solid #26364d;color:#E2EEF9;border-radius:6px;padding:9px 11px;font-size:16px;font-family:inherit">'
     +   '<button onclick="_gpsGeocode()" style="flex:0 0 auto;padding:9px 14px;background:#4285F4;color:#fff;font-weight:700;font-size:11px;border:none;border-radius:6px;cursor:pointer;font-family:inherit">Go</button>'
+    + '</div>'
+    + '<div style="display:flex;gap:6px;padding:7px 14px;background:#0D1B2A;border-bottom:1px solid #1A2A3E;flex:0 0 auto;align-items:center">'
+    +   '<button id="gps-mode-place" onclick="_gpsSetMode(\'place\')" style="flex:0 0 auto;padding:7px 12px;background:rgba(66,133,244,.3);border:1px solid rgba(66,133,244,.4);color:#93C5FD;border-radius:6px;cursor:pointer;font-family:inherit;font-size:11px;font-weight:700;white-space:nowrap">\ud83d\udccd Place</button>'
+    +   '<button id="gps-mode-connect" onclick="_gpsSetMode(\'connect\')" style="flex:0 0 auto;padding:7px 12px;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.16);color:#8FA3B8;border-radius:6px;cursor:pointer;font-family:inherit;font-size:11px;font-weight:700;white-space:nowrap">\u26a1 Connect</button>'
+    +   '<div id="gps-cond-readout" style="flex:1;min-width:0;font-size:9px;color:#6EE7B7;text-align:right;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-family:monospace"></div>'
+    + '</div>'
+    + '<div id="gps-condtype-row" style="display:none;gap:6px;padding:7px 14px;background:#0B1626;border-bottom:1px solid #1A2A3E;flex:0 0 auto;overflow-x:auto;-webkit-overflow-scrolling:touch">'
+    +   '<button data-ct="RMC-DC" onclick="_gpsSetCondType(\'RMC-DC\')" style="flex:0 0 auto;padding:6px 10px;background:#DC2626;color:#fff;border:none;border-radius:5px;cursor:pointer;font-family:inherit;font-size:10px;font-weight:700;white-space:nowrap">DC Power</button>'
+    +   '<button data-ct="RMC-AC" onclick="_gpsSetCondType(\'RMC-AC\')" style="flex:0 0 auto;padding:6px 10px;background:rgba(255,255,255,.08);color:#8FA3B8;border:none;border-radius:5px;cursor:pointer;font-family:inherit;font-size:10px;font-weight:700;white-space:nowrap">480V AC</button>'
+    +   '<button data-ct="EMT-DATA" onclick="_gpsSetCondType(\'EMT-DATA\')" style="flex:0 0 auto;padding:6px 10px;background:rgba(255,255,255,.08);color:#8FA3B8;border:none;border-radius:5px;cursor:pointer;font-family:inherit;font-size:10px;font-weight:700;white-space:nowrap">BMS/Data</button>'
+    +   '<button data-ct="MV-TRENCH" onclick="_gpsSetCondType(\'MV-TRENCH\')" style="flex:0 0 auto;padding:6px 10px;background:rgba(255,255,255,.08);color:#8FA3B8;border:none;border-radius:5px;cursor:pointer;font-family:inherit;font-size:10px;font-weight:700;white-space:nowrap">MV Trench</button>'
     + '</div>'
     + '<div style="display:flex;gap:8px;padding:8px 14px;background:#0D1B2A;border-bottom:1px solid #1A2A3E;overflow-x:auto;-webkit-overflow-scrolling:touch;flex:0 0 auto" id="gps-palette"></div>'
     + '<div id="gps-map" style="flex:1 1 auto;min-height:320px;width:100%"></div>'
@@ -19117,6 +19133,9 @@ function _gpsInitMap(ms){
   }catch(e){}
 
   _gpsMode.map.addListener('click', function(ev){
+    /* Only drop equipment in place mode. In connect mode, taps go to markers
+       (handled by the marker click listeners), not the map. */
+    if(_gpsMode.mode==='connect'){ return; }
     if(!_gpsMode.pendingEqId){
       var s0=document.getElementById('gps-status');
       if(s0) s0.innerHTML='<span style="color:#F59E0B">Pick an equipment type from the palette first.</span>';
@@ -19136,7 +19155,8 @@ function _gpsAddMarker(lat, lng, label, eqId, existingId){
   var content=document.createElement('div');
   content.style.cssText='background:rgba(66,133,244,.9);border:2px solid #1a56c4;color:#fff;padding:3px 7px;border-radius:4px;font-family:monospace;font-size:11px;white-space:nowrap;user-select:none;box-shadow:0 2px 6px rgba(0,0,0,.4)';
   content.textContent=label||eqId||'element';
-  var rec={ marker:null, lat:lat, lng:lng, eqId:eqId, label:label, existingId:existingId||null };
+  var rec={ id:('m'+Date.now()+Math.floor(Math.random()*1000)), marker:null,
+            lat:lat, lng:lng, eqId:eqId, label:label, existingId:existingId||null };
   var marker;
   try{
     marker=new google.maps.marker.AdvancedMarkerElement({
@@ -19144,18 +19164,155 @@ function _gpsAddMarker(lat, lng, label, eqId, existingId){
     });
     marker.addListener('gmpdragend', function(){
       var p=marker.position; rec.lat=(typeof p.lat==='function')?p.lat():p.lat; rec.lng=(typeof p.lng==='function')?p.lng():p.lng;
+      _gpsRedrawConduits();   /* conduits follow their endpoints live */
     });
+    marker.addListener('click', function(){ _gpsMarkerClicked(rec); });
+    content.addEventListener('click', function(ev){ ev.stopPropagation(); _gpsMarkerClicked(rec); });
   }catch(e){
     marker=new google.maps.Marker({ map:_gpsMode.map, position:{lat:lat,lng:lng}, label:label, draggable:true });
-    marker.addListener('dragend', function(ev){ rec.lat=ev.latLng.lat(); rec.lng=ev.latLng.lng(); });
+    marker.addListener('dragend', function(ev){ rec.lat=ev.latLng.lat(); rec.lng=ev.latLng.lng(); _gpsRedrawConduits(); });
+    marker.addListener('click', function(){ _gpsMarkerClicked(rec); });
   }
   rec.marker=marker;
   _gpsMode.markers.push(rec);
   _gpsMode.placed.push(rec);
   var s=document.getElementById('gps-status');
-  if(s) s.innerHTML=_gpsMode.placed.length+' placement(s). Drag to fine-tune, then <strong style="color:#93C5FD">Apply to canvas</strong>.';
+  if(s) s.innerHTML=_gpsMode.placed.length+' placement(s). Drag to fine-tune, or switch to \u26a1 Connect to run conduit.';
   return rec;
 }
+
+/* ── NATIVE MAP CONDUITS ──────────────────────────────────────────────
+   Conduits live in the map's coordinate space as google.maps.Polyline
+   objects between equipment lat/lng points. Like AutoCAD, they belong to
+   the map — pan, zoom, and drag all keep them locked to their endpoints,
+   because Google reprojects them every frame. Trench length is the true
+   geographic distance (Haversine via geometry lib), not pixels, so it's
+   correct at any zoom with no scale calibration. */
+var _GPS_COND_STYLES = {
+  'RMC-DC':   { color:'#DC2626', label:'RMC - DC Power' },
+  'RMC-AC':   { color:'#F59E0B', label:'RMC - 480V AC' },
+  'EMT-DATA': { color:'#38BDF8', label:'EMT - BMS/Data' },
+  'MV-TRENCH':{ color:'#A855F7', label:'MV Trench' }
+};
+
+/* Click behavior depends on mode: in 'connect' mode, first click picks the
+   source, second click draws a conduit to the target. */
+function _gpsMarkerClicked(rec){
+  if(_gpsMode.mode!=='connect'){ return; }
+  var s=document.getElementById('gps-status');
+  if(!_gpsMode.connectFrom){
+    _gpsMode.connectFrom=rec;
+    _gpsHighlightMarker(rec, true);
+    if(s) s.innerHTML='From <strong style="color:#93C5FD">'+_hEsc(rec.label||rec.eqId||'item')+'</strong> \u2014 tap the target to run '+(_GPS_COND_STYLES[_gpsMode.condType]||{}).label+'.';
+    return;
+  }
+  if(_gpsMode.connectFrom.id===rec.id){
+    /* Tapped the same marker — cancel. */
+    _gpsHighlightMarker(_gpsMode.connectFrom, false);
+    _gpsMode.connectFrom=null;
+    if(s) s.innerHTML='Connection cancelled. Tap a source to start again.';
+    return;
+  }
+  _gpsAddConduit(_gpsMode.connectFrom, rec, _gpsMode.condType);
+  _gpsHighlightMarker(_gpsMode.connectFrom, false);
+  _gpsMode.connectFrom=null;
+}
+
+function _gpsHighlightMarker(rec, on){
+  try{
+    var c=rec.marker && rec.marker.content;
+    if(c){ c.style.outline=on?'3px solid #FBBF24':'none'; c.style.outlineOffset='2px'; }
+  }catch(e){}
+}
+
+/* Draw a conduit polyline between two equipment records. */
+function _gpsAddConduit(a, b, condType){
+  var style=_GPS_COND_STYLES[condType]||_GPS_COND_STYLES['RMC-DC'];
+  var path=[{lat:a.lat,lng:a.lng},{lat:b.lat,lng:b.lng}];
+  var poly=new google.maps.Polyline({
+    map:_gpsMode.map, path:path, geodesic:true,
+    strokeColor:style.color, strokeOpacity:0.95, strokeWeight:4
+  });
+  var cond={ id:('c'+Date.now()+Math.floor(Math.random()*1000)),
+             fromId:a.id, toId:b.id, condType:condType, poly:poly };
+  _gpsMode.conduits.push(cond);
+  _gpsUpdateConduitReadout();
+  var s=document.getElementById('gps-status');
+  var len=_gpsConduitLenFt(a,b);
+  if(s) s.innerHTML=style.label+' run added \u2014 '+len.toLocaleString()+' ft. '+_gpsMode.conduits.length+' run'+(_gpsMode.conduits.length===1?'':'s')+' total.';
+}
+
+/* True geographic length in feet between two records. */
+function _gpsConduitLenFt(a,b){
+  try{
+    if(google.maps.geometry && google.maps.geometry.spherical){
+      var m=google.maps.geometry.spherical.computeDistanceBetween(
+        new google.maps.LatLng(a.lat,a.lng), new google.maps.LatLng(b.lat,b.lng));
+      return Math.round(m*3.28084);
+    }
+  }catch(e){}
+  /* Fallback Haversine. */
+  var R=20925524.9; /* earth radius in ft */
+  var dLat=(b.lat-a.lat)*Math.PI/180, dLng=(b.lng-a.lng)*Math.PI/180;
+  var la1=a.lat*Math.PI/180, la2=b.lat*Math.PI/180;
+  var x=Math.sin(dLat/2)*Math.sin(dLat/2)+Math.cos(la1)*Math.cos(la2)*Math.sin(dLng/2)*Math.sin(dLng/2);
+  return Math.round(R*2*Math.atan2(Math.sqrt(x),Math.sqrt(1-x)));
+}
+
+/* Redraw all conduit paths from their endpoints (called when a marker moves). */
+function _gpsRedrawConduits(){
+  _gpsMode.conduits.forEach(function(c){
+    var a=_gpsMode.markers.find(function(m){ return m.id===c.fromId; });
+    var b=_gpsMode.markers.find(function(m){ return m.id===c.toId; });
+    if(a&&b&&c.poly){ c.poly.setPath([{lat:a.lat,lng:a.lng},{lat:b.lat,lng:b.lng}]); }
+  });
+  _gpsUpdateConduitReadout();
+}
+
+/* Sum trench length per conduit type and show it in the status bar. */
+function _gpsUpdateConduitReadout(){
+  var totals={};
+  _gpsMode.conduits.forEach(function(c){
+    var a=_gpsMode.markers.find(function(m){ return m.id===c.fromId; });
+    var b=_gpsMode.markers.find(function(m){ return m.id===c.toId; });
+    if(!a||!b) return;
+    totals[c.condType]=(totals[c.condType]||0)+_gpsConduitLenFt(a,b);
+  });
+  var el=document.getElementById('gps-cond-readout');
+  if(el){
+    var parts=Object.keys(totals).map(function(k){
+      return (_GPS_COND_STYLES[k]||{label:k}).label+': '+totals[k].toLocaleString()+' ft';
+    });
+    el.innerHTML=parts.length?parts.join(' \u00b7 '):'';
+  }
+}
+
+/* Switch between place / connect modes. */
+function _gpsSetMode(mode){
+  _gpsMode.mode=mode;
+  if(mode!=='connect' && _gpsMode.connectFrom){ _gpsHighlightMarker(_gpsMode.connectFrom,false); _gpsMode.connectFrom=null; }
+  var pb=document.getElementById('gps-mode-place'), cb=document.getElementById('gps-mode-connect');
+  if(pb){ pb.style.background=mode==='place'?'rgba(66,133,244,.3)':'rgba(255,255,255,.08)'; pb.style.color=mode==='place'?'#93C5FD':'#8FA3B8'; }
+  if(cb){ cb.style.background=mode==='connect'?'rgba(251,191,36,.25)':'rgba(255,255,255,.08)'; cb.style.color=mode==='connect'?'#FBBF24':'#8FA3B8'; }
+  var cp=document.getElementById('gps-condtype-row');
+  if(cp) cp.style.display=mode==='connect'?'flex':'none';
+  var s=document.getElementById('gps-status');
+  if(s) s.innerHTML=mode==='connect'
+    ? 'Connect mode \u2014 tap a source item, then a target, to run conduit between them.'
+    : 'Place mode \u2014 pick equipment, tap the map to drop it.';
+}
+function _gpsSetCondType(ct){
+  _gpsMode.condType=ct;
+  var row=document.getElementById('gps-condtype-row');
+  if(row){ row.querySelectorAll('[data-ct]').forEach(function(b){
+    var on=b.getAttribute('data-ct')===ct;
+    var col=(_GPS_COND_STYLES[ct]||{}).color||'#4285F4';
+    b.style.background=on?col:'rgba(255,255,255,.08)';
+    b.style.color=on?'#fff':'#8FA3B8';
+  }); }
+}
+window._gpsSetMode=_gpsSetMode;
+window._gpsSetCondType=_gpsSetCondType;
 
 /* Convert every GPS placement to canvas x,y via the existing projection and
    write into S.elements. New placements are added; existing ones updated. */
@@ -19239,7 +19396,10 @@ function _gpsApplyToCanvas(){
 function _gpsClose(){
   var host=document.getElementById('gps-modal');
   if(host) host.style.display='none';
+  /* Release conduit polylines from the map. */
+  try{ _gpsMode.conduits.forEach(function(c){ if(c.poly) c.poly.setMap(null); }); }catch(e){}
   _gpsMode.map=null; _gpsMode.markers=[]; _gpsMode.pendingEqId=null;
+  _gpsMode.conduits=[]; _gpsMode.connectFrom=null; _gpsMode.mode='place';
   /* Tear down any WebGL overlay so its GL resources are released. */
   try{ if(_gpsWebGL && _gpsWebGL.overlay){ _gpsWebGL.overlay.setMap(null); _gpsWebGL.overlay=null; } }catch(e){}
 }
