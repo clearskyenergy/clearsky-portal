@@ -1073,9 +1073,8 @@ window.onerror = function(msg, src, line, col, err) {
     <button class="menu-item" onclick="rbRun(openDcfcBuild)"><span class="mi-ico">🚗</span> EV Charging Build</button>
     <button class="menu-item" onclick="rbRun(openProjectsModal)"><span class="mi-ico">▤</span> Open Projects…</button>
     <button class="menu-item" onclick="rbRun(saveProject)"><span class="mi-ico">▽</span> Save<span class="mi-key">⌘S</span></button>
-    <div class="menu-sep"></div><button class="menu-item" onclick="rbRun(omegaPrint)"><span class="mi-ico">▽</span> Save<span class="mi-key">⌘S</span></button>
     <div class="menu-sep"></div>
-    <button class="menu-item" onclick="rbRun(openBlueprintExport)"><span class="mi-ico">⎙</span> Print / PDF</button>
+    <button class="menu-item" onclick="rbRun(omegaPrint)"><span class="mi-ico">⎙</span> Print / PDF</button>
     <button class="menu-item" onclick="rbRun(openProposalExport)"><span class="mi-ico">▦</span> Proposal</button>
     <button class="menu-item" onclick="rbRun(openBomSourcing)"><span class="mi-ico">⛃</span> Bill of Materials</button>
         <button class="menu-item" onclick="rbRun(openElectricalEstimate)"><span class="mi-ico">⚡</span> Electrical Estimate</button>
@@ -43528,7 +43527,19 @@ window._crmToastModal=_crmToastModal;
   var TICK=200, MIN_PX=6, scaling=false, wrapped=false, orig=null;
 
   function live(){ try{ return typeof _liveMapState==='function' ? _liveMapState() : null; }catch(e){ return null; } }
-  function S_(){ return window.S; }
+  /* S is declared `const S={...}` and _gmap is `let _gmap=null`. Top-level
+     let/const do NOT become properties of window - they live in the shared
+     global lexical environment. So window.S is undefined, and every read of
+     it in these blocks silently saw nothing: the diagnostics reported zero
+     elements and always said "all anchored", the compass FIT found nothing
+     to frame, and size stamping was a no-op. Bare identifiers DO resolve
+     from a later classic script, which is what these use. */
+  function _omegaS(){ try{ return (typeof S!=='undefined' && S) ? S : null; }catch(e){ return null; } }
+  function _omegaMap(){
+    try{ if(typeof _gmap!=='undefined' && _gmap) return _gmap; }catch(e){}
+    return window._gmap || null;
+  }
+  function S_(){ return _omegaS(); }
 
   /* Scale of the current view, computed from the map so it can never be
      stale relative to the frame we are about to draw. */
@@ -43743,6 +43754,9 @@ window._crmToastModal=_crmToastModal;
     font-family:'IBM Plex Mono',monospace; color:#E8F0FA;
   }
   #omega-compass.hidden{ display:none; }
+  #omega-compass{ cursor:grab; }
+  #omega-compass:active{ cursor:grabbing; }
+  #omega-compass button{ cursor:pointer; }
   #oc-bar{
     display:flex; align-items:center; gap:6px; padding:4px 5px 4px 7px;
     background:#132844; border-bottom:1px solid #1C3350;
@@ -43802,6 +43816,19 @@ window._crmToastModal=_crmToastModal;
 <script>
 (function(){
   var STEP=0.55, el=null, bar=null, POSK='omegaCompassPos', STK='omegaCompassState';
+  /* S is declared `const S={...}` and _gmap is `let _gmap=null`. Top-level
+     let/const do NOT become properties of window - they live in the shared
+     global lexical environment. So window.S is undefined, and every read of
+     it in these blocks silently saw nothing: the diagnostics reported zero
+     elements and always said "all anchored", the compass FIT found nothing
+     to frame, and size stamping was a no-op. Bare identifiers DO resolve
+     from a later classic script, which is what these use. */
+  function _omegaS(){ try{ return (typeof S!=='undefined' && S) ? S : null; }catch(e){ return null; } }
+  function _omegaMap(){
+    try{ if(typeof _gmap!=='undefined' && _gmap) return _gmap; }catch(e){}
+    return window._gmap || null;
+  }
+
 
   function map(){ return window._gmap; }
   function locked(){
@@ -43828,7 +43855,7 @@ window._crmToastModal=_crmToastModal;
     var why=locked(); if(why){ nudge(why); return; }
     var m=map(); if(!m) return;
     try{
-      var b=new google.maps.LatLngBounds(), c=0, S=window.S||{};
+      var b=new google.maps.LatLngBounds(), c=0, S=_omegaS()||{};
       (S.elements||[]).forEach(function(e){
         if(e._geoLat!=null){ b.extend(new google.maps.LatLng(e._geoLat,e._geoLng)); c++; }
       });
@@ -43870,6 +43897,11 @@ window._crmToastModal=_crmToastModal;
   function makeDraggable(){
     var sx,sy,ox,oy,on=false;
     function down(e){
+      /* Grab anywhere on the panel, not just the title bar. The bar is
+         24px tall and shares that space with minimise and close, leaving
+         a ~90x24 target - too small to find on a trackpad and worse on
+         touch. Buttons still take their own clicks. */
+      if(e.target.closest && e.target.closest('button')) return;
       if(e.target.tagName==='BUTTON') return;
       on=true; bar.classList.add('dragging');
       var t=(e.touches&&e.touches[0])||e;
@@ -43888,7 +43920,7 @@ window._crmToastModal=_crmToastModal;
       e.preventDefault();
     }
     function up(){ if(!on) return; on=false; bar.classList.remove('dragging'); savePos(); }
-    bar.addEventListener('mousedown',down); bar.addEventListener('touchstart',down,{passive:false});
+    el.addEventListener('mousedown',down); el.addEventListener('touchstart',down,{passive:false});
     document.addEventListener('mousemove',move); document.addEventListener('touchmove',move,{passive:false});
     document.addEventListener('mouseup',up);   document.addEventListener('touchend',up);
   }
@@ -43987,6 +44019,9 @@ window._crmToastModal=_crmToastModal;
     color:#E8F0FA; max-height:70%; display:flex; flex-direction:column;
   }
   #omega-diag.hidden{ display:none; }
+  #omega-diag{ cursor:grab; }
+  #omega-diag:active{ cursor:grabbing; }
+  #omega-diag button, #omega-diag input{ cursor:pointer; }
   #od-bar{
     display:flex; align-items:center; gap:6px; padding:5px 6px 5px 8px;
     background:#132844; border-bottom:1px solid #1C3350; border-radius:5px 5px 0 0;
@@ -44023,7 +44058,19 @@ window._crmToastModal=_crmToastModal;
 (function(){
   var el=null, bar=null, timer=null;
 
-  function S_(){ return window.S||{}; }
+  /* S is declared `const S={...}` and _gmap is `let _gmap=null`. Top-level
+     let/const do NOT become properties of window - they live in the shared
+     global lexical environment. So window.S is undefined, and every read of
+     it in these blocks silently saw nothing: the diagnostics reported zero
+     elements and always said "all anchored", the compass FIT found nothing
+     to frame, and size stamping was a no-op. Bare identifiers DO resolve
+     from a later classic script, which is what these use. */
+  function _omegaS(){ try{ return (typeof S!=='undefined' && S) ? S : null; }catch(e){ return null; } }
+  function _omegaMap(){
+    try{ if(typeof _gmap!=='undefined' && _gmap) return _gmap; }catch(e){}
+    return window._gmap || null;
+  }
+  function S_(){ return _omegaS()||{}; }
   function live(){ try{ return typeof _liveMapState==='function'? _liveMapState():null; }catch(e){ return null; } }
   function ppf(){
     try{
@@ -44046,7 +44093,7 @@ window._crmToastModal=_crmToastModal;
     var un=unanchored(), tot=(s.elements||[]).length;
     var p=ppf();
     return [
-      ['JS map',        !!window._gmap,               window._gmap?'present':'MISSING'],
+      ['JS map',        !!_omegaMap(),               window._gmap?'present':'MISSING'],
       ['project loaded',!!window._loadReady,          window._loadReady?'yes':'still loading'],
       ['live map state',!!live(),                     live()?'available':'NULL'],
       ['plot committed',!window._committedPlot,       window._committedPlot?'YES (blocks anchoring)':'no'],
@@ -44106,6 +44153,9 @@ window._crmToastModal=_crmToastModal;
   function drag(){
     var sx,sy,ox,oy,on=false;
     function down(e){
+      /* Same reasoning as the compass: grab anywhere on the panel, not
+         only the title bar. Buttons keep their own clicks. */
+      if(e.target.closest && e.target.closest('button')) return;
       if(e.target.tagName==='BUTTON') return;
       on=true; var t=(e.touches&&e.touches[0])||e;
       sx=t.clientX; sy=t.clientY;
@@ -44121,7 +44171,7 @@ window._crmToastModal=_crmToastModal;
       e.preventDefault();
     }
     function up(){ on=false; }
-    bar.addEventListener('mousedown',down); bar.addEventListener('touchstart',down,{passive:false});
+    el.addEventListener('mousedown',down); el.addEventListener('touchstart',down,{passive:false});
     document.addEventListener('mousemove',move); document.addEventListener('touchmove',move,{passive:false});
     document.addEventListener('mouseup',up); document.addEventListener('touchend',up);
   }
@@ -44162,13 +44212,13 @@ window._crmToastModal=_crmToastModal;
   body.omega-dock-left{
     display:grid!important;
     grid-template-columns:var(--omega-dock-w,214px) 1fr;
-    grid-template-rows:auto auto auto 1fr auto;
+    grid-template-rows:auto auto auto auto 1fr;
     grid-template-areas:
       "portal  portal"
-      "tb      doctabs"
+      "tb      tb"
+      "ribbon  doctabs"
       "ribbon  tabs"
-      "ribbon  ws"
-      "ribbon  status";
+      "ribbon  ws";
     height:100vh; overflow:hidden;
   }
   /* Safety net. #portal-nav is an in-flow child of <body> that sits BEFORE
@@ -44178,8 +44228,7 @@ window._crmToastModal=_crmToastModal;
      six that matter. */
   body.omega-dock-left > *{ grid-column:1 / -1; }
   body.omega-dock-left #portal-nav{ grid-area:portal; }
-  body.omega-dock-left #tb        { grid-area:tb;      flex-wrap:wrap; height:auto!important;
-                                    align-content:flex-start; border-right:1px solid var(--border); }
+  body.omega-dock-left #tb        { grid-area:tb; }
   body.omega-dock-left #ribbon    { grid-area:ribbon;  height:auto!important;
                                     flex-direction:column; align-items:stretch;
                                     overflow-y:auto; overflow-x:hidden;
@@ -44236,20 +44285,12 @@ window._crmToastModal=_crmToastModal;
      #ribbon-tabs wrapper that is flex-wrap:nowrap. Wrapping #tb alone did
      nothing, so the eleven tabs overflowed the column and rendered across
      the doc tabs and canvas. Wrap the actual parent. */
-  body.omega-dock-left #tb{ height:auto!important; padding:2px 0!important; }
-  body.omega-dock-left #ribbon-tabs{
-    flex-wrap:wrap; width:100%; min-width:0; overflow:visible;
-    height:auto!important; align-content:flex-start;
-  }
-  body.omega-dock-left #ribbon-tabs .rtab{
-    flex:0 0 auto; padding:0 7px!important; font-size:10.5px!important; height:23px;
-  }
-  /* .tb-right holds the project-name field; margin-left:auto pushed it
-     into the tabs once they wrapped. Give it its own full-width line. */
-  body.omega-dock-left .tb-right{
-    margin-left:0!important; width:100%; order:99; padding:3px 6px!important;
-  }
-  body.omega-dock-left .tb-right input{ width:100%; min-width:0; }
+  /* #tb spans BOTH columns. Keeping it inside the dock column forced the
+     eleven tabs to wrap onto three rows - 30px became 102px - and because
+     #doc-tabs shared that grid row it was stretched to match, costing 72px
+     of canvas for nothing. Tabs are navigation, not tools, so they stay
+     full-width across the top and the dock column holds only the ribbon. */
+  body.omega-dock-left #tb{ grid-area:tb; }
 
   @media (max-width:820px){
     body.omega-dock-left{ --omega-dock-w:186px; }
