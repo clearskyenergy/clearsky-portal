@@ -44978,9 +44978,22 @@ window._crmToastModal=_crmToastModal;
      stretched to whatever real bounds the stencil occupies. */
   function esc(x){ return String(x).replace(/#/g,'%23').replace(/"/g,"'"); }
 
-  function stencilSVG(kind, color){
+  function stencilSVG(kind, color, rotDeg){
     var col = color || '#FFFFFF';
-    var head = '<svg xmlns="http://www.w3.org/2000/svg" width="100" height="200" viewBox="0 0 100 200">'
+    /* GroundOverlay bounds are axis-aligned, so rotation has to live in
+       the artwork. Draw into the ROTATED bounding box and spin the content
+       inside it; the caller sizes the bounds to match. This removes the
+       plain-polygon fallback that was costing rotated stencils their
+       glyph and legend. */
+    var rot = ((rotDeg || 0) % 360 + 360) % 360;
+    var rad = rot * Math.PI / 180;
+    var ac = Math.abs(Math.cos(rad)), as = Math.abs(Math.sin(rad));
+    var W = 100 * ac + 200 * as;
+    var H = 100 * as + 200 * ac;
+    var head = '<svg xmlns="http://www.w3.org/2000/svg" width="' + W.toFixed(1) + '" height="' + H.toFixed(1)
+             + '" viewBox="0 0 ' + W.toFixed(1) + ' ' + H.toFixed(1) + '">'
+             + '<g transform="translate(' + (W/2).toFixed(1) + ',' + (H/2).toFixed(1) + ') '
+             + 'rotate(' + rot.toFixed(2) + ') translate(-50,-100)">'
              + '<rect x="1" y="1" width="98" height="198" fill="rgba(120,200,140,0.10)" '
              + 'stroke="' + col + '" stroke-width="2.5"/>';
     var legend, glyph;
@@ -45008,7 +45021,8 @@ window._crmToastModal=_crmToastModal;
              + '<text x="50" y="168" text-anchor="middle" fill="' + col + '" font-size="14" '
              + 'font-weight="700" font-family="Arial,Helvetica,sans-serif">ONLY</text>';
     }
-    return 'data:image/svg+xml;utf8,' + esc(head + glyph + legend + '</svg>');
+    return { url:'data:image/svg+xml;utf8,' + esc(head + glyph + legend + '</g></svg>'),
+             wScale: W/100, hScale: H/200 };
   }
 
   /* Bounds of a wFt x hFt footprint centred on a lat/lng. */
@@ -45025,10 +45039,12 @@ window._crmToastModal=_crmToastModal;
 
   function stencilOverlay(sh, center, wFt, hFt){
     if(!(window.google && google.maps && google.maps.GroundOverlay)) return null;
-    var b = boundsFt(center, wFt, hFt); if(!b) return null;
+    var art = stencilSVG(sh.kind, sh.color, sh.rot || 0);
+    /* Bounds must match the ROTATED extent, or the artwork is squashed. */
+    var b = boundsFt(center, wFt * art.wScale, hFt * art.hScale);
+    if(!b) return null;
     try{
-      var ov = new google.maps.GroundOverlay(
-        stencilSVG(sh.kind, sh.color), b, { clickable:false, opacity:1 });
+      var ov = new google.maps.GroundOverlay(art.url, b, { clickable:false, opacity:1 });
       ov.setMap(MAP());
       return ov;
     }catch(e){ return null; }
@@ -45056,11 +45072,37 @@ window._crmToastModal=_crmToastModal;
       /* Single-point stencils carry their footprint in FEET already. */
       if(sh._geoPts.length===1 && (sh.wf||sh.lf)){
         var wF=sh.wf||9, hF=sh.lf||18;
+
+        /* LOW-ZOOM INDICATOR.
+           A 9ft stall is genuinely sub-pixel below about zoom 16 - correct,
+           but it means equipment disappears exactly when you zoom out to
+           see the whole site. Below the threshold, draw a small marker at
+           the same coordinate so it stays findable.
+
+           This marker does NOT scale, and that is deliberate: it is a
+           locator, not a footprint. It only appears at zooms where the
+           real footprint would be a couple of pixels, and the moment the
+           footprint is big enough to mean anything the artwork returns. */
+        var P0=ppf();
+        /* 4px, not 9. At zoom 18 a 9ft stall is ~6px across, which still
+           reads as a stall - swapping it for a locator there threw away
+           real information. Only below ~zoom 17 does it stop being legible. */
+        if(P0 && (wF*P0) < 4){
+          var indFt = 9 / P0;              /* ~9px expressed in feet at this zoom */
+          var ring = rectFt(sh._geoPts[0], indFt, indFt, 0);
+          if(ring){
+            objs.push(new google.maps.Polygon({
+              paths:ring, map:MAP(), strokeColor:col, strokeWeight:1.5, strokeOpacity:.95,
+              fillColor:col, fillOpacity:.55, clickable:false, zIndex:7
+            }));
+            count.shapes++; return;
+          }
+        }
         /* Artwork where we can. GroundOverlay cannot rotate, so a rotated
            stencil falls back to the polygon rather than being drawn at the
            wrong angle - visibly plain beats silently wrong. */
         var glyphKind = (sh.kind==='evstencil'||sh.kind==='adastencil');
-        if(glyphKind && !sh.rot){
+        if(glyphKind){
           var ov=stencilOverlay(sh, sh._geoPts[0], wF, hF);
           if(ov){ objs.push(ov); count.shapes++; return; }
         }
