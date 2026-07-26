@@ -1523,11 +1523,18 @@ function toggleRibbon(force){
   document.body.classList.toggle('ribbon-collapsed', collapsed);
   try{ localStorage.setItem('ribbonCollapsed', collapsed?'1':'0'); }catch(e){}
   /* The canvas just changed size — nudge the live map + plot view to remeasure
-     so tiles fill the newly available space instead of leaving a gap. */
+     so tiles fill the newly available space instead of leaving a gap. Then
+     re-project all geo-anchored items to the NEW canvas center so they stay
+     locked to their real coordinates instead of jumping (the "elements
+     relocate when I minimize the tab" bug). */
   setTimeout(function(){
     try{ if(window._gmap && google && google.maps) google.maps.event.trigger(_gmap,'resize'); }catch(e){}
     try{ if(typeof _applyPlotView==='function') _applyPlotView(); }catch(e){}
     try{ window.dispatchEvent(new Event('resize')); }catch(e){}
+    /* Reproject AFTER the DOM height settles so _getCanvasSize reads the new
+       size. Two passes catch both the immediate and post-map-resize states. */
+    try{ if(typeof _geoReprojectAll==='function') _geoReprojectAll(); }catch(e){}
+    setTimeout(function(){ try{ if(typeof _geoReprojectAll==='function') _geoReprojectAll(); }catch(e){} }, 220);
   }, 60);
 }
 window.toggleRibbon=toggleRibbon;
@@ -15935,7 +15942,7 @@ function placeSLDElement(type) {
 }
 
 // == UNDO ====================================================
-function pushHist(){S.history.push({els:JSON.parse(JSON.stringify(S.elements)),conds:JSON.parse(JSON.stringify(S.conduits)),shps:JSON.parse(JSON.stringify(S.shapes||[]))});if(S.history.length>30)S.history.shift();window._workDirty=true;}
+function pushHist(){try{if(typeof _geoStampAll==='function')_geoStampAll();}catch(e){}S.history.push({els:JSON.parse(JSON.stringify(S.elements)),conds:JSON.parse(JSON.stringify(S.conduits)),shps:JSON.parse(JSON.stringify(S.shapes||[]))});if(S.history.length>30)S.history.shift();window._workDirty=true;}
 function undoLast(){
   if(S.history.length<2)return;S.history.pop();const prev=S.history[S.history.length-1];
   document.getElementById('els').innerHTML='';document.getElementById('csvg').innerHTML='';
@@ -23117,6 +23124,36 @@ function _geoStampElement(el){
 }
 window._geoStampElement=_geoStampElement;
 
+/* Stamp EVERY placed thing — elements, shapes, and conduit points — with
+   lat/lng. This is what makes "anything on the canvas" lock to the map, not
+   just single equipment drops. Every placement path (Draw tools, guided
+   build, conduits) should call this so nothing is left in raw pixels. */
+function _geoStampAll(){
+  var ms=_liveMapState(); if(!ms) return;
+  var sz=_getCanvasSize();
+  var toGeo=function(x,y){ return _pxToLatLng(x,y,ms,sz.w,sz.h); };
+  try{
+    (S.elements||[]).forEach(function(el){
+      if(el._geoLat!=null) return;               /* already anchored */
+      var g=toGeo(el.x+((el.w||60)/2), el.y+((el.h||el.w||60)/2));
+      if(g){ el._geoLat=g.lat; el._geoLng=g.lng; }
+    });
+    (S.shapes||[]).forEach(function(sh){
+      if(sh._geoPts) return;
+      if(sh.pts && sh.pts.length){
+        sh._geoPts=sh.pts.map(function(p){ var g=toGeo(p.x,p.y); return g?{lat:g.lat,lng:g.lng}:null; });
+      }
+    });
+    (S.conduits||[]).forEach(function(c){
+      if(c._geoPts) return;
+      if(c.pts && c.pts.length){
+        c._geoPts=c.pts.map(function(p){ var g=toGeo(p.x,p.y); return g?{lat:g.lat,lng:g.lng}:null; });
+      }
+    });
+  }catch(e){}
+}
+window._geoStampAll=_geoStampAll;
+
 /* Re-project every geo-anchored element to the current map view and move its
    DOM node. Runs on map idle so equipment tracks pan/zoom. */
 var _geoReprojecting=false;
@@ -23126,19 +23163,36 @@ function _geoReprojectAll(){
   _geoReprojecting=true;
   try{
     var sz=_getCanvasSize();
+    var toPx=function(lat,lng){ return _latLngToPx(lat,lng,ms,sz.w,sz.h); };
     (S.elements||[]).forEach(function(el){
       if(el._geoLat==null || el._geoLng==null) return;
-      var px=_latLngToPx(el._geoLat, el._geoLng, ms, sz.w, sz.h);
+      var px=toPx(el._geoLat, el._geoLng);
       if(!px) return;
-      /* px is the CENTER; convert back to top-left for x,y. */
       el.x=px.x-((el.w||60)/2);
       el.y=px.y-((el.h||el.w||60)/2);
       var dom=document.querySelector('[data-elid="'+el.id+'"]');
       if(dom){ dom.style.left=el.x+'px'; dom.style.top=el.y+'px'; }
     });
-    /* Conduits/shapes follow their endpoints — repaint if present. */
-    if(typeof _refreshConduitStyle==='function'){ try{ _refreshConduitStyle(); }catch(e){} }
+    /* Shapes: reproject each point from its stored lat/lng. */
+    (S.shapes||[]).forEach(function(sh){
+      if(!sh._geoPts || !sh.pts) return;
+      for(var i=0;i<sh.pts.length && i<sh._geoPts.length;i++){
+        var g=sh._geoPts[i]; if(!g) continue;
+        var px=toPx(g.lat,g.lng); if(px){ sh.pts[i].x=px.x; sh.pts[i].y=px.y; }
+      }
+    });
+    /* Conduits: reproject each routing point from its stored lat/lng. */
+    (S.conduits||[]).forEach(function(c){
+      if(!c._geoPts || !c.pts) return;
+      for(var j=0;j<c.pts.length && j<c._geoPts.length;j++){
+        var g2=c._geoPts[j]; if(!g2) continue;
+        var px2=toPx(g2.lat,g2.lng); if(px2){ c.pts[j].x=px2.x; c.pts[j].y=px2.y; }
+      }
+    });
+    /* Repaint shapes + conduits now that their points moved. */
+    if(typeof renderShape==='function' && S.shapes){ try{ S.shapes.forEach(function(sh){ renderShape(sh); }); }catch(e){} }
     if(typeof renderConduit==='function' && S.conduits){ try{ S.conduits.forEach(function(c){ renderConduit(c); }); }catch(e){} }
+    if(typeof _refreshConduitStyle==='function'){ try{ _refreshConduitStyle(); }catch(e){} }
   }catch(e){}
   _geoReprojecting=false;
 }

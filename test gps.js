@@ -333,7 +333,7 @@ t('drag/resize end re-stamps the new position', ()=>{
 });
 t('_geoReprojectAll repositions elements to current map view', ()=>{
   const seg=grab('function _geoReprojectAll(){','function _geoWireMapListeners');
-  return (seg.includes('_latLngToPx(el._geoLat') && seg.includes("dom.style.left"))
+  return (seg.includes('toPx(el._geoLat') && seg.includes("dom.style.left"))
     ? true : 'reprojection incomplete';
 });
 t('map idle/bounds listeners drive reprojection', ()=>{
@@ -362,6 +362,49 @@ t('equipment tracks the ground on pan (round-trip)', ()=>{
 t('reprojection guards against re-entrancy', ()=>{
   const seg=grab('function _geoReprojectAll(){','function _geoWireMapListeners');
   return seg.includes('_geoReprojecting') ? true : 'could recurse on rapid moves';
+});
+
+console.log('\n=== L. Everything locks to map; ribbon toggle does not move it ===');
+t('_geoStampAll stamps elements, shapes, AND conduits', ()=>{
+  const seg=grab('function _geoStampAll(){','window._geoStampAll');
+  return (seg.includes('S.elements') && seg.includes('S.shapes') && seg.includes('S.conduits')
+    && seg.includes('_geoPts')) ? true : 'not all placement types stamped';
+});
+t('pushHist geo-stamps everything (Draw tools + guided build lock in)', ()=>{
+  const seg=grab('function pushHist(){','function undoLast');
+  return seg.includes('_geoStampAll()') ? true : 'draw-tool items never anchored';
+});
+t('reproject moves shapes from their stored geo points', ()=>{
+  const seg=grab('function _geoReprojectAll(){','window._geoReprojectAll');
+  return (seg.includes('S.shapes') && seg.includes('sh._geoPts') && seg.includes('sh.pts[i].x'))
+    ? true : 'shapes do not track the map';
+});
+t('reproject moves conduits from their stored geo points', ()=>{
+  const seg=grab('function _geoReprojectAll(){','window._geoReprojectAll');
+  return (seg.includes('c._geoPts') && seg.includes('c.pts[j].x')) ? true : 'conduits do not track the map';
+});
+t('ribbon toggle reprojects so elements do not jump', ()=>{
+  const seg=grab('function toggleRibbon(force){','window.toggleRibbon');
+  return seg.includes('_geoReprojectAll()') ? true : 'collapse still relocates elements';
+});
+t('ribbon toggle reprojects AFTER the height settles', ()=>{
+  const seg=grab('function toggleRibbon(force){','window.toggleRibbon');
+  // second reproject on a delay catches the post-resize state
+  return (seg.match(/_geoReprojectAll\(\)/g)||[]).length>=2 ? true : 'single reproject may fire too early';
+});
+t('geo-stamp is idempotent (skips already-anchored items)', ()=>{
+  const seg=grab('function _geoStampAll(){','window._geoStampAll');
+  return (seg.includes('if(el._geoLat!=null) return') && seg.includes('if(sh._geoPts) return'))
+    ? true : 'would overwrite existing anchors';
+});
+t('equipment stays geo-locked when canvas height changes (ribbon collapse)', ()=>{
+  const src=grab('function _mapMetersPerPx','function _getCanvasSize')+grab('function _pxToLatLng','function _geoStampElement');
+  const F=new Function('window', src+'; return {_pxToLatLng,_latLngToPx};')({});
+  const ms={lat:40.9,lng:-74.05,zoom:19}, W=1200;
+  const geo=F._pxToLatLng(700,400,ms,W,800);        // placed in 800-tall canvas
+  const np=F._latLngToPx(geo.lat,geo.lng,ms,W,882);  // ribbon collapses -> 882 tall
+  // ground stays fixed: y shifts by half the +82 height change
+  return (Math.abs((np.y-400)-41)<2 && Math.abs(np.x-700)<1) ? true : 'equipment jumps on resize';
 });
 
 console.log('\n---------------------------------------');
