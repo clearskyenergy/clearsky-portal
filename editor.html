@@ -57,6 +57,23 @@ window.addEventListener('unhandledrejection', function(e) {
 <style>
 @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=IBM+Plex+Sans:wght@300;400;600;700&display=swap');
 *{box-sizing:border-box;margin:0;padding:0}
+/* ---------------------------------------------------------------------
+   FLOATING CANVAS PANELS MUST KEEP THEIR OWN POINTER EVENTS.
+
+   setMapInteractive() sets #sc{pointer-events:none} when the map is
+   interactive, so drags and scrolls pass through to the map. Every child
+   of #sc then inherits `none` unless it opts back in. Only .cel did, so
+   the conduit schedule (#eng-legend), the legend, the ruler and the zoom
+   cluster all went dead as soon as the map became pannable - you could
+   see them but not close, collapse or drag them.
+
+   Opting these back in costs nothing: they are small, fixed boxes, so
+   they swallow only their own footprint and the rest of the canvas still
+   passes through to the map.
+   --------------------------------------------------------------------- */
+#eng-legend, #lgd, #ruler, #zc, #banner,
+#schem-handle, #schem-resize { pointer-events: auto !important; }
+
 .ps-page{display:block;position:relative;width:17in;height:11in;overflow:hidden;background:#F5F0E8;page-break-after:always;page-break-inside:avoid;margin:0 auto 20px;border:1px solid #ccc}
 :root{
   /* -- NEXTNRG THEME (v4.26 / NextNRG white-label) -----------------------
@@ -76,7 +93,7 @@ window.addEventListener('unhandledrejection', function(e) {
   --border:#3A3A3A;      /* hairline rules                      */
   --text:#E0E0E0;        /* primary type                        */
   --sub:#9A9A9A;         /* secondary / captions                */
-  --lw:270px;--th:30px;--ribbon-h:56px;
+  --lw:270px;--th:30px;--ribbon-h:68px;
   /* "gold" section-header accent -> NextNRG green */
   --gold:#2FB54A;--gold-dark:#1F8A37;--gold-pale:#8FE0A3;--gold-faint:rgba(47,181,74,.08);
   --shadow-gold:0 0 0 2px rgba(47,181,74,.30);
@@ -802,7 +819,7 @@ body.ribbon-collapsed #ribbon-collapse-btn{ transform:rotate(180deg); }
 #pname{ height:22px; }
 
 @media (max-width:768px){
-  :root{ --ribbon-h:52px; }
+  :root{ --ribbon-h:62px; }
   .rtab{ padding:0 10px;font-size:10px; }
   #tb .tb-right{ display:none; }
   .rbtn{ min-width:38px;padding:3px; }
@@ -43411,6 +43428,9 @@ window._crmToastModal=_crmToastModal;
       s.verdict = !s.hasMap ? 'No live JS map - probably the embed-iframe fallback, which cannot be panned programmatically.'
         : s.committedPlot ? 'Plot committed: locked by design. Use Clear Plot to move the map.'
         : s.userLocked ? 'You locked it. Use Unlock Map, or run OmegaMap.unlock().'
+        : (s.scPointerEv==='none' && (s.mapLocked||s.gestureHandling==='none'))
+            ? 'Mixed state: #sc is swallowing clicks AND the map is locked. Auto-repair should clear it; '
+              + 'otherwise run document.getElementById("sc").style.pointerEvents="".'
         : blocked(s) ? 'Wrongly blocked - auto-heal should clear this within a second.'
         : 'Nothing blocking. The map should pan.';
       if(window.console){ console.table?console.table(s):console.log(s); console.info(s.verdict); }
@@ -43419,7 +43439,27 @@ window._crmToastModal=_crmToastModal;
     unlock: function(){ window._userLockedMap=false; HEALS=0; return heal('manual'); },
     stopAutoHeal: function(){ HEALS=MAX; }
   };
-  function tick(){ var s=inspect(); if(blocked(s)) heal('pointer-events lockout, no plot'); }
+  /* Mixed state: #sc is swallowing events AND the map is not interactive.
+     Nothing can be clicked and nothing can be panned. This happens when
+     the map is made interactive (#sc -> none) and something then locks the
+     map WITHOUT routing through setMapInteractive(false), so #sc is never
+     handed back. Committing a plot is the usual way in. Restore #sc; the
+     map stays locked, which is correct if a plot is committed. */
+  function fixMixed(){
+    var sc=el('sc'); if(!sc) return;
+    if(sc.style.pointerEvents!=='none') return;
+    var mapOff = !!window._mapLocked ||
+      (window._gmap && _gmap.get && _gmap.get('gestureHandling')==='none');
+    if(mapOff){
+      sc.style.pointerEvents='';
+      if(window.console) console.info('[map-heal] cleared a stale #sc lockout - panels are clickable again');
+    }
+  }
+  function tick(){
+    var s=inspect();
+    if(blocked(s)) heal('pointer-events lockout, no plot');
+    fixMixed();
+  }
   setInterval(tick, 700);
   setTimeout(tick, 400);
   if(window.console) console.info('[map-heal] armed. Run OmegaMap.why() to see what blocks panning.');
