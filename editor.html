@@ -44963,6 +44963,7 @@ window._crmToastModal=_crmToastModal;
     });
   }
 
+  var warned=false;
   function sync(force){
     if(!on) return;
     /* Make sure everything has a lat/lng before we try to draw from it. */
@@ -44970,14 +44971,34 @@ window._crmToastModal=_crmToastModal;
     var s=sig();
     if(!force && s===lastSig) return;
     lastSig=s;
-    build();
+    var c=build();
+    var drawn=c.shapes+c.conduits+c.elements;
+    var total=drawn+c.skipped;
+
+    /* FAIL SAFE. Never hide the legacy renderer until the native one
+       demonstrably covers everything. An earlier version hid #els/#csvg
+       the moment it was switched on, so anything without a lat/lng became
+       invisible rather than merely un-anchored - you could place ten
+       shapes and see none of them. Hiding is now the reward for full
+       coverage, not the assumption. */
+    var complete = (total===0) || (c.skipped===0 && drawn>0);
+    hideLegacy(complete);
+
+    if(!complete && !warned){
+      warned=true;
+      var msg=c.skipped+' object(s) have no lat/lng yet, so the original '
+            + 'drawing is being kept visible. They will switch to native once anchored.';
+      if(window.console) console.warn('[native] '+msg);
+      if(typeof showBanner==='function'){ try{ showBanner('wiz', msg); }catch(e){} }
+    }
+    if(complete) warned=false;
   }
 
   window.OmegaNative={
     enable:function(){
       if(!MAP()){ if(typeof showBanner==='function'){ try{ showBanner('wiz',
           'Native layer needs the live JS map. Clear Plot first if a plot is committed.'); }catch(e){} } return false; }
-      on=true; hideLegacy(true); sync(true);
+      on=true; sync(true);   /* sync decides whether hiding is safe */
       if(!timer) timer=setInterval(function(){ sync(false); }, 700);
       var b=document.getElementById('rb-native'); if(b) b.setAttribute('aria-pressed','true');
       try{ localStorage.setItem('omegaNative','1'); }catch(e){}
@@ -45003,6 +45024,8 @@ window._crmToastModal=_crmToastModal;
               elements:(s.elements||[]).length,
               drawnNatively:c.shapes+c.conduits+c.elements, skippedNoGeo:c.skipped,
               mapObjects:objs.length };
+      o.legacyHidden = (function(){var e=document.getElementById('els');
+        return e ? e.style.display==='none' : null;})();
       o.verdict = !o.liveMap ? 'No live JS map - Clear Plot, or the embed fallback is in use.'
                 : !o.geometryLib ? 'geometry library not loaded (&libraries=geometry).'
                 : o.skippedNoGeo ? o.skippedNoGeo+' object(s) have no lat/lng yet - they will appear once stamped.'
