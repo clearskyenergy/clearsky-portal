@@ -43465,5 +43465,153 @@ window._crmToastModal=_crmToastModal;
   if(window.console) console.info('[map-heal] armed. Run OmegaMap.why() to see what blocks panning.');
 })();
 </script>
+<!-- ================= EAGER GEO-ANCHORING =================
+     _geoStampAll() anchors everything that lacks a lat/lng, but its only
+     caller was pushHist() - so anchoring happened as a side effect of an
+     undo snapshot. Anything placed by a path that never reached pushHist
+     stayed in raw pixels, and _geoReprojectAll() skips those outright:
+
+         if(el._geoLat==null || el._geoLng==null) return;
+
+     which is why an item could sit still while the satellite scrolled
+     under it. Stamping eagerly closes that window.
+     ======================================================= -->
+<script>
+(function(){
+  var TICK=200, MIN_PX=6, scaling=false, wrapped=false, orig=null;
+
+  function live(){ try{ return typeof _liveMapState==='function' ? _liveMapState() : null; }catch(e){ return null; } }
+  function S_(){ return window.S; }
+
+  /* Scale of the current view, computed from the map so it can never be
+     stale relative to the frame we are about to draw. */
+  function ppf(){
+    try{
+      if(!window._gmap || !_gmap.getCenter) return null;
+      var c=_gmap.getCenter(), z=_gmap.getZoom();
+      if(!c || z==null) return null;
+      var m=156543.03392*Math.cos(c.lat()*Math.PI/180)/Math.pow(2,z);
+      var f=m*3.280839895013123;
+      return (f>0 && isFinite(f)) ? 1/f : null;
+    }catch(e){ return null; }
+  }
+
+  /* --- ANCHOR (always on) --- */
+  function anchor(){
+    if(!live() || typeof _geoStampAll!=='function') return;
+    try{ _geoStampAll(); }catch(e){}
+    if(scaling) stampSizes();
+  }
+
+  function pending(){
+    var s=S_(); if(!s) return 0;
+    var n=0;
+    (s.elements||[]).forEach(function(el){ if(el._geoLat==null) n++; });
+    (s.shapes||[]).forEach(function(sh){ if(sh.pts && sh.pts.length && !sh._geoPts) n++; });
+    (s.conduits||[]).forEach(function(c){ if(c.pts && c.pts.length && !c._geoPts) n++; });
+    return n;
+  }
+
+  /* --- SCALE (opt-in) ---
+     Ground size must be recorded at the same moment as the position
+     anchor, or it bakes in the wrong dimensions permanently. */
+  function stampSizes(){
+    var s=S_(), p=ppf(); if(!s||!p) return;
+    (s.elements||[]).forEach(function(el){
+      if(el._geoLat==null) return;
+      if(el._geoWFt==null && el.w>0) el._geoWFt=el.w/p;
+      if(el._geoHFt==null && el.h>0) el._geoHFt=el.h/p;
+    });
+  }
+  function rescale(){
+    var s=S_(), p=ppf(); if(!s||!p) return;
+    (s.elements||[]).forEach(function(el){
+      if(el._geoWFt!=null) el.w=Math.max(MIN_PX, el._geoWFt*p);
+      if(el._geoHFt!=null) el.h=Math.max(MIN_PX, el._geoHFt*p);
+    });
+  }
+  function syncDom(){
+    var s=S_(); if(!s) return;
+    (s.elements||[]).forEach(function(el){
+      if(el._geoWFt==null && el._geoHFt==null) return;
+      var d=document.querySelector('[data-elid="'+el.id+'"]');
+      if(!d) return;
+      if(el.w>0) d.style.width=el.w+'px';
+      if(el.h>0) d.style.height=el.h+'px';
+    });
+  }
+  /* Sizes must be current BEFORE the stock reprojection runs, because it
+     centres each element using el.w / el.h. */
+  function wrapReproject(){
+    if(wrapped || typeof _geoReprojectAll!=='function') return;
+    orig=window._geoReprojectAll;
+    window._geoReprojectAll=function(){
+      if(scaling) rescale();
+      orig.apply(this, arguments);
+      if(scaling) syncDom();
+    };
+    wrapped=true;
+  }
+
+  window.OmegaGeo={
+    status:function(){
+      var o={ unanchored:pending(), pxPerFoot:ppf(), mapLive:!!live(), scaling:scaling };
+      o.verdict = !o.mapLive ? 'No live map (absent, or plot frozen) - nothing can anchor yet.'
+                : o.unanchored ? 'Anchoring in progress.'
+                : 'Everything anchored. Scroll the satellite; items hold their ground.';
+      console.table?console.table(o):console.log(o);
+      console.info(o.verdict);
+      return o;
+    },
+    /* Implied ground size of each element - CHECK THIS before enabling
+       scaling. A DCFC reading 3 ft wide was stamped at the wrong zoom. */
+    audit:function(){
+      var s=S_(); if(!s) return [];
+      var rows=(s.elements||[]).map(function(el){
+        return { id:el.id, type:el.type||el.eqId||'',
+                 groundW_ft: el._geoWFt!=null?+el._geoWFt.toFixed(1):null,
+                 groundH_ft: el._geoHFt!=null?+el._geoHFt.toFixed(1):null,
+                 px_w: el.w!=null?Math.round(el.w):null,
+                 anchored: el._geoLat!=null };
+      });
+      console.table?console.table(rows):console.log(rows);
+      return rows;
+    },
+    enableScaling:function(){
+      stampSizes(); wrapReproject(); scaling=true;
+      if(typeof _geoReprojectAll==='function') try{ _geoReprojectAll(); }catch(e){}
+      console.info('[geo] scaling ON - items now grow and shrink with zoom. OmegaGeo.disableScaling() to revert.');
+    },
+    disableScaling:function(){
+      scaling=false;
+      console.info('[geo] scaling OFF - positions still anchored.');
+    },
+    setSize:function(id,wFt,hFt){
+      var s=S_(); if(!s) return false;
+      var el=(s.elements||[]).filter(function(e){return e.id===id;})[0];
+      if(!el){ console.warn('[geo] no element '+id); return false; }
+      el._geoWFt=wFt; el._geoHFt=(hFt==null?wFt:hFt);
+      if(typeof _geoReprojectAll==='function') try{ _geoReprojectAll(); }catch(e){}
+      return true;
+    }
+  };
+
+  function hook(){
+    try{
+      if(!window._gmap || !window.google || !google.maps) return false;
+      if(_gmap.__omegaAnchorHooked) return true;
+      /* Anchor BEFORE the view moves, while pixels still mean something. */
+      google.maps.event.addListener(_gmap,'dragstart',anchor);
+      google.maps.event.addListener(_gmap,'idle',anchor);
+      _gmap.__omegaAnchorHooked=true;
+      return true;
+    }catch(e){ return false; }
+  }
+
+  setInterval(function(){ anchor(); hook(); }, TICK);
+  hook();
+  if(window.console) console.info('[geo] eager anchoring armed. OmegaGeo.status() / .audit() / .enableScaling()');
+})();
+</script>
 </body>
 </html>
