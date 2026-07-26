@@ -46384,5 +46384,157 @@ window._crmToastModal=_crmToastModal;
   };
 })();
 </script>
+<!-- ================= MOBILE LAYOUT =================
+     Phone-sized panels that do not bury the drawing.
+     ================================================== -->
+<style>
+@media (max-width: 520px){
+
+  /* --- ribbon: still scrolls, but LOOKS scrollable --- */
+  #ribbon{
+    overflow-x:auto; overflow-y:hidden;
+    -webkit-overflow-scrolling:touch; scrollbar-width:none;
+    -webkit-mask-image:linear-gradient(to right,#000 0,#000 calc(100% - 22px),transparent 100%);
+            mask-image:linear-gradient(to right,#000 0,#000 calc(100% - 22px),transparent 100%);
+  }
+  #ribbon::-webkit-scrollbar{ display:none; }
+  #ribbon-tabs{ overflow-x:auto; -webkit-overflow-scrolling:touch; scrollbar-width:none; }
+  #ribbon-tabs::-webkit-scrollbar{ display:none; }
+
+  /* NOTE ON !important AND DRAGGING
+     Positional properties here must NOT be !important. The drag handler
+     writes inline left/top, and a stylesheet !important beats an inline
+     style - so `left:auto !important` made every panel physically
+     immovable on a phone. Width keeps !important (it only has to beat the
+     base rule); position relies on this block coming later in the
+     document, which is enough at equal specificity. */
+  /* --- panels: smaller, and each in its own corner ---
+     236px of Site Map on a 390px screen is 60% of the drawing gone. */
+  #omega-compass{
+    width:104px !important;
+    left:auto; right:8px;
+    top:auto; bottom:8px;
+  }
+  #omega-compass #oc-body{ padding:6px; }
+  #omega-compass .oc-rose{ width:88px; height:88px; }
+
+  #omega-site{
+    width:186px !important;
+    left:8px; right:auto;
+    top:auto; bottom:8px;
+  }
+  #omega-site .os-row{ font-size:10px; line-height:1.7; }
+  #omega-site .os-btns button{ padding:8px; }
+
+  /* 46vh put the diag bottom at 612px while Site started at 532 - they
+     overlapped at the same left edge. Shorter, and narrower than half
+     the screen. */
+  #omega-diag{
+    width:180px !important; max-height:32vh; overflow-y:auto;
+    left:8px; right:auto;
+    top:8px; bottom:auto;
+  }
+  #omega-diag .od-row{ font-size:9.5px; }
+
+  /* --- touch targets --- */
+  /* The compass bar is a flex row, so its buttons were being shrunk to
+     16.25px wide despite an explicit width - flex-shrink beats width.
+     Pin the basis and stop the shrink. */
+  #omega-compass #oc-bar button,
+  #omega-site   #os-bar button,
+  #omega-diag   #od-bar button{
+    width:28px !important; height:28px !important; font-size:15px !important;
+    flex:0 0 28px !important; min-width:28px !important; box-sizing:border-box;
+  }
+  #omega-compass .oc-btn{ min-width:30px; min-height:30px; }
+
+  /* The floating panels sit above the canvas but must never cover the
+     status bar, which is where mode and counts live. */
+  #omega-compass, #omega-site, #omega-diag{ max-width:calc(100vw - 16px); }
+}
+
+/* Very small: one panel at a time is all that fits. */
+@media (max-width: 380px){
+  #omega-site{ width:164px !important; }
+  #omega-diag{ width:164px !important; max-height:30vh; }
+  #omega-compass{ width:96px !important; }
+}
+</style>
+<script>
+(function(){
+  /* A panel dragged off-screen on a phone cannot be grabbed back, so clamp
+     every panel into view on resize and rotate. */
+  function clamp(){
+    ['omega-compass','omega-site','omega-diag'].forEach(function(id){
+      var e=document.getElementById(id);
+      if(!e || e.classList.contains('hidden')) return;
+      var r=e.getBoundingClientRect();
+      if(r.width===0) return;
+      var maxL=Math.max(0, innerWidth-Math.min(r.width,innerWidth)-4);
+      var maxT=Math.max(0, innerHeight-40);
+      if(e.style.left){
+        var l=parseFloat(e.style.left)||0;
+        if(l>maxL || l<0) e.style.left=Math.max(0,Math.min(maxL,l))+'px';
+      }
+      if(e.style.top){
+        var t=parseFloat(e.style.top)||0;
+        if(t>maxT || t<0) e.style.top=Math.max(0,Math.min(maxT,t))+'px';
+      }
+    });
+  }
+  /* A saved DESKTOP position leaves an inline `top`, which combines with
+     the mobile rule's `bottom` to stretch a fixed-position panel between
+     the two - the compass came out 520px tall instead of 145. On a phone,
+     drop the stored position so the compact corner layout applies; a drag
+     during this session still overrides it. */
+  var cleared=false;
+  function clearStoredPositions(){
+    if(cleared || innerWidth>520) return;
+    cleared=true;
+    ['omega-compass','omega-site','omega-diag'].forEach(function(id){
+      var e=document.getElementById(id); if(!e) return;
+      e.style.removeProperty('left');  e.style.removeProperty('top');
+      e.style.removeProperty('right'); e.style.removeProperty('bottom');
+    });
+  }
+  var t0=0;
+  var iv0=setInterval(function(){
+    if(++t0>40){ clearInterval(iv0); return; }
+    if(document.getElementById('omega-compass') || document.getElementById('omega-site')){
+      clearStoredPositions();
+    }
+  }, 300);
+  addEventListener('orientationchange', function(){ cleared=false; setTimeout(clearStoredPositions,200); });
+
+  addEventListener('resize', clamp);
+  addEventListener('orientationchange', function(){ setTimeout(clamp,250); });
+  setInterval(clamp, 2000);
+
+  window.OmegaMobile={
+    isPhone:function(){ return innerWidth<=520; },
+    status:function(){
+      var o={ viewport:innerWidth+'x'+innerHeight, phoneLayout:innerWidth<=520 };
+      ['omega-compass','omega-site','omega-diag'].forEach(function(id){
+        var e=document.getElementById(id);
+        if(!e){ o[id]='absent'; return; }
+        if(e.classList.contains('hidden')||getComputedStyle(e).display==='none'){ o[id]='hidden'; return; }
+        var r=e.getBoundingClientRect();
+        o[id]=Math.round(r.width)+'px ('+Math.round(r.width/innerWidth*100)+'% of screen)';
+      });
+      var rb=document.getElementById('ribbon');
+      o.ribbonScrolls = rb ? (rb.scrollWidth>rb.clientWidth) : null;
+      console.table?console.table(o):console.log(o);
+      return o;
+    },
+    resetPanels:function(){
+      ['omega-compass','omega-site','omega-diag'].forEach(function(id){
+        var e=document.getElementById(id);
+        if(e){ e.style.left=''; e.style.top=''; e.style.right=''; e.style.bottom=''; }
+      });
+      return true;
+    }
+  };
+})();
+</script>
 </body>
 </html>
