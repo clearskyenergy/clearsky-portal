@@ -24,8 +24,8 @@ t('ensures the marker library is loaded', ()=>{
 
 console.log('\n=== B. Round-trips through the existing geo model ===');
 const src=grab('function _mapMetersPerPx','function _getCanvasSize')
-        + grab('function _pxToLatLng','function _encodeElementsToGeo');
-const P=new Function(src+'; return {_pxToLatLng,_latLngToPx};')();
+        + grab('function _pxToLatLng','function _geoStampElement');
+const P=new Function('window', src+'; return {_pxToLatLng,_latLngToPx};')({});
 t('pixel -> latlng -> pixel is lossless', ()=>{
   const ms={lat:41.8781,lng:-87.6298,zoom:19}, W=1200,H=800;
   const start={x:800,y:300};
@@ -241,16 +241,16 @@ t('Set Plot records the frozen map anchor', ()=>{
   return seg.includes('window._frozenMapState=') ? true : 'Set Plot loses the anchor';
 });
 t('shared anchor -> placed marker lands where it was placed (no offset)', ()=>{
-  const src=grab('function _mapMetersPerPx','function _getCanvasSize')+grab('function _pxToLatLng','function _encodeElementsToGeo');
-  const F=new Function(src+'; return {_pxToLatLng,_latLngToPx};')();
+  const src=grab('function _mapMetersPerPx','function _getCanvasSize')+grab('function _pxToLatLng','function _geoStampElement');
+  const F=new Function('window', src+'; return {_pxToLatLng,_latLngToPx};')({});
   const frozen={lat:33.5,lng:-84.2,zoom:19}, W=1200,H=800;
   const ll=F._pxToLatLng(W/2+200,H/2+100,frozen,W,H);
   const px=F._latLngToPx(ll.lat,ll.lng,frozen,W,H);
   return (Math.abs(px.x-(W/2+200))<1 && Math.abs(px.y-(H/2+100))<1) ? true : 'offset even with shared anchor';
 });
 t('mismatched anchor is what caused the off-screen placement', ()=>{
-  const src=grab('function _mapMetersPerPx','function _getCanvasSize')+grab('function _pxToLatLng','function _encodeElementsToGeo');
-  const F=new Function(src+'; return {_pxToLatLng,_latLngToPx};')();
+  const src=grab('function _mapMetersPerPx','function _getCanvasSize')+grab('function _pxToLatLng','function _geoStampElement');
+  const F=new Function('window', src+'; return {_pxToLatLng,_latLngToPx};')({});
   const W=1200,H=800;
   const ll=F._pxToLatLng(W/2+200,H/2+100,{lat:33.5,lng:-84.2,zoom:19},W,H);
   const bad=F._latLngToPx(ll.lat,ll.lng,{lat:33.6,lng:-84.1,zoom:19},W,H);
@@ -317,6 +317,51 @@ t('four conduit types available (DC/AC/data/MV)', ()=>{
   const seg=grab('var _GPS_COND_STYLES','function _gpsMarkerClicked');
   return (seg.includes("'RMC-DC'") && seg.includes("'RMC-AC'") && seg.includes("'EMT-DATA'") && seg.includes("'MV-TRENCH'"))
     ? true : 'missing conduit types';
+});
+
+console.log('\n=== K. Geo-anchoring (equipment locked to lat/lng, moves with map) ===');
+t('_geoStampElement records lat/lng on placement', ()=>{
+  return h.includes('function _geoStampElement(') ? true : 'no geo stamp';
+});
+t('addEl stamps geo when a live map is active', ()=>{
+  const seg=grab('function addEl(opts){','function renderEl');
+  return seg.includes('_geoStampElement(el)') ? true : 'placement not geo-anchored';
+});
+t('drag/resize end re-stamps the new position', ()=>{
+  const seg=grab('function globalMU(e){','document.addEventListener');
+  return seg.includes('_geoStampElement(el)') ? true : 'moved equipment loses its map lock';
+});
+t('_geoReprojectAll repositions elements to current map view', ()=>{
+  const seg=grab('function _geoReprojectAll(){','function _geoWireMapListeners');
+  return (seg.includes('_latLngToPx(el._geoLat') && seg.includes("dom.style.left"))
+    ? true : 'reprojection incomplete';
+});
+t('map idle/bounds listeners drive reprojection', ()=>{
+  const seg=grab('function _geoWireMapListeners(){','window._geoWireMapListeners');
+  return (seg.includes("addListener('idle'") && seg.includes("bounds_changed"))
+    ? true : 'equipment would not track pan/zoom';
+});
+t('listeners wired once (idempotent)', ()=>{
+  const seg=grab('function _geoWireMapListeners(){','window._geoWireMapListeners');
+  return seg.includes('_geoListenersWired') ? true : 'listeners would double-bind';
+});
+t('reprojection only runs on a live unfrozen map', ()=>{
+  const seg=grab('function _liveMapState(){','function _geoStampElement');
+  return seg.includes('mapLockState().hasPlot') ? true : 'would fight a frozen plot';
+});
+t('equipment tracks the ground on pan (round-trip)', ()=>{
+  const src=grab('function _mapMetersPerPx','function _getCanvasSize')+grab('function _pxToLatLng','function _geoStampElement');
+  const F=new Function('window', src+'; return {_pxToLatLng,_latLngToPx};')({});
+  const W=1200,H=800, mapA={lat:33.9,lng:-84.5,zoom:19};
+  const geo=F._pxToLatLng(700,400,mapA,W,H);
+  const shifted=F._pxToLatLng(W/2-200,H/2-100,mapA,W,H);
+  const mapB={lat:shifted.lat,lng:shifted.lng,zoom:19};
+  const np=F._latLngToPx(geo.lat,geo.lng,mapB,W,H);
+  return (Math.abs((np.x-700)-200)<2 && Math.abs((np.y-400)-100)<2) ? true : 'equipment does not track the map';
+});
+t('reprojection guards against re-entrancy', ()=>{
+  const seg=grab('function _geoReprojectAll(){','function _geoWireMapListeners');
+  return seg.includes('_geoReprojecting') ? true : 'could recurse on rapid moves';
 });
 
 console.log('\n---------------------------------------');

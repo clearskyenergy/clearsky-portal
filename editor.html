@@ -5692,7 +5692,21 @@ function applyBg(){
   img.style.transformOrigin='center center';
   document.getElementById('zpct').textContent=Math.round(BG.scale*100)+'%';
 }
-function zoomBg(d){if(mapMode!=='upload')return;BG.scale=Math.max(0.1,Math.min(10,BG.scale+d));applyBg();}
+function zoomBg(d){
+  /* On a live, unfrozen Google Map the canvas +/- buttons should zoom the
+     MAP (load more/less tiles), not CSS-scale an uploaded photo. Route to the
+     map's own zoom so the buttons actually work in map mode. */
+  try{
+    var _hasPlot=(typeof mapLockState==='function') && mapLockState().hasPlot;
+    if(window._gmap && !_hasPlot && typeof _gmap.getZoom==='function'){
+      var z=_gmap.getZoom()||18;
+      _gmap.setZoom(z + (d>0?1:-1));
+      return;
+    }
+  }catch(e){}
+  if(mapMode!=='upload')return;
+  BG.scale=Math.max(0.1,Math.min(10,BG.scale+d));applyBg();
+}
 function resetBgZoom(){if(mapMode!=='upload')return;BG.scale=1;BG.tx=0;BG.ty=0;applyBg();}
 
 function loadBg(e){const f=e.target.files[0];if(!f)return;const r=new FileReader();r.onload=ev=>{const img=document.getElementById('backdrop');img.src=ev.target.result;img.style.display='block';BG.scale=1;BG.tx=0;BG.ty=0;applyBg();document.getElementById('map-img').src=ev.target.result;document.getElementById('map-img').style.display='block';document.getElementById('map-area').classList.add('hasimg');document.getElementById('map-hint').style.display='none';window._frozenMapImg=ev.target.result;window._frozenMapStencil=null;window._stencilOn=false;window._isUploadedPhoto=true;var sb=document.getElementById('stencil-btn');if(sb){sb.style.display='block';sb.textContent='◈ Convert to B&W Stencil';sb.style.color='#34A853';sb.style.borderColor='rgba(52,168,83,.35)';}
@@ -6461,7 +6475,9 @@ function _warnIfMapUnlocked(){
 
 function addEl(opts){
   _warnIfMapUnlocked();
-  const el={id:uid(),...opts};S.elements.push(el);renderEl(el);updCount();renderLegend();pushHist();return el;
+  const el={id:uid(),...opts};S.elements.push(el);
+  try{ if(typeof _geoStampElement==='function') _geoStampElement(el); }catch(e){}
+  renderEl(el);updCount();renderLegend();pushHist();return el;
 }
 
 // == EXPORT FOR CAD TOOL (Enlarged Plot Plan generator) =====
@@ -7287,6 +7303,15 @@ function globalMM(e){
 function globalMU(e){
   if(typeof _asmPartInteractEnd==='function') _asmPartInteractEnd();
   if(typeof _shapeInteractEnd==='function') _shapeInteractEnd();
+  /* If an element was just moved/resized/rotated on a live map, update its
+     geo anchor so it stays at the NEW spot when the map pans. */
+  try{
+    var moved=S.drag||S.resizing||S.rotating;
+    if(moved && typeof _geoStampElement==='function'){
+      var el=(S.elements||[]).find(function(x){ return x.id===moved; });
+      if(el) _geoStampElement(el);
+    }
+  }catch(_e){}
   S.drag=null;S.resizing=null;S.rotating=null;bgPan=false;
   document.getElementById('cw').style.cursor='';
 }
@@ -18599,7 +18624,23 @@ async function _loadProject(id){
               _gmap.setZoom(_z);
             }catch(e){}
           }
+          /* Lock placed equipment to the map: reproject geo-anchored items
+             whenever the map pans/zooms, so they travel with the ground. */
+          try{ if(typeof _geoWireMapListeners==='function') _geoWireMapListeners(); }catch(e){}
+
           try{ window._lastCenter={lat:ms.lat,lng:ms.lng}; window._lastZoom=_z; }catch(e){}
+
+          /* A freshly-loaded live map is unlocked, so #sc must pass pointer
+             events through immediately — otherwise the map can't be panned or
+             zoomed until the user toggles Lock (the "+/- and drag do nothing"
+             bug). Only when there's no committed plot/frozen backdrop. */
+          try{
+            var _scEl=document.getElementById('sc');
+            var _hasPlot=(typeof mapLockState==='function') && mapLockState().hasPlot;
+            if(_scEl && window._gmap && !_hasPlot && !window._mapLocked){
+              _scEl.style.pointerEvents='none';
+            }
+          }catch(e){}
 
           // ---- SELF-CORRECTING VIEW LOCK ---------------------------------
           // Root cause of "reopens zoomed on the wrong spot until you toggle
@@ -23038,6 +23079,86 @@ function _getCanvasSize() {
   const sc = document.getElementById('sc');
   return sc ? { w: sc.offsetWidth, h: sc.offsetHeight } : { w: 1200, h: 800 };
 }
+
+/* ══════════════════════════════════════════════════════════════════════
+   GEO-ANCHORING  (equipment locked to lat/lng, moves with the live map)
+   ----------------------------------------------------------------------
+   AutoCAD/GIS behavior: anything placed on a live map belongs to a real
+   coordinate, not a screen pixel. So when the map pans or zooms, the
+   equipment must travel with the ground beneath it. We do this by:
+     1. Recording _geoLat/_geoLng whenever an element is placed or moved on
+        a live, unfrozen map (its pixel position -> lat/lng).
+     2. Re-projecting every geo-anchored element back to pixels each time the
+        map settles (idle), so it stays pinned to its coordinate.
+   A committed/frozen plot uses fixed pixels (the backdrop is static), so we
+   only reproject while a live map is active and unlocked.
+   ══════════════════════════════════════════════════════════════════════ */
+
+/* Current live-map state, or null if no live map / frozen. */
+function _liveMapState(){
+  try{
+    if(!window._gmap || !_gmap.getCenter) return null;
+    if(typeof mapLockState==='function' && mapLockState().hasPlot) return null; /* frozen */
+    var c=_gmap.getCenter();
+    return { lat:c.lat(), lng:c.lng(), zoom:_gmap.getZoom() };
+  }catch(e){ return null; }
+}
+
+/* Stamp an element's current pixel position as a lat/lng, if a live map is
+   active. Called after placement and after a drag/resize ends. */
+function _geoStampElement(el){
+  if(!el) return;
+  var ms=_liveMapState(); if(!ms) return;
+  var sz=_getCanvasSize();
+  /* Anchor on the element's CENTER so rotation/resize keep the coordinate. */
+  var cx=el.x+((el.w||60)/2), cy=el.y+((el.h||el.w||60)/2);
+  var geo=_pxToLatLng(cx, cy, ms, sz.w, sz.h);
+  if(geo){ el._geoLat=geo.lat; el._geoLng=geo.lng; }
+}
+window._geoStampElement=_geoStampElement;
+
+/* Re-project every geo-anchored element to the current map view and move its
+   DOM node. Runs on map idle so equipment tracks pan/zoom. */
+var _geoReprojecting=false;
+function _geoReprojectAll(){
+  if(_geoReprojecting) return;
+  var ms=_liveMapState(); if(!ms) return;
+  _geoReprojecting=true;
+  try{
+    var sz=_getCanvasSize();
+    (S.elements||[]).forEach(function(el){
+      if(el._geoLat==null || el._geoLng==null) return;
+      var px=_latLngToPx(el._geoLat, el._geoLng, ms, sz.w, sz.h);
+      if(!px) return;
+      /* px is the CENTER; convert back to top-left for x,y. */
+      el.x=px.x-((el.w||60)/2);
+      el.y=px.y-((el.h||el.w||60)/2);
+      var dom=document.querySelector('[data-elid="'+el.id+'"]');
+      if(dom){ dom.style.left=el.x+'px'; dom.style.top=el.y+'px'; }
+    });
+    /* Conduits/shapes follow their endpoints — repaint if present. */
+    if(typeof _refreshConduitStyle==='function'){ try{ _refreshConduitStyle(); }catch(e){} }
+    if(typeof renderConduit==='function' && S.conduits){ try{ S.conduits.forEach(function(c){ renderConduit(c); }); }catch(e){} }
+  }catch(e){}
+  _geoReprojecting=false;
+}
+window._geoReprojectAll=_geoReprojectAll;
+
+/* Wire map-move listeners once, when a live map exists. Idempotent. */
+function _geoWireMapListeners(){
+  try{
+    if(!window._gmap || window._geoListenersWired) return;
+    window._geoListenersWired=true;
+    _gmap.addListener('idle', _geoReprojectAll);
+    _gmap.addListener('bounds_changed', function(){
+      /* Light-touch live tracking during drag (throttled by rAF). */
+      if(window._geoRafPending) return;
+      window._geoRafPending=true;
+      requestAnimationFrame(function(){ window._geoRafPending=false; _geoReprojectAll(); });
+    });
+  }catch(e){}
+}
+window._geoWireMapListeners=_geoWireMapListeners;
 
 function _encodeElementsToGeo(mapState) {
   if(!mapState || !mapState.lat) return null;
@@ -39782,6 +39903,19 @@ function setMapInteractive(on, intent){
     if(wrap) wrap.style.pointerEvents=pe;
     if(fr)   fr.style.pointerEvents=pe;
     if(blk)  blk.style.display = on ? 'none' : 'block';
+    /* CRITICAL for desktop + touch: #sc sits on TOP of the map and, by
+       default, catches every mouse/touch event — so an unlocked live map
+       could never be panned or zoomed (the +/- and drag did nothing). When
+       the map is interactive, let #sc pass events THROUGH to the map. The
+       equipment elements (.cel) set pointer-events:auto on themselves, so
+       they stay draggable even while the empty canvas passes through. When
+       the map is frozen/locked, #sc reclaims events so the plot behaves
+       normally. */
+    var sc = document.getElementById('sc');
+    if(sc){
+      if(on && window._gmap){ sc.style.pointerEvents='none'; }
+      else { sc.style.pointerEvents=''; }
+    }
     if(window._gmap && _gmap.setOptions){
       _gmap.setOptions(on
         ? { gestureHandling:'greedy', zoomControl:true,  scrollwheel:true,  draggable:true,  disableDoubleClickZoom:false, keyboardShortcuts:true }
