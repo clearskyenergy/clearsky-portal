@@ -82,7 +82,7 @@ window.addEventListener('unhandledrejection', function(e) {
    it would swallow the map's drag and panning would die exactly as it did
    before. All input goes to the map; covClick and covMove are driven from
    map events, which is why placing and panning can coexist. */
-#cov { pointer-events: none !important; }
+#cov { pointer-events: auto; }
 
 .ps-page{display:block;position:relative;width:17in;height:11in;overflow:hidden;background:#F5F0E8;page-break-after:always;page-break-inside:avoid;margin:0 auto 20px;border:1px solid #ccc}
 :root{
@@ -1480,6 +1480,7 @@ window.onerror = function(msg, src, line, col, err) {
       <div class="rpanel-body">
         
         <button class="rbtn" onclick="openRpPanel('summary')" title="Site map summary — BESS, conduit, equipment, DER"><span class="rb-ico">▤</span><span class="rb-lbl">Summary</span></button>
+        <button class="rbtn" id="rb-site" aria-pressed="false" onclick="rbRun(toggleSitePanel)" title="Live takeoff measured from the geometry, plus the ground-vs-pixel scale proof"><span class="rb-ico" style="color:#00D4FF">▦</span><span class="rb-lbl">Site<br>Map</span></button>
         <button class="rbtn" id="rb-native" aria-pressed="false" onclick="rbRun(toggleNativeLayer)" title="Draw everything as native Google Maps objects — locked to the ground, to scale, no reprojection"><span class="rb-ico" style="color:#2FB54A">◈</span><span class="rb-lbl">Native<br>Layer</span></button>
         <button class="rbtn" id="rb-dock-left" aria-pressed="false" onclick="rbRun(toggleDockLeft)" title="Dock the tool panel to the left of the screen as a vertical column"><span class="rb-ico">◧</span><span class="rb-lbl">Dock Left</span></button>
         <button class="rbtn" onclick="rbRun(toggleDiagPanel)" title="Anchor diagnostics — why equipment is or is not locked to the ground"><span class="rb-ico">⚠</span><span class="rb-lbl">Diagnose</span></button>
@@ -18717,7 +18718,7 @@ async function _loadProject(id){
           var _freshMap=false;
           if(!window._gmap){
             _freshMap=true;
-            window._gmap=new google.maps.Map(md,{
+            _gmap = window._gmap = new google.maps.Map(md,{
               center:{lat:ms.lat,lng:ms.lng}, zoom:_z,
               mapTypeId:'satellite', tilt:0, streetViewControl:false, fullscreenControl:false,
               isFractionalZoomEnabled:false,
@@ -18948,7 +18949,7 @@ async function _loadProject(id){
             const md = document.getElementById('gmap-wrap');
             if (!md) return;
             if (!window._gmap) {
-              window._gmap = new google.maps.Map(md, {
+              _gmap = window._gmap = new google.maps.Map(md, {
                 center:{lat:ms.lat, lng:ms.lng}, zoom:ms.zoom||18,
                 mapTypeId:'satellite', tilt:0, streetViewControl:false, fullscreenControl:false, isFractionalZoomEnabled:false
               });
@@ -18969,7 +18970,7 @@ async function _loadProject(id){
           const md=document.getElementById('gmap-wrap');
           if(!md){doRender(null);return;}
           if(!window._gmap){
-            window._gmap=new google.maps.Map(md,{
+            _gmap = window._gmap = new google.maps.Map(md,{
               center:{lat:ms.lat,lng:ms.lng},zoom:ms.zoom||18,
               mapTypeId:'satellite',tilt:0,streetViewControl:false,fullscreenControl:false,isFractionalZoomEnabled:false
             });
@@ -40075,11 +40076,19 @@ function setMapInteractive(on, intent){
        normally. */
     var sc = document.getElementById('sc');
     if(sc){
-      if(on && window._gmap){ sc.style.pointerEvents='none'; }
+      var _mm = (typeof _gmap!=='undefined' && _gmap) ? _gmap : window._gmap;
+      if(on && _mm){ sc.style.pointerEvents='none'; }
       else { sc.style.pointerEvents=''; }
     }
-    if(window._gmap && _gmap.setOptions){
-      _gmap.setOptions(on
+    /* Resolve ONCE. This guarded on window._gmap and then used the bare
+       lexical _gmap; when they disagreed the guard passed and this line
+       threw inside the enclosing try/catch. The visible result was a map
+       that had been uncovered (#sc set to none, just above) but never had
+       gestureHandling restored to 'greedy' - so it looked fine and would
+       not pan. */
+    var _m = (typeof _gmap!=='undefined' && _gmap) ? _gmap : window._gmap;
+    if(_m && _m.setOptions){
+      _m.setOptions(on
         ? { gestureHandling:'greedy', zoomControl:true,  scrollwheel:true,  draggable:true,  disableDoubleClickZoom:false, keyboardShortcuts:true }
         : { gestureHandling:'none',   zoomControl:false, scrollwheel:false, draggable:false, disableDoubleClickZoom:true,  keyboardShortcuts:false });
     }
@@ -46001,6 +46010,378 @@ window._crmToastModal=_crmToastModal;
   };
   /* Publish immediately so anything reading it early gets the right value. */
   setType(current(), true);
+})();
+</script>
+<!-- ================= GESTURES STAY ON =================
+     Uncovering the map is not the same as enabling its gestures. Both
+     have to hold, and only one of them was being checked.
+     ==================================================== -->
+<script>
+(function(){
+  function MAP(){ try{ if(typeof _gmap!=='undefined'&&_gmap) return _gmap; }catch(e){} return window._gmap||null; }
+
+  setInterval(function(){
+    try{
+      if(window._committedPlot) return;
+      var m=MAP(); if(!m||!m.get||!m.setOptions) return;
+      var gh=null; try{ gh=m.get('gestureHandling'); }catch(e){}
+      if(gh==='none' || m.get('draggable')===false){
+        m.setOptions({ gestureHandling:'greedy', draggable:true, scrollwheel:true,
+                       zoomControl:true, disableDoubleClickZoom:false, keyboardShortcuts:true });
+        if(window.console) console.info('[gestures] re-enabled (was '+gh+')');
+      }
+    }catch(e){}
+  }, 900);
+
+  window.OmegaGestures={
+    status:function(){
+      var m=MAP(), sc=document.getElementById('sc');
+      var o={ map:!!m,
+              gestureHandling: m&&m.get?(m.get('gestureHandling')||'(unset)'):'(no map)',
+              draggable: m&&m.get?m.get('draggable'):null,
+              scrollwheel: m&&m.get?m.get('scrollwheel'):null,
+              scPointerEvents: sc?(sc.style.pointerEvents||'(default)'):'absent',
+              bindingsAgree: (function(){
+                try{ return (typeof _gmap!=='undefined' && _gmap)===(window._gmap||null)
+                            || (typeof _gmap!=='undefined' && _gmap===window._gmap); }
+                catch(e){ return null; } })() };
+      o.verdict = !o.map ? 'No map.'
+        : o.scPointerEvents!=='none' ? '#sc is intercepting - the map cannot see gestures.'
+        : (o.gestureHandling==='none'||o.draggable===false) ? 'Map is uncovered but gestures are disabled.'
+        : 'Uncovered and gestures enabled - panning should work.';
+      console.table?console.table(o):console.log(o);
+      console.info(o.verdict);
+      return o;
+    },
+    force:function(){
+      var m=MAP(); if(!m) return false;
+      m.setOptions({gestureHandling:'greedy',draggable:true,scrollwheel:true,zoomControl:true});
+      var sc=document.getElementById('sc'); if(sc) sc.style.pointerEvents='none';
+      return true;
+    }
+  };
+})();
+</script>
+<!-- ================= SITE MAP PANEL =================
+     The prototype's working surface, reading the editor's own model.
+     ================================================== -->
+<style>
+  #omega-site{
+    position:fixed; right:14px; bottom:14px; width:236px; z-index:4200;
+    background:var(--panel,#0E1D33); border:1px solid var(--border,#1C3350);
+    border-radius:10px; box-shadow:0 8px 28px rgba(0,0,0,.45);
+    font-family:var(--font-sans,system-ui,sans-serif); color:var(--text,#E8F0FA);
+    cursor:grab; user-select:none;
+  }
+  #omega-site:active{ cursor:grabbing; }
+  #omega-site.hidden{ display:none; }
+  #omega-site button{ cursor:pointer; }
+  #os-bar{
+    display:flex; align-items:center; gap:6px; padding:6px 9px;
+    border-bottom:1px solid var(--border,#1C3350);
+    font:600 10px/1 var(--font-mono,ui-monospace,monospace);
+    letter-spacing:.14em; color:var(--sub,#7D95B4); text-transform:uppercase;
+  }
+  #os-bar .os-sp{ flex:1; }
+  #os-bar button{
+    all:unset; width:17px; height:17px; display:grid; place-items:center;
+    border-radius:4px; color:var(--sub,#7D95B4); font-size:12px; line-height:1;
+  }
+  #os-bar button:hover{ background:rgba(255,255,255,.08); color:var(--text,#E8F0FA); }
+  #os-body{ padding:9px 10px 10px; }
+  #omega-site.min #os-body{ display:none; }
+  .os-row{
+    display:flex; justify-content:space-between; align-items:baseline;
+    font:400 11px/1.85 var(--font-mono,ui-monospace,monospace); color:var(--sub,#7D95B4);
+  }
+  .os-row b{ color:var(--text,#E8F0FA); font-weight:500; }
+  .os-h{
+    font:600 9px/1 var(--font-mono,ui-monospace,monospace); letter-spacing:.16em;
+    color:var(--sub,#7D95B4); text-transform:uppercase; margin:9px 0 5px;
+  }
+  .os-proof{
+    background:rgba(0,0,0,.22); border:1px solid var(--border,#1C3350);
+    border-radius:6px; padding:6px 8px; margin-top:2px;
+  }
+  .os-proof .os-fix{ color:var(--ok,#2FB54A); }
+  .os-proof .os-px{ color:var(--hl,#00D4FF); }
+  .os-btns{ display:flex; flex-direction:column; gap:4px; margin-top:9px; }
+  .os-btns button{
+    all:unset; text-align:center; padding:6px 8px; border-radius:5px;
+    border:1px solid var(--border,#1C3350); background:rgba(255,255,255,.03);
+    font:500 11px/1 var(--font-sans,system-ui,sans-serif); color:var(--text,#E8F0FA);
+  }
+  .os-btns button:hover{ background:rgba(0,212,255,.14); border-color:var(--hl,#00D4FF); }
+</style>
+<script>
+(function(){
+  var el=null, timer=null;
+
+  function S_(){ try{ return (typeof S!=='undefined'&&S)?S:null; }catch(e){ return null; } }
+  function MAP(){ try{ if(typeof _gmap!=='undefined'&&_gmap) return _gmap; }catch(e){} return window._gmap||null; }
+  function sph(){ return (window.google&&google.maps&&google.maps.geometry&&google.maps.geometry.spherical)||null; }
+  function LL(p){ return new google.maps.LatLng(p.lat, p.lng); }
+
+  /* ---- measurement, straight from lat/lng ---- */
+  function areaSf(path){
+    var s=sph(); if(!s||!s.computeArea||!path||path.length<3) return 0;
+    try{ return s.computeArea(path.map(LL))*10.7639; }catch(e){ return 0; }
+  }
+  function lengthFt(path){
+    var s=sph(); if(!s||!s.computeLength||!path||path.length<2) return 0;
+    try{ return s.computeLength(path.map(LL))*3.28084; }catch(e){ return 0; }
+  }
+  /* A stencil stores one point plus real dimensions, so its footprint is
+     wf*lf directly - no need to reconstruct the ring to measure it. */
+  function footprintSf(sh){
+    if(sh._geoPts && sh._geoPts.length===1 && (sh.wf||sh.lf)) return (sh.wf||9)*(sh.lf||18);
+    if(sh._geoPts && sh._geoPts.length>=3) return areaSf(sh._geoPts.filter(Boolean));
+    return 0;
+  }
+
+  function takeoff(){
+    var s=S_(); if(!s) return {n:0,area:0,run:0,elements:0};
+    var n=0, area=0, run=0, els=0;
+    (s.shapes||[]).forEach(function(sh){
+      if(!sh._geoPts) return;
+      var a=footprintSf(sh);
+      if(a>0){ n++; area+=a; }
+    });
+    (s.conduits||[]).forEach(function(c){
+      if(!c._geoPts) return;
+      run += lengthFt(c._geoPts.filter(Boolean));
+    });
+    (s.elements||[]).forEach(function(e){
+      if(e._geoLat==null) return;
+      els++;
+      if(e._geoWFt>0 && e._geoHFt>0){ n++; area += e._geoWFt*e._geoHFt; }
+    });
+    return {n:n, area:area, run:run, elements:els};
+  }
+
+  /* ---- the proof: ground fixed, pixels not ---- */
+  function proof(){
+    var m=MAP(); if(!m||!m.getCenter) return null;
+    var c=m.getCenter(); if(!c) return null;
+    var z=m.getZoom();
+    var mPerPx=156543.03392*Math.cos(c.lat()*Math.PI/180)/Math.pow(2,z);
+    var pxPerFt=1/(mPerPx*3.280839895013123);
+    return { zoom:Math.round(z*100)/100, pxPerFt:pxPerFt,
+             w:Math.round(9*pxPerFt), h:Math.round(18*pxPerFt) };
+  }
+
+  function refresh(){
+    if(!el || el.classList.contains('hidden')) return;
+    var t=takeoff(), p=proof();
+    set('os-n', t.n);
+    set('os-a', Math.round(t.area).toLocaleString()+' sf');
+    set('os-r', Math.round(t.run).toLocaleString()+' ft');
+    set('os-e', t.elements);
+    set('os-z', p?p.zoom:'\u2014');
+    set('os-s', p?(p.pxPerFt.toFixed(3)+' px/ft'):'\u2014');
+    set('os-px', p?(p.w+' \u00d7 '+p.h+' px'):'\u2014');
+  }
+  function set(id,v){ var e=document.getElementById(id); if(e) e.textContent=String(v); }
+
+  /* ---- frame everything ---- */
+  function fit(){
+    var s=S_(), m=MAP();
+    if(!s||!m||!m.fitBounds||!window.google) return false;
+    var b=new google.maps.LatLngBounds(), n=0;
+    (s.shapes||[]).forEach(function(sh){ (sh._geoPts||[]).forEach(function(p){
+      if(p){ b.extend(LL(p)); n++; } }); });
+    (s.conduits||[]).forEach(function(c){ (c._geoPts||[]).forEach(function(p){
+      if(p){ b.extend(LL(p)); n++; } }); });
+    (s.elements||[]).forEach(function(e){
+      if(e._geoLat!=null){ b.extend(LL({lat:e._geoLat,lng:e._geoLng})); n++; } });
+    if(!n){ banner('Nothing anchored yet to frame.'); return false; }
+    try{ m.fitBounds(b, 60); }catch(e){ return false; }
+    return true;
+  }
+
+  /* ---- GeoJSON, coordinates straight out ---- */
+  function geojson(){
+    var s=S_(); if(!s) return null;
+    var f=[];
+    (s.shapes||[]).forEach(function(sh){
+      if(!sh._geoPts) return;
+      if(sh._geoPts.length===1 && (sh.wf||sh.lf)){
+        var c=sh._geoPts[0];
+        f.push({ type:'Feature',
+          geometry:{ type:'Point', coordinates:[c.lng, c.lat] },
+          properties:{ kind:sh.kind||'shape', w_ft:sh.wf||null, h_ft:sh.lf||null,
+                       area_sf:Math.round(footprintSf(sh)) } });
+        return;
+      }
+      var pts=sh._geoPts.filter(Boolean);
+      if(pts.length<3) return;
+      var ring=pts.map(function(p){ return [p.lng,p.lat]; });
+      ring.push(ring[0]);
+      f.push({ type:'Feature', geometry:{ type:'Polygon', coordinates:[ring] },
+               properties:{ kind:sh.kind||'shape', area_sf:Math.round(areaSf(pts)) } });
+    });
+    (s.conduits||[]).forEach(function(c){
+      var pts=(c._geoPts||[]).filter(Boolean);
+      if(pts.length<2) return;
+      f.push({ type:'Feature',
+        geometry:{ type:'LineString', coordinates:pts.map(function(p){ return [p.lng,p.lat]; }) },
+        properties:{ kind:'conduit', length_ft:+lengthFt(pts).toFixed(1) } });
+    });
+    (s.elements||[]).forEach(function(e){
+      if(e._geoLat==null) return;
+      f.push({ type:'Feature',
+        geometry:{ type:'Point', coordinates:[e._geoLng, e._geoLat] },
+        properties:{ kind:e.type||'element', w_ft:e._geoWFt||null, h_ft:e._geoHFt||null } });
+    });
+    return { type:'FeatureCollection', features:f };
+  }
+
+  function exportGeoJSON(){
+    var g=geojson();
+    if(!g || !g.features.length){ banner('Nothing anchored to export yet.'); return false; }
+    try{
+      var blob=new Blob([JSON.stringify(g,null,2)],{type:'application/geo+json'});
+      var a=document.createElement('a');
+      a.href=URL.createObjectURL(blob);
+      var nm=(document.getElementById('pname')||{}).value||'site';
+      a.download=nm.replace(/[^\w\-]+/g,'_')+'.geojson';
+      a.click(); URL.revokeObjectURL(a.href);
+      banner(g.features.length+' feature(s) exported.');
+      return true;
+    }catch(e){ banner('Export failed: '+(e&&e.message)); return false; }
+  }
+
+  function banner(msg){
+    if(typeof showBanner==='function'){ try{ showBanner('wiz',msg); }catch(e){} }
+    else if(window.console) console.info('[site] '+msg);
+  }
+
+  /* ---- panel ---- */
+  function build(){
+    if(document.getElementById('omega-site')) return document.getElementById('omega-site');
+    var d=document.createElement('div');
+    d.id='omega-site'; d.className='hidden';
+    d.innerHTML=
+      '<div id="os-bar">SITE MAP<span class="os-sp"></span>'
+      + '<button id="os-min" title="Minimise">\u2212</button>'
+      + '<button id="os-x" title="Close">\u00d7</button></div>'
+      + '<div id="os-body">'
+      +   '<div class="os-h">Takeoff</div>'
+      +   '<div class="os-row"><span>Footprints</span><b id="os-n">0</b></div>'
+      +   '<div class="os-row"><span>Pad area</span><b id="os-a">0 sf</b></div>'
+      +   '<div class="os-row"><span>Conduit</span><b id="os-r">0 ft</b></div>'
+      +   '<div class="os-row"><span>Equipment</span><b id="os-e">0</b></div>'
+      +   '<div class="os-h">Scale proof</div>'
+      +   '<div class="os-proof">'
+      +     '<div class="os-row"><span>Zoom</span><b id="os-z">\u2014</b></div>'
+      +     '<div class="os-row"><span>Scale</span><b id="os-s">\u2014</b></div>'
+      +     '<div class="os-row"><span class="os-fix">9 \u00d7 18 ft</span>'
+      +       '<b class="os-px" id="os-px">\u2014</b></div>'
+      +   '</div>'
+      +   '<div class="os-btns">'
+      +     '<button id="os-fit">Frame everything</button>'
+      +     '<button id="os-geo">Export GeoJSON</button>'
+      +   '</div>'
+      + '</div>';
+    document.body.appendChild(d);
+    d.querySelector('#os-min').onclick=function(){ d.classList.toggle('min'); };
+    d.querySelector('#os-x').onclick=function(){ hide(); };
+    d.querySelector('#os-fit').onclick=fit;
+    d.querySelector('#os-geo').onclick=exportGeoJSON;
+    drag(d);
+    return d;
+  }
+
+  function drag(d){
+    var sx,sy,ox,oy,on=false;
+    function down(e){
+      if(e.target.closest && e.target.closest('button')) return;
+      on=true; var t=(e.touches&&e.touches[0])||e;
+      var r=d.getBoundingClientRect();
+      sx=t.clientX; sy=t.clientY; ox=r.left; oy=r.top;
+      d.style.right='auto'; d.style.bottom='auto';
+      d.style.left=ox+'px'; d.style.top=oy+'px';
+      e.preventDefault();
+    }
+    function move(e){
+      if(!on) return; var t=(e.touches&&e.touches[0])||e;
+      d.style.left=Math.max(0,Math.min(innerWidth-60, ox+t.clientX-sx))+'px';
+      d.style.top =Math.max(0,Math.min(innerHeight-30, oy+t.clientY-sy))+'px';
+    }
+    function up(){ on=false; }
+    d.addEventListener('mousedown',down); d.addEventListener('touchstart',down,{passive:false});
+    document.addEventListener('mousemove',move); document.addEventListener('touchmove',move,{passive:false});
+    document.addEventListener('mouseup',up); document.addEventListener('touchend',up);
+  }
+
+  function show(){
+    el=build(); el.classList.remove('hidden');
+    refresh();
+    if(!timer) timer=setInterval(refresh, 800);
+    var b=document.getElementById('rb-site'); if(b) b.setAttribute('aria-pressed','true');
+    try{ localStorage.setItem('omegaSitePanel','1'); }catch(e){}
+  }
+  function hide(){
+    if(el) el.classList.add('hidden');
+    if(timer){ clearInterval(timer); timer=null; }
+    var b=document.getElementById('rb-site'); if(b) b.setAttribute('aria-pressed','false');
+    try{ localStorage.setItem('omegaSitePanel','0'); }catch(e){}
+  }
+
+  window.toggleSitePanel=function(){
+    if(!el || el.classList.contains('hidden')) show(); else hide();
+    return !!(el && !el.classList.contains('hidden'));
+  };
+  window.OmegaSite={
+    show:show, hide:hide, refresh:refresh, fit:fit,
+    takeoff:takeoff, proof:proof, geojson:geojson, exportGeoJSON:exportGeoJSON
+  };
+
+  try{ if(localStorage.getItem('omegaSitePanel')==='1') setTimeout(show, 1200); }catch(e){}
+})();
+</script>
+<!-- ================= #cov INPUT ROUTING =================
+     Whether #cov takes events depends on one thing: is there a map.
+     ====================================================== -->
+<script>
+(function(){
+  function MAP(){ try{ if(typeof _gmap!=='undefined'&&_gmap) return _gmap; }catch(e){} return window._gmap||null; }
+
+  var last=null;
+  function route(){
+    var cov=document.getElementById('cov'); if(!cov) return;
+    /* Map present: the map is the input surface, so #cov must pass events
+       through or panning dies. No map: the pixel path is the only way to
+       draw, so #cov must receive them. */
+    var want = MAP() ? 'none' : 'auto';
+    if(want===last) return;
+    last=want;
+    try{ cov.style.setProperty('pointer-events', want, 'important'); }catch(e){
+      cov.style.pointerEvents = want;
+    }
+    if(window.console) console.info('[cov] pointer-events -> '+want+(want==='auto'?' (no map: pixel drawing)':' (map takes input)'));
+  }
+  setInterval(route, 500);
+  route();
+
+  window.OmegaCov={
+    status:function(){
+      var cov=document.getElementById('cov'), sc=document.getElementById('sc');
+      var o={ mapPresent:!!MAP(),
+              covPointerEvents: cov?getComputedStyle(cov).pointerEvents:'absent',
+              covVisible: cov?(getComputedStyle(cov).display!=='none'):false,
+              scPointerEvents: sc?(sc.style.pointerEvents||'(default)'):'absent',
+              mode:(function(){ try{ return (typeof S!=='undefined'&&S)?S.mode:'?'; }catch(e){ return '?'; } })() };
+      o.verdict = o.mapPresent
+        ? (o.covPointerEvents==='none' ? 'Map present - map takes input, native placement.'
+                                       : 'WARNING: #cov is intercepting; the map will not pan.')
+        : (o.covPointerEvents==='auto' ? 'No map - #cov takes input, pixel drawing works.'
+                                       : 'WARNING: no map AND #cov disabled - drawing is dead.');
+      console.table?console.table(o):console.log(o);
+      console.info(o.verdict);
+      return o;
+    }
+  };
 })();
 </script>
 </body>
