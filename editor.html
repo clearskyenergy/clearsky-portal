@@ -43613,5 +43613,149 @@ window._crmToastModal=_crmToastModal;
   if(window.console) console.info('[geo] eager anchoring armed. OmegaGeo.status() / .audit() / .enableScaling()');
 })();
 </script>
+<!-- ================= COMPASS / VIEWPORT PAN =================
+     The canvas shows ONE view of an unbounded map. These arrows move
+     that view; they do not move the drawing. Everything anchored keeps
+     its ground position, so you can pan to a neighbouring parcel, place
+     a BESS, and pan back to find the chargers exactly where you left
+     them.
+
+     Pan step is 55% of the viewport, so a full screen-width of context
+     is never lost between steps - there is always overlap to orient by.
+     ========================================================== -->
+<style>
+  #omega-compass{
+    position:absolute; left:14px; top:50%; transform:translateY(-50%);
+    z-index:330; display:grid; grid-template-columns:repeat(3,26px);
+    grid-template-rows:repeat(3,26px); gap:2px; padding:5px;
+    background:rgba(10,22,40,.82); border:1px solid #1C3350; border-radius:7px;
+    box-shadow:0 6px 18px rgba(0,0,0,.45); user-select:none;
+    font-family:'IBM Plex Mono',monospace;
+  }
+  #omega-compass button{
+    all:unset; display:flex; align-items:center; justify-content:center;
+    cursor:pointer; color:#7D95B4; font-size:12px; font-weight:600;
+    border-radius:4px; transition:background .12s,color .12s;
+  }
+  #omega-compass button:hover{ background:rgba(0,212,255,.16); color:#00D4FF; }
+  #omega-compass button:active{ background:rgba(0,212,255,.3); }
+  #omega-compass button:focus-visible{ outline:2px solid #00D4FF; outline-offset:-2px; }
+  #omega-compass .cmp-mid{ color:#2FB54A; font-size:9px; letter-spacing:.04em; }
+  #omega-compass.locked button{ color:#3A4C63; cursor:not-allowed; }
+  #omega-compass.locked button:hover{ background:none; color:#3A4C63; }
+  #omega-compass .cmp-spacer{ pointer-events:none; }
+  @media (max-width:760px){ #omega-compass{ left:8px; grid-template-columns:repeat(3,30px); grid-template-rows:repeat(3,30px); } }
+</style>
+<script>
+(function(){
+  var STEP=0.55;                      /* fraction of the viewport per press */
+  var el=null;
+
+  function map(){ return window._gmap; }
+  function locked(){
+    if(window._committedPlot) return 'plot';
+    if(window._userLockedMap || window._mapLocked) return 'lock';
+    return null;
+  }
+
+  function viewport(){
+    var d=document.getElementById('sc');
+    return { w:(d&&d.clientWidth)||900, h:(d&&d.clientHeight)||600 };
+  }
+
+  function pan(dxF,dyF){
+    var why=locked();
+    if(why){ nudge(why); return; }
+    var m=map(); if(!m||!m.panBy) return;
+    var v=viewport();
+    /* panBy is animated by the API when the distance is under one
+       viewport, which is what makes the new imagery slide in. */
+    m.panBy(Math.round(dxF*v.w*STEP), Math.round(dyF*v.h*STEP));
+  }
+
+  function fit(){
+    var why=locked();
+    if(why){ nudge(why); return; }
+    var m=map(); if(!m) return;
+    /* Frame everything anchored - the drawing, not the current view. */
+    try{
+      var b=new google.maps.LatLngBounds(), n=0, S=window.S||{};
+      (S.elements||[]).forEach(function(e){
+        if(e._geoLat!=null){ b.extend(new google.maps.LatLng(e._geoLat,e._geoLng)); n++; }
+      });
+      [(S.shapes||[]),(S.conduits||[])].forEach(function(arr){
+        arr.forEach(function(o){ (o._geoPts||[]).forEach(function(g){
+          if(g){ b.extend(new google.maps.LatLng(g.lat,g.lng)); n++; }
+        }); });
+      });
+      if(n){ m.fitBounds(b,64); }
+      else if(window.console){ console.info('[compass] nothing anchored yet - OmegaGeo.status()'); }
+    }catch(e){}
+  }
+
+  function nudge(why){
+    var msg = why==='plot'
+      ? 'Map is locked because a plot is committed. Use Clear Plot to move the view.'
+      : 'Map is locked. Use Unlock Map, or run OmegaMap.unlock().';
+    if(typeof showBanner==='function'){ try{ showBanner('wiz', msg); return; }catch(e){} }
+    if(window.console) console.info('[compass] '+msg);
+  }
+
+  function build(){
+    if(document.getElementById('omega-compass')) return true;
+    var host=document.getElementById('sc'); if(!host) return false;
+    el=document.createElement('div');
+    el.id='omega-compass';
+    var cells=[
+      ['',null],            ['N',[0,-1]],  ['',null],
+      ['W',[-1,0]],         ['FIT','fit'], ['E',[1,0]],
+      ['',null],            ['S',[0,1]],   ['',null]
+    ];
+    cells.forEach(function(c){
+      if(!c[1]){ var s=document.createElement('div'); s.className='cmp-spacer'; el.appendChild(s); return; }
+      var b=document.createElement('button');
+      b.type='button';
+      b.textContent = c[0]==='FIT' ? 'FIT' : c[0];
+      if(c[0]==='FIT') b.className='cmp-mid';
+      b.title = c[0]==='FIT' ? 'Frame the whole drawing'
+                             : 'Pan ' + {N:'north',S:'south',E:'east',W:'west'}[c[0]];
+      b.setAttribute('aria-label', b.title);
+      b.addEventListener('click', function(ev){
+        ev.preventDefault(); ev.stopPropagation();
+        if(c[1]==='fit') fit(); else pan(c[1][0], c[1][1]);
+      });
+      el.appendChild(b);
+    });
+    host.appendChild(el);
+    return true;
+  }
+
+  /* Arrow keys do the same thing, unless you are typing. */
+  document.addEventListener('keydown', function(e){
+    if(['INPUT','TEXTAREA','SELECT'].indexOf(e.target.tagName)>=0) return;
+    if(e.target.isContentEditable) return;
+    if(e.metaKey||e.ctrlKey||e.altKey) return;
+    var d={ArrowUp:[0,-1],ArrowDown:[0,1],ArrowLeft:[-1,0],ArrowRight:[1,0]}[e.key];
+    if(!d) return;
+    e.preventDefault();
+    pan(d[0],d[1]);
+  });
+
+  function sync(){
+    if(!el) return;
+    el.classList.toggle('locked', !!locked());
+  }
+
+  setInterval(function(){ build(); sync(); }, 500);
+  if(document.readyState==='loading') document.addEventListener('DOMContentLoaded',build);
+  else build();
+
+  window.OmegaCompass={
+    pan:pan, fit:fit,
+    setStep:function(f){ STEP=Math.max(0.1,Math.min(1,f)); return STEP; }
+  };
+  if(window.console) console.info('[compass] arrows pan the view; arrow keys work too. FIT frames the drawing.');
+})();
+</script>
 </body>
 </html>
