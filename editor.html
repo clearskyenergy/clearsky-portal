@@ -46103,14 +46103,34 @@ window._crmToastModal=_crmToastModal;
     try{
       if(window._committedPlot) return;
       var m=MAP(); if(!m||!m.get||!m.setOptions) return;
-      var gh=null; try{ gh=m.get('gestureHandling'); }catch(e){}
-      if(gh==='none' || m.get('draggable')===false){
+      var gh=null, dr=null;
+      try{ gh=m.get('gestureHandling'); dr=m.get('draggable'); }catch(e){}
+      /* Check for NOT-ENABLED, not for explicitly-disabled.
+         On a map whose options were never set, get() returns undefined -
+         not 'none' and not false - so the old condition
+             gh==='none' || draggable===false
+         was false and this never ran. It only ever repaired a map that had
+         been deliberately switched off, and silently ignored one that had
+         simply never been configured: zoom still worked through the +/-
+         buttons, which call the map directly, while dragging did nothing. */
+      if(gh!=='greedy' || dr!==true){
         m.setOptions({ gestureHandling:'greedy', draggable:true, scrollwheel:true,
                        zoomControl:true, disableDoubleClickZoom:false, keyboardShortcuts:true });
-        if(window.console) console.info('[gestures] re-enabled (was '+gh+')');
+        if(window.console) console.info('[gestures] enforced (was gestureHandling='+gh+', draggable='+dr+')');
       }
     }catch(e){}
   }, 900);
+
+  /* Enforce immediately on first sight of a map, so the very first drag
+     works rather than the one after the next poll. */
+  var seeded=false, t9=0;
+  var iv9=setInterval(function(){
+    if(seeded || ++t9>80){ clearInterval(iv9); return; }
+    var m=MAP(); if(!m||!m.setOptions) return;
+    seeded=true; clearInterval(iv9);
+    try{ m.setOptions({ gestureHandling:'greedy', draggable:true, scrollwheel:true,
+                        zoomControl:true, disableDoubleClickZoom:false, keyboardShortcuts:true }); }catch(e){}
+  }, 250);
 
   window.OmegaGestures={
     status:function(){
