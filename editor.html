@@ -1073,6 +1073,7 @@ window.onerror = function(msg, src, line, col, err) {
     <button class="menu-item" onclick="rbRun(openDcfcBuild)"><span class="mi-ico">🚗</span> EV Charging Build</button>
     <button class="menu-item" onclick="rbRun(openProjectsModal)"><span class="mi-ico">▤</span> Open Projects…</button>
     <button class="menu-item" onclick="rbRun(saveProject)"><span class="mi-ico">▽</span> Save<span class="mi-key">⌘S</span></button>
+    <div class="menu-sep"></div><button class="menu-item" onclick="rbRun(omegaPrint)"><span class="mi-ico">▽</span> Save<span class="mi-key">⌘S</span></button>
     <div class="menu-sep"></div>
     <button class="menu-item" onclick="rbRun(openBlueprintExport)"><span class="mi-ico">⎙</span> Print / PDF</button>
     <button class="menu-item" onclick="rbRun(openProposalExport)"><span class="mi-ico">▦</span> Proposal</button>
@@ -1388,6 +1389,11 @@ window.onerror = function(msg, src, line, col, err) {
   <div class="ribbon-page" data-page="modify">
     <div class="rpanel">
       <div class="rpanel-body">
+        <button class="rbtn" onclick="rbRun(ctxDuplicate)" title="Duplicate the selected element"><span class="rb-ico">⧉</span><span class="rb-lbl">Duplicate</span></button>
+        <button class="rbtn" onclick="rbRun(deleteSelectedConduit)" title="Delete the selected conduit run"><span class="rb-ico">✂</span><span class="rb-lbl">Delete<br>Conduit</span></button>
+        <button class="rbtn" onclick="rbRun(deleteSelectedShape)" title="Delete the selected shape"><span class="rb-ico">◳</span><span class="rb-lbl">Delete<br>Shape</span></button>
+        <button class="rbtn" onclick="rbRun(clearConduitSel)" title="Clear the current conduit selection"><span class="rb-ico">↺</span><span class="rb-lbl">Deselect</span></button>
+        <button class="rbtn" onclick="rbRun(clearSchematic)" title="Clear the one-line schematic"><span class="rb-ico">✕</span><span class="rb-lbl">Clear<br>Schematic</span></button>
         <button class="rbtn" onclick="rbRun(undoLast)"><span class="rb-ico">↺</span><span class="rb-lbl">Undo</span></button>
         <button class="rbtn" onclick="rbRun(function(){if(typeof S!=='undefined'&&S.sel)delSel()})"><span class="rb-ico">⌫</span><span class="rb-lbl">Delete</span></button>
       </div>
@@ -1465,11 +1471,13 @@ window.onerror = function(msg, src, line, col, err) {
     </div>
     <div class="rpanel">
       <div class="rpanel-body">
-        <button class="rbtn" onclick="openLpPanel()" title="Controls — satellite photo, site schematic, equipment"><span class="rb-ico">☰</span><span class="rb-lbl">Controls</span></button>
+        
         <button class="rbtn" onclick="openRpPanel('summary')" title="Site map summary — BESS, conduit, equipment, DER"><span class="rb-ico">▤</span><span class="rb-lbl">Summary</span></button>
+        <button class="rbtn" id="rb-dock-left" aria-pressed="false" onclick="rbRun(toggleDockLeft)" title="Dock the tool panel to the left of the screen as a vertical column"><span class="rb-ico">◧</span><span class="rb-lbl">Dock Left</span></button>
         <button class="rbtn" onclick="rbRun(toggleDiagPanel)" title="Anchor diagnostics — why equipment is or is not locked to the ground"><span class="rb-ico">⚠</span><span class="rb-lbl">Diagnose</span></button>
         <button class="rbtn" onclick="rbRun(toggleCompassPanel)" title="Compass — pan the view north / south / east / west, and frame the drawing"><span class="rb-ico">⊕</span><span class="rb-lbl">Compass</span></button>
         <button class="rbtn" onclick="toggleLayersPanel()" title="Layers — list, select, hide, reorder, delete all elements"><span class="rb-ico">▧</span><span class="rb-lbl">Layers</span></button>
+        <div class="omega-addr" title="Type a site address and press Enter to load the satellite map there"><span class="omega-addr-ico">◎</span><input id="omega-addr-in" type="text" placeholder="Site address…" autocomplete="off" spellcheck="false" onkeydown="if(event.key==='Enter'){event.preventDefault();omegaLoadMap();}"><button type="button" id="omega-addr-go" onclick="omegaLoadMap()">Load</button></div>
       </div>
       <div class="rpanel-cap">Panels</div>
     </div>
@@ -1482,7 +1490,9 @@ window.onerror = function(msg, src, line, col, err) {
         <button class="rbtn" onclick="rbRun(openPlotPlanExport)" title="Plot plan cover + site sheets (E0 / E1.1)"><span class="rb-ico">▤</span><span class="rb-lbl">Plot Plan<br>E0 / E1.1</span></button>
         <button class="rbtn" onclick="rbRun(openOneLineExport)" title="Single-line diagram (E2.0)"><span class="rb-ico">⚡</span><span class="rb-lbl">One-Line<br>E2.0</span></button>
         <button class="rbtn" onclick="rbRun(openBlueprintExport)" title="Full blueprint / Print to PDF"><span class="rb-ico">⎙</span><span class="rb-lbl">Blueprint<br>/ PDF</span></button>
-        <button class="rbtn" onclick="rbRun(sendToPermitCreator)" title="Assemble the full permit set"><span class="rb-ico">📋</span><span class="rb-lbl">Permit<br>Creator</span></button>
+        <button class="rbtn omega-beta" onclick="rbRun(omegaPermitBeta)" title="Permit Creator — in beta, access is granted by your administrator"><span class="rb-ico">📋</span><span class="rb-lbl">Permit<br>Creator</span><span class="omega-beta-tag">BETA</span></button>
+        <!-- Original call preserved; re-enable by restoring this onclick:
+             <button class="rbtn" onclick="rbRun(sendToPermitCreator)" title="Assemble the full permit set"><span class="rb-ico">📋</span><span class="rb-lbl">Permit<br>Creator</span></button> -->
       </div>
       <div class="rpanel-cap">Permit Documents</div>
     </div>
@@ -1523,6 +1533,12 @@ window.onerror = function(msg, src, line, col, err) {
 
   <!-- SETTINGS -->
   <div class="ribbon-page" data-page="settings">
+    <div class="rpanel">
+      <div class="rpanel-body">
+        <button class="rbtn" onclick="rbRun(openMapsKey)" title="Google Maps API key and Map ID — used by the satellite map, Static Maps and geocoding"><span class="rb-ico" style="color:#4285F4">🗺</span><span class="rb-lbl">Maps<br>Key</span></button>
+      </div>
+      <div class="rpanel-cap">API Keys</div>
+    </div>
     <div class="rpanel">
       <div class="rpanel-body">
         <button class="rbtn" onclick="rbRun(openCrmSettings)" title="Connect a CRM (Monday, Salesforce, HubSpot, Zoho) and map how OMEGA project data flows into it"><span class="rb-ico" style="color:#00D4FF">⇄</span><span class="rb-lbl">CRM<br>Integration</span></button>
@@ -3382,7 +3398,11 @@ const _CFG = {
     messagingSenderId: "742134484347",
     appId:             "1:742134484347:web:ab0f95fd221536158481de"
   },
-  googleMapsKey: "AIzaSyC0roZ_qMwtbVzqRLtNx9nrCeaGqrE1sNs",
+  /* Built-in default. Overridden at runtime by Settings > API Keys
+     (localStorage), so a machine can use a different key without
+     editing this file - which matters for file:// testing, where
+     HTTP-referrer restrictions cannot match. */
+  googleMapsKey: "AIzaSyAoVBrt4ECPs2t93pscAG1jH-srTEUSUqo",
   /* Optional Cloud-console Map ID. Two features need one:
        - AdvancedMarkerElement (the custom HTML equipment labels)
        - 3D tilt / rotation (the oblique view)
@@ -3393,6 +3413,17 @@ const _CFG = {
      back to classic draggable Markers and 3D tilt is unavailable. */
   googleMapsMapId: ""
 };
+
+/* --- API KEY OVERRIDE ------------------------------------------------
+   Applied immediately after _CFG is defined and before _loadMapsAPI or
+   any Static Maps / Geocoding call reads it. Settings > API Keys writes
+   these; clearing them falls back to the built-in defaults above. */
+try{
+  var _k = localStorage.getItem('omegaMapsKey');
+  if (_k && _k.trim()) _CFG.googleMapsKey = _k.trim();
+  var _m = localStorage.getItem('omegaMapsMapId');
+  if (_m && _m.trim()) _CFG.googleMapsMapId = _m.trim();
+}catch(e){}
 
 // -- FIREBASE INIT ---------------------------------------------
 var _app, _db, _auth, _storage = null, _currentUser = null, _projectId = null, _loadReady = true;
@@ -44121,6 +44152,612 @@ window._crmToastModal=_crmToastModal;
 
   setInterval(build, 800);
   if(document.readyState==='loading') document.addEventListener('DOMContentLoaded',build); else build();
+})();
+</script>
+<!-- ================= LEFT DOCK =================
+     Re-lays the existing elements with CSS Grid instead of moving any of
+     them, so this is reversible by removing one class.
+     ============================================== -->
+<style>
+  body.omega-dock-left{
+    display:grid!important;
+    grid-template-columns:var(--omega-dock-w,214px) 1fr;
+    grid-template-rows:auto auto auto 1fr auto;
+    grid-template-areas:
+      "portal  portal"
+      "tb      doctabs"
+      "ribbon  tabs"
+      "ribbon  ws"
+      "ribbon  status";
+    height:100vh; overflow:hidden;
+  }
+  /* Safety net. #portal-nav is an in-flow child of <body> that sits BEFORE
+     #tb, and any child without an explicit area gets auto-placed by the
+     grid - which is what broke the first version. Default every child to
+     spanning both columns; the ID rules below outrank this and place the
+     six that matter. */
+  body.omega-dock-left > *{ grid-column:1 / -1; }
+  body.omega-dock-left #portal-nav{ grid-area:portal; }
+  body.omega-dock-left #tb        { grid-area:tb;      flex-wrap:wrap; height:auto!important;
+                                    align-content:flex-start; border-right:1px solid var(--border); }
+  body.omega-dock-left #ribbon    { grid-area:ribbon;  height:auto!important;
+                                    flex-direction:column; align-items:stretch;
+                                    overflow-y:auto; overflow-x:hidden;
+                                    border-right:1px solid var(--border);
+                                    border-bottom:none!important; }
+  body.omega-dock-left #doc-tabs  { grid-area:doctabs; }
+  body.omega-dock-left #tabs      { grid-area:tabs; }
+  body.omega-dock-left #ws        { grid-area:ws;      min-width:0; min-height:0; }
+  body.omega-dock-left #statusbar { grid-area:status; }
+
+  /* .ribbon-page is the per-tab wrapper INSIDE #ribbon and it is
+     flex-direction:row. Switching only #ribbon left the panels sitting
+     side by side and overflowing the column - this is the rule whose
+     absence produced the broken layout. */
+  body.omega-dock-left .ribbon-page{
+    flex-direction:column; width:100%; align-items:stretch;
+    min-width:0; overflow-x:hidden;
+  }
+  /* Panels stack down the column, caption above its buttons.
+     min-width:0 matters: flex items default to min-width:auto, so a panel
+     refuses to shrink below its widest label and pushes past the column. */
+  body.omega-dock-left .rpanel{
+    flex-direction:column; width:100%; border-right:none;
+    min-width:0!important; max-width:100%;
+    border-bottom:1px solid rgba(255,255,255,.05);
+  }
+  body.omega-dock-left .rpanel-body{ min-width:0!important; max-width:100%; }
+  body.omega-dock-left .rbtn{ max-width:100%!important; }
+  body.omega-dock-left .rbtn .rb-lbl{ overflow:hidden; text-overflow:ellipsis; }
+  body.omega-dock-left .rpanel-cap{
+    order:-1; text-align:left; border-top:none; margin-top:0;
+    padding:7px 10px 3px!important; font-size:8.5px!important;
+    letter-spacing:.16em; opacity:.75;
+  }
+  body.omega-dock-left .rpanel-body{
+    flex-direction:column; align-items:stretch; width:100%;
+    padding:2px 6px 7px!important; gap:1px;
+  }
+  /* Full-width rows: icon left, label right. */
+  body.omega-dock-left .rbtn{
+    flex-direction:row!important; align-items:center; justify-content:flex-start;
+    width:100%; min-width:0!important; max-width:none!important;
+    gap:8px!important; padding:6px 8px!important; text-align:left;
+  }
+  body.omega-dock-left .rbtn .rb-ico{
+    height:auto!important; font-size:13px!important; width:17px; flex:none; text-align:center;
+  }
+  body.omega-dock-left .rbtn .rb-lbl{
+    font-size:11px!important; line-height:1.2!important; text-align:left!important; flex:1;
+  }
+  body.omega-dock-left .rbtn.home-hero{ min-width:0!important; max-width:none!important; }
+  body.omega-dock-left .rsbtn{ width:100%; }
+  /* The .rtab elements are NOT direct children of #tb - they sit in a
+     #ribbon-tabs wrapper that is flex-wrap:nowrap. Wrapping #tb alone did
+     nothing, so the eleven tabs overflowed the column and rendered across
+     the doc tabs and canvas. Wrap the actual parent. */
+  body.omega-dock-left #tb{ height:auto!important; padding:2px 0!important; }
+  body.omega-dock-left #ribbon-tabs{
+    flex-wrap:wrap; width:100%; min-width:0; overflow:visible;
+    height:auto!important; align-content:flex-start;
+  }
+  body.omega-dock-left #ribbon-tabs .rtab{
+    flex:0 0 auto; padding:0 7px!important; font-size:10.5px!important; height:23px;
+  }
+  /* .tb-right holds the project-name field; margin-left:auto pushed it
+     into the tabs once they wrapped. Give it its own full-width line. */
+  body.omega-dock-left .tb-right{
+    margin-left:0!important; width:100%; order:99; padding:3px 6px!important;
+  }
+  body.omega-dock-left .tb-right input{ width:100%; min-width:0; }
+
+  @media (max-width:820px){
+    body.omega-dock-left{ --omega-dock-w:186px; }
+  }
+</style>
+<script>
+(function(){
+  var KEY='omegaDockLeft';
+
+  function settle(){
+    /* Docking changes the canvas WIDTH. Resize the map and reproject once
+       layout has actually settled, rather than guessing with a timer -
+       two animation frames plus a short tail is enough for the grid to
+       resolve and Google to pick up the new size. */
+    requestAnimationFrame(function(){
+      requestAnimationFrame(function(){
+        try{
+          if(window._gmap && window.google && google.maps)
+            google.maps.event.trigger(_gmap,'resize');
+        }catch(e){}
+        try{ if(typeof _gmapAutoScale==='function') _gmapAutoScale(); }catch(e){}
+        window.dispatchEvent(new Event('resize'));
+        setTimeout(function(){
+          try{ if(typeof _geoReprojectAll==='function') _geoReprojectAll(); }catch(e){}
+          try{ if(typeof _syncRibbonTop==='function') _syncRibbonTop(); }catch(e){}
+        }, 180);
+      });
+    });
+  }
+
+  window.toggleDockLeft=function(){
+    var on=document.body.classList.toggle('omega-dock-left');
+    try{ localStorage.setItem(KEY, on?'1':'0'); }catch(e){}
+    var b=document.getElementById('rb-dock-left');
+    if(b){
+      b.setAttribute('aria-pressed', String(on));
+      /* The label names what the click WILL do, not the current state. */
+      var lbl=b.querySelector('.rb-lbl'), ico=b.querySelector('.rb-ico');
+      if(lbl) lbl.textContent = on ? 'Dock Center' : 'Dock Left';
+      if(ico) ico.textContent = on ? '\u25A3' : '\u25E7';
+      b.title = on ? 'Return the tool panel to the top of the screen'
+                   : 'Dock the tool panel to the left of the screen';
+    }
+    settle();
+    if(typeof showBanner==='function'){
+      try{ showBanner('wiz', on
+        ? 'Tools docked left. Toggle again from View > Panels > Dock Left.'
+        : 'Tools returned to the top ribbon.'); }catch(e){}
+    }
+    return on;
+  };
+
+  /* Width is adjustable without editing anything. */
+  window.setDockWidth=function(px){
+    px=Math.max(160, Math.min(420, px|0));
+    document.documentElement.style.setProperty('--omega-dock-w', px+'px');
+    settle();
+    return px;
+  };
+
+  function restore(){
+    var on=false;
+    try{ on = localStorage.getItem(KEY)==='1'; }catch(e){}
+    if(on){
+      document.body.classList.add('omega-dock-left');
+      var b=document.getElementById('rb-dock-left');
+      if(b){
+        b.setAttribute('aria-pressed','true');
+        var lbl=b.querySelector('.rb-lbl'), ico=b.querySelector('.rb-ico');
+        if(lbl) lbl.textContent='Dock Center';
+        if(ico) ico.textContent='\u25A3';
+        b.title='Return the tool panel to the top of the screen';
+      }
+      settle();
+    }
+  }
+  if(document.readyState==='loading') document.addEventListener('DOMContentLoaded',restore);
+  else restore();
+})();
+</script>
+<!-- ================= LOAD MAP (address) =================
+     Replaces View > Panels > Controls. _initGMap(address) already
+     geocodes and either creates the map or recenters an existing one,
+     so this is only a front-end for it.
+     ====================================================== -->
+<style>
+  .omega-addr{
+    display:flex; align-items:center; gap:5px; padding:3px 6px;
+    background:rgba(0,0,0,.22); border:1px solid var(--border);
+    border-radius:5px; margin:0 4px; align-self:center; min-width:212px;
+  }
+  .omega-addr-ico{ color:var(--sub); font-size:11px; flex:none; }
+  #omega-addr-in{
+    flex:1; min-width:0; background:none; border:0; outline:none;
+    color:var(--text); font-family:var(--font-mono); font-size:11px; padding:3px 0;
+  }
+  #omega-addr-in::placeholder{ color:var(--sub); opacity:.75; }
+  #omega-addr-in:focus{ outline:none; }
+  .omega-addr:focus-within{ border-color:var(--hl); }
+  #omega-addr-go{
+    flex:none; background:#132844; border:1px solid var(--border); color:var(--text);
+    font-family:inherit; font-size:10px; font-weight:600; letter-spacing:.04em;
+    padding:4px 9px; border-radius:4px; cursor:pointer;
+  }
+  #omega-addr-go:hover{ background:#1A3556; border-color:var(--hl); color:var(--hl); }
+  #omega-addr-go:disabled{ opacity:.5; cursor:default; }
+  /* Docked left: full width of the column, stacked. */
+  body.omega-dock-left .omega-addr{
+    margin:4px 6px; min-width:0; width:calc(100% - 12px); flex-wrap:wrap;
+  }
+  body.omega-dock-left #omega-addr-in{ font-size:11.5px; }
+</style>
+<script>
+(function(){
+  function el(id){ return document.getElementById(id); }
+
+  window.omegaLoadMap=function(){
+    var input=el('omega-addr-in');
+    if(!input) return;
+    var addr=(input.value||'').trim();
+    if(!addr){ input.focus(); return; }
+
+    var go=el('omega-addr-go');
+    if(go){ go.disabled=true; go.textContent='\u2026'; }
+
+    function done(msg){
+      if(go){ go.disabled=false; go.textContent='Load'; }
+      if(msg && typeof showBanner==='function'){ try{ showBanner('wiz',msg); }catch(e){} }
+    }
+
+    try{
+      if(typeof _initGMap!=='function'){
+        done('Map loader not available on this build.');
+        return;
+      }
+      /* _initGMap geocodes, then either creates _gmap or recenters it.
+         It reports failures through #gmap-status, so watch that rather
+         than assuming success. */
+      var st=el('gmap-status');
+      var before=st?st.textContent:'';
+      _initGMap(addr);
+
+      setTimeout(function(){
+        var now=st?st.textContent:'';
+        if(now && now!==before && now.indexOf('!!')===0){
+          done('Address not found - try adding city and state.');
+        } else {
+          done(null);
+          /* Recompute scale for the new view and re-anchor, so lengths
+             stay in feet and nothing drifts. */
+          try{ if(typeof _gmapAutoScale==='function') _gmapAutoScale(); }catch(e){}
+          try{ if(window.__omegaAnchorNow) window.__omegaAnchorNow(); }catch(e){}
+        }
+      }, 1400);
+    }catch(e){
+      done('Could not load that address.');
+    }
+  };
+
+  /* Seed the field from the project's saved address so it reads as state,
+     not an empty box. */
+  function seed(){
+    var input=el('omega-addr-in'); if(!input || input.value) return;
+    var src=el('addr') || el('site-address') || el('pn-title');
+    if(src){
+      var v=(src.value||src.textContent||'').trim();
+      if(v && v.toLowerCase()!=='new project') input.value=v;
+    }
+  }
+  var tries=0;
+  var t=setInterval(function(){ seed(); if(++tries>20) clearInterval(t); }, 400);
+})();
+</script>
+<!-- ================= API KEYS (Settings) =================
+     A Maps JavaScript key is not a secret - it rides in the script URL
+     and is readable by anyone who loads the page. Restriction is what
+     protects it, not concealment. The field is type=password only so it
+     is not readable over a shoulder or in a screen share.
+     ======================================================= -->
+<style>
+  .omega-keys{ flex-direction:column!important; align-items:stretch!important;
+               min-width:300px; gap:4px!important; padding:5px 8px 4px!important; }
+  .omega-key-row{ display:flex; align-items:center; gap:6px; }
+  .omega-key-lbl{ flex:0 0 96px; font-size:9.5px; color:var(--sub); letter-spacing:.02em; }
+  .omega-key-lbl em{ font-style:normal; opacity:.65; }
+  .omega-keys input{
+    flex:1; min-width:0; background:rgba(0,0,0,.28); border:1px solid var(--border);
+    border-radius:4px; color:var(--text); font-family:var(--font-mono);
+    font-size:10.5px; padding:4px 7px; outline:none;
+  }
+  .omega-keys input:focus{ border-color:var(--hl); }
+  .omega-key-eye{
+    flex:none; background:none; border:1px solid var(--border); border-radius:4px;
+    color:var(--sub); cursor:pointer; font-size:10px; padding:3px 6px;
+  }
+  .omega-key-eye:hover{ color:var(--hl); border-color:var(--hl); }
+  .omega-key-actions{ display:flex; gap:5px; margin-top:2px; }
+  .omega-key-actions button{
+    flex:1; background:#132844; border:1px solid var(--border); color:var(--text);
+    font-family:inherit; font-size:9.5px; font-weight:600; letter-spacing:.03em;
+    padding:5px 4px; border-radius:4px; cursor:pointer;
+  }
+  .omega-key-actions button:hover{ background:#1A3556; border-color:var(--hl); color:var(--hl); }
+  .omega-key-status{
+    font-family:var(--font-mono); font-size:9.5px; color:var(--sub);
+    padding:2px 1px 0; min-height:13px; line-height:1.35;
+  }
+  .omega-key-status.ok{ color:var(--green); }
+  .omega-key-status.bad{ color:#FF6B6B; }
+  .omega-key-status.warn{ color:#F59E0B; }
+  body.omega-dock-left .omega-keys{ min-width:0; }
+  body.omega-dock-left .omega-key-lbl{ flex:0 0 78px; }
+</style>
+<script>
+(function(){
+  var LS_KEY='omegaMapsKey', LS_ID='omegaMapsMapId';
+  function el(id){ return document.getElementById(id); }
+  function say(msg, cls){
+    var s=el('omega-key-status'); if(!s) return;
+    s.textContent=msg; s.className='omega-key-status'+(cls?' '+cls:'');
+  }
+
+  window.omegaKeyToggle=function(id){
+    var i=el(id); if(!i) return;
+    i.type = i.type==='password' ? 'text' : 'password';
+  };
+
+  window.omegaKeySave=function(){
+    var k=(el('omega-key-maps')||{}).value||'';
+    var m=(el('omega-key-mapid')||{}).value||'';
+    try{
+      if(k.trim()) localStorage.setItem(LS_KEY, k.trim());
+      else localStorage.removeItem(LS_KEY);
+      if(m.trim()) localStorage.setItem(LS_ID, m.trim());
+      else localStorage.removeItem(LS_ID);
+    }catch(e){ say('Could not save - storage blocked.', 'bad'); return; }
+    if(typeof _CFG!=='undefined'){
+      if(k.trim()) _CFG.googleMapsKey=k.trim();
+      if(m.trim()) _CFG.googleMapsMapId=m.trim();
+    }
+    say('Saved. Reload the page for the Maps API to pick it up.', 'ok');
+  };
+
+  window.omegaKeyClear=function(){
+    try{ localStorage.removeItem(LS_KEY); localStorage.removeItem(LS_ID); }catch(e){}
+    say('Cleared. The built-in default applies after a reload.', 'ok');
+    seed(true);
+  };
+
+  /* Tests the key against Static Maps, which returns a real HTTP error for
+     a bad or over-restricted key rather than failing silently. */
+  window.omegaKeyTest=function(){
+    var k=((el('omega-key-maps')||{}).value||'').trim()
+        || (typeof _CFG!=='undefined' ? _CFG.googleMapsKey : '');
+    if(!k){ say('No key to test.', 'bad'); return; }
+    say('Testing\u2026');
+    var img=new Image();
+    var done=false;
+    var t=setTimeout(function(){
+      if(done) return; done=true;
+      say('No response - check the network, or the key\u2019s API restrictions.', 'warn');
+    }, 8000);
+    img.onload=function(){
+      if(done) return; done=true; clearTimeout(t);
+      var proto=location.protocol;
+      if(proto==='file:'){
+        say('Key works. Note: file:// sends no referrer, so an HTTP-referrer restricted key will fail here but still work on your domain.', 'warn');
+      } else {
+        say('Key works for '+location.hostname+'.', 'ok');
+      }
+    };
+    img.onerror=function(){
+      if(done) return; done=true; clearTimeout(t);
+      say('Rejected. Usually a referrer restriction that does not include '
+          +(location.protocol==='file:'?'file:// (local testing)':location.hostname)
+          +', or Static Maps not enabled on the key.', 'bad');
+    };
+    img.src='https://maps.googleapis.com/maps/api/staticmap?center=0,0&zoom=1&size=64x64&key='
+            +encodeURIComponent(k)+'&_cb='+Date.now();
+  };
+
+  function seed(force){
+    var i=el('omega-key-maps'), m=el('omega-key-mapid');
+    if(!i) return false;
+    if(i.value && !force) return true;
+    var k='', id='';
+    try{ k=localStorage.getItem(LS_KEY)||''; id=localStorage.getItem(LS_ID)||''; }catch(e){}
+    if(!k && typeof _CFG!=='undefined') k=_CFG.googleMapsKey||'';
+    if(!id && typeof _CFG!=='undefined') id=_CFG.googleMapsMapId||'';
+    i.value=k; if(m) m.value=id;
+    var custom=false;
+    try{ custom=!!localStorage.getItem(LS_KEY); }catch(e){}
+    say(custom ? 'Using a key saved on this machine.' : 'Using the built-in default key.');
+    return true;
+  }
+
+  var tries=0;
+  var t=setInterval(function(){ if(seed() || ++tries>25) clearInterval(t); }, 400);
+})();
+</script>
+<!-- ================= PRINT / PERMIT GATE / MAPS KEY =================
+     Print is a thin wrapper: it opens the export you pick using the
+     function that already builds that sheet, waits for it to render,
+     then calls window.print(). It does not re-implement any output.
+     ================================================================== -->
+<style>
+  .omega-beta{ position:relative; }
+  .omega-beta-tag{
+    position:absolute; top:1px; right:1px; font:700 6.5px/1 'IBM Plex Mono',monospace;
+    letter-spacing:.08em; color:#0A1628; background:#F59E0B;
+    border-radius:2px; padding:2px 3px; pointer-events:none;
+  }
+  body.omega-dock-left .omega-beta-tag{ top:50%; right:6px; transform:translateY(-50%); }
+  .omega-modal{
+    position:fixed; inset:0; z-index:9000; display:flex; align-items:center;
+    justify-content:center; background:rgba(6,12,22,.72); padding:20px;
+  }
+  .omega-modal-card{
+    width:min(460px,94vw); max-height:86vh; overflow:auto; background:#0E1D33;
+    border:1px solid #1C3350; border-radius:10px; box-shadow:0 24px 60px rgba(0,0,0,.6);
+    font-family:'IBM Plex Sans',system-ui,sans-serif; color:#E8F0FA;
+  }
+  .omega-modal-hd{
+    display:flex; align-items:center; justify-content:space-between; gap:10px;
+    padding:15px 18px; border-bottom:1px solid rgba(255,255,255,.08);
+    font-size:14px; font-weight:700;
+  }
+  .omega-modal-hd button{
+    all:unset; cursor:pointer; color:#7D95B4; font-size:15px; padding:2px 6px; border-radius:4px;
+  }
+  .omega-modal-hd button:hover{ color:#00D4FF; background:rgba(0,212,255,.12); }
+  .omega-modal-bd{ padding:14px 18px 18px; }
+  .omega-modal-bd p{ font-size:12px; color:#8BA3C4; line-height:1.55; margin:0 0 12px; }
+  .omega-pick{
+    display:block; width:100%; text-align:left; margin-bottom:6px; padding:10px 12px;
+    background:rgba(0,0,0,.22); border:1px solid #1C3350; border-radius:6px;
+    color:#E8F0FA; font:600 12px 'IBM Plex Sans'; cursor:pointer;
+  }
+  .omega-pick:hover{ border-color:#00D4FF; color:#00D4FF; background:rgba(0,212,255,.08); }
+  .omega-pick small{ display:block; font-weight:400; font-size:10px; color:#7D95B4; margin-top:2px; }
+  .omega-field{ display:flex; gap:6px; margin-bottom:9px; }
+  .omega-field input{
+    flex:1; min-width:0; padding:8px 10px; background:#0A1628; border:1px solid rgba(255,255,255,.15);
+    border-radius:5px; color:#E8F0FE; font-family:'IBM Plex Mono',monospace; font-size:11px; outline:none;
+  }
+  .omega-field input:focus{ border-color:#00D4FF; }
+  .omega-field button{
+    all:unset; cursor:pointer; padding:8px 11px; border-radius:5px; font:600 11px 'IBM Plex Sans';
+    background:rgba(255,255,255,.08); border:1px solid rgba(255,255,255,.15); color:#E8F0FA;
+  }
+  .omega-field button:hover{ border-color:#00D4FF; color:#00D4FF; }
+  .omega-lab{ font-size:10px; color:#8BA3C4; margin:0 0 4px; font-weight:600; letter-spacing:.03em; }
+  .omega-note{ font-size:10.5px; line-height:1.5; margin-top:10px; padding:9px 11px;
+               border-radius:6px; background:rgba(245,158,11,.10); border-left:2px solid #F59E0B; color:#E8C89A; }
+  .omega-note.ok{ background:rgba(47,181,74,.10); border-left-color:#2FB54A; color:#A6DDB4; }
+  .omega-note.bad{ background:rgba(255,107,107,.10); border-left-color:#FF6B6B; color:#FFB3B3; }
+</style>
+<script>
+(function(){
+  function esc(s){ return String(s==null?'':s).replace(/[&<>"']/g,function(c){
+    return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
+
+  function modal(title, bodyHTML){
+    close();
+    var w=document.createElement('div'); w.className='omega-modal'; w.id='omega-modal';
+    w.innerHTML='<div class="omega-modal-card"><div class="omega-modal-hd"><span>'+title+'</span>'
+      +'<button type="button" onclick="omegaModalClose()" aria-label="Close">&#10005;</button></div>'
+      +'<div class="omega-modal-bd">'+bodyHTML+'</div></div>';
+    w.addEventListener('click',function(e){ if(e.target===w) close(); });
+    document.body.appendChild(w);
+    return w;
+  }
+  function close(){ var m=document.getElementById('omega-modal'); if(m) m.remove(); }
+  window.omegaModalClose=close;
+  document.addEventListener('keydown',function(e){ if(e.key==='Escape') close(); });
+
+  /* ---------------- PRINT ----------------
+     Each entry calls the function that already builds that sheet, then
+     prints once it has rendered. Nothing here re-implements an output. */
+  var OUTPUTS=[
+    ['Site map (current view)', null, 'What is on the canvas right now'],
+    ['Blueprint / permit sheet','openBlueprintExport','Title block, north arrow, legend'],
+    ['Plot plan',               'openPlotPlanExport', 'Scaled plot of the site'],
+    ['One-line diagram',        'openOneLineExport',  'Electrical single-line'],
+    ['Proposal',                'openProposalExport', 'Client-facing document'],
+    ['Spec sheet',              'exportSpecSheet',    'Equipment specifications']
+  ];
+
+  window.omegaPrint=function(){
+    var rows='';
+    OUTPUTS.forEach(function(o,i){
+      var fn=o[1];
+      var ready = (fn===null) || (typeof window[fn]==='function');
+      if(!ready) return;                    /* never offer a dead entry */
+      rows+='<button class="omega-pick" type="button" onclick="omegaPrintPick('+i+')">'
+          + esc(o[0]) + (o[2]?'<small>'+esc(o[2])+'</small>':'') + '</button>';
+    });
+    modal('&#128424; Print',
+      '<p>Pick an output. It opens the sheet that output already builds, '
+      + 'then hands off to your browser&#39;s print dialog.</p>' + rows);
+  };
+
+  window.omegaPrintPick=function(i){
+    var o=OUTPUTS[i]; if(!o) return;
+    close();
+    if(o[1]===null){ setTimeout(function(){ window.print(); }, 120); return; }
+    try{
+      window[o[1]]();
+      /* Give the export time to build its sheet before printing. */
+      setTimeout(function(){ window.print(); }, 1600);
+    }catch(e){
+      if(typeof showBanner==='function'){
+        try{ showBanner('wiz','Could not open that output to print.'); }catch(_){}
+      }
+    }
+  };
+
+  /* ---------------- PERMIT CREATOR (beta gate) ---------------- */
+  window.omegaPermitBeta=function(){
+    modal('&#128203; Permit Creator <span style="font:700 8px/1 monospace;letter-spacing:.08em;'
+        + 'color:#0A1628;background:#F59E0B;border-radius:2px;padding:2px 4px;margin-left:6px">BETA</span>',
+      '<p>Please contact your admin for access to this.</p>'
+      + '<div class="omega-note">Permit Creator is in beta while the output is being '
+      + 'updated. The feature is still installed - it is only gated, so access can be '
+      + 'switched back on without a redeploy.</div>');
+  };
+
+  /* ---------------- MAPS KEY (modal, pre-populated) ---------------- */
+  function currentKey(){
+    var k=''; try{ k=localStorage.getItem('omegaMapsKey')||''; }catch(e){}
+    if(!k && typeof _CFG!=='undefined') k=_CFG.googleMapsKey||'';
+    return k;
+  }
+  function currentId(){
+    var m=''; try{ m=localStorage.getItem('omegaMapsMapId')||''; }catch(e){}
+    if(!m && typeof _CFG!=='undefined') m=_CFG.googleMapsMapId||'';
+    return m;
+  }
+
+  window.openMapsKey=function(){
+    var custom=false; try{ custom=!!localStorage.getItem('omegaMapsKey'); }catch(e){}
+    modal('&#128506; Google Maps Key',
+        '<p>Used by the satellite map, Static Maps snapshots and address geocoding.</p>'
+      + '<div class="omega-lab">API key</div>'
+      + '<div class="omega-field">'
+      +   '<input id="omk-key" type="password" autocomplete="new-password" value="'+esc(currentKey())+'">'
+      +   '<button type="button" onclick="omegaMapsKeyVis()" title="Show / hide">&#9673;</button>'
+      + '</div>'
+      + '<div class="omega-lab">Map ID <span style="opacity:.6;font-weight:400">(optional, vector)</span></div>'
+      + '<div class="omega-field">'
+      +   '<input id="omk-id" type="text" autocomplete="off" value="'+esc(currentId())+'">'
+      + '</div>'
+      + '<div class="omega-field" style="margin-top:12px">'
+      +   '<button type="button" onclick="omegaMapsKeySave()" '
+      +     'style="flex:1;text-align:center;background:#2FB54A;border-color:#2FB54A;color:#0A1628">Save</button>'
+      +   '<button type="button" onclick="omegaMapsKeyTest()" style="flex:1;text-align:center">Test</button>'
+      +   '<button type="button" onclick="omegaMapsKeyReset()" style="flex:1;text-align:center">Default</button>'
+      + '</div>'
+      + '<div id="omk-note" class="omega-note'+(custom?'':' ok')+'">'
+      +   (custom ? 'Using a key saved on this machine.' : 'Using the built-in default key.')
+      + '</div>');
+  };
+
+  function note(msg,cls){
+    var n=document.getElementById('omk-note'); if(!n) return;
+    n.textContent=msg; n.className='omega-note'+(cls?' '+cls:'');
+  }
+  window.omegaMapsKeyVis=function(){
+    var i=document.getElementById('omk-key'); if(i) i.type = i.type==='password'?'text':'password';
+  };
+  window.omegaMapsKeySave=function(){
+    var k=(document.getElementById('omk-key')||{}).value||'';
+    var m=(document.getElementById('omk-id')||{}).value||'';
+    try{
+      if(k.trim()) localStorage.setItem('omegaMapsKey',k.trim()); else localStorage.removeItem('omegaMapsKey');
+      if(m.trim()) localStorage.setItem('omegaMapsMapId',m.trim()); else localStorage.removeItem('omegaMapsMapId');
+    }catch(e){ note('Could not save - storage is blocked.','bad'); return; }
+    if(typeof _CFG!=='undefined'){
+      if(k.trim()) _CFG.googleMapsKey=k.trim();
+      if(m.trim()) _CFG.googleMapsMapId=m.trim();
+    }
+    note('Saved. Reload for the Maps API to pick it up.','ok');
+  };
+  window.omegaMapsKeyReset=function(){
+    try{ localStorage.removeItem('omegaMapsKey'); localStorage.removeItem('omegaMapsMapId'); }catch(e){}
+    var i=document.getElementById('omk-key'), d=document.getElementById('omk-id');
+    if(i && typeof _CFG!=='undefined') i.value=_CFG.googleMapsKey||'';
+    if(d && typeof _CFG!=='undefined') d.value=_CFG.googleMapsMapId||'';
+    note('Cleared. The built-in default applies after a reload.','ok');
+  };
+  window.omegaMapsKeyTest=function(){
+    var k=((document.getElementById('omk-key')||{}).value||'').trim() || currentKey();
+    if(!k){ note('No key to test.','bad'); return; }
+    note('Testing\u2026');
+    var img=new Image(), done=false;
+    var t=setTimeout(function(){ if(!done){ done=true;
+      note('No response - check the network or the key\u2019s API restrictions.',''); } },8000);
+    img.onload=function(){ if(done) return; done=true; clearTimeout(t);
+      note(location.protocol==='file:'
+        ? 'Key works. Note: file:// sends no referrer, so a referrer-restricted key fails here but still works on your domain.'
+        : 'Key works for '+location.hostname+'.', location.protocol==='file:'?'':'ok'); };
+    img.onerror=function(){ if(done) return; done=true; clearTimeout(t);
+      note('Rejected - usually a referrer restriction that excludes '
+        +(location.protocol==='file:'?'file:// (local testing)':location.hostname)
+        +', or Static Maps not enabled on this key.','bad'); };
+    img.src='https://maps.googleapis.com/maps/api/staticmap?center=0,0&zoom=1&size=64x64&key='
+            +encodeURIComponent(k)+'&_cb='+Date.now();
+  };
 })();
 </script>
 </body>
