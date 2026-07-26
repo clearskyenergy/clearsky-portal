@@ -19742,7 +19742,12 @@ function _loadMapsAPI(){
     _gmapLoading=true;
     window._gmapCB=()=>{_gmapLoaded=true;_gmapCBs.forEach(cb=>cb.res());};
     const s=document.createElement('script');
-    s.src='https://maps.googleapis.com/maps/api/js?key='+_CFG.googleMapsKey+'&libraries=places&callback=_gmapCB';
+    /* geometry is REQUIRED, not optional: every to-scale footprint,
+       every anchored bound and the whole takeoff run through
+       google.maps.geometry.spherical. Loading only `places` meant
+       sph() returned null, so no overlay could ever be drawn - the
+       native layer silently did nothing in production. */
+    s.src='https://maps.googleapis.com/maps/api/js?key='+_CFG.googleMapsKey+'&libraries=places,geometry&callback=_gmapCB';
     s.onerror=e=>_gmapCBs.forEach(cb=>cb.rej(e));
     document.head.appendChild(s);
   });
@@ -46618,6 +46623,47 @@ window._crmToastModal=_crmToastModal;
       });
       return true;
     }
+  };
+})();
+</script>
+<!-- ================= MAPS LOAD DIAGNOSIS =================
+     When the map does not appear, say which of the handful of causes it
+     actually is instead of a generic failure.
+     ======================================================= -->
+<script>
+(function(){
+  var lastErr=null;
+  addEventListener('error', function(e){
+    var t=e&&e.target;
+    if(t && t.tagName==='SCRIPT' && /maps\.googleapis\.com/.test(t.src||'')){
+      lastErr='script blocked or rejected: '+(t.src||'').split('?')[0];
+    }
+  }, true);
+
+  window.OmegaMapDoctor=function(){
+    var o={};
+    o.key = (typeof _CFG!=='undefined' && _CFG.googleMapsKey)
+              ? _CFG.googleMapsKey.slice(0,10)+'\u2026' : 'MISSING';
+    o.origin = location.origin;
+    o.apiLoaded = !!(window.google && google.maps && google.maps.Map);
+    o.geometryLib = !!(window.google && google.maps && google.maps.geometry
+                       && google.maps.geometry.spherical);
+    o.placesLib = !!(window.google && google.maps && google.maps.places);
+    o.mapObject = !!(window._gmap || (function(){ try{ return typeof _gmap!=='undefined' && _gmap; }catch(e){ return false; } })());
+    o.mapDiv = !!document.getElementById('_gmapDiv');
+    o.scriptError = lastErr || '(none)';
+    o.committedPlot = !!window._committedPlot;
+
+    o.verdict =
+      o.key==='MISSING' ? 'No API key. Settings > API Keys.'
+    : !o.apiLoaded && lastErr ? 'The Maps script was rejected. Usually the key is restricted to different HTTP referrers - this origin is '+o.origin+'. Check the key restrictions in Google Cloud.'
+    : !o.apiLoaded ? 'Maps script has not finished loading, or was blocked before it ran.'
+    : !o.geometryLib ? 'API loaded WITHOUT the geometry library - no to-scale geometry is possible.'
+    : !o.mapObject ? 'API is up but no map was created. Enter a site address in View.'
+    : 'Maps API and map are both up.';
+    console.table?console.table(o):console.log(o);
+    console.info(o.verdict);
+    return o;
   };
 })();
 </script>
