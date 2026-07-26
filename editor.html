@@ -1472,6 +1472,7 @@ window.onerror = function(msg, src, line, col, err) {
       <div class="rpanel-body">
         
         <button class="rbtn" onclick="openRpPanel('summary')" title="Site map summary — BESS, conduit, equipment, DER"><span class="rb-ico">▤</span><span class="rb-lbl">Summary</span></button>
+        <button class="rbtn" id="rb-native" aria-pressed="false" onclick="rbRun(toggleNativeLayer)" title="Draw everything as native Google Maps objects — locked to the ground, to scale, no reprojection"><span class="rb-ico" style="color:#2FB54A">◈</span><span class="rb-lbl">Native<br>Layer</span></button>
         <button class="rbtn" id="rb-dock-left" aria-pressed="false" onclick="rbRun(toggleDockLeft)" title="Dock the tool panel to the left of the screen as a vertical column"><span class="rb-ico">◧</span><span class="rb-lbl">Dock Left</span></button>
         <button class="rbtn" onclick="rbRun(toggleDiagPanel)" title="Anchor diagnostics — why equipment is or is not locked to the ground"><span class="rb-ico">⚠</span><span class="rb-lbl">Diagnose</span></button>
         <button class="rbtn" onclick="rbRun(toggleCompassPanel)" title="Compass — pan the view north / south / east / west, and frame the drawing"><span class="rb-ico">⊕</span><span class="rb-lbl">Compass</span></button>
@@ -44799,6 +44800,194 @@ window._crmToastModal=_crmToastModal;
     img.src='https://maps.googleapis.com/maps/api/staticmap?center=0,0&zoom=1&size=64x64&key='
             +encodeURIComponent(k)+'&_cb='+Date.now();
   };
+})();
+</script>
+<!-- ================= NATIVE MAP LAYER =================
+     Objects that belong to the map instead of chasing it.
+     ==================================================== -->
+<style>
+  #rb-native[aria-pressed="true"]{ background:rgba(47,181,74,.18); border-color:#2FB54A; color:#2FB54A; }
+</style>
+<script>
+(function(){
+  var on=false, objs=[], timer=null, lastSig='';
+  var lastCount={shapes:0,conduits:0,elements:0,skipped:0};
+
+  function S_(){ try{ return (typeof S!=='undefined'&&S)?S:null; }catch(e){ return null; } }
+  function MAP(){ try{ if(typeof _gmap!=='undefined'&&_gmap) return _gmap; }catch(e){} return window._gmap||null; }
+  function sph(){ return (window.google&&google.maps&&google.maps.geometry&&google.maps.geometry.spherical)||null; }
+
+  var COLORS={ evstencil:'#2FB54A', adastencil:'#00D4FF', bess:'#2FB54A',
+               charger:'#00D4FF', xfmr:'#F59E0B', panel:'#A78BFA', _default:'#00D4FF' };
+  function colorOf(o){ return COLORS[o.kind||o.type] || o.color || COLORS._default; }
+
+  /* Pixels per foot for the CURRENT view - only needed to derive a ground
+     size for objects that never got one. */
+  function ppf(){
+    try{
+      var m=MAP(); if(!m||!m.getCenter) return null;
+      var c=m.getCenter(), z=m.getZoom(); if(!c||z==null) return null;
+      var mp=156543.03392*Math.cos(c.lat()*Math.PI/180)/Math.pow(2,z);
+      return 1/(mp*3.280839895013123);
+    }catch(e){ return null; }
+  }
+
+  /* A rectangle of real dimensions around a lat/lng - the prototype's
+     rectAround(), which is what makes footprints to-scale. */
+  function rectFt(center, wFt, hFt, rotDeg){
+    var s=sph(); if(!s) return null;
+    var M=0.3048, hw=(wFt/2)*M, hh=(hFt/2)*M;
+    var ll=new google.maps.LatLng(center.lat, center.lng);
+    var rot=rotDeg||0;
+    var corners=[[-hw,-hh],[hw,-hh],[hw,hh],[-hw,hh]].map(function(p){
+      var dx=p[0], dy=p[1];
+      if(rot){ var r=rot*Math.PI/180, c=Math.cos(r), sn=Math.sin(r);
+               var nx=dx*c-dy*sn, ny=dx*sn+dy*c; dx=nx; dy=ny; }
+      var dist=Math.hypot(dx,dy);
+      if(dist<1e-9) return {lat:center.lat,lng:center.lng};
+      var hdg=Math.atan2(dx,-dy)*180/Math.PI;
+      var o=s.computeOffset(ll,dist,hdg);
+      return {lat:o.lat(), lng:o.lng()};
+    });
+    return corners;
+  }
+
+  function poly(paths, color, fill){
+    return new google.maps.Polygon({
+      paths:paths, map:MAP(), strokeColor:color, strokeWeight:2, strokeOpacity:.95,
+      fillColor:color, fillOpacity:(fill==null?0.22:fill), clickable:false, zIndex:5
+    });
+  }
+  function line(path, color, dash){
+    return new google.maps.Polyline({
+      path:path, map:MAP(), strokeColor:color, strokeWeight:3,
+      strokeOpacity:(dash?0:0.95), clickable:false, geodesic:true, zIndex:6,
+      icons: dash?[{icon:{path:'M 0,-1 0,1',strokeOpacity:1,scale:3},offset:'0',repeat:'12px'}]:null
+    });
+  }
+
+  function clear(){ objs.forEach(function(o){ try{ o.setMap(null); }catch(e){} }); objs=[]; }
+
+  /* Signature of the geo state, so we only rebuild when it actually changes. */
+  function sig(){
+    var s=S_(); if(!s) return '';
+    var a=[];
+    (s.shapes||[]).forEach(function(x){ a.push('s'+x.id+(x._geoPts?x._geoPts.length:0)+(x.wf||'')+(x.lf||'')); });
+    (s.conduits||[]).forEach(function(x){ a.push('c'+x.id+(x._geoPts?x._geoPts.length:0)); });
+    (s.elements||[]).forEach(function(x){ a.push('e'+x.id+(x._geoLat||'')); });
+    return a.join('|');
+  }
+
+  function build(){
+    var s=S_(), m=MAP();
+    if(!s||!m||!sph()) return {shapes:0,conduits:0,elements:0,skipped:0};
+    clear();
+    var count={shapes:0,conduits:0,elements:0,skipped:0}, P=ppf();
+
+    (s.shapes||[]).forEach(function(sh){
+      if(!sh._geoPts || !sh._geoPts.length){ count.skipped++; return; }
+      var col=colorOf(sh);
+      /* Single-point stencils carry their footprint in FEET already. */
+      if(sh._geoPts.length===1 && (sh.wf||sh.lf)){
+        var r=rectFt(sh._geoPts[0], sh.wf||9, sh.lf||18, sh.rot||0);
+        if(r){ objs.push(poly(r,col,0.18)); count.shapes++; }
+        return;
+      }
+      var pts=sh._geoPts.filter(Boolean);
+      if(pts.length>=3){ objs.push(poly(pts,col,0.18)); count.shapes++; }
+      else if(pts.length===2){ objs.push(line(pts,col)); count.shapes++; }
+      else count.skipped++;
+    });
+
+    (s.conduits||[]).forEach(function(c){
+      var pts=(c._geoPts||[]).filter(Boolean);
+      if(pts.length<2){ count.skipped++; return; }
+      objs.push(line(pts, c.color||'#00D4FF', false));
+      count.conduits++;
+    });
+
+    (s.elements||[]).forEach(function(el){
+      if(el._geoLat==null||el._geoLng==null){ count.skipped++; return; }
+      var wFt=el._geoWFt, hFt=el._geoHFt;
+      if(wFt==null && P && el.w>0) wFt=el.w/P;
+      if(hFt==null && P && el.h>0) hFt=el.h/P;
+      if(!wFt) wFt=8; if(!hFt) hFt=wFt;
+      var r=rectFt({lat:el._geoLat,lng:el._geoLng}, wFt, hFt, el.rot||0);
+      if(r){ objs.push(poly(r,colorOf(el),0.28)); count.elements++; }
+      else count.skipped++;
+    });
+    lastCount=count;
+    return count;
+  }
+
+  function hideLegacy(hide){
+    ['els','csvg'].forEach(function(id){
+      var e=document.getElementById(id);
+      if(e) e.style.display = hide ? 'none' : '';
+    });
+  }
+
+  function sync(force){
+    if(!on) return;
+    /* Make sure everything has a lat/lng before we try to draw from it. */
+    try{ if(typeof _geoStampAll==='function') _geoStampAll(); }catch(e){}
+    var s=sig();
+    if(!force && s===lastSig) return;
+    lastSig=s;
+    build();
+  }
+
+  window.OmegaNative={
+    enable:function(){
+      if(!MAP()){ if(typeof showBanner==='function'){ try{ showBanner('wiz',
+          'Native layer needs the live JS map. Clear Plot first if a plot is committed.'); }catch(e){} } return false; }
+      on=true; hideLegacy(true); sync(true);
+      if(!timer) timer=setInterval(function(){ sync(false); }, 700);
+      var b=document.getElementById('rb-native'); if(b) b.setAttribute('aria-pressed','true');
+      try{ localStorage.setItem('omegaNative','1'); }catch(e){}
+      return true;
+    },
+    disable:function(){
+      on=false; clear(); hideLegacy(false);
+      if(timer){ clearInterval(timer); timer=null; }
+      lastSig='';
+      var b=document.getElementById('rb-native'); if(b) b.setAttribute('aria-pressed','false');
+      try{ localStorage.setItem('omegaNative','0'); }catch(e){}
+    },
+    toggle:function(){ return on ? (OmegaNative.disable(), false) : OmegaNative.enable(); },
+    isOn:function(){ return on; },
+    refresh:function(){ sync(true); },
+    status:function(){
+      /* Report on what is already drawn. An earlier version called build()
+         here, which created a second set of map objects just for asking a
+         question - a status call must not have side effects. */
+      var s=S_()||{}, c=lastCount;
+      var o={ enabled:on, liveMap:!!MAP(), geometryLib:!!sph(),
+              shapes:(s.shapes||[]).length, conduits:(s.conduits||[]).length,
+              elements:(s.elements||[]).length,
+              drawnNatively:c.shapes+c.conduits+c.elements, skippedNoGeo:c.skipped,
+              mapObjects:objs.length };
+      o.verdict = !o.liveMap ? 'No live JS map - Clear Plot, or the embed fallback is in use.'
+                : !o.geometryLib ? 'geometry library not loaded (&libraries=geometry).'
+                : o.skippedNoGeo ? o.skippedNoGeo+' object(s) have no lat/lng yet - they will appear once stamped.'
+                : o.drawnNatively ? 'All geometry is drawn as native map objects.'
+                : 'Nothing to draw yet.';
+      console.table?console.table(o):console.log(o);
+      console.info(o.verdict);
+      return o;
+    }
+  };
+  window.toggleNativeLayer=function(){ return OmegaNative.toggle(); };
+
+  /* Restore the preference, once the map exists. */
+  var tries=0;
+  var boot=setInterval(function(){
+    if(++tries>60){ clearInterval(boot); return; }
+    if(!MAP()) return;
+    clearInterval(boot);
+    var want=false; try{ want=localStorage.getItem('omegaNative')==='1'; }catch(e){}
+    if(want) OmegaNative.enable();
+  }, 500);
 })();
 </script>
 </body>
