@@ -76,7 +76,7 @@ window.addEventListener('unhandledrejection', function(e) {
   --border:#3A3A3A;      /* hairline rules                      */
   --text:#E0E0E0;        /* primary type                        */
   --sub:#9A9A9A;         /* secondary / captions                */
-  --lw:270px;--th:30px;--ribbon-h:82px;
+  --lw:270px;--th:30px;--ribbon-h:56px;
   /* "gold" section-header accent -> NextNRG green */
   --gold:#2FB54A;--gold-dark:#1F8A37;--gold-pale:#8FE0A3;--gold-faint:rgba(47,181,74,.08);
   --shadow-gold:0 0 0 2px rgba(47,181,74,.30);
@@ -362,7 +362,7 @@ body{font-family:'IBM Plex Sans',sans-serif;background:var(--bg);color:var(--tex
 @media (pointer:coarse){
   #zc button{ width:44px; height:44px; font-size:18px; }
   #zc{ gap:6px; bottom:20px; left:20px; }
-  .rbtn{ min-width:56px; min-height:52px; }
+  .rbtn{ min-width:48px; min-height:44px; }
   .rtab{ padding:8px 12px !important; }
   .doc-tab{ padding:8px 12px !important; }
   /* Bigger element selection/resize/rotate handles so they're grabbable. */
@@ -704,8 +704,11 @@ input[type=range]::-moz-range-thumb{width:15px;height:15px;background:linear-gra
 /* Collapsed ribbon: hide the big icon row entirely so the canvas gets that
    vertical space back. The tab bar (#tb) stays visible so the user can still
    switch tabs / reopen. Toggled by the chevron on the tab bar. */
-body.ribbon-collapsed #ribbon{ height:0 !important; min-height:0 !important; overflow:hidden !important; border-bottom:none !important; padding:0 !important; }
-#ribbon-collapse-btn{ display:flex;align-items:center;justify-content:center;width:30px;height:30px;margin-left:auto;margin-right:6px;border-radius:6px;cursor:pointer;color:var(--sub);flex-shrink:0;user-select:none;font-size:15px;transition:background .15s; }
+/* MINIMIZE REMOVED: the ribbon is always visible, so the canvas never
+   changes height. That also means toggleRibbon() no longer has to resize
+   the map and reproject every element, which is what used to move things. */
+body.ribbon-collapsed #ribbon{ /* no-op: collapsing is disabled */ }
+#ribbon-collapse-btn{ display:none !important;align-items:center;justify-content:center;width:30px;height:30px;margin-left:auto;margin-right:6px;border-radius:6px;cursor:pointer;color:var(--sub);flex-shrink:0;user-select:none;font-size:15px;transition:background .15s; }
 #ribbon-collapse-btn:hover{ background:rgba(255,255,255,.08);color:var(--text); }
 body.ribbon-collapsed #ribbon-collapse-btn{ transform:rotate(180deg); }
 #ribbon::-webkit-scrollbar-thumb{ background:var(--border);border-radius:3px; }
@@ -724,37 +727,37 @@ body.ribbon-collapsed #ribbon-collapse-btn{ transform:rotate(180deg); }
 }
 .rpanel-body{ display:flex;align-items:flex-start;gap:1px;flex:1;padding:0 2px; }
 .rpanel-cap{
-  text-align:center;font-size:9px;color:var(--sub);letter-spacing:.02em;
-  padding:3px 6px 4px;border-top:1px solid rgba(255,255,255,.03);margin-top:2px;
+  text-align:center;font-size:8px;color:var(--sub);letter-spacing:.02em;
+  padding:2px 5px 3px;border-top:1px solid rgba(255,255,255,.03);margin-top:1px;
 }
 /* a large ribbon button (icon over label) */
 .rbtn{
   display:flex;flex-direction:column;align-items:center;justify-content:flex-start;
-  gap:2px;min-width:46px;max-width:66px;padding:4px 5px 3px;cursor:pointer;
+  gap:1px;min-width:38px;max-width:56px;padding:3px 4px 2px;cursor:pointer;
   background:none;border:1px solid transparent;border-radius:var(--radius-sm);
   color:var(--text);font-family:inherit;transition:background .08s,border-color .08s;
 }
 .rbtn:hover{ background:var(--hl-dim);border-color:var(--border); }
 .rbtn.active-tool{ background:var(--hl-dim);border-color:var(--hl); }
 .rbtn .rb-ico{
-  font-size:17px;line-height:1;height:20px;display:flex;align-items:center;
+  font-size:13px;line-height:1;height:15px;display:flex;align-items:center;
   justify-content:center;color:var(--text);font-family:var(--font-mono);font-weight:400;
 }
-.rbtn .rb-lbl{ font-size:9px;line-height:1.05;text-align:center;color:var(--sub); }
+.rbtn .rb-lbl{ font-size:8px;line-height:1.02;text-align:center;color:var(--sub); }
 .rbtn:hover .rb-lbl,.rbtn.active-tool .rb-lbl{ color:var(--text); }
 /* Home launcher: hero Guided Build + recent-project rows */
-.rbtn.home-hero{ min-width:72px;max-width:92px;background:var(--hl-dim);border-color:var(--border); }
+.rbtn.home-hero{ min-width:60px;max-width:78px;background:var(--hl-dim);border-color:var(--border); }
 .rbtn.home-hero:hover{ border-color:var(--accent); }
 .home-recent-item{ transition:background .08s; }
 /* a small stacked group: little buttons in a column */
 .rstack{ display:flex;flex-direction:column;gap:1px;justify-content:center;padding:2px; }
 .rsbtn{
-  display:flex;align-items:center;gap:6px;padding:3px 8px 3px 5px;cursor:pointer;
+  display:flex;align-items:center;gap:5px;padding:2px 6px 2px 4px;cursor:pointer;
   background:none;border:1px solid transparent;border-radius:var(--radius-sm);
-  color:var(--text);font-family:inherit;font-size:10.5px;white-space:nowrap;text-align:left;
+  color:var(--text);font-family:inherit;font-size:9.5px;white-space:nowrap;text-align:left;
 }
 .rsbtn:hover{ background:var(--hl-dim);border-color:var(--border); }
-.rsbtn .rs-ico{ width:16px;text-align:center;color:var(--sub);font-family:var(--font-mono);font-size:12px; }
+.rsbtn .rs-ico{ width:14px;text-align:center;color:var(--sub);font-family:var(--font-mono);font-size:11px; }
 
 /* application menu dropdown (File) */
 #app-menu{
@@ -799,10 +802,10 @@ body.ribbon-collapsed #ribbon-collapse-btn{ transform:rotate(180deg); }
 #pname{ height:22px; }
 
 @media (max-width:768px){
-  :root{ --ribbon-h:74px; }
+  :root{ --ribbon-h:52px; }
   .rtab{ padding:0 10px;font-size:10px; }
   #tb .tb-right{ display:none; }
-  .rbtn{ min-width:46px;padding:4px; }
+  .rbtn{ min-width:38px;padding:3px; }
   .rbtn .rb-ico{ font-size:17px; }
 }
 
@@ -1519,6 +1522,17 @@ var _rbArmed=false;
    tab bar stays so tabs remain switchable; tapping a tab while collapsed
    reopens the ribbon on that tab. State persists across sessions. */
 function toggleRibbon(force){
+  /* MINIMIZE REMOVED. Kept as a no-op because _ribbonReopenOnTab() and
+     several ribbon handlers still call it.
+
+     Everything below the return used to run on every toggle: trigger a map
+     resize, then reproject every geo-anchored element twice on 60 ms and
+     220 ms timers, racing browser layout. That race was the "elements
+     relocate when I minimize the tab" bug. With the ribbon fixed in place
+     the canvas never changes size, so none of it is needed. */
+  document.body.classList.remove('ribbon-collapsed');
+  return;
+  /* eslint-disable no-unreachable */
   var collapsed = (typeof force==='boolean') ? force : !document.body.classList.contains('ribbon-collapsed');
   document.body.classList.toggle('ribbon-collapsed', collapsed);
   try{ localStorage.setItem('ribbonCollapsed', collapsed?'1':'0'); }catch(e){}
@@ -5178,7 +5192,11 @@ function _utilityIsSet(){
 // == INIT ===================================================
 function initApp(){
   /* Restore the user's ribbon collapse preference before first paint. */
-  try{ if(localStorage.getItem('ribbonCollapsed')==='1') document.body.classList.add('ribbon-collapsed'); }catch(e){}
+  /* MINIMIZE REMOVED. A stale ribbonCollapsed='1' used to make the ribbon
+     boot collapsed, which is why the chevron looked like it did nothing.
+     Clear it and always start expanded. */
+  try{ document.body.classList.remove('ribbon-collapsed');
+       localStorage.removeItem('ribbonCollapsed'); }catch(e){}
   renderEqGrid();renderCtypes();renderWizard();renderBessList();renderLegend();
   if(typeof renderDocTabs==='function') renderDocTabs();
   /* Conduits restored from a saved project were rendered under whatever
@@ -43340,5 +43358,72 @@ window._crmToastModal=_crmToastModal;
 </script>
 
 
+<!-- ================= MAP INTERACTIVITY SELF-HEAL =================
+     plotDiag() already detects "_gmapDiv is pointer-events:none with NO
+     plot -> map cannot be panned", but noticing and fixing were both
+     manual, and a console command is not a repair on a tablet in the
+     field. This watches for that state and calls the app's own
+     setMapInteractive(true) - the single source of truth that sets all
+     six blocking layers together.
+
+     It stays out of the way when the map is SUPPOSED to be locked:
+       _committedPlot  a plotted tab is locked by definition
+       _userLockedMap  the user asked for the lock
+     ============================================================== -->
+<script>
+(function(){
+  var HEALS = 0, MAX = 25;
+  function el(id){ return document.getElementById(id); }
+  function inspect(){
+    var gd=el('_gmapDiv'), wrap=el('gmap-wrap'), blk=el('gmap-block'), gh='(no map)';
+    try{ if(window._gmap && _gmap.get) gh=_gmap.get('gestureHandling')||'(unset)'; }catch(e){}
+    return {
+      hasMap:!!window._gmap, mapLocked:!!window._mapLocked,
+      committedPlot:!!window._committedPlot, userLocked:!!window._userLockedMap,
+      mapDivPointerEv: gd?(gd.style.pointerEvents||'(unset)'):'(missing)',
+      wrapPointerEv: wrap?(wrap.style.pointerEvents||'(unset)'):'(missing)',
+      blockOverlay: blk?(blk.style.display||'(unset)'):'(missing)',
+      scPointerEv: el('sc')?(el('sc').style.pointerEvents||'(unset)'):'(missing)',
+      gestureHandling: gh
+    };
+  }
+  function blocked(s){
+    if(!s.hasMap || s.committedPlot || s.userLocked) return false;
+    return s.mapLocked || s.mapDivPointerEv==='none' || s.wrapPointerEv==='none'
+        || s.blockOverlay==='block' || s.gestureHandling==='none';
+  }
+  function heal(why){
+    if(typeof window.setMapInteractive!=='function' || HEALS>=MAX) return false;
+    HEALS++;
+    try{
+      window.setMapInteractive(true);
+      if(window.console) console.info('[map-heal] restored map interactivity ('+why+') #'+HEALS);
+      if(HEALS===MAX && window.console){
+        console.warn('[map-heal] auto-heal cap reached - something keeps re-locking. '
+                   + 'Run OmegaMap.why() and look for setMapInteractive(false).');
+      }
+      return true;
+    }catch(e){ return false; }
+  }
+  window.OmegaMap = {
+    why: function(){
+      var s=inspect();
+      s.verdict = !s.hasMap ? 'No live JS map - probably the embed-iframe fallback, which cannot be panned programmatically.'
+        : s.committedPlot ? 'Plot committed: locked by design. Use Clear Plot to move the map.'
+        : s.userLocked ? 'You locked it. Use Unlock Map, or run OmegaMap.unlock().'
+        : blocked(s) ? 'Wrongly blocked - auto-heal should clear this within a second.'
+        : 'Nothing blocking. The map should pan.';
+      if(window.console){ console.table?console.table(s):console.log(s); console.info(s.verdict); }
+      return s;
+    },
+    unlock: function(){ window._userLockedMap=false; HEALS=0; return heal('manual'); },
+    stopAutoHeal: function(){ HEALS=MAX; }
+  };
+  function tick(){ var s=inspect(); if(blocked(s)) heal('pointer-events lockout, no plot'); }
+  setInterval(tick, 700);
+  setTimeout(tick, 400);
+  if(window.console) console.info('[map-heal] armed. Run OmegaMap.why() to see what blocks panning.');
+})();
+</script>
 </body>
 </html>
