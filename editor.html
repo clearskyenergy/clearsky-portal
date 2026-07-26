@@ -74,6 +74,15 @@ window.addEventListener('unhandledrejection', function(e) {
 #eng-legend, #lgd, #ruler, #zc, #banner,
 #schem-handle, #schem-resize { pointer-events: auto !important; }
 
+/* THE DRAWING SURFACE. #cov carries covClick / covMove and is a child
+   of #sc, so #sc{pointer-events:none} killed every placement click and
+   froze the X/Y readout at 0.0.
+
+   Mode gating is already handled by display: setMode() adds .on only
+   for drawing and placement modes, so this does NOT block panning -
+   in select mode #cov is display:none and the map gets the events. */
+#cov { pointer-events: auto !important; }
+
 .ps-page{display:block;position:relative;width:17in;height:11in;overflow:hidden;background:#F5F0E8;page-break-after:always;page-break-inside:avoid;margin:0 auto 20px;border:1px solid #ccc}
 :root{
   /* -- NEXTNRG THEME (v4.26 / NextNRG white-label) -----------------------
@@ -43496,12 +43505,30 @@ window._crmToastModal=_crmToastModal;
     }catch(e){ return null; }
   }
 
-  /* --- ANCHOR (always on) --- */
-  function anchor(){
+  /* --- ANCHOR ---
+     Timing is the whole game. _geoStampAll() converts an element's
+     CURRENT pixels into lat/lng against the CURRENT view, and the
+     one-shot guard makes the result permanent. So stamping while the map
+     is still settling - as it is during a project restore - anchors
+     everything to a transient view and cannot be undone.
+
+     Two rules: never before the project has finished loading, and never
+     until the view has been still for a moment. */
+  var lastIdle = 0;
+  function settled(){ return lastIdle && (Date.now() - lastIdle) > 700; }
+
+  function anchor(force){
+    if(!window._loadReady) return;              /* project still loading */
+    if(!force && !settled()) return;            /* view still moving */
     if(!live() || typeof _geoStampAll!=='function') return;
     try{ _geoStampAll(); }catch(e){}
     if(scaling) stampSizes();
   }
+
+  /* Called immediately before any programmatic pan. The compass moves the
+     map without a dragstart, so without this an unstamped element would
+     be left behind and then anchored to whatever ground it ended up over. */
+  window.__omegaAnchorNow = function(){ anchor(true); };
 
   function pending(){
     var s=S_(); if(!s) return 0;
@@ -43586,6 +43613,19 @@ window._crmToastModal=_crmToastModal;
       scaling=false;
       console.info('[geo] scaling OFF - positions still anchored.');
     },
+    /* Clear every anchor and re-derive from the CURRENT view. Use only
+       when the map is showing the position the drawing SHOULD occupy -
+       this overwrites good anchors as readily as bad ones. */
+    reanchorAll:function(){
+      var s=S_(); if(!s) return 0;
+      var c=0;
+      (s.elements||[]).forEach(function(e){ delete e._geoLat; delete e._geoLng; c++; });
+      (s.shapes||[]).forEach(function(o){ delete o._geoPts; });
+      (s.conduits||[]).forEach(function(o){ delete o._geoPts; });
+      anchor(true);
+      console.info('[geo] re-anchored '+c+' element(s) to the current view');
+      return c;
+    },
     setSize:function(id,wFt,hFt){
       var s=S_(); if(!s) return false;
       var el=(s.elements||[]).filter(function(e){return e.id===id;})[0];
@@ -43601,14 +43641,19 @@ window._crmToastModal=_crmToastModal;
       if(!window._gmap || !window.google || !google.maps) return false;
       if(_gmap.__omegaAnchorHooked) return true;
       /* Anchor BEFORE the view moves, while pixels still mean something. */
-      google.maps.event.addListener(_gmap,'dragstart',anchor);
-      google.maps.event.addListener(_gmap,'idle',anchor);
+      google.maps.event.addListener(_gmap,'dragstart',function(){ anchor(true); });
+      google.maps.event.addListener(_gmap,'idle',function(){
+        lastIdle = Date.now();
+        /* Debounced: only stamp if the view is still still. */
+        setTimeout(function(){ anchor(); }, 750);
+      });
       _gmap.__omegaAnchorHooked=true;
       return true;
     }catch(e){ return false; }
   }
 
-  setInterval(function(){ anchor(); hook(); }, TICK);
+  /* The interval only keeps the map hooked; it no longer stamps. */
+  setInterval(function(){ hook(); }, TICK);
   hook();
   if(window.console) console.info('[geo] eager anchoring armed. OmegaGeo.status() / .audit() / .enableScaling()');
 })();
@@ -43667,6 +43712,9 @@ window._crmToastModal=_crmToastModal;
     var why=locked();
     if(why){ nudge(why); return; }
     var m=map(); if(!m||!m.panBy) return;
+    /* Anchor first: panBy fires no dragstart, so anything unstamped
+       would be left behind and then mis-anchored on the next idle. */
+    try{ if(window.__omegaAnchorNow) window.__omegaAnchorNow(); }catch(e){}
     var v=viewport();
     /* panBy is animated by the API when the distance is under one
        viewport, which is what makes the new imagery slide in. */
