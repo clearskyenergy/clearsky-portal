@@ -19742,11 +19742,6 @@ function _loadMapsAPI(){
     _gmapLoading=true;
     window._gmapCB=()=>{_gmapLoaded=true;_gmapCBs.forEach(cb=>cb.res());};
     const s=document.createElement('script');
-    /* geometry is REQUIRED, not optional: every to-scale footprint,
-       every anchored bound and the whole takeoff run through
-       google.maps.geometry.spherical. Loading only `places` meant
-       sph() returned null, so no overlay could ever be drawn - the
-       native layer silently did nothing in production. */
     s.src='https://maps.googleapis.com/maps/api/js?key='+_CFG.googleMapsKey+'&libraries=places,geometry&callback=_gmapCB';
     s.onerror=e=>_gmapCBs.forEach(cb=>cb.rej(e));
     document.head.appendChild(s);
@@ -40062,7 +40057,12 @@ function setMapInteractive(on, intent){
     if(on){ window._userLockedMap = false; }
     else if(intent===true){ window._userLockedMap = true; }
     var pe = on ? 'auto' : 'none';
-    var ta = on ? 'auto' : 'none';
+    /* touch-action must be 'none' while the map is INTERACTIVE, not
+       'auto'. With 'auto', iOS Safari treats a one-finger drag as a page
+       scroll and never hands it to the map - so one-finger panning did
+       nothing. 'none' means the map owns the gesture, which is what
+       gestureHandling:'greedy' expects. */
+    var ta = on ? 'none' : 'auto';
     var gmd  = document.getElementById('_gmapDiv');
     var wrap = document.getElementById('gmap-wrap');
     var fr   = document.getElementById('gmap-frame');
@@ -46474,8 +46474,13 @@ window._crmToastModal=_crmToastModal;
 }
 @media (max-width: 520px){
 
-  /* --- ribbon: still scrolls, but LOOKS scrollable --- */
+  /* --- ribbon: still scrolls, but LOOKS scrollable ---
+     It was 62px tall holding 85px of content, so the group captions
+     ("2 - Build", "3 - Size & Configure") were sliced off. Give it the
+     height its own content needs on a phone rather than clipping. */
+  :root{ --ribbon-h: 92px; }
   #ribbon{
+    height:auto; min-height:92px;
     overflow-x:auto; overflow-y:hidden;
     -webkit-overflow-scrolling:touch; scrollbar-width:none;
     -webkit-mask-image:linear-gradient(to right,#000 0,#000 calc(100% - 22px),transparent 100%);
@@ -46516,9 +46521,15 @@ window._crmToastModal=_crmToastModal;
   /* 46vh put the diag bottom at 612px while Site started at 532 - they
      overlapped at the same left edge. Shorter, and narrower than half
      the screen. */
+  /* Diagnose goes TOP-RIGHT, not top-left.
+     Left put it in the same column as Site Map, which is bottom-anchored
+     and 312px tall - so the two collided and no vh cap fixed it without
+     making Diagnose useless. On the right its only neighbour is the 145px
+     compass, which leaves real room. */
   #omega-diag{
-    width:180px !important; max-height:32vh; overflow-y:auto;
-    left:calc(8px + env(safe-area-inset-left, 0px)); right:auto;
+    width:180px !important; overflow-y:auto;
+    max-height:calc(100vh - 445px); min-height:110px;
+    left:auto; right:calc(8px + env(safe-area-inset-right, 0px));
     top:calc(8px + env(safe-area-inset-top, 0px)); bottom:auto;
   }
   #omega-diag .od-row{ font-size:9.5px; }
@@ -46543,7 +46554,7 @@ window._crmToastModal=_crmToastModal;
 /* Very small: one panel at a time is all that fits. */
 @media (max-width: 380px){
   #omega-site{ width:164px !important; }
-  #omega-diag{ width:164px !important; max-height:30vh; }
+  #omega-diag{ width:158px !important; max-height:calc(100vh - 445px); }
   #omega-compass{ width:96px !important; }
 }
 </style>
@@ -46664,6 +46675,69 @@ window._crmToastModal=_crmToastModal;
     console.table?console.table(o):console.log(o);
     console.info(o.verdict);
     return o;
+  };
+})();
+</script>
+<!-- ================= TOUCH GESTURES =================
+     Panels are dragged with one finger; the map is panned with one
+     finger. Neither works unless touch-action says who owns the gesture.
+     =================================================== -->
+<style>
+  /* Without this, Safari decides a one-finger drag on a panel is a page
+     scroll and the drag handler never sees a move. */
+  #omega-compass, #omega-site, #omega-diag{ touch-action:none; }
+
+  /* AND they must claim pointer events back.
+     #omega-compass and #omega-diag are children of #sc, which is set to
+     pointer-events:none whenever a map is live so the map can receive
+     gestures. They inherited that and became completely ungrabbable the
+     moment a map loaded - measured: drags 517px with no map, 0px with
+     one. A child may opt back in, which is exactly what .cel already does
+     for equipment. #omega-site sits on <body> and was never affected,
+     which is why only two of the three panels were stuck. */
+  #omega-compass, #omega-diag, #omega-site{ pointer-events:auto !important; }
+  #omega-compass *, #omega-diag *, #omega-site *{ pointer-events:auto; }
+  /* Diagnose scrolls internally, so its BODY keeps vertical panning while
+     the frame stays draggable. */
+  #omega-diag #od-body{ touch-action:pan-y; }
+  #omega-site  #os-body{ touch-action:pan-y; }
+  /* The ribbon scrolls sideways: claim that axis explicitly so the
+     gesture is not ambiguous. */
+  #ribbon, #ribbon-tabs{ touch-action:pan-x; }
+  /* The map surface owns its own gestures. */
+  #_gmapDiv{ touch-action:none; }
+</style>
+<script>
+(function(){
+  function MAP(){ try{ if(typeof _gmap!=='undefined'&&_gmap) return _gmap; }catch(e){} return window._gmap||null; }
+  /* setMapInteractive is not the only thing that can touch this, so keep
+     the map div's gesture ownership true. */
+  setInterval(function(){
+    try{
+      if(window._committedPlot) return;
+      var md=document.getElementById('_gmapDiv');
+      if(md && MAP() && md.style.touchAction!=='none') md.style.touchAction='none';
+    }catch(e){}
+  }, 900);
+
+  window.OmegaTouch={
+    status:function(){
+      var md=document.getElementById('_gmapDiv'), m=MAP();
+      var o={ mapDivTouchAction: md?getComputedStyle(md).touchAction:'absent',
+              gestureHandling: (m&&m.get)?(m.get('gestureHandling')||'(unset)'):'(no map)',
+              compass:(function(){var e=document.getElementById('omega-compass');
+                return e?getComputedStyle(e).touchAction:'absent';})(),
+              ribbon:(function(){var e=document.getElementById('ribbon');
+                return e?getComputedStyle(e).touchAction:'absent';})() };
+      o.verdict = o.mapDivTouchAction==='auto'
+          ? 'Map div is touch-action:auto - iOS will steal one-finger drags.'
+        : o.gestureHandling!=='greedy' && o.gestureHandling!=='(no map)'
+          ? 'gestureHandling is '+o.gestureHandling+' - one finger will not pan.'
+        : 'One finger pans the map; panels drag; ribbon scrolls sideways.';
+      console.table?console.table(o):console.log(o);
+      console.info(o.verdict);
+      return o;
+    }
   };
 })();
 </script>
