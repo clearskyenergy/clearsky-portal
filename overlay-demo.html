@@ -1,0 +1,538 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Geo-anchored overlay — ClearSky OMEGA proof of concept</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@300;400;600;700&display=swap');
+  :root{
+    --navy:#0A1628; --panel:#0E1D33; --line:#1C3350;
+    --green:#2FB54A; --accent:#00D4FF; --amber:#F59E0B;
+    --ink:#E8F0FA; --dim:#7D95B4;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{height:100%}
+  body{
+    background:var(--navy);color:var(--ink);
+    font:400 14px/1.5 'IBM Plex Sans',system-ui,sans-serif;
+    display:grid;grid-template-columns:270px 1fr;height:100vh;overflow:hidden;
+  }
+
+  /* ---- side rail ---- */
+  aside{background:var(--panel);border-right:1px solid var(--line);overflow-y:auto;padding:14px}
+  h1{font:600 13px/1.3 'IBM Plex Sans';letter-spacing:.14em;text-transform:uppercase;color:var(--accent)}
+  h1 small{display:block;font:300 11px/1.5 'IBM Plex Sans';letter-spacing:.04em;
+           text-transform:none;color:var(--dim);margin-top:4px}
+  .grp{margin-top:18px}
+  .grp>h2{font:600 10px/1 'IBM Plex Mono';letter-spacing:.16em;color:var(--dim);
+          text-transform:uppercase;margin-bottom:8px}
+  button{
+    font:500 12px/1 'IBM Plex Sans';color:var(--ink);background:#132844;
+    border:1px solid var(--line);border-radius:4px;padding:8px 10px;cursor:pointer;
+    transition:background .12s,border-color .12s;
+  }
+  button:hover{background:#1A3556}
+  button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+  button[aria-pressed="true"]{background:rgba(0,212,255,.16);border-color:var(--accent);color:var(--accent)}
+  button:disabled{opacity:.38;cursor:default}
+  .row{display:grid;grid-template-columns:1fr 1fr;gap:6px}
+  .row.tri{grid-template-columns:1fr 1fr 1fr}
+  .stack{display:flex;flex-direction:column;gap:6px}
+  label.chk{display:flex;align-items:center;gap:8px;padding:5px 2px;cursor:pointer;font-size:12.5px}
+  label.chk input{accent-color:var(--accent);width:15px;height:15px;cursor:pointer}
+  .swatch{width:9px;height:9px;border-radius:2px;flex:none}
+  .metric{display:flex;justify-content:space-between;font:400 12px/1.8 'IBM Plex Mono';color:var(--dim)}
+  .metric b{color:var(--ink);font-weight:500}
+
+  /* ---- map + HUD ---- */
+  main{position:relative}
+  #map{position:absolute;inset:0;background:#08111F}
+  /* Signature element: a CAD command line. It is the one place the tool
+     speaks in its own vernacular, so it earns the monospace and the glow. */
+  #hud{
+    position:absolute;left:0;right:0;bottom:0;z-index:5;
+    display:flex;gap:0;align-items:stretch;
+    background:linear-gradient(180deg,rgba(10,22,40,0) 0%,rgba(10,22,40,.94) 42%);
+    padding:26px 14px 10px;font:400 12px/1 'IBM Plex Mono';pointer-events:none;
+  }
+  #hud div{padding:7px 12px;border-right:1px solid rgba(28,51,80,.9);white-space:nowrap}
+  #hud div:last-child{border:0;flex:1;color:var(--dim)}
+  #hud b{color:var(--accent);font-weight:500}
+  #hud .snapt{color:var(--green)}
+  #gate{
+    position:absolute;inset:0;z-index:20;display:grid;place-items:center;
+    background:rgba(10,22,40,.97);padding:24px;
+  }
+  #gate form{max-width:460px;display:flex;flex-direction:column;gap:12px}
+  #gate h2{font:600 15px 'IBM Plex Sans';color:var(--accent)}
+  #gate p{color:var(--dim);font-size:13px}
+  #gate input{
+    font:400 13px 'IBM Plex Mono';padding:10px;border-radius:4px;
+    border:1px solid var(--line);background:#0B1A2E;color:var(--ink)
+  }
+  #gate input:focus{outline:2px solid var(--accent);outline-offset:1px}
+  .warn{border-left:2px solid var(--amber);padding-left:10px;color:#D7B57A;font-size:12px}
+  @media (prefers-reduced-motion:reduce){*{transition:none!important}}
+  @media (max-width:760px){body{grid-template-columns:1fr;grid-template-rows:auto 1fr}
+    aside{max-height:38vh;border-right:0;border-bottom:1px solid var(--line)}}
+</style>
+</head>
+<body>
+
+<aside>
+  <h1>Geo-anchored overlay<small>Proof of concept — pan and zoom freely, nothing needs locking</small></h1>
+
+  <div class="grp">
+    <h2>Tool</h2>
+    <div class="row tri stack" style="display:grid">
+      <button data-tool="select" aria-pressed="true">Select</button>
+      <button data-tool="pad">Pad</button>
+      <button data-tool="conduit">Conduit</button>
+    </div>
+  </div>
+
+  <div class="grp">
+    <h2>Constraints</h2>
+    <div class="row">
+      <button id="t-snap" aria-pressed="true">Snap</button>
+      <button id="t-ortho" aria-pressed="false">Ortho</button>
+    </div>
+  </div>
+
+  <div class="grp">
+    <h2>Layers</h2>
+    <div id="layers"></div>
+  </div>
+
+  <div class="grp">
+    <h2>Sheet</h2>
+    <div class="row">
+      <button id="rot-ccw">Rotate −5°</button>
+      <button id="rot-cw">Rotate +5°</button>
+    </div>
+    <div class="row" style="margin-top:6px">
+      <button id="undo" disabled>Undo</button>
+      <button id="redo" disabled>Redo</button>
+    </div>
+    <div class="stack" style="margin-top:6px">
+      <button id="hideall">Hide all geometry</button>
+      <button id="export">Export GeoJSON</button>
+    </div>
+  </div>
+
+  <div class="grp">
+    <h2>Takeoff</h2>
+    <div class="metric"><span>Pads</span><b id="m-pads">0</b></div>
+    <div class="metric"><span>Pad area</span><b id="m-area">0 sf</b></div>
+    <div class="metric"><span>Conduit</span><b id="m-len">0 ft</b></div>
+    <div class="metric"><span>Setback ring</span><b id="m-set">10 ft</b></div>
+  </div>
+</aside>
+
+<main>
+  <div id="map"></div>
+  <div id="hud">
+    <div>N <b id="h-n">—</b></div>
+    <div>E <b id="h-e">—</b></div>
+    <div>Scale <b id="h-scale">—</b></div>
+    <div><span id="h-snap" class="snapt">no snap</span></div>
+    <div id="h-msg">Pick a tool and click the map.</div>
+  </div>
+
+  <div id="gate">
+    <form id="gate-form">
+      <h2>Maps API key</h2>
+      <p>This page loads the Google Maps JS API at runtime, so the key is never
+         written into the file. It is kept in this tab's session storage only.</p>
+      <input id="gate-key" type="password" placeholder="Paste a Maps JS API key"
+             autocomplete="off" spellcheck="false">
+      <button type="submit">Load map</button>
+      <p class="warn">Restrict any key you use here to your own HTTP referrers in
+         Google Cloud Console. An unrestricted key in client-side code can be
+         copied off the page and billed to your project.</p>
+    </form>
+  </div>
+</main>
+
+<script src="cad-kernel.js"></script>
+<script src="geo-overlay.js"></script>
+<script>
+(function () {
+  'use strict';
+
+  /* ---------------------------------------------------------------
+   * Model. Geometry is FEET in local site coordinates and never
+   * changes when the map moves — that is the whole point.
+   * --------------------------------------------------------------- */
+  var model = { pads: [], runs: [] };
+  var SETBACK_FT = 10;
+  var ANCHOR = { lat: 41.5772, lng: -93.7113 };   // West Des Moines, IA
+
+  var ov = null;
+  var snap = new CAD.SnapEngine({ gridFt: 5, cellFt: 60 });
+  var journal = new CAD.CommandJournal({ onChange: onJournal });
+  var tool = 'select';
+  var draft = null;               // in-progress geometry
+  var cursor = { x: 0, y: 0 };
+  var lastSnap = null;
+  var useSnap = true, useOrtho = false;
+  var labels = [];                // screen-space label handles
+
+  var LAYERS = [
+    { id: 'pad',      name: 'BESS pads',    color: '#2FB54A' },
+    { id: 'setback',  name: 'Setbacks',     color: '#F59E0B' },
+    { id: 'conduit',  name: 'Conduit runs', color: '#00D4FF' },
+    { id: 'annot',    name: 'Annotation',   color: '#E8F0FA' }
+  ];
+
+  var $ = function (s) { return document.querySelector(s); };
+  var SVG = 'http://www.w3.org/2000/svg';
+  function node(tag, attrs) {
+    var e = document.createElementNS(SVG, tag);
+    for (var k in attrs) e.setAttribute(k, attrs[k]);
+    return e;
+  }
+
+  /* ---------------- API key gate ---------------- */
+
+  $('#gate-form').addEventListener('submit', function (e) {
+    e.preventDefault();
+    var k = $('#gate-key').value.trim();
+    if (!k) return;
+    try { sessionStorage.setItem('gmapsKey', k); } catch (_) {}
+    loadMaps(k);
+  });
+  try {
+    var saved = sessionStorage.getItem('gmapsKey');
+    if (saved) loadMaps(saved);
+  } catch (_) {}
+
+  function loadMaps(key) {
+    $('#gate').style.display = 'none';
+    window.__omegaInit = init;
+    var s = document.createElement('script');
+    s.src = 'https://maps.googleapis.com/maps/api/js?key=' + encodeURIComponent(key) +
+            '&libraries=geometry&callback=__omegaInit&v=weekly';
+    s.defer = true;
+    s.onerror = function () {
+      $('#gate').style.display = 'grid';
+      $('#h-msg').textContent = 'Maps failed to load. Check the key and its referrer restrictions.';
+    };
+    document.head.appendChild(s);
+  }
+
+  /* ---------------- init ---------------- */
+
+  function init() {
+    var map = new google.maps.Map($('#map'), {
+      center: ANCHOR, zoom: 19, mapTypeId: 'satellite', tilt: 0,
+      streetViewControl: false, fullscreenControl: false, mapTypeControl: false,
+      // Tilt and heading rotate the pixel frame the overlay projects into,
+      // so the plan view keeps both at zero. Everything else is unlocked.
+      rotateControl: false
+    });
+
+    ov = GeoOverlay.create({
+      map: map, anchor: ANCHOR,
+      onTransform: function (t) {
+        var sc = CAD.Units.scaleLabel(t.pixelsPerFoot);
+        $('#h-scale').textContent = sc.label;
+      }
+    });
+
+    LAYERS.forEach(function (L) { ov.addLayer(L.id, { name: L.name, color: L.color }); });
+    buildLayerPanel();
+
+    map.addListener('mousemove', function (e) { onMove(e.latLng); });
+    map.addListener('click', function (e) { onClick(e.latLng); });
+    map.addListener('dblclick', function () { finishRun(); });
+
+    document.addEventListener('keydown', onKey);
+    wireButtons();
+    rebuild();
+    $('#h-msg').textContent = 'Draw a pad, then route conduit. Pan and zoom while you draw.';
+  }
+
+  /* ---------------- interaction ---------------- */
+
+  function onMove(latLng) {
+    var p = ov.toLocal(latLng);
+    lastSnap = null;
+    if (useSnap) {
+      // Aperture is defined in SCREEN pixels and converted to feet, so the
+      // snap target feels the same size at every zoom level.
+      var hit = snap.query(p, {
+        radiusFt: ov.pxToFeet(14),
+        from: draft && draft.pts.length ? draft.pts[draft.pts.length - 1] : null
+      });
+      if (hit) { lastSnap = hit; p = { x: hit.x, y: hit.y }; }
+    }
+    if (useOrtho && draft && draft.pts.length) {
+      p = CAD.constrain(draft.pts[draft.pts.length - 1], p, { ortho: true });
+    }
+    cursor = p;
+    $('#h-n').textContent = (-p.y).toFixed(1) + "'";
+    $('#h-e').textContent = p.x.toFixed(1) + "'";
+    $('#h-snap').textContent = lastSnap ? lastSnap.type : 'no snap';
+    $('#h-snap').style.color = lastSnap ? 'var(--green)' : 'var(--dim)';
+    if (draft) render();
+  }
+
+  function onClick() {
+    if (tool === 'pad') {
+      if (!draft) { draft = { kind: 'pad', pts: [cursor] }; return; }
+      var a = draft.pts[0], b = cursor;
+      var pts = [{ x: a.x, y: a.y }, { x: b.x, y: a.y },
+                 { x: b.x, y: b.y }, { x: a.x, y: b.y }];
+      if (CAD.polyArea(pts) < 1) { draft = null; render(); return; }
+      draft = null;
+      addPad(pts);
+    } else if (tool === 'conduit') {
+      if (!draft) draft = { kind: 'run', pts: [] };
+      draft.pts.push({ x: cursor.x, y: cursor.y });
+      render();
+    }
+  }
+
+  function finishRun() {
+    if (!draft || draft.kind !== 'run') return;
+    var pts = draft.pts;
+    draft = null;
+    if (pts.length < 2) { render(); return; }
+    addRun(pts);
+  }
+
+  function onKey(e) {
+    if (e.target.tagName === 'INPUT') return;
+    var meta = e.metaKey || e.ctrlKey;
+    if (meta && e.key.toLowerCase() === 'z') {
+      e.preventDefault();
+      if (e.shiftKey) journal.redo(); else journal.undo();
+      rebuild();
+    } else if (e.key === 'Escape') {
+      draft = null; render();
+    } else if (e.key === 'Enter') {
+      finishRun();
+    }
+  }
+
+  /* ---------------- commands ---------------- */
+
+  function addPad(pts) {
+    var pad = { id: 'pad' + Date.now(), pts: pts };
+    journal.run({
+      label: 'Place BESS pad',
+      redo: function () { model.pads.push(pad); rebuild(); },
+      undo: function () {
+        model.pads.splice(model.pads.indexOf(pad), 1); rebuild();
+      }
+    });
+  }
+
+  function addRun(pts) {
+    var run = { id: 'run' + Date.now(), pts: pts };
+    journal.run({
+      label: 'Route conduit',
+      redo: function () { model.runs.push(run); rebuild(); },
+      undo: function () {
+        model.runs.splice(model.runs.indexOf(run), 1); rebuild();
+      }
+    });
+  }
+
+  function onJournal(st) {
+    $('#undo').disabled = !st.canUndo;
+    $('#redo').disabled = !st.canRedo;
+    $('#undo').textContent = st.canUndo ? 'Undo ' + st.undoLabel.toLowerCase() : 'Undo';
+    $('#redo').textContent = st.canRedo ? 'Redo ' + st.redoLabel.toLowerCase() : 'Redo';
+  }
+
+  /* ---------------- snap index ---------------- */
+
+  function reindex() {
+    snap.clear();
+    model.pads.forEach(function (p) {
+      if (ov.layers.get('pad').locked) return;
+      snap.addPolyline(p.pts, { ref: p.id }, true);
+      var c = CAD.polyCentroid(p.pts);
+      snap.addPoint(c, { ref: p.id, snapKind: 'center' });
+    });
+    model.runs.forEach(function (r) {
+      if (ov.layers.get('conduit').locked) return;
+      snap.addPolyline(r.pts, { ref: r.id }, false);
+    });
+  }
+
+  /* ---------------- render ---------------- */
+
+  function rebuild() { reindex(); render(); metrics(); }
+
+  function render() {
+    if (!ov || !ov.model) return;
+    LAYERS.forEach(function (L) { ov.layer(L.id).g.innerHTML = ''; });
+    labels.forEach(function (h) { h.remove(); });
+    labels = [];
+
+    var padG = ov.layer('pad').g, setG = ov.layer('setback').g,
+        conG = ov.layer('conduit').g;
+
+    model.pads.forEach(function (p, i) {
+      // Setback ring: a polygon offset outward — the geometry an NFPA 855
+      // separation-distance check actually needs.
+      var ring = CAD.offsetPoly(p.pts, SETBACK_FT);
+      setG.appendChild(node('polygon', {
+        points: ptsAttr(ring), fill: 'rgba(245,158,11,.09)',
+        stroke: '#F59E0B', 'stroke-width': 1.25,
+        'stroke-dasharray': '6 4', 'vector-effect': 'non-scaling-stroke'
+      }));
+      padG.appendChild(node('polygon', {
+        points: ptsAttr(p.pts), fill: 'rgba(47,181,74,.22)',
+        stroke: '#2FB54A', 'stroke-width': 1.6, 'vector-effect': 'non-scaling-stroke'
+      }));
+      addLabel(CAD.polyCentroid(p.pts),
+        'PAD ' + (i + 1) + ' · ' + Math.round(CAD.polyArea(p.pts)).toLocaleString() + ' sf');
+    });
+
+    model.runs.forEach(function (r) {
+      conG.appendChild(node('polyline', {
+        points: ptsAttr(r.pts), fill: 'none', stroke: '#00D4FF',
+        'stroke-width': 2, 'stroke-linejoin': 'round',
+        'vector-effect': 'non-scaling-stroke'
+      }));
+      addLabel(r.pts[r.pts.length - 1],
+        CAD.Units.ftIn(CAD.polyPerimeter(r.pts, false)));
+    });
+
+    // in-progress geometry
+    if (draft && draft.kind === 'pad') {
+      var a = draft.pts[0], b = cursor;
+      padG.appendChild(node('rect', {
+        x: Math.min(a.x, b.x), y: Math.min(a.y, b.y),
+        width: Math.abs(b.x - a.x), height: Math.abs(b.y - a.y),
+        fill: 'rgba(47,181,74,.12)', stroke: '#2FB54A', 'stroke-width': 1.4,
+        'stroke-dasharray': '5 4', 'vector-effect': 'non-scaling-stroke'
+      }));
+    }
+    if (draft && draft.kind === 'run' && draft.pts.length) {
+      conG.appendChild(node('polyline', {
+        points: ptsAttr(draft.pts.concat([cursor])), fill: 'none',
+        stroke: '#00D4FF', 'stroke-width': 1.6, 'stroke-dasharray': '5 4',
+        'vector-effect': 'non-scaling-stroke'
+      }));
+    }
+    if (lastSnap) {
+      var m = node('rect', {
+        x: lastSnap.x - ov.pxToFeet(5), y: lastSnap.y - ov.pxToFeet(5),
+        width: ov.pxToFeet(10), height: ov.pxToFeet(10),
+        fill: 'none', stroke: '#2FB54A', 'stroke-width': 1.5,
+        'vector-effect': 'non-scaling-stroke'
+      });
+      ov.layer('annot').g.appendChild(m);
+    }
+  }
+
+  function ptsAttr(pts) {
+    return pts.map(function (p) { return p.x + ',' + p.y; }).join(' ');
+  }
+
+  /* Labels live in the SCREEN layer so they stay legible at any zoom
+     instead of inheriting the model's feet-to-pixels scale. */
+  function addLabel(pt, text) {
+    var d = document.createElement('div');
+    d.textContent = text;
+    d.style.cssText = 'font:500 11px/1 "IBM Plex Mono";color:#E8F0FA;' +
+      'background:rgba(10,22,40,.82);border:1px solid #1C3350;border-radius:3px;' +
+      'padding:3px 6px;white-space:nowrap;pointer-events:none;';
+    labels.push(ov.addScreenItem(d, pt, { x: 6, y: -8 }));
+  }
+
+  function metrics() {
+    var area = model.pads.reduce(function (s, p) { return s + CAD.polyArea(p.pts); }, 0);
+    var len = model.runs.reduce(function (s, r) { return s + CAD.polyPerimeter(r.pts, false); }, 0);
+    $('#m-pads').textContent = model.pads.length;
+    $('#m-area').textContent = Math.round(area).toLocaleString() + ' sf';
+    $('#m-len').textContent = Math.round(len).toLocaleString() + ' ft';
+  }
+
+  /* ---------------- chrome ---------------- */
+
+  function buildLayerPanel() {
+    var host = $('#layers');
+    host.innerHTML = '';
+    ov.layerList().forEach(function (L) {
+      var lab = document.createElement('label');
+      lab.className = 'chk';
+      var cb = document.createElement('input');
+      cb.type = 'checkbox'; cb.checked = L.visible;
+      cb.addEventListener('change', function () {
+        ov.setLayerVisible(L.id, cb.checked);
+      });
+      var sw = document.createElement('span');
+      sw.className = 'swatch'; sw.style.background = L.color;
+      var t = document.createElement('span'); t.textContent = L.name;
+      lab.appendChild(cb); lab.appendChild(sw); lab.appendChild(t);
+      host.appendChild(lab);
+    });
+  }
+
+  function wireButtons() {
+    document.querySelectorAll('[data-tool]').forEach(function (b) {
+      b.addEventListener('click', function () {
+        tool = b.dataset.tool; draft = null; render();
+        document.querySelectorAll('[data-tool]').forEach(function (o) {
+          o.setAttribute('aria-pressed', String(o === b));
+        });
+        $('#h-msg').textContent = tool === 'pad'
+          ? 'Click two opposite corners.'
+          : tool === 'conduit'
+            ? 'Click each vertex. Double-click or Enter to finish, Esc to cancel.'
+            : 'Pan and zoom — the drawing stays on the ground.';
+      });
+    });
+    var tog = function (sel, get, set) {
+      $(sel).addEventListener('click', function () {
+        set(!get());
+        $(sel).setAttribute('aria-pressed', String(get()));
+      });
+    };
+    tog('#t-snap', function () { return useSnap; }, function (v) { useSnap = v; });
+    tog('#t-ortho', function () { return useOrtho; }, function (v) { useOrtho = v; });
+
+    $('#rot-ccw').addEventListener('click', function () { ov.setRotation(ov.rotationDeg - 5); });
+    $('#rot-cw').addEventListener('click', function () { ov.setRotation(ov.rotationDeg + 5); });
+    $('#undo').addEventListener('click', function () { journal.undo(); rebuild(); });
+    $('#redo').addEventListener('click', function () { journal.redo(); rebuild(); });
+
+    $('#hideall').addEventListener('click', function () {
+      var vis = ov.toggle();
+      $('#hideall').textContent = vis ? 'Hide all geometry' : 'Show all geometry';
+    });
+
+    $('#export').addEventListener('click', function () {
+      var feats = model.pads.map(function (p, i) {
+        return { geometry: 'Polygon', coordsFt: p.pts,
+                 properties: { layer: 'bess-pad', name: 'Pad ' + (i + 1),
+                               area_sf: Math.round(CAD.polyArea(p.pts)) } };
+      }).concat(model.pads.map(function (p, i) {
+        return { geometry: 'Polygon', coordsFt: CAD.offsetPoly(p.pts, SETBACK_FT),
+                 properties: { layer: 'setback', setback_ft: SETBACK_FT, of: 'Pad ' + (i + 1) } };
+      })).concat(model.runs.map(function (r, i) {
+        return { geometry: 'LineString', coordsFt: r.pts,
+                 properties: { layer: 'conduit', name: 'Run ' + (i + 1),
+                               length_ft: +CAD.polyPerimeter(r.pts, false).toFixed(1) } };
+      }));
+      var blob = new Blob([JSON.stringify(ov.toGeoJSON(feats), null, 2)],
+                          { type: 'application/geo+json' });
+      var a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = 'site-plan.geojson';
+      a.click();
+      URL.revokeObjectURL(a.href);
+      $('#h-msg').textContent = 'Exported ' + feats.length + ' features in WGS84.';
+    });
+  }
+})();
+</script>
+</body>
+</html>
