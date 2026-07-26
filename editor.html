@@ -1464,9 +1464,13 @@ window.onerror = function(msg, src, line, col, err) {
     </div>
     <div class="rpanel">
       <div class="rpanel-body">
-        <button class="rbtn" id="rb-setplot" onclick="setPlot()" title="Capture &amp; lock the current satellite view as a fixed, calibrated plot layer — nothing moves and +/- zooms the plot and your drawings together"><span class="rb-ico" style="color:#00D4FF">📌</span><span class="rb-lbl">Set<br>Plot</span></button>
+        <!-- Set Plot retired: plots froze the map into a raster, which disabled
+     anchoring entirely. Restore by re-instating this button:
+     <button class="rbtn" id="rb-setplot" onclick="setPlot()" title="Capture &amp; lock the current satellite view as a fixed, calibrated plot layer — nothing moves and +/- zooms the plot and your drawings together"><span class="rb-ico" style="color:#00D4FF">📌</span><span class="rb-lbl">Set<br>Plot</span></button> -->
         <button class="rbtn" id="rb-gps" onclick="openGpsPlacement()" title="GPS Placement — drop equipment by latitude/longitude on a live Google Map. Markers lock perfectly to their coordinates at any zoom (no drift), then apply to the canvas."><span class="rb-ico" style="color:#4285F4">📍</span><span class="rb-lbl">GPS<br>Place</span></button>
-        <button class="rbtn" id="rb-clearplot" onclick="clearPlot()" title="Clear the committed plot and return to the live interactive map"><span class="rb-ico">✕</span><span class="rb-lbl">Clear<br>Plot</span></button>
+        <!-- Clear Plot retired: plots froze the map into a raster, which disabled
+     anchoring entirely. Restore by re-instating this button:
+     <button class="rbtn" id="rb-clearplot" onclick="clearPlot()" title="Clear the committed plot and return to the live interactive map"><span class="rb-ico">✕</span><span class="rb-lbl">Clear<br>Plot</span></button> -->
         <button class="rbtn" id="rb-recenter" onclick="recenterOnEquipment()" title="Recenter the view on your placed equipment — brings any off-screen equipment back into the window"><span class="rb-ico" style="color:#34A853">⊕</span><span class="rb-lbl">Recenter</span></button>
         <button class="rbtn" id="rb-crosshair" onclick="nnToggleCrosshair()" title="Toggle the AutoCAD-style crosshair cursor in draw/placement modes"><span class="rb-ico">✛</span><span class="rb-lbl">Crosshair</span></button>
       </div>
@@ -18787,7 +18791,7 @@ async function _loadProject(id){
           if(frame) frame.style.pointerEvents='';
           if(addr && savedAddr) addr.value=savedAddr;
           var st=document.getElementById('gmap-status'); if(st) st.textContent='OK View restored \u2014 click Lock to place equipment.';
-          showBanner('wiz','  View restored at your saved location \u2014 click   Lock map to continue.');
+          showBanner('wiz','  View restored at your saved location.');
 
           var _done=false;
           var _finish=function(){
@@ -44451,10 +44455,30 @@ window._crmToastModal=_crmToastModal;
       }
       /* _initGMap geocodes, then either creates _gmap or recenters it.
          It reports failures through #gmap-status, so watch that rather
-         than assuming success. */
+         than assuming success.
+
+         The API must be loaded FIRST. Calling _initGMap on a cold page
+         throws inside `new google.maps.Geocoder()`, which surfaced as a
+         bare "Could not load that address" even though the address was
+         perfectly fine. */
       var st=el('gmap-status');
       var before=st?st.textContent:'';
-      _initGMap(addr);
+      /* Keep the two failure modes apart. Letting _initGMap's own throw
+         land in the API-load .catch reports "Maps API could not load"
+         when the API loaded perfectly well - the exact species of
+         misleading message that sends you looking in the wrong place. */
+      var go=function(){
+        try{ _initGMap(addr); }
+        catch(e){
+          if(window.console) console.error('[load-map] _initGMap threw:', e&&e.message);
+          done('Map failed to open: '+((e&&e.message)||'unknown error'));
+        }
+      };
+      if(typeof _loadMapsAPI==='function' && !(window.google&&google.maps&&google.maps.Geocoder)){
+        _loadMapsAPI().then(go).catch(function(e){
+          done('Maps API could not load — check the key in Settings > API Keys.');
+        });
+      } else { go(); }
 
       setTimeout(function(){
         var now=st?st.textContent:'';
@@ -44735,10 +44759,11 @@ window._crmToastModal=_crmToastModal;
   window.omegaPermitBeta=function(){
     modal('&#128203; Permit Creator <span style="font:700 8px/1 monospace;letter-spacing:.08em;'
         + 'color:#0A1628;background:#F59E0B;border-radius:2px;padding:2px 4px;margin-left:6px">BETA</span>',
-      '<p>Please contact your admin for access to this.</p>'
-      + '<div class="omega-note">Permit Creator is in beta while the output is being '
-      + 'updated. The feature is still installed - it is only gated, so access can be '
-      + 'switched back on without a redeploy.</div>');
+      /* Just the customer-facing line. The previous version appended an
+         internal note explaining that the feature was "still installed,
+         only gated" - accurate, but that is a message to a developer, not
+         to whoever opens this dialog. */
+      '<p>Please contact your account rep to set up.</p>');
   };
 
   /* ---------------- MAPS KEY (modal, pre-populated) ---------------- */
@@ -44922,6 +44947,73 @@ window._crmToastModal=_crmToastModal;
 
   function clear(){ objs.forEach(function(o){ try{ o.setMap(null); }catch(e){} }); objs=[]; }
 
+  /* ---- stencil artwork ----------------------------------------------
+     A stencil is not a bare rectangle: the pixel renderer draws a stall
+     outline, a glyph and a two-line legend. Rendering it as a plain
+     Polygon threw all of that away. GroundOverlay pins an image to a
+     LatLngBounds - scaling with zoom and anchored to the ground exactly
+     like a Polygon, but able to carry the artwork.
+
+     The SVG is authored in a 100x200 box (a 9x18 ft stall is 1:2), then
+     stretched to whatever real bounds the stencil occupies. */
+  function esc(x){ return String(x).replace(/#/g,'%23').replace(/"/g,"'"); }
+
+  function stencilSVG(kind, color){
+    var col = color || '#FFFFFF';
+    var head = '<svg xmlns="http://www.w3.org/2000/svg" width="100" height="200" viewBox="0 0 100 200">'
+             + '<rect x="1" y="1" width="98" height="198" fill="rgba(120,200,140,0.10)" '
+             + 'stroke="' + col + '" stroke-width="2.5"/>';
+    var legend, glyph;
+    if(kind === 'adastencil'){
+      /* wheelchair: head, back, wheel, leg */
+      glyph = '<g fill="none" stroke="' + col + '" stroke-width="6" stroke-linecap="round">'
+            + '<circle cx="50" cy="52" r="7" fill="' + col + '" stroke="none"/>'
+            + '<path d="M50 62 L50 84 L70 84"/>'
+            + '<circle cx="47" cy="96" r="18"/>'
+            + '<path d="M70 84 L76 104"/>'
+            + '</g>';
+      legend = '<text x="50" y="150" text-anchor="middle" fill="' + col + '" font-size="13" '
+             + 'font-weight="700" font-family="Arial,Helvetica,sans-serif">ACCESSIBLE</text>';
+    } else {
+      /* EV: car silhouette with a plug lead, matching the pixel renderer */
+      glyph = '<g fill="none" stroke="' + col + '" stroke-width="5" stroke-linecap="round" stroke-linejoin="round">'
+            + '<path d="M26 92 L32 74 L68 74 L74 92 L74 104 L26 104 Z"/>'
+            + '<circle cx="37" cy="104" r="6"/><circle cx="63" cy="104" r="6"/>'
+            + '<path d="M74 84 L84 84 L84 66"/>'
+            + '<path d="M80 62 L88 62"/>'
+            + '</g>'
+            + '<path d="M46 40 L58 40 L50 56 L60 56 L42 78 L48 58 L40 58 Z" fill="' + col + '"/>';
+      legend = '<text x="50" y="150" text-anchor="middle" fill="' + col + '" font-size="14" '
+             + 'font-weight="700" font-family="Arial,Helvetica,sans-serif">EV CHARGING</text>'
+             + '<text x="50" y="168" text-anchor="middle" fill="' + col + '" font-size="14" '
+             + 'font-weight="700" font-family="Arial,Helvetica,sans-serif">ONLY</text>';
+    }
+    return 'data:image/svg+xml;utf8,' + esc(head + glyph + legend + '</svg>');
+  }
+
+  /* Bounds of a wFt x hFt footprint centred on a lat/lng. */
+  function boundsFt(center, wFt, hFt){
+    var s = sph(); if(!s) return null;
+    var M = 0.3048;
+    var ll = new google.maps.LatLng(center.lat, center.lng);
+    var n = s.computeOffset(ll, (hFt/2)*M, 0);
+    var so = s.computeOffset(ll, (hFt/2)*M, 180);
+    var e = s.computeOffset(ll, (wFt/2)*M, 90);
+    var w = s.computeOffset(ll, (wFt/2)*M, 270);
+    return { north:n.lat(), south:so.lat(), east:e.lng(), west:w.lng() };
+  }
+
+  function stencilOverlay(sh, center, wFt, hFt){
+    if(!(window.google && google.maps && google.maps.GroundOverlay)) return null;
+    var b = boundsFt(center, wFt, hFt); if(!b) return null;
+    try{
+      var ov = new google.maps.GroundOverlay(
+        stencilSVG(sh.kind, sh.color), b, { clickable:false, opacity:1 });
+      ov.setMap(MAP());
+      return ov;
+    }catch(e){ return null; }
+  }
+
   /* Signature of the geo state, so we only rebuild when it actually changes. */
   function sig(){
     var s=S_(); if(!s) return '';
@@ -44943,7 +45035,16 @@ window._crmToastModal=_crmToastModal;
       var col=colorOf(sh);
       /* Single-point stencils carry their footprint in FEET already. */
       if(sh._geoPts.length===1 && (sh.wf||sh.lf)){
-        var r=rectFt(sh._geoPts[0], sh.wf||9, sh.lf||18, sh.rot||0);
+        var wF=sh.wf||9, hF=sh.lf||18;
+        /* Artwork where we can. GroundOverlay cannot rotate, so a rotated
+           stencil falls back to the polygon rather than being drawn at the
+           wrong angle - visibly plain beats silently wrong. */
+        var glyphKind = (sh.kind==='evstencil'||sh.kind==='adastencil');
+        if(glyphKind && !sh.rot){
+          var ov=stencilOverlay(sh, sh._geoPts[0], wF, hF);
+          if(ov){ objs.push(ov); count.shapes++; return; }
+        }
+        var r=rectFt(sh._geoPts[0], wF, hF, sh.rot||0);
         if(r){ objs.push(poly(r,col,0.18,{obj:sh,__single:true})); count.shapes++; }
         return;
       }
@@ -44982,8 +45083,14 @@ window._crmToastModal=_crmToastModal;
   }
 
   var warned=false;
+  var syncMap=null;
   function sync(force){
     if(!on) return;
+    /* If the map instance changed, every existing object belongs to the
+       old map and must be rebuilt onto the new one. */
+    var m=MAP();
+    if(m && syncMap && m!==syncMap){ clear(); lastSig=''; force=true; }
+    syncMap=m;
     /* Make sure everything has a lat/lng before we try to draw from it. */
     try{ if(typeof _geoStampAll==='function') _geoStampAll(); }catch(e){}
     var s=sig();
@@ -45014,6 +45121,7 @@ window._crmToastModal=_crmToastModal;
 
   window.OmegaNative={
     enable:function(){
+      lastSig='';        /* force a rebuild against the current map */
       if(!MAP()){ if(typeof showBanner==='function'){ try{ showBanner('wiz',
           'Native layer needs the live JS map. Clear Plot first if a plot is committed.'); }catch(e){} } return false; }
       on=true; sync(true);   /* sync decides whether hiding is safe */
@@ -45252,8 +45360,17 @@ window._crmToastModal=_crmToastModal;
     try{ if(typeof covMove==='function') covMove(ev); }catch(err){}
   }
 
+  var wiredMap=null;
   function wire(){
-    var m=MAP(); if(!m||wired) return wired;
+    var m=MAP();
+    if(!m) return false;
+    /* Re-wire when the map INSTANCE changes. _initGMap builds a brand new
+       google.maps.Map every time an address is loaded, so listeners bound
+       to the previous one are attached to a discarded object - clicks then
+       reach nothing and placement silently stops working. Tracking the
+       instance, not a boolean, is the difference. */
+    if(wired && wiredMap===m) return true;
+    wiredMap=m; wired=false;
     try{
       google.maps.event.addListener(m,'click',onMapClick);
       google.maps.event.addListener(m,'mousemove',onMapMove);
@@ -45264,12 +45381,14 @@ window._crmToastModal=_crmToastModal;
       google.maps.event.addListener(m,'dragstart',function(){ dragging=true; });
       google.maps.event.addListener(m,'idle',function(){ dragging=false; });
       wired=true;
-      if(window.console) console.info('[native-place] map click now places; map drag still pans');
+      if(window.console) console.info('[native-place] wired to map instance; click places, drag pans');
     }catch(e){}
     return wired;
   }
 
-  var t=0, iv=setInterval(function(){ if(wire()||++t>60) clearInterval(iv); }, 500);
+  /* Poll indefinitely: the map can be replaced at any time by loading
+     a new address, so there is no point at which wiring is 'done'. */
+  setInterval(wire, 700); wire();
 
   window.OmegaPlace={
     status:function(){
@@ -45322,11 +45441,21 @@ window._crmToastModal=_crmToastModal;
     try{ m.setOptions({ draggableCursor: placing?'crosshair':null }); }catch(e){}
   }
 
-  /* Keep the map interactive unless a plot is committed. */
+  /* Keep the map interactive unless a plot is committed.
+
+     This used to fire only when window._mapLocked was already truthy. On a
+     freshly created map that flag is undefined, so it never ran - and #sc
+     keeps its default pointer-events, swallowing every gesture before the
+     map sees it. The map looked fine and would not pan. Drive it off the
+     thing that actually matters instead: whether #sc is still intercepting. */
   function ensure(){
     try{
       if(window._committedPlot) return;
-      if(typeof setMapInteractive==='function' && window._mapLocked) setMapInteractive(true);
+      if(typeof setMapInteractive!=='function') return;
+      var m=MAP(); if(!m) return;
+      var sc=document.getElementById('sc');
+      var intercepting = !sc || sc.style.pointerEvents!=='none';
+      if(intercepting || window._mapLocked) setMapInteractive(true);
     }catch(e){}
   }
 
@@ -45450,6 +45579,428 @@ window._crmToastModal=_crmToastModal;
       return o;
     }
   };
+})();
+</script>
+<!-- ================= ALWAYS A LIVE MAP =================
+     Every project opens on the live JS map, address or not.
+     ===================================================== -->
+<script>
+(function(){
+  var LAST='omegaLastSite';
+
+  function MAP(){ try{ if(typeof _gmap!=='undefined'&&_gmap) return _gmap; }catch(e){} return window._gmap||null; }
+
+  function publish(m){
+    window._gmap=m;
+    /* Also set the lexical binding, since _initGMap's own `if(!_gmap)`
+       guard reads it and would otherwise build a second map. */
+    try{ (0,eval)('_gmap = window._gmap'); }catch(e){}
+  }
+
+  function remember(){
+    try{
+      var m=MAP(); if(!m||!m.getCenter) return;
+      var c=m.getCenter(); if(!c) return;
+      localStorage.setItem(LAST, JSON.stringify(
+        { lat:c.lat(), lng:c.lng(), zoom:m.getZoom()||19 }));
+    }catch(e){}
+  }
+  function recall(){
+    try{
+      var s=localStorage.getItem(LAST);
+      if(!s) return null;
+      var o=JSON.parse(s);
+      return (o && isFinite(o.lat) && isFinite(o.lng)) ? o : null;
+    }catch(e){ return null; }
+  }
+
+  function mapDiv(){
+    var md=document.getElementById('_gmapDiv');
+    if(md) return md;
+    var sc=document.getElementById('sc'); if(!sc) return null;
+    md=document.createElement('div');
+    md.id='_gmapDiv';
+    md.style.cssText='position:absolute;inset:0;z-index:0';
+    sc.insertBefore(md, sc.firstChild);
+    return md;
+  }
+
+  /* Create the map directly - no geocode, because there is no address to
+     geocode. Wired the same way _initGMap wires its own. */
+  function openAt(loc){
+    if(!(window.google&&google.maps&&google.maps.Map)) return false;
+    var md=mapDiv(); if(!md) return false;
+    var wrap=document.getElementById('gmap-wrap'); if(wrap) wrap.style.display='block';
+    var grid=document.getElementById('cw-grid'); if(grid) grid.style.display='none';
+    var bd=document.getElementById('backdrop'); if(bd) bd.style.display='none';
+    var fr=document.getElementById('gmap-frame'); if(fr) fr.style.display='none';
+    md.style.display='block';
+    try{
+      var m=new google.maps.Map(md,{
+        center:{lat:loc.lat,lng:loc.lng}, zoom:loc.zoom||19,
+        mapTypeId:'satellite', tilt:0, streetViewControl:false,
+        fullscreenControl:false, isFractionalZoomEnabled:false
+      });
+      publish(m);
+      google.maps.event.addListener(m,'zoom_changed',function(){ try{_gmapAutoScale();}catch(e){} remember(); });
+      google.maps.event.addListener(m,'center_changed',function(){ try{_gmapAutoScale();}catch(e){} });
+      google.maps.event.addListener(m,'idle', remember);
+      try{ if(typeof _gmapAutoScale==='function') _gmapAutoScale(); }catch(e){}
+      try{ if(typeof _geoWireMapListeners==='function') _geoWireMapListeners(); }catch(e){}
+      setTimeout(function(){ try{ _gmapAutoScale(); }catch(e){} }, 600);
+      return true;
+    }catch(e){
+      if(window.console) console.error('[live-map] create failed:', e&&e.message);
+      return false;
+    }
+  }
+
+  function projectAddress(){
+    var t=[
+      function(){ var e=document.getElementById('addr'); return e&&e.value; },
+      function(){ try{ return (typeof S!=='undefined'&&S)?(S.address||S.siteAddress):null; }catch(e){ return null; } },
+      function(){ try{ return window._lastAddr||null; }catch(e){ return null; } }
+    ];
+    for(var i=0;i<t.length;i++){
+      var v=null; try{ v=t[i](); }catch(e){}
+      if(v && String(v).trim() && !/^new project$/i.test(String(v).trim())) return String(v).trim();
+    }
+    return null;
+  }
+
+  function prompt(){
+    /* Open the View tab first: the address field lives on that ribbon page,
+       so focusing it while the page is hidden silently does nothing - and
+       telling someone to go to View without taking them there is half a
+       prompt. */
+    try{ if(typeof rbTab==='function') rbTab('view'); }catch(e){}
+    setTimeout(function(){
+      var i=document.getElementById('omega-addr-in');
+      if(i){ try{ i.focus(); i.select&&i.select(); }catch(e){} }
+    }, 120);
+    if(typeof showBanner==='function'){
+      try{ showBanner('wiz','Enter the site address to load the map.'); }catch(e){}
+    }
+  }
+
+  var done=false, tries=0;
+  var iv=setInterval(function(){
+    if(done || ++tries>80){ clearInterval(iv); return; }
+    if(!(window.google&&google.maps&&google.maps.Map)) return;   /* API not up yet */
+
+    if(MAP()){ done=true; clearInterval(iv); remember(); return; }
+
+    var addr=projectAddress();
+    if(addr){
+      done=true; clearInterval(iv);
+      var f=document.getElementById('omega-addr-in'); if(f && !f.value) f.value=addr;
+      try{ if(typeof _initGMap==='function') _initGMap(addr); }catch(e){
+        if(window.console) console.error('[live-map]', e&&e.message);
+      }
+      return;
+    }
+
+    if(!window._loadReady) return;      /* give the project a chance to load one */
+
+    var last=recall();
+    if(last){
+      done=true; clearInterval(iv);
+      if(openAt(last) && typeof showBanner==='function'){
+        try{ showBanner('wiz','Live map opened at your last site \u2014 enter an address in View to move it.'); }catch(e){}
+      }
+      return;
+    }
+    /* Six seconds of blank canvas before saying anything is too long.
+       Ask promptly once it is clear there is nothing to load. */
+    if(tries>6){ done=true; clearInterval(iv); prompt(); }
+  }, 400);
+
+  window.OmegaLiveMap={
+    open:function(lat,lng,zoom){ return openAt({lat:lat,lng:lng,zoom:zoom||19}); },
+    remember:remember,
+    status:function(){
+      var o={ liveMap:!!MAP(), lastSite:recall(), projectAddress:projectAddress(),
+              apiLoaded:!!(window.google&&google.maps&&google.maps.Map) };
+      o.verdict = o.liveMap ? 'Live map is up.'
+        : !o.apiLoaded ? 'Maps API has not loaded - check Settings > API Keys.'
+        : o.projectAddress ? 'Address found; the map should load shortly.'
+        : o.lastSite ? 'No address yet - opening at your last site.'
+        : 'No address and no previous site. Enter one in View.';
+      console.table?console.table(o):console.log(o);
+      console.info(o.verdict);
+      return o;
+    }
+  };
+})();
+</script>
+<!-- ================= NO LOCKS, NO PLOTS =================
+     One mode: the live JS map. Geometry is lat/lng, so nothing can drift
+     and nothing needs freezing.
+     ====================================================== -->
+<script>
+(function(){
+  function MAP(){ try{ if(typeof _gmap!=='undefined'&&_gmap) return _gmap; }catch(e){} return window._gmap||null; }
+
+  /* mapLockState is the single gate _liveMapState and everything
+     downstream reads. With plots gone it should never report locked -
+     otherwise anchoring silently dies and the only symptom is geometry
+     that will not stick. */
+  var _origLockState = window.mapLockState;
+  window.mapLockState = function(){
+    var st = { locked:false, reason:'', userIntent:false, hasPlot:false, domBlocked:false };
+    try{
+      if(typeof _origLockState==='function'){
+        var o=_origLockState();
+        if(o) st.domBlocked = !!o.domBlocked;   /* still worth reporting */
+      }
+    }catch(e){}
+    return st;
+  };
+
+  /* Set Plot is gone. Keep the name callable so nothing that still
+     references it throws. */
+  window.setPlot = function(){
+    if(typeof showBanner==='function'){
+      try{ showBanner('wiz','Plots are no longer used \u2014 the live map is always current, and exports capture what you see.'); }catch(e){}
+    }
+    return false;
+  };
+
+  /* A saved project may carry a committed plot from before. Clear it on
+     load so it opens on the live map rather than silently blocked. */
+  var cleared=false, tries=0;
+  var iv=setInterval(function(){
+    if(cleared || ++tries>60){ clearInterval(iv); return; }
+    if(!window._loadReady) return;
+    if(!window._committedPlot){ cleared=true; clearInterval(iv); return; }
+    cleared=true; clearInterval(iv);
+    try{
+      if(typeof clearPlot==='function') clearPlot();
+      window._committedPlot=null;
+      var img=document.getElementById('plot-layer');
+      if(img){ img.style.display='none'; img.removeAttribute('src'); }
+      if(typeof setMapInteractive==='function') setMapInteractive(true);
+      if(typeof showBanner==='function'){
+        try{ showBanner('wiz','Committed plot cleared \u2014 this project now uses the live map.'); }catch(e){}
+      }
+      if(window.OmegaNative && !OmegaNative.isOn()) OmegaNative.enable();
+      if(window.console) console.info('[no-lock] cleared a committed plot from a saved project');
+    }catch(e){}
+  }, 500);
+
+  /* Nothing may re-lock the map. */
+  setInterval(function(){
+    try{
+      window._userLockedMap=false;
+      window._ovLocked=false;
+      if(window._committedPlot) window._committedPlot=null;
+      if(!MAP()) return;
+      var sc=document.getElementById('sc');
+      if(typeof setMapInteractive==='function' &&
+         (window._mapLocked || !sc || sc.style.pointerEvents!=='none')){
+        setMapInteractive(true);
+      }
+    }catch(e){}
+  }, 800);
+
+  window.OmegaNoLock={
+    status:function(){
+      var sc=document.getElementById('sc');
+      var o={ liveMap:!!MAP(),
+              committedPlot:!!window._committedPlot,
+              mapLocked:!!window._mapLocked,
+              userLocked:!!window._userLockedMap,
+              lockStateHasPlot:(function(){ try{ return !!mapLockState().hasPlot; }catch(e){ return null; } })(),
+              scPointerEvents: sc?(sc.style.pointerEvents||'(default)'):'absent',
+              nativeOn: !!(window.OmegaNative && OmegaNative.isOn()) };
+      o.verdict = !o.liveMap ? 'No live map yet - enter a site address in View.'
+        : o.lockStateHasPlot ? 'Something still reports a committed plot; anchoring will fail.'
+        : o.scPointerEvents!=='none' ? 'WARNING: #sc is intercepting, so the map will not pan.'
+        : 'No locks, no plots. Live map, native geometry.';
+      console.table?console.table(o):console.log(o);
+      console.info(o.verdict);
+      return o;
+    }
+  };
+})();
+</script>
+<!-- ================= PROJECT TYPE =================
+     One selector that decides the plot plan's vocabulary, its default
+     sheet set, and what the AI is told it is describing.
+     ================================================= -->
+<style>
+  #pp-ptype-wrap{ margin-bottom:12px; }
+  #pp-ptype-wrap label.pp-lbl{ font-size:10px; color:var(--sub); display:block; margin-bottom:4px; }
+  #pp-ptype{
+    width:100%; padding:8px 10px; border-radius:6px; background:var(--surface,#0A1628);
+    border:1px solid var(--border); color:var(--text);
+    font-family:var(--font-sans,inherit); font-size:12.5px; outline:none;
+  }
+  #pp-ptype:focus{ border-color:var(--hl,#00D4FF); }
+  #pp-ptype-hint{ font-size:10.5px; color:var(--sub); margin-top:5px; line-height:1.45; }
+</style>
+<script>
+(function(){
+  /* Each type is data. Adding one later is a table entry, not a branch. */
+  var TYPES = {
+    bess: {
+      label:'BESS \u2014 Battery Energy Storage',
+      noun:'BESS', assembly:'bess',
+      sheets:{ e0:1,e10:1,e1:1,e12:0,e20:1,e30:1,e40:0,s11:1,s12:1,s20:1,s30:1 },
+      names:{ s11:'S1.1 \u2014 BESS Pad Detail (structural)',
+              s12:'S1.2 \u2014 Gear Pad Details (structural)',
+              e20:'E2.0 \u2014 Single Line Diagram',
+              e30:'E3.0 \u2014 Signage (NFPA 855)' },
+      cover:{ model:'Battery model', mfr:'Battery manufacturer' },
+      ai:'a battery energy storage system (BESS) installation',
+      hint:'NFPA 855 separation and signage sheets are included by default.'
+    },
+    ev: {
+      label:'EV Charging \u2014 DCFC / Level 2',
+      noun:'EV charging', assembly:'charger',
+      sheets:{ e0:1,e10:1,e1:1,e12:0,e20:1,e30:1,e40:1,s11:1,s12:1,s20:1,s30:0 },
+      names:{ s11:'S1.1 \u2014 Charger Pad Detail (structural)',
+              s12:'S1.2 \u2014 Gear Pad Details (structural)',
+              e20:'E2.0 \u2014 Single Line Diagram',
+              e30:'E3.0 \u2014 Signage (ADA + EV)' },
+      cover:{ model:'Charger model', mfr:'Charger manufacturer' },
+      ai:'an electric vehicle charging installation',
+      hint:'ADA signage and POI placards are included by default for EV sites.'
+    },
+    solar: {
+      label:'Solar PV',
+      noun:'solar array', assembly:'solar',
+      sheets:{ e0:1,e10:1,e1:1,e12:0,e20:1,e30:1,e40:0,s11:1,s12:0,s20:1,s30:0 },
+      names:{ s11:'S1.1 \u2014 Array Racking Detail (structural)',
+              s12:'S1.2 \u2014 Inverter Pad Details (structural)',
+              e20:'E2.0 \u2014 Single Line Diagram (PV)',
+              e30:'E3.0 \u2014 Signage (NEC 690)' },
+      cover:{ model:'Module model', mfr:'Module manufacturer' },
+      ai:'a solar photovoltaic installation',
+      hint:'NEC 690 rapid-shutdown and array signage apply to PV.'
+    },
+    der: {
+      label:'DER \u2014 mixed / microgrid',
+      noun:'DER system', assembly:null,
+      sheets:{ e0:1,e10:1,e1:1,e12:0,e20:1,e30:1,e40:0,s11:1,s12:1,s20:1,s30:1 },
+      names:{ s11:'S1.1 \u2014 Equipment Pad Detail (structural)',
+              s12:'S1.2 \u2014 Gear Pad Details (structural)',
+              e20:'E2.0 \u2014 Single Line Diagram (DER)',
+              e30:'E3.0 \u2014 Signage' },
+      cover:{ model:'Primary equipment model', mfr:'Manufacturer' },
+      ai:'a distributed energy resource (DER) installation',
+      hint:'Mixed-asset sites: every structural and signage sheet is on by default.'
+    }
+  };
+
+  function S_(){ try{ return (typeof S!=='undefined'&&S)?S:null; }catch(e){ return null; } }
+
+  function current(){
+    var t=null;
+    try{ t=(S_()||{}).projectType; }catch(e){}
+    if(!t){ try{ t=localStorage.getItem('omegaProjectType'); }catch(e){} }
+    return TYPES[t] ? t : 'bess';
+  }
+
+  function setType(key, silent){
+    if(!TYPES[key]) return;
+    var t=TYPES[key];
+    try{ var s=S_(); if(s) s.projectType=key; }catch(e){}
+    try{ localStorage.setItem('omegaProjectType', key); }catch(e){}
+    window.OmegaProjectType = { key:key, noun:t.noun, ai:t.ai, assembly:t.assembly };
+
+    /* sheet defaults */
+    Object.keys(t.sheets).forEach(function(id){
+      var el=document.getElementById('pp-'+id);
+      if(el && el.type==='checkbox') el.checked = !!t.sheets[id];
+    });
+    /* sheet names in this discipline's language */
+    Object.keys(t.names).forEach(function(id){
+      var el=document.getElementById('pp-'+id);
+      if(!el || !el.parentNode) return;
+      var lab=el.parentNode;
+      /* replace the text node after the checkbox, leave the input alone */
+      for(var i=0;i<lab.childNodes.length;i++){
+        var n=lab.childNodes[i];
+        if(n.nodeType===3 && n.textContent.trim()){ n.textContent=' '+t.names[id]; break; }
+      }
+    });
+    /* cover-sheet field labels */
+    relabel('pp-batmodel', t.cover.model);
+    relabel('pp-batmfr',   t.cover.mfr);
+
+    var hint=document.getElementById('pp-ptype-hint');
+    if(hint) hint.textContent=t.hint;
+
+    /* the assembly hint should name the right thing */
+    refreshAssemblyNote(key);
+
+    if(!silent && window.console) console.info('[project-type] '+key);
+  }
+
+  function relabel(inputId, text){
+    var el=document.getElementById(inputId); if(!el) return;
+    if(el.placeholder!==undefined) el.placeholder=text;
+    var lab=el.previousElementSibling;
+    if(lab && /^(LABEL|SPAN|DIV)$/.test(lab.tagName) && lab.textContent.length<40){
+      lab.textContent=text;
+    }
+  }
+
+  /* The dialog's hint was hardcoded to BESS. Say what THIS type needs. */
+  function refreshAssemblyNote(key){
+    var note=document.getElementById('pp-note'); if(!note) return;
+    var t=TYPES[key]||TYPES.bess;
+    var txt=(note.textContent||'');
+    if(!/No .* found on the canvas/i.test(txt)) return;   /* only rewrite the warning */
+    if(!t.assembly){
+      note.textContent='Mixed DER site \u2014 the export will include whatever is on the canvas.';
+      return;
+    }
+    note.textContent='No '+t.noun+' assembly found on the canvas. Place one from Draw first, '
+                   + 'or the export will show shapes only.';
+  }
+
+  /* Inject the selector once the dialog exists. */
+  function inject(){
+    var m=document.getElementById('pp-modal'); if(!m) return false;
+    if(document.getElementById('pp-ptype')) return true;
+    var head=m.querySelector('h3'); if(!head) return false;
+    var wrap=document.createElement('div');
+    wrap.id='pp-ptype-wrap';
+    var opts=Object.keys(TYPES).map(function(k){
+      return '<option value="'+k+'">'+TYPES[k].label+'</option>'; }).join('');
+    wrap.innerHTML='<label class="pp-lbl">PROJECT TYPE</label>'
+                 + '<select id="pp-ptype">'+opts+'</select>'
+                 + '<div id="pp-ptype-hint"></div>';
+    head.parentNode.insertBefore(wrap, head.nextSibling);
+    var sel=document.getElementById('pp-ptype');
+    sel.value=current();
+    sel.addEventListener('change', function(){ setType(sel.value); });
+    setType(sel.value, true);
+    return true;
+  }
+
+  /* The modal is built lazily, so watch for it. */
+  var _open = window.openPlotPlanExport;
+  window.openPlotPlanExport = function(){
+    var r = (typeof _open==='function') ? _open.apply(this, arguments) : undefined;
+    setTimeout(function(){ inject(); }, 60);
+    return r;
+  };
+  setInterval(inject, 1200);
+
+  window.OmegaProjectTypes = {
+    list:function(){ return Object.keys(TYPES).map(function(k){
+      return { key:k, label:TYPES[k].label, noun:TYPES[k].noun }; }); },
+    get:function(){ return current(); },
+    set:function(k){ setType(k); var s=document.getElementById('pp-ptype'); if(s) s.value=k; return current(); },
+    /* What the AI should be told it is describing. */
+    aiContext:function(){ var t=TYPES[current()]; return t?t.ai:''; },
+    spec:function(){ return TYPES[current()]; }
+  };
+  /* Publish immediately so anything reading it early gets the right value. */
+  setType(current(), true);
 })();
 </script>
 </body>
