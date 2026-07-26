@@ -74,14 +74,15 @@ window.addEventListener('unhandledrejection', function(e) {
 #eng-legend, #lgd, #ruler, #zc, #banner,
 #schem-handle, #schem-resize { pointer-events: auto !important; }
 
-/* THE DRAWING SURFACE. #cov carries covClick / covMove and is a child
-   of #sc, so #sc{pointer-events:none} killed every placement click and
-   froze the X/Y readout at 0.0.
+/* #cov MUST NOT take pointer events.
 
-   Mode gating is already handled by display: setMode() adds .on only
-   for drawing and placement modes, so this does NOT block panning -
-   in select mode #cov is display:none and the map gets the events. */
-#cov { pointer-events: auto !important; }
+   It was given pointer-events:auto to fix drawing under the old model,
+   where a click had to land on the overlay. Under the map-as-input model
+   that is backwards: #cov covers the entire canvas, so in any draw mode
+   it would swallow the map's drag and panning would die exactly as it did
+   before. All input goes to the map; covClick and covMove are driven from
+   map events, which is why placing and panning can coexist. */
+#cov { pointer-events: none !important; }
 
 .ps-page{display:block;position:relative;width:17in;height:11in;overflow:hidden;background:#F5F0E8;page-break-after:always;page-break-inside:avoid;margin:0 auto 20px;border:1px solid #ccc}
 :root{
@@ -1453,7 +1454,10 @@ window.onerror = function(msg, src, line, col, err) {
       <div class="rpanel-body">
         <button class="rbtn" onclick="rbRun(ovUpload)" title="Upload a site plan / survey / aerial image to trace over"><span class="rb-ico" style="color:#60A5FA">⬆</span><span class="rb-lbl">Upload<br>Image</span></button>
         <button class="rbtn" id="rb-ov-stencil" onclick="rbRun(ovStencil)" title="Convert the uploaded image to a clean black &amp; white engineering stencil to trace over"><span class="rb-ico" style="color:#E8F0FE">◨</span><span class="rb-lbl">Stencil<br>B&amp;W</span></button>
-        <button class="rbtn" id="rb-ov-lock" onclick="rbRun(ovLock)" title="Lock the background (satellite map or uploaded image) in place so it can't pan, zoom, or move while you place elements &amp; layers"><span class="rb-ico">🔓</span><span class="rb-lbl">Lock<br>Map</span></button>
+        <!-- Lock Map retired: its only job was letting #cov receive draw clicks,
+     which the map-as-input model makes unnecessary. Restore by
+     re-instating this button:
+     <button class="rbtn" id="rb-ov-lock" onclick="rbRun(ovLock)" title="Lock the background (satellite map or uploaded image) in place so it can't pan, zoom, or move while you place elements &amp; layers"><span class="rb-ico">🔓</span><span class="rb-lbl">Lock<br>Map</span></button> -->
         <button class="rbtn" onclick="rbRun(startCal)" title="Set the real-world scale: trace a known length (parking stall = 18ft, door = 3ft) so equipment drops at the correct size"><span class="rb-ico">📏</span><span class="rb-lbl">Calibrate<br>Scale</span></button>
       </div>
       <div class="rpanel-cap">Site Overlay</div>
@@ -44852,10 +44856,42 @@ window._crmToastModal=_crmToastModal;
     return corners;
   }
 
-  function poly(paths, color, fill){
-    return new google.maps.Polygon({
+  function poly(paths, color, fill, rec){
+    var pg=new google.maps.Polygon({
       paths:paths, map:MAP(), strokeColor:color, strokeWeight:2, strokeOpacity:.95,
-      fillColor:color, fillOpacity:(fill==null?0.22:fill), clickable:false, zIndex:5
+      fillColor:color, fillOpacity:(fill==null?0.22:fill),
+      clickable:!!rec, draggable:!!rec, zIndex:5
+    });
+    if(rec) attachDrag(pg, rec);
+    return pg;
+  }
+
+  /* Dragging writes lat/lng straight back - the prototype's dragend, which
+     contains no coordinate conversion at all. pts is recomputed in pixels
+     so the summary, exports and permit sheets stay consistent. */
+  function attachDrag(pg, rec){
+    /* Rendering must not depend on the events namespace being present -
+       a missing listener should cost you drag, not the whole layer. */
+    if(!(window.google&&google.maps&&google.maps.event&&google.maps.event.addListener)) return;
+    google.maps.event.addListener(pg,'dragend',function(){
+      try{
+        var path=pg.getPath().getArray().map(function(p){ return {lat:p.lat(), lng:p.lng()}; });
+        if(rec.__single){
+          var s=sph(); if(!s) return;
+          var c={lat:0,lng:0};
+          path.forEach(function(p){ c.lat+=p.lat/path.length; c.lng+=p.lng/path.length; });
+          rec.obj._geoPts=[c];
+        } else if(rec.kind==='element'){
+          var cc={lat:0,lng:0};
+          path.forEach(function(p){ cc.lat+=p.lat/path.length; cc.lng+=p.lng/path.length; });
+          rec.obj._geoLat=cc.lat; rec.obj._geoLng=cc.lng;
+        } else {
+          rec.obj._geoPts=path;
+        }
+        if(typeof _geoReprojectAll==='function') _geoReprojectAll();
+        if(typeof pushHist==='function') pushHist();
+        lastSig='';
+      }catch(e){ if(window.console) console.warn('[native] dragend:', e&&e.message); }
     });
   }
   function line(path, color, dash){
@@ -44890,11 +44926,11 @@ window._crmToastModal=_crmToastModal;
       /* Single-point stencils carry their footprint in FEET already. */
       if(sh._geoPts.length===1 && (sh.wf||sh.lf)){
         var r=rectFt(sh._geoPts[0], sh.wf||9, sh.lf||18, sh.rot||0);
-        if(r){ objs.push(poly(r,col,0.18)); count.shapes++; }
+        if(r){ objs.push(poly(r,col,0.18,{obj:sh,__single:true})); count.shapes++; }
         return;
       }
       var pts=sh._geoPts.filter(Boolean);
-      if(pts.length>=3){ objs.push(poly(pts,col,0.18)); count.shapes++; }
+      if(pts.length>=3){ objs.push(poly(pts,col,0.18,{obj:sh})); count.shapes++; }
       else if(pts.length===2){ objs.push(line(pts,col)); count.shapes++; }
       else count.skipped++;
     });
@@ -44913,7 +44949,7 @@ window._crmToastModal=_crmToastModal;
       if(hFt==null && P && el.h>0) hFt=el.h/P;
       if(!wFt) wFt=8; if(!hFt) hFt=wFt;
       var r=rectFt({lat:el._geoLat,lng:el._geoLng}, wFt, hFt, el.rot||0);
-      if(r){ objs.push(poly(r,colorOf(el),0.28)); count.elements++; }
+      if(r){ objs.push(poly(r,colorOf(el),0.28,{obj:el,kind:'element'})); count.elements++; }
       else count.skipped++;
     });
     lastCount=count;
@@ -44988,6 +45024,194 @@ window._crmToastModal=_crmToastModal;
     var want=false; try{ want=localStorage.getItem('omegaNative')==='1'; }catch(e){}
     if(want) OmegaNative.enable();
   }, 500);
+})();
+</script>
+<!-- ================= NATIVE PLACEMENT =================
+     Click the map to place; drag the map to pan. Both at once, which is
+     what removes the need for Lock Map.
+     ==================================================== -->
+<script>
+(function(){
+  var wired=false, dragging=false;
+
+  function S_(){ try{ return (typeof S!=='undefined'&&S)?S:null; }catch(e){ return null; } }
+  function MAP(){ try{ if(typeof _gmap!=='undefined'&&_gmap) return _gmap; }catch(e){} return window._gmap||null; }
+
+  /* Modes where a click should place something. Mirrors the list that
+     setMode() uses to switch #cov on, so the two cannot disagree. */
+  function placing(){
+    var s=S_(); if(!s) return false;
+    var m=s.mode;
+    if(!m||m==='select') return false;
+    if(m==='conduit'||m==='dimension') return true;
+    try{ if(typeof SHAPE_MODES!=='undefined' && SHAPE_MODES[m]) return true; }catch(e){}
+    return ['clusterplace','dcclusterplace','emsplace','sourceplace','topoinsert',
+            'chargerplace','derbuildplace','wizplace','dcfcplace','bgbplace',
+            'evstencil','adastencil','adaaisle','padplace','utilityplace',
+            'parkingplace','solarplace','datactrplace'].indexOf(m)>=0;
+  }
+
+  /* Build the map state ourselves rather than calling _liveMapState(),
+     which reads the lexical `let _gmap` - a binding that does not always
+     resolve from an injected script. The plot lock is honoured exactly as
+     _liveMapState does, so a committed plot still blocks placement. */
+  function liveState(){
+    try{ if(typeof mapLockState==='function' && mapLockState().hasPlot) return null; }catch(e){}
+    var m=MAP(); if(!m||!m.getCenter) return null;
+    var c=m.getCenter(); if(!c) return null;
+    return { lat:c.lat(), lng:c.lng(), zoom:m.getZoom() };
+  }
+
+  /* lat/lng -> the client coordinates covClick expects. */
+  function toClient(latLng){
+    if(typeof _latLngToPx!=='function') return null;
+    var ms=liveState(); if(!ms) return null;
+    var sz=(typeof _getCanvasSize==='function')?_getCanvasSize():{w:1200,h:800};
+    var px=_latLngToPx(latLng.lat(), latLng.lng(), ms, sz.w, sz.h);
+    if(!px) return null;
+    var sc=document.getElementById('sc'); if(!sc) return null;
+    var r=sc.getBoundingClientRect();
+    return { clientX: r.left+px.x, clientY: r.top+px.y };
+  }
+
+  function onMapClick(e){
+    if(!placing() || dragging) return;
+    if(!e || !e.latLng) return;
+    var c=toClient(e.latLng); if(!c) return;
+    /* Hand the existing handler a normal-looking event. Every tool runs
+       its own placement logic unchanged. */
+    var ev={ clientX:c.clientX, clientY:c.clientY,
+             target:document.getElementById('cov')||document.body,
+             stopPropagation:function(){}, preventDefault:function(){}, __omegaSynthetic:true };
+    try{ if(typeof covClick==='function') covClick(ev); }catch(err){
+      if(window.console) console.warn('[native-place] covClick failed:', err&&err.message);
+    }
+    /* Anchor immediately, while the pixels are still valid for this view. */
+    try{ if(typeof _geoStampAll==='function') _geoStampAll(); }catch(err){}
+    try{ if(window.OmegaNative && OmegaNative.isOn()) OmegaNative.refresh(); }catch(err){}
+  }
+
+  function onMapMove(e){
+    if(!placing() || !e || !e.latLng) return;
+    var c=toClient(e.latLng); if(!c) return;
+    var ev={ clientX:c.clientX, clientY:c.clientY,
+             target:document.getElementById('cov')||document.body,
+             stopPropagation:function(){}, preventDefault:function(){}, __omegaSynthetic:true };
+    try{ if(typeof covMove==='function') covMove(ev); }catch(err){}
+  }
+
+  function wire(){
+    var m=MAP(); if(!m||wired) return wired;
+    try{
+      google.maps.event.addListener(m,'click',onMapClick);
+      google.maps.event.addListener(m,'mousemove',onMapMove);
+      google.maps.event.addListener(m,'dblclick',function(){
+        try{ if(S_() && S_().mode==='polyline' && typeof finishPolyline==='function') finishPolyline(); }catch(e){}
+        try{ if(S_() && S_().mode==='conduit' && typeof finishConduit==='function') finishConduit(); }catch(e){}
+      });
+      google.maps.event.addListener(m,'dragstart',function(){ dragging=true; });
+      google.maps.event.addListener(m,'idle',function(){ dragging=false; });
+      wired=true;
+      if(window.console) console.info('[native-place] map click now places; map drag still pans');
+    }catch(e){}
+    return wired;
+  }
+
+  var t=0, iv=setInterval(function(){ if(wire()||++t>60) clearInterval(iv); }, 500);
+
+  window.OmegaPlace={
+    status:function(){
+      var s=S_()||{};
+      var o={ wired:wired, liveMap:!!MAP(), mode:s.mode||'(none)',
+              placingNow:placing(),
+              covPointerEvents:(function(){var c=document.getElementById('cov');
+                return c?getComputedStyle(c).pointerEvents:'absent';})(),
+              scPointerEvents:(function(){var c=document.getElementById('sc');
+                return c?(c.style.pointerEvents||'auto'):'absent';})() };
+      o.verdict = !o.liveMap ? 'No live JS map - Clear Plot, or the embed fallback is in use.'
+        : !o.wired ? 'Not wired to the map yet.'
+        : o.placingNow ? 'Placing mode active - click the map to place, drag to pan.'
+        : 'Select mode - clicks pass through, map pans freely.';
+      console.table?console.table(o):console.log(o);
+      console.info(o.verdict);
+      return o;
+    }
+  };
+})();
+</script>
+<!-- ================= MAP AS INPUT SURFACE =================
+     No lock. The map takes every gesture: drag pans, click places.
+     ======================================================== -->
+<script>
+(function(){
+  function MAP(){ try{ if(typeof _gmap!=='undefined'&&_gmap) return _gmap; }catch(e){} return window._gmap||null; }
+  function S_(){ try{ return (typeof S!=='undefined'&&S)?S:null; }catch(e){ return null; } }
+
+  /* ovLock was the pointer-events freeze. Nothing needs it now, and
+     leaving it callable would let old UI re-break panning. */
+  window._ovLocked=false;
+  window._userLockedMap=false;
+  window.ovLock=function(){
+    if(typeof showBanner==='function'){
+      try{ showBanner('wiz','Map lock is no longer needed \u2014 you can pan and place at the same time.'); }catch(e){}
+    }
+    try{ if(typeof setMapInteractive==='function') setMapInteractive(true); }catch(e){}
+    return false;
+  };
+
+  /* Crosshair while placing. #cov can no longer show one, so it goes on
+     the map itself. */
+  var lastMode=null;
+  function cursor(){
+    var m=MAP(), s=S_(); if(!m||!s||!m.setOptions) return;
+    if(s.mode===lastMode) return;
+    lastMode=s.mode;
+    var placing = s.mode && s.mode!=='select';
+    try{ m.setOptions({ draggableCursor: placing?'crosshair':null }); }catch(e){}
+  }
+
+  /* Keep the map interactive unless a plot is committed. */
+  function ensure(){
+    try{
+      if(window._committedPlot) return;
+      if(typeof setMapInteractive==='function' && window._mapLocked) setMapInteractive(true);
+    }catch(e){}
+  }
+
+  setInterval(function(){ cursor(); ensure(); }, 600);
+
+  /* The native layer is the renderer now: default ON unless turned off. */
+  var t=0, iv=setInterval(function(){
+    if(++t>80){ clearInterval(iv); return; }
+    if(!MAP() || !window.OmegaNative) return;
+    clearInterval(iv);
+    var pref=null; try{ pref=localStorage.getItem('omegaNative'); }catch(e){}
+    if(pref!=='0' && !OmegaNative.isOn()) OmegaNative.enable();
+  }, 400);
+
+  window.OmegaModel={
+    status:function(){
+      var s=S_()||{}, cov=document.getElementById('cov'), sc=document.getElementById('sc');
+      var o={
+        mapPresent:!!MAP(),
+        committedPlot:!!window._committedPlot,
+        mapLocked:!!window._mapLocked,
+        covPointerEvents: cov?getComputedStyle(cov).pointerEvents:'absent',
+        scPointerEvents: sc?(sc.style.pointerEvents||'auto'):'absent',
+        nativeLayerOn: !!(window.OmegaNative&&OmegaNative.isOn()),
+        mode:s.mode||'(none)'
+      };
+      o.verdict = o.committedPlot
+          ? 'A plot is committed - the live map is replaced by a calibrated raster. Clear Plot to draw natively.'
+        : o.covPointerEvents!=='none'
+          ? 'WARNING: #cov is intercepting events; panning will fail while drawing.'
+        : !o.nativeLayerOn ? 'Native layer is off - geometry is still drawn in pixel space.'
+        : 'Map takes all input. Drag pans, click places, geometry is native.';
+      console.table?console.table(o):console.log(o);
+      console.info(o.verdict);
+      return o;
+    }
+  };
 })();
 </script>
 </body>
