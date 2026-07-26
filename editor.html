@@ -44472,6 +44472,17 @@ window._crmToastModal=_crmToastModal;
          perfectly fine. */
       var st=el('gmap-status');
       var before=st?st.textContent:'';
+
+      /* HARD TIMEOUT. If the Maps request never settles - a dropped
+         connection on mobile is the common case - neither .then nor
+         .catch fires and the field sits on "Loading..." forever with no
+         way back. Always give the user their input field back. */
+      var settled=false;
+      var _done=done;
+      done=function(msg){ if(settled) return; settled=true; _done(msg); };
+      setTimeout(function(){
+        done('Timed out — check the connection and try again.');
+      }, 12000);
       /* Keep the two failure modes apart. Letting _initGMap's own throw
          land in the API-load .catch reports "Maps API could not load"
          when the API loaded perfectly well - the exact species of
@@ -45387,8 +45398,28 @@ window._crmToastModal=_crmToastModal;
         try{ if(S_() && S_().mode==='polyline' && typeof finishPolyline==='function') finishPolyline(); }catch(e){}
         try{ if(S_() && S_().mode==='conduit' && typeof finishConduit==='function') finishConduit(); }catch(e){}
       });
-      google.maps.event.addListener(m,'dragstart',function(){ dragging=true; });
-      google.maps.event.addListener(m,'idle',function(){ dragging=false; });
+      /* The drag guard stops a pan from being read as a placement. It was
+         set on dragstart and cleared ONLY on idle - so if idle never
+         arrived, the flag stuck true and every later tap was silently
+         ignored. On a phone that is the normal case: a tap includes a few
+         pixels of finger movement, which fires dragstart, and a map that
+         barely moved may not fire idle at all.
+
+         Clear it on dragend as well, and time it out regardless. A guard
+         that can jam shut is worse than no guard. */
+      var dragTimer=null;
+      function dragOn(){
+        dragging=true;
+        if(dragTimer) clearTimeout(dragTimer);
+        dragTimer=setTimeout(function(){ dragging=false; }, 1200);
+      }
+      function dragOff(){
+        dragging=false;
+        if(dragTimer){ clearTimeout(dragTimer); dragTimer=null; }
+      }
+      google.maps.event.addListener(m,'dragstart',dragOn);
+      google.maps.event.addListener(m,'dragend',  dragOff);
+      google.maps.event.addListener(m,'idle',     dragOff);
       wired=true;
       if(window.console) console.info('[native-place] wired to map instance; click places, drag pans');
     }catch(e){}
@@ -45403,13 +45434,14 @@ window._crmToastModal=_crmToastModal;
     status:function(){
       var s=S_()||{};
       var o={ wired:wired, liveMap:!!MAP(), mode:s.mode||'(none)',
-              placingNow:placing(),
+              placingNow:placing(), dragGuard:dragging,
               covPointerEvents:(function(){var c=document.getElementById('cov');
                 return c?getComputedStyle(c).pointerEvents:'absent';})(),
               scPointerEvents:(function(){var c=document.getElementById('sc');
                 return c?(c.style.pointerEvents||'auto'):'absent';})() };
       o.verdict = !o.liveMap ? 'No live JS map - Clear Plot, or the embed fallback is in use.'
         : !o.wired ? 'Not wired to the map yet.'
+        : o.dragGuard ? 'Drag guard is engaged - taps are being ignored until it clears.'
         : o.placingNow ? 'Placing mode active - click the map to place, drag to pan.'
         : 'Select mode - clicks pass through, map pans freely.';
       console.table?console.table(o):console.log(o);
@@ -46388,6 +46420,11 @@ window._crmToastModal=_crmToastModal;
      Phone-sized panels that do not bury the drawing.
      ================================================== -->
 <style>
+:root{
+  /* Expose the insets so script can read what CSS knows. */
+  --omega-safe-b: env(safe-area-inset-bottom, 0px);
+  --omega-safe-t: env(safe-area-inset-top, 0px);
+}
 @media (max-width: 520px){
 
   /* --- ribbon: still scrolls, but LOOKS scrollable --- */
@@ -46410,18 +46447,21 @@ window._crmToastModal=_crmToastModal;
      document, which is enough at equal specificity. */
   /* --- panels: smaller, and each in its own corner ---
      236px of Site Map on a 390px screen is 60% of the drawing gone. */
+  /* iOS Safari's bottom toolbar sits OVER the viewport, so bottom:8px is
+     underneath it and the panel gets clipped. env(safe-area-inset-*)
+     reports that chrome; the fallback keeps desktop and Android sane. */
   #omega-compass{
     width:104px !important;
-    left:auto; right:8px;
-    top:auto; bottom:8px;
+    left:auto; right:calc(8px + env(safe-area-inset-right, 0px));
+    top:auto; bottom:calc(8px + env(safe-area-inset-bottom, 0px));
   }
   #omega-compass #oc-body{ padding:6px; }
   #omega-compass .oc-rose{ width:88px; height:88px; }
 
   #omega-site{
     width:186px !important;
-    left:8px; right:auto;
-    top:auto; bottom:8px;
+    left:calc(8px + env(safe-area-inset-left, 0px)); right:auto;
+    top:auto; bottom:calc(8px + env(safe-area-inset-bottom, 0px));
   }
   #omega-site .os-row{ font-size:10px; line-height:1.7; }
   #omega-site .os-btns button{ padding:8px; }
@@ -46431,8 +46471,8 @@ window._crmToastModal=_crmToastModal;
      the screen. */
   #omega-diag{
     width:180px !important; max-height:32vh; overflow-y:auto;
-    left:8px; right:auto;
-    top:8px; bottom:auto;
+    left:calc(8px + env(safe-area-inset-left, 0px)); right:auto;
+    top:calc(8px + env(safe-area-inset-top, 0px)); bottom:auto;
   }
   #omega-diag .od-row{ font-size:9.5px; }
 
@@ -46470,8 +46510,11 @@ window._crmToastModal=_crmToastModal;
       if(!e || e.classList.contains('hidden')) return;
       var r=e.getBoundingClientRect();
       if(r.width===0) return;
+      /* Keep clear of browser chrome, not just the raw viewport. */
+      var cs=getComputedStyle(document.documentElement);
+      var safeB=parseFloat(cs.getPropertyValue('--omega-safe-b'))||0;
       var maxL=Math.max(0, innerWidth-Math.min(r.width,innerWidth)-4);
-      var maxT=Math.max(0, innerHeight-40);
+      var maxT=Math.max(0, innerHeight-40-safeB);
       if(e.style.left){
         var l=parseFloat(e.style.left)||0;
         if(l>maxL || l<0) e.style.left=Math.max(0,Math.min(maxL,l))+'px';
