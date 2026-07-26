@@ -5888,16 +5888,25 @@ function fetchMap(){
     var _fr=document.getElementById('gmap-frame'); if(_fr) _fr.style.display='none';
     _loadMapsAPI().then(function(){
       try { _initGMap(addr); }
-      catch(e){ console.warn('JS Maps init failed, embed fallback:', e&&e.message); _fetchMapEmbed(addr, zoom); }
+      catch(e){
+        /* Do NOT fall back to the embed iframe. It is cross-origin, has
+           no _gmap, and therefore cannot anchor anything - degrading to
+           it silently is worse than failing visibly. */
+        console.error('Maps JS init failed:', e&&e.message);
+        if(typeof showBanner==='function') showBanner('wiz','!! Map failed to load. Check the Maps key in Settings > API Keys.');
+      }
       btn.textContent='Go'; btn.disabled=false;
-    }).catch(function(){
-      _fetchMapEmbed(addr, zoom);
+    }).catch(function(err){
+      console.error('Maps API failed to load:', err&&err.message);
+      if(typeof showBanner==='function') showBanner('wiz','!! Maps API could not load. Check the key and its referrer restrictions.');
       btn.textContent='Go'; btn.disabled=false;
     });
     return;
   }
 
-  _fetchMapEmbed(addr, zoom);
+  /* No key: there is no live map to anchor to. Say so rather than
+     loading an embed that looks right and can never work. */
+  if(typeof showBanner==='function') showBanner('wiz','!! No Maps API key. Add one in Settings > API Keys to use the live map.');
   btn.textContent='Go'; btn.disabled=false;
 }
 
@@ -5919,7 +5928,7 @@ function _fetchMapEmbed(addr, zoom){
     var _st=document.getElementById('gmap-status'); if(_st) _st.textContent='OK Satellite loaded -- scroll map to position, then click   Lock';
     var _lb=document.getElementById('lock-btn'); if(_lb){ _lb.style.display='block'; _lb.textContent='  Lock map & place equipment'; }
     window._mapLocked=false;
-    showBanner('wiz','  Satellite loaded -- zoom & pan, then Lock. Tip: add a Maps key so Lock captures your exact pan.');
+    showBanner('wiz','  Satellite loaded.');
   };
   frame.onerror=function(){
     var _st2=document.getElementById('gmap-status'); if(_st2) _st2.textContent='!!  Map blocked -- try Upload Photo instead';
@@ -19748,6 +19757,9 @@ function _initGMap(address){
     const zoom=parseInt(document.getElementById('map-zoom').value)||18;
     if(!_gmap){
       _gmap=new google.maps.Map(md,{center:loc,zoom,mapTypeId:'satellite',tilt:0,streetViewControl:false,fullscreenControl:false,isFractionalZoomEnabled:false});
+      /* Publish it so every consumer sees the same map, whichever
+         binding they happen to read. */
+      window._gmap=_gmap;
       // Auto-calculate scale from Google Maps zoom level whenever zoom changes
       google.maps.event.addListener(_gmap,'zoom_changed',()=>_gmapAutoScale());
       google.maps.event.addListener(_gmap,'center_changed',()=>_gmapAutoScale());
@@ -19772,7 +19784,7 @@ function _initGMap(address){
     document.getElementById('gmap-status').textContent='OK Satellite loaded -- click   Lock to place equipment';
     document.getElementById('lock-btn').style.display='block';
     window._mapLocked=false;
-    showBanner('wiz','  Google satellite loaded -- zoom & pan, then   Lock');
+    showBanner('wiz','  Live map loaded \u2014 pan and place freely.');
   });
 }
 // Override toggleMapLock to handle real map div. Preserve the async freeze
@@ -23190,10 +23202,16 @@ function _getCanvasSize() {
 /* Current live-map state, or null if no live map / frozen. */
 function _liveMapState(){
   try{
-    if(!window._gmap || !_gmap.getCenter) return null;
+    /* The map may live on EITHER binding: _initGMap (the address path)
+       assigns the lexical `let _gmap`, while the GPS path assigns
+       window._gmap. Guarding on window alone meant that loading a site
+       address silently killed anchoring - the map existed, but this
+       returned null forever. */
+    var _m = (typeof _gmap!=='undefined' && _gmap) ? _gmap : window._gmap;
+    if(!_m || !_m.getCenter) return null;
     if(typeof mapLockState==='function' && mapLockState().hasPlot) return null; /* frozen */
-    var c=_gmap.getCenter();
-    return { lat:c.lat(), lng:c.lng(), zoom:_gmap.getZoom() };
+    var c=_m.getCenter();
+    return { lat:c.lat(), lng:c.lng(), zoom:_m.getZoom() };
   }catch(e){ return null; }
 }
 
@@ -44098,7 +44116,7 @@ window._crmToastModal=_crmToastModal;
     var un=unanchored(), tot=(s.elements||[]).length;
     var p=ppf();
     return [
-      ['JS map',        !!_omegaMap(),               window._gmap?'present':'MISSING'],
+      ['JS map',        !!_omegaMap(),               _omegaMap()?'present':'MISSING'],
       ['project loaded',!!window._loadReady,          window._loadReady?'yes':'still loading'],
       ['live map state',!!live(),                     live()?'available':'NULL'],
       ['plot committed',!window._committedPlot,       window._committedPlot?'YES (blocks anchoring)':'no'],
@@ -45097,10 +45115,98 @@ window._crmToastModal=_crmToastModal;
     return { clientX: r.left+px.x, clientY: r.top+px.y };
   }
 
+  /* ---- anchor newly created records from the click itself ----
+     Snapshot first, place, then stamp the difference. Tool agnostic:
+     whatever a tool creates gets coordinates, including guided builds
+     that drop several objects from one click. */
+  function snapshot(){
+    var s=S_(); if(!s) return null;
+    return { shapes:(s.shapes||[]).length,
+             elements:(s.elements||[]).length,
+             conduits:(s.conduits||[]).length };
+  }
+
+  function pxToGeo(x, y){
+    if(typeof _pxToLatLng!=='function') return null;
+    var ms=liveState(); if(!ms) return null;
+    var sz=(typeof _getCanvasSize==='function')?_getCanvasSize():{w:1200,h:800};
+    return _pxToLatLng(x, y, ms, sz.w, sz.h);
+  }
+
+  function anchorNew(before, clickLL){
+    var s=S_(); if(!s||!before) return 0;
+    var n=0;
+    var LL={ lat:clickLL.lat(), lng:clickLL.lng() };
+
+    /* SHAPES. A single-point shape placed by this very click gets the
+       click's exact coordinate - no conversion, so no drift. */
+    var shapes=s.shapes||[];
+    for(var i=before.shapes;i<shapes.length;i++){
+      var sh=shapes[i]; if(!sh||sh._geoPts) continue;
+      if(sh.pts && sh.pts.length===1 && (shapes.length-before.shapes)===1){
+        sh._geoPts=[{lat:LL.lat, lng:LL.lng}]; n++;
+      } else if(sh.pts && sh.pts.length){
+        sh._geoPts=sh.pts.map(function(p){
+          var g=pxToGeo(p.x,p.y); return g?{lat:g.lat,lng:g.lng}:null; });
+        if(sh._geoPts.some(Boolean)) n++; else delete sh._geoPts;
+      }
+    }
+
+    /* ELEMENTS - anchored on centre, matching _geoStampElement. */
+    var els=s.elements||[];
+    for(var j=before.elements;j<els.length;j++){
+      var el=els[j]; if(!el||el._geoLat!=null) continue;
+      if((els.length-before.elements)===1 && el.x!=null){
+        el._geoLat=LL.lat; el._geoLng=LL.lng; n++;
+      } else if(el.x!=null){
+        var g2=pxToGeo(el.x+((el.w||60)/2), el.y+((el.h||el.w||60)/2));
+        if(g2){ el._geoLat=g2.lat; el._geoLng=g2.lng; n++; }
+      }
+      /* Ground size, so footprints are to-scale like the prototype. */
+      if(el._geoWFt==null || el._geoHFt==null){
+        var ms=liveState();
+        if(ms){
+          var mp=156543.03392*Math.cos(ms.lat*Math.PI/180)/Math.pow(2,ms.zoom);
+          var pf=1/(mp*3.280839895013123);
+          if(pf>0){
+            if(el._geoWFt==null && el.w>0) el._geoWFt=el.w/pf;
+            if(el._geoHFt==null && el.h>0) el._geoHFt=el.h/pf;
+          }
+        }
+      }
+    }
+
+    /* CONDUITS - each vertex from its own pixels. */
+    var cs=s.conduits||[];
+    for(var k=before.conduits;k<cs.length;k++){
+      var c=cs[k]; if(!c||c._geoPts||!c.pts||!c.pts.length) continue;
+      c._geoPts=c.pts.map(function(p){
+        var g=pxToGeo(p.x,p.y); return g?{lat:g.lat,lng:g.lng}:null; });
+      if(c._geoPts.some(Boolean)) n++; else delete c._geoPts;
+    }
+
+    /* A conduit still being drawn grows a vertex per click. */
+    for(var m2=0;m2<Math.min(before.conduits, cs.length);m2++){
+      var cc=cs[m2];
+      if(cc && cc.pts && cc._geoPts && cc.pts.length>cc._geoPts.length){
+        while(cc._geoPts.length<cc.pts.length){
+          var p2=cc.pts[cc._geoPts.length];
+          var g3=(cc._geoPts.length===cc.pts.length-1) ? LL : pxToGeo(p2.x,p2.y);
+          cc._geoPts.push(g3?{lat:g3.lat,lng:g3.lng}:null);
+        }
+        n++;
+      }
+    }
+    return n;
+  }
+
   function onMapClick(e){
     if(!placing() || dragging) return;
     if(!e || !e.latLng) return;
     var c=toClient(e.latLng); if(!c) return;
+
+    var before=snapshot();
+
     /* Hand the existing handler a normal-looking event. Every tool runs
        its own placement logic unchanged. */
     var ev={ clientX:c.clientX, clientY:c.clientY,
@@ -45109,10 +45215,33 @@ window._crmToastModal=_crmToastModal;
     try{ if(typeof covClick==='function') covClick(ev); }catch(err){
       if(window.console) console.warn('[native-place] covClick failed:', err&&err.message);
     }
-    /* Anchor immediately, while the pixels are still valid for this view. */
+
+    /* Anchor from the click, not from a pixel round trip. */
+    var stamped=0;
+    try{ stamped=anchorNew(before, e.latLng); }catch(err){
+      if(window.console) console.warn('[native-place] anchorNew:', err&&err.message);
+    }
+    /* Belt and braces for anything placed by another route. */
     try{ if(typeof _geoStampAll==='function') _geoStampAll(); }catch(err){}
     try{ if(window.OmegaNative && OmegaNative.isOn()) OmegaNative.refresh(); }catch(err){}
+    if(stamped && window.console) console.debug('[native-place] anchored '+stamped+' new object(s)');
   }
+
+  /* Guided builds and wizards place without a map click. Anchor whatever
+     they add, using each object's own pixels. */
+  window.OmegaAnchorAll=function(){
+    var s=S_(); if(!s) return 0;
+    var before={shapes:0, elements:0, conduits:0};
+    var ll=null;
+    try{ var m=MAP(); if(m&&m.getCenter){ var cc=m.getCenter(); ll={lat:function(){return cc.lat();},lng:function(){return cc.lng();}}; } }catch(e){}
+    if(!ll) return 0;
+    /* before=0 means "consider everything"; records that already carry
+       coordinates are skipped by the guards inside anchorNew. */
+    var n=anchorNew(before, ll);
+    if(n && window.console) console.info('[native-place] anchored '+n+' existing object(s)');
+    try{ if(window.OmegaNative && OmegaNative.isOn()) OmegaNative.refresh(); }catch(e){}
+    return n;
+  };
 
   function onMapMove(e){
     if(!placing() || !e || !e.latLng) return;
@@ -45230,6 +45359,92 @@ window._crmToastModal=_crmToastModal;
           ? 'WARNING: #cov is intercepting events; panning will fail while drawing.'
         : !o.nativeLayerOn ? 'Native layer is off - geometry is still drawn in pixel space.'
         : 'Map takes all input. Drag pans, click places, geometry is native.';
+      console.table?console.table(o):console.log(o);
+      console.info(o.verdict);
+      return o;
+    }
+  };
+})();
+</script>
+<script>
+/* Guided builds place several objects programmatically, with no map click
+   to take a coordinate from. Sweep shortly after the model grows so those
+   are anchored too. */
+(function(){
+  var last=-1;
+  setInterval(function(){
+    try{
+      var S=(typeof window.S!=='undefined')?window.S:null;
+      if(!S){ try{ S=(0,eval)('typeof S!=="undefined"?S:null'); }catch(e){} }
+      if(!S) return;
+      var n=(S.shapes||[]).length+(S.elements||[]).length+(S.conduits||[]).length;
+      if(n===last) return;
+      last=n;
+      if(window.OmegaAnchorAll) OmegaAnchorAll();
+    }catch(e){}
+  }, 900);
+})();
+</script>
+<!-- ================= AUTO LIVE MAP =================
+     The site address comes from the project, and the live JS map is the
+     only map. No embed fallback, no lock step.
+     ================================================= -->
+<script>
+(function(){
+  function MAP(){ try{ if(typeof _gmap!=='undefined'&&_gmap) return _gmap; }catch(e){} return window._gmap||null; }
+
+  /* Wherever the project keeps its address. */
+  function projectAddress(){
+    var tries=[
+      function(){ var e=document.getElementById('addr'); return e&&e.value; },
+      function(){ try{ return (typeof S!=='undefined'&&S)?(S.address||S.siteAddress):null; }catch(e){ return null; } },
+      function(){ var e=document.getElementById('pn-title'); return e&&e.textContent; },
+      function(){ var e=document.querySelector('#tb-right input, .tb-right input'); return e&&e.value; },
+      function(){ try{ return window._lastAddr||null; }catch(e){ return null; } }
+    ];
+    for(var i=0;i<tries.length;i++){
+      var v=null; try{ v=tries[i](); }catch(e){}
+      if(v && String(v).trim() && !/^new project$/i.test(String(v).trim())) return String(v).trim();
+    }
+    return null;
+  }
+
+  var done=false, tries=0;
+  var iv=setInterval(function(){
+    if(done || ++tries>60){ clearInterval(iv); return; }
+    if(!window._loadReady) return;              /* wait for the project */
+    if(MAP()){                                   /* already live */
+      done=true; clearInterval(iv);
+      fillField();
+      return;
+    }
+    var addr=projectAddress();
+    if(!addr) return;
+    done=true; clearInterval(iv);
+    fillField(addr);
+    try{
+      if(typeof _initGMap==='function' && typeof _loadMapsAPI==='function'){
+        _loadMapsAPI().then(function(){
+          try{ _initGMap(addr); }catch(e){ console.error('[auto-map]', e&&e.message); }
+        }).catch(function(e){ console.error('[auto-map] API load failed:', e&&e.message); });
+      }
+    }catch(e){}
+  }, 500);
+
+  function fillField(addr){
+    var i=document.getElementById('omega-addr-in');
+    if(i && !i.value){ i.value = addr || projectAddress() || ''; }
+  }
+
+  window.OmegaLive={
+    status:function(){
+      var o={ liveMap:!!MAP(), projectAddress:projectAddress(),
+              addrField:(document.getElementById('omega-addr-in')||{}).value||'(empty)',
+              embedVisible:(function(){var f=document.getElementById('gmap-frame');
+                return f? (getComputedStyle(f).display!=='none') : false;})() };
+      o.verdict = o.liveMap ? 'Live JS map is active - everything can anchor.'
+        : o.embedVisible ? 'Embed iframe is showing. It cannot anchor; reload the address.'
+        : 'No map yet. Enter a site address in View, or check Settings > API Keys.';
       console.table?console.table(o):console.log(o);
       console.info(o.verdict);
       return o;
