@@ -1467,6 +1467,8 @@ window.onerror = function(msg, src, line, col, err) {
       <div class="rpanel-body">
         <button class="rbtn" onclick="openLpPanel()" title="Controls — satellite photo, site schematic, equipment"><span class="rb-ico">☰</span><span class="rb-lbl">Controls</span></button>
         <button class="rbtn" onclick="openRpPanel('summary')" title="Site map summary — BESS, conduit, equipment, DER"><span class="rb-ico">▤</span><span class="rb-lbl">Summary</span></button>
+        <button class="rbtn" onclick="rbRun(toggleDiagPanel)" title="Anchor diagnostics — why equipment is or is not locked to the ground"><span class="rb-ico">⚠</span><span class="rb-lbl">Diagnose</span></button>
+        <button class="rbtn" onclick="rbRun(toggleCompassPanel)" title="Compass — pan the view north / south / east / west, and frame the drawing"><span class="rb-ico">⊕</span><span class="rb-lbl">Compass</span></button>
         <button class="rbtn" onclick="toggleLayersPanel()" title="Layers — list, select, hide, reorder, delete all elements"><span class="rb-ico">▧</span><span class="rb-lbl">Layers</span></button>
       </div>
       <div class="rpanel-cap">Panels</div>
@@ -5388,6 +5390,11 @@ function switchDocTab(i){
   _activeDocTab = i;
   _restoreCanvas(_docTabs[i].state);
   renderDocTabs();
+  /* S was just replaced by the incoming tab's state, where pxPerFt is
+     null. _gmapAutoScale only runs on map init and on zoom/centre
+     changes, and neither happened - so without this, conduit lengths
+     render in raw pixels ("35px") until the user happens to zoom. */
+  try{ if(typeof _gmapAutoScale==='function') _gmapAutoScale(); }catch(e){}
 }
 
 function addDocTab(kind){
@@ -43616,6 +43623,36 @@ window._crmToastModal=_crmToastModal;
     /* Clear every anchor and re-derive from the CURRENT view. Use only
        when the map is showing the position the drawing SHOULD occupy -
        this overwrites good anchors as readily as bad ones. */
+    /* Report every precondition for anchoring, so a failure can be
+       diagnosed from a reading instead of a theory. */
+    why:function(){
+      var s=S_()||{}, sc=document.getElementById('sc');
+      var o={
+        loadReady:        !!window._loadReady,
+        liveMapState:     !!live(),
+        committedPlot:    !!window._committedPlot,
+        gmapPresent:      !!window._gmap,
+        pxPerFoot_map:    ppf(),
+        S_pxPerFt:        (s.pxPerFt==null?'NULL (lengths will show px)':s.pxPerFt),
+        canvas:           sc? (sc.offsetWidth+'x'+sc.offsetHeight) : 'missing',
+        elements:         (s.elements||[]).length,
+        unanchored:       (function(){var n=0;(s.elements||[]).forEach(function(e){if(e._geoLat==null)n++;});return n;})(),
+        stampFnPresent:   typeof _geoStampAll==='function',
+        reprojectPresent: typeof _geoReprojectAll==='function',
+        scPointerEvents:  sc? (sc.style.pointerEvents||'(unset)') : 'missing'
+      };
+      o.verdict =
+        !o.gmapPresent      ? 'No JS map - embed-iframe fallback cannot anchor.' :
+        !o.loadReady        ? 'Project still loading; stamping is deliberately held off.' :
+        o.committedPlot     ? 'Plot committed - _liveMapState() returns null by design, so nothing can anchor.' :
+        !o.liveMapState     ? 'No live map state. Check mapLockState().hasPlot.' :
+        !o.stampFnPresent   ? '_geoStampAll is missing - the anchoring path is absent.' :
+        o.unanchored>0      ? 'Live and ready, but '+o.unanchored+' element(s) still unanchored - stamping is not running.' :
+                              'All anchored.';
+      console.table?console.table(o):console.log(o);
+      console.info(o.verdict);
+      return o;
+    },
     reanchorAll:function(){
       var s=S_(); if(!s) return 0;
       var c=0;
@@ -43658,43 +43695,82 @@ window._crmToastModal=_crmToastModal;
   if(window.console) console.info('[geo] eager anchoring armed. OmegaGeo.status() / .audit() / .enableScaling()');
 })();
 </script>
-<!-- ================= COMPASS / VIEWPORT PAN =================
-     The canvas shows ONE view of an unbounded map. These arrows move
-     that view; they do not move the drawing. Everything anchored keeps
-     its ground position, so you can pan to a neighbouring parcel, place
-     a BESS, and pan back to find the chargers exactly where you left
-     them.
+<!-- ================= COMPASS PALETTE =================
+     A floating palette in the AutoCAD idiom: title bar, drag handle,
+     minimise, close. Position and state persist. Reopen from
+     View > Panels > Compass.
 
-     Pan step is 55% of the viewport, so a full screen-width of context
-     is never lost between steps - there is always overlap to orient by.
-     ========================================================== -->
+     The arrows move the VIEW, not the drawing. Anything anchored keeps
+     its ground position, so panning to a neighbouring parcel and back
+     leaves everything where you left it.
+     =================================================== -->
 <style>
   #omega-compass{
-    position:absolute; left:14px; top:50%; transform:translateY(-50%);
-    z-index:330; display:grid; grid-template-columns:repeat(3,26px);
-    grid-template-rows:repeat(3,26px); gap:2px; padding:5px;
-    background:rgba(10,22,40,.82); border:1px solid #1C3350; border-radius:7px;
-    box-shadow:0 6px 18px rgba(0,0,0,.45); user-select:none;
-    font-family:'IBM Plex Mono',monospace;
+    position:absolute; left:16px; top:120px; z-index:340; width:126px;
+    background:rgba(10,22,40,.94); border:1px solid #1C3350; border-radius:6px;
+    box-shadow:0 8px 24px rgba(0,0,0,.5); user-select:none;
+    font-family:'IBM Plex Mono',monospace; color:#E8F0FA;
   }
-  #omega-compass button{
-    all:unset; display:flex; align-items:center; justify-content:center;
-    cursor:pointer; color:#7D95B4; font-size:12px; font-weight:600;
-    border-radius:4px; transition:background .12s,color .12s;
+  #omega-compass.hidden{ display:none; }
+  #oc-bar{
+    display:flex; align-items:center; gap:6px; padding:4px 5px 4px 7px;
+    background:#132844; border-bottom:1px solid #1C3350;
+    border-radius:5px 5px 0 0; cursor:grab; touch-action:none;
+    font-size:9px; letter-spacing:.12em; font-weight:600; color:#7D95B4;
   }
-  #omega-compass button:hover{ background:rgba(0,212,255,.16); color:#00D4FF; }
-  #omega-compass button:active{ background:rgba(0,212,255,.3); }
-  #omega-compass button:focus-visible{ outline:2px solid #00D4FF; outline-offset:-2px; }
-  #omega-compass .cmp-mid{ color:#2FB54A; font-size:9px; letter-spacing:.04em; }
-  #omega-compass.locked button{ color:#3A4C63; cursor:not-allowed; }
-  #omega-compass.locked button:hover{ background:none; color:#3A4C63; }
-  #omega-compass .cmp-spacer{ pointer-events:none; }
-  @media (max-width:760px){ #omega-compass{ left:8px; grid-template-columns:repeat(3,30px); grid-template-rows:repeat(3,30px); } }
+  #oc-bar.dragging{ cursor:grabbing; }
+  #oc-bar .oc-title{ flex:1; }
+  #oc-bar button{
+    all:unset; width:15px; height:15px; display:flex; align-items:center;
+    justify-content:center; cursor:pointer; border-radius:3px;
+    color:#7D95B4; font-size:10px; line-height:1;
+  }
+  #oc-bar button:hover{ background:rgba(0,212,255,.18); color:#00D4FF; }
+  #oc-bar button:focus-visible{ outline:1px solid #00D4FF; }
+  #oc-body{ padding:9px 9px 10px; }
+  #omega-compass.min #oc-body{ display:none; }
+
+  /* 3x3 grid, not absolute offsets. The previous version positioned each
+     button with #oc-n{top;left}, which lost to `#oc-rose button{all:unset}`
+     on specificity - every button collapsed into one spot. A grid takes
+     its layout from the container, so no per-element offset exists to be
+     clobbered. */
+  #oc-rose{
+    display:grid; grid-template-columns:repeat(3,30px); grid-template-rows:repeat(3,26px);
+    gap:1px; justify-content:center; align-content:center;
+    padding:6px; border-radius:50%;
+    border:1px solid #24405F; background:rgba(19,40,68,.45);
+    position:relative;
+  }
+  /* North tick on the ring - makes it read as an orientation device. */
+  #oc-rose::before{
+    content:''; position:absolute; top:-1px; left:50%;
+    width:1px; height:6px; background:#2FB54A; transform:translateX(-50%);
+  }
+  #oc-rose > button{
+    /* explicit resets rather than `all:unset`, which reset too much */
+    margin:0; padding:0; background:none; border:0; font:inherit;
+    display:flex; flex-direction:column; align-items:center; justify-content:center;
+    gap:0; cursor:pointer; border-radius:4px; color:#8FA6C2;
+    font-family:'IBM Plex Mono',monospace; font-size:9px; font-weight:600;
+    line-height:1; transition:background .12s,color .12s;
+  }
+  #oc-rose > button .oc-ar{ font-size:11px; line-height:1; }
+  #oc-rose > button:hover{ background:rgba(0,212,255,.18); color:#00D4FF; }
+  #oc-rose > button:active{ background:rgba(0,212,255,.32); }
+  #oc-rose > button:focus-visible{ outline:2px solid #00D4FF; outline-offset:-2px; }
+  #oc-rose > span{ display:block; }            /* empty grid cells */
+  #oc-rose > #oc-fit{
+    color:#2FB54A; font-size:8.5px; letter-spacing:.06em;
+    border:1px solid rgba(47,181,74,.35);
+  }
+  #oc-rose > #oc-fit:hover{ background:rgba(47,181,74,.18); color:#2FB54A; }
+  #omega-compass.locked #oc-rose > button{ color:#3A4C63; cursor:not-allowed; }
+  #omega-compass.locked #oc-rose > button:hover{ background:none; color:#3A4C63; }
 </style>
 <script>
 (function(){
-  var STEP=0.55;                      /* fraction of the viewport per press */
-  var el=null;
+  var STEP=0.55, el=null, bar=null, POSK='omegaCompassPos', STK='omegaCompassState';
 
   function map(){ return window._gmap; }
   function locked(){
@@ -43702,107 +43778,349 @@ window._crmToastModal=_crmToastModal;
     if(window._userLockedMap || window._mapLocked) return 'lock';
     return null;
   }
-
   function viewport(){
     var d=document.getElementById('sc');
     return { w:(d&&d.clientWidth)||900, h:(d&&d.clientHeight)||600 };
   }
 
   function pan(dxF,dyF){
-    var why=locked();
-    if(why){ nudge(why); return; }
+    var why=locked(); if(why){ nudge(why); return; }
     var m=map(); if(!m||!m.panBy) return;
-    /* Anchor first: panBy fires no dragstart, so anything unstamped
-       would be left behind and then mis-anchored on the next idle. */
+    /* Anchor first: panBy fires no dragstart, so anything unstamped would
+       be left behind and then mis-anchored on the next idle. */
     try{ if(window.__omegaAnchorNow) window.__omegaAnchorNow(); }catch(e){}
     var v=viewport();
-    /* panBy is animated by the API when the distance is under one
-       viewport, which is what makes the new imagery slide in. */
     m.panBy(Math.round(dxF*v.w*STEP), Math.round(dyF*v.h*STEP));
   }
 
   function fit(){
-    var why=locked();
-    if(why){ nudge(why); return; }
+    var why=locked(); if(why){ nudge(why); return; }
     var m=map(); if(!m) return;
-    /* Frame everything anchored - the drawing, not the current view. */
     try{
-      var b=new google.maps.LatLngBounds(), n=0, S=window.S||{};
+      var b=new google.maps.LatLngBounds(), c=0, S=window.S||{};
       (S.elements||[]).forEach(function(e){
-        if(e._geoLat!=null){ b.extend(new google.maps.LatLng(e._geoLat,e._geoLng)); n++; }
+        if(e._geoLat!=null){ b.extend(new google.maps.LatLng(e._geoLat,e._geoLng)); c++; }
       });
-      [(S.shapes||[]),(S.conduits||[])].forEach(function(arr){
-        arr.forEach(function(o){ (o._geoPts||[]).forEach(function(g){
-          if(g){ b.extend(new google.maps.LatLng(g.lat,g.lng)); n++; }
-        }); });
+      [(S.shapes||[]),(S.conduits||[])].forEach(function(a){
+        a.forEach(function(o){ (o._geoPts||[]).forEach(function(g){
+          if(g){ b.extend(new google.maps.LatLng(g.lat,g.lng)); c++; } }); });
       });
-      if(n){ m.fitBounds(b,64); }
-      else if(window.console){ console.info('[compass] nothing anchored yet - OmegaGeo.status()'); }
+      if(c) m.fitBounds(b,64);
+      else if(window.console) console.info('[compass] nothing anchored - run OmegaGeo.why()');
     }catch(e){}
   }
 
   function nudge(why){
     var msg = why==='plot'
-      ? 'Map is locked because a plot is committed. Use Clear Plot to move the view.'
-      : 'Map is locked. Use Unlock Map, or run OmegaMap.unlock().';
-    if(typeof showBanner==='function'){ try{ showBanner('wiz', msg); return; }catch(e){} }
+      ? 'Map is locked because a plot is committed. Clear Plot to move the view.'
+      : 'Map is locked. Unlock Map, or run OmegaMap.unlock().';
+    if(typeof showBanner==='function'){ try{ showBanner('wiz',msg); return; }catch(e){} }
     if(window.console) console.info('[compass] '+msg);
+  }
+
+  /* ---- palette chrome ---- */
+  function savePos(){
+    try{ localStorage.setItem(POSK, JSON.stringify({left:el.style.left, top:el.style.top})); }catch(e){}
+  }
+  function saveState(){
+    try{ localStorage.setItem(STK, JSON.stringify({
+      min: el.classList.contains('min'), hidden: el.classList.contains('hidden')
+    })); }catch(e){}
+  }
+  function restore(){
+    try{
+      var p=JSON.parse(localStorage.getItem(POSK)||'null');
+      if(p && p.left){ el.style.left=p.left; el.style.top=p.top; }
+      var s=JSON.parse(localStorage.getItem(STK)||'null');
+      if(s){ el.classList.toggle('min', !!s.min); el.classList.toggle('hidden', !!s.hidden); }
+    }catch(e){}
+  }
+
+  function makeDraggable(){
+    var sx,sy,ox,oy,on=false;
+    function down(e){
+      if(e.target.tagName==='BUTTON') return;
+      on=true; bar.classList.add('dragging');
+      var t=(e.touches&&e.touches[0])||e;
+      sx=t.clientX; sy=t.clientY;
+      ox=parseInt(el.style.left||16,10); oy=parseInt(el.style.top||120,10);
+      e.preventDefault();
+    }
+    function move(e){
+      if(!on) return;
+      var t=(e.touches&&e.touches[0])||e;
+      var host=document.getElementById('sc');
+      var maxX=(host?host.clientWidth:900)-el.offsetWidth-4;
+      var maxY=(host?host.clientHeight:600)-30;
+      el.style.left=Math.max(4, Math.min(maxX, ox+(t.clientX-sx)))+'px';
+      el.style.top =Math.max(4, Math.min(maxY, oy+(t.clientY-sy)))+'px';
+      e.preventDefault();
+    }
+    function up(){ if(!on) return; on=false; bar.classList.remove('dragging'); savePos(); }
+    bar.addEventListener('mousedown',down); bar.addEventListener('touchstart',down,{passive:false});
+    document.addEventListener('mousemove',move); document.addEventListener('touchmove',move,{passive:false});
+    document.addEventListener('mouseup',up);   document.addEventListener('touchend',up);
   }
 
   function build(){
     if(document.getElementById('omega-compass')) return true;
     var host=document.getElementById('sc'); if(!host) return false;
-    el=document.createElement('div');
-    el.id='omega-compass';
-    var cells=[
-      ['',null],            ['N',[0,-1]],  ['',null],
-      ['W',[-1,0]],         ['FIT','fit'], ['E',[1,0]],
-      ['',null],            ['S',[0,1]],   ['',null]
-    ];
-    cells.forEach(function(c){
-      if(!c[1]){ var s=document.createElement('div'); s.className='cmp-spacer'; el.appendChild(s); return; }
-      var b=document.createElement('button');
-      b.type='button';
-      b.textContent = c[0]==='FIT' ? 'FIT' : c[0];
-      if(c[0]==='FIT') b.className='cmp-mid';
-      b.title = c[0]==='FIT' ? 'Frame the whole drawing'
-                             : 'Pan ' + {N:'north',S:'south',E:'east',W:'west'}[c[0]];
-      b.setAttribute('aria-label', b.title);
-      b.addEventListener('click', function(ev){
-        ev.preventDefault(); ev.stopPropagation();
-        if(c[1]==='fit') fit(); else pan(c[1][0], c[1][1]);
-      });
-      el.appendChild(b);
-    });
+
+    el=document.createElement('div'); el.id='omega-compass';
+    el.innerHTML =
+      '<div id="oc-bar"><span class="oc-title">COMPASS</span>'
+      + '<button id="oc-min" title="Minimise" aria-label="Minimise">&#9472;</button>'
+      + '<button id="oc-close" title="Close (reopen from View &gt; Panels)" aria-label="Close">&#10005;</button>'
+      + '</div>'
+      + '<div id="oc-body"><div id="oc-rose">'
+      +   '<span></span>'
+      +   '<button id="oc-n" title="Pan north" aria-label="Pan north">'
+      +     '<span class="oc-ar">\u25B2</span><span>N</span></button>'
+      +   '<span></span>'
+      +   '<button id="oc-w" title="Pan west" aria-label="Pan west">'
+      +     '<span class="oc-ar">\u25C0</span><span>W</span></button>'
+      +   '<button id="oc-fit" title="Frame the whole drawing" aria-label="Fit drawing">FIT</button>'
+      +   '<button id="oc-e" title="Pan east" aria-label="Pan east">'
+      +     '<span class="oc-ar">\u25B6</span><span>E</span></button>'
+      +   '<span></span>'
+      +   '<button id="oc-s" title="Pan south" aria-label="Pan south">'
+      +     '<span class="oc-ar">\u25BC</span><span>S</span></button>'
+      +   '<span></span>'
+      + '</div></div>';
     host.appendChild(el);
+    bar=document.getElementById('oc-bar');
+
+    var D={ 'oc-n':[0,-1], 'oc-s':[0,1], 'oc-w':[-1,0], 'oc-e':[1,0] };
+    Object.keys(D).forEach(function(id){
+      document.getElementById(id).addEventListener('click',function(ev){
+        ev.preventDefault(); ev.stopPropagation(); pan(D[id][0],D[id][1]);
+      });
+    });
+    document.getElementById('oc-fit').addEventListener('click',function(ev){
+      ev.preventDefault(); ev.stopPropagation(); fit();
+    });
+    document.getElementById('oc-min').addEventListener('click',function(ev){
+      ev.stopPropagation(); el.classList.toggle('min'); saveState();
+    });
+    document.getElementById('oc-close').addEventListener('click',function(ev){
+      ev.stopPropagation(); el.classList.add('hidden'); saveState();
+      if(typeof showBanner==='function'){
+        try{ showBanner('wiz','Compass closed. Reopen from View > Panels > Compass.'); }catch(e){}
+      }
+    });
+
+    makeDraggable();
+    restore();
     return true;
   }
 
-  /* Arrow keys do the same thing, unless you are typing. */
   document.addEventListener('keydown', function(e){
     if(['INPUT','TEXTAREA','SELECT'].indexOf(e.target.tagName)>=0) return;
-    if(e.target.isContentEditable) return;
-    if(e.metaKey||e.ctrlKey||e.altKey) return;
+    if(e.target.isContentEditable || e.metaKey || e.ctrlKey || e.altKey) return;
     var d={ArrowUp:[0,-1],ArrowDown:[0,1],ArrowLeft:[-1,0],ArrowRight:[1,0]}[e.key];
     if(!d) return;
-    e.preventDefault();
-    pan(d[0],d[1]);
+    e.preventDefault(); pan(d[0],d[1]);
   });
 
-  function sync(){
-    if(!el) return;
-    el.classList.toggle('locked', !!locked());
+  function sync(){ if(el) el.classList.toggle('locked', !!locked()); }
+  setInterval(function(){ build(); sync(); }, 500);
+  if(document.readyState==='loading') document.addEventListener('DOMContentLoaded',build); else build();
+
+  window.toggleCompassPanel=function(){
+    if(!el && !build()) return;
+    var hid=el.classList.toggle('hidden');
+    if(!hid) el.classList.remove('min');
+    saveState();
+    return !hid;
+  };
+  window.OmegaCompass={
+    pan:pan, fit:fit, show:function(){ if(build()){ el.classList.remove('hidden'); saveState(); } },
+    setStep:function(f){ STEP=Math.max(0.1,Math.min(1,f)); return STEP; },
+    resetPosition:function(){ if(el){ el.style.left='16px'; el.style.top='120px'; savePos(); } }
+  };
+})();
+</script>
+<!-- ================= ON-SCREEN DIAGNOSTICS =================
+     Everything OmegaGeo.why() reports, rendered as a panel. Mobile
+     Safari has no reachable console, so a console-only diagnostic is no
+     diagnostic at all on a phone.
+
+     Each row is a precondition for anchoring. Green passes, amber is a
+     warning, red is the thing that is stopping it.
+     ========================================================= -->
+<style>
+  #omega-diag{
+    position:absolute; right:14px; top:96px; z-index:345; width:270px;
+    background:rgba(10,22,40,.96); border:1px solid #1C3350; border-radius:6px;
+    box-shadow:0 8px 26px rgba(0,0,0,.55); font-family:'IBM Plex Mono',monospace;
+    color:#E8F0FA; max-height:70%; display:flex; flex-direction:column;
+  }
+  #omega-diag.hidden{ display:none; }
+  #od-bar{
+    display:flex; align-items:center; gap:6px; padding:5px 6px 5px 8px;
+    background:#132844; border-bottom:1px solid #1C3350; border-radius:5px 5px 0 0;
+    cursor:grab; touch-action:none; font-size:9px; letter-spacing:.12em;
+    font-weight:600; color:#7D95B4;
+  }
+  #od-bar .od-t{ flex:1; }
+  #od-bar button{
+    all:unset; width:16px; height:16px; display:flex; align-items:center;
+    justify-content:center; cursor:pointer; border-radius:3px; color:#7D95B4; font-size:10px;
+  }
+  #od-bar button:hover{ background:rgba(0,212,255,.18); color:#00D4FF; }
+  #od-body{ padding:8px 9px 10px; overflow-y:auto; }
+  .od-row{ display:flex; justify-content:space-between; gap:8px; align-items:baseline;
+           font-size:10.5px; line-height:1.75; border-bottom:1px solid rgba(28,51,80,.5); }
+  .od-row:last-of-type{ border-bottom:0; }
+  .od-k{ color:#7D95B4; white-space:nowrap; }
+  .od-v{ font-weight:600; text-align:right; word-break:break-word; }
+  .od-ok{ color:#2FB54A; } .od-warn{ color:#F59E0B; } .od-bad{ color:#FF6B6B; }
+  #od-verdict{
+    margin-top:9px; padding:8px; border-radius:4px; font-size:10.5px; line-height:1.5;
+    background:rgba(245,158,11,.10); border-left:2px solid #F59E0B; color:#E8C89A;
+  }
+  #od-verdict.good{ background:rgba(47,181,74,.10); border-left-color:#2FB54A; color:#A6DDB4; }
+  #od-act{ margin-top:8px; display:flex; gap:5px; }
+  #od-act button{
+    all:unset; flex:1; text-align:center; padding:6px 4px; border-radius:4px;
+    border:1px solid #1C3350; background:#132844; cursor:pointer;
+    font-size:9.5px; font-weight:600; color:#8FA6C2;
+  }
+  #od-act button:hover{ background:#1A3556; color:#00D4FF; }
+</style>
+<script>
+(function(){
+  var el=null, bar=null, timer=null;
+
+  function S_(){ return window.S||{}; }
+  function live(){ try{ return typeof _liveMapState==='function'? _liveMapState():null; }catch(e){ return null; } }
+  function ppf(){
+    try{
+      if(!window._gmap||!_gmap.getCenter) return null;
+      var c=_gmap.getCenter(), z=_gmap.getZoom(); if(!c||z==null) return null;
+      var m=156543.03392*Math.cos(c.lat()*Math.PI/180)/Math.pow(2,z);
+      return 1/(m*3.280839895013123);
+    }catch(e){ return null; }
+  }
+  function unanchored(){
+    var s=S_(), n=0;
+    (s.elements||[]).forEach(function(e){ if(e._geoLat==null) n++; });
+    (s.shapes||[]).forEach(function(o){ if(o.pts&&o.pts.length&&!o._geoPts) n++; });
+    (s.conduits||[]).forEach(function(o){ if(o.pts&&o.pts.length&&!o._geoPts) n++; });
+    return n;
   }
 
-  setInterval(function(){ build(); sync(); }, 500);
-  if(document.readyState==='loading') document.addEventListener('DOMContentLoaded',build);
-  else build();
+  function rows(){
+    var s=S_(), sc=document.getElementById('sc');
+    var un=unanchored(), tot=(s.elements||[]).length;
+    var p=ppf();
+    return [
+      ['JS map',        !!window._gmap,               window._gmap?'present':'MISSING'],
+      ['project loaded',!!window._loadReady,          window._loadReady?'yes':'still loading'],
+      ['live map state',!!live(),                     live()?'available':'NULL'],
+      ['plot committed',!window._committedPlot,       window._committedPlot?'YES (blocks anchoring)':'no'],
+      ['map locked',    !window._mapLocked,           window._mapLocked?'YES':'no'],
+      ['#sc events',    sc && sc.style.pointerEvents!=='none',
+                        sc?(sc.style.pointerEvents||'auto'):'missing'],
+      ['scale S.pxPerFt', s.pxPerFt!=null,            s.pxPerFt!=null?(+s.pxPerFt).toFixed(3):'NULL (lengths show px)'],
+      ['scale from map',  p!=null,                    p!=null?p.toFixed(3)+' px/ft':'n/a'],
+      ['_geoStampAll',  typeof _geoStampAll==='function',   typeof _geoStampAll==='function'?'present':'MISSING'],
+      ['_geoReprojectAll', typeof _geoReprojectAll==='function', typeof _geoReprojectAll==='function'?'present':'MISSING'],
+      ['elements',      true,                         String(tot)],
+      ['unanchored',    un===0,                       String(un)]
+    ];
+  }
 
-  window.OmegaCompass={
-    pan:pan, fit:fit,
-    setStep:function(f){ STEP=Math.max(0.1,Math.min(1,f)); return STEP; }
+  function verdict(){
+    var s=S_();
+    if(!window._gmap) return ['No JS map. The embed-iframe fallback cannot anchor anything.', false];
+    if(window._committedPlot) return ['A PLOT IS COMMITTED. _liveMapState() returns null by design, so nothing can anchor. Press Clear Plot in the View tab, then place something.', false];
+    if(!window._loadReady) return ['Project still loading. Anchoring is deliberately held off until it finishes.', false];
+    if(!live()) return ['No live map state. mapLockState().hasPlot is probably true.', false];
+    if(typeof _geoStampAll!=='function') return ['_geoStampAll is missing entirely - the anchoring path is not present in this build.', false];
+    if(s.pxPerFt==null) return ['Scale is null, so lengths render in px. Zoom once, or switch canvas tabs, to recompute.', false];
+    if(unanchored()>0) return [unanchored()+' item(s) unanchored while the map is live and ready. Stamping is not running - this is the case to screenshot.', false];
+    return ['All preconditions pass and everything is anchored. Pan with the compass; nothing should move.', true];
+  }
+
+  function paint(){
+    if(!el || el.classList.contains('hidden')) return;
+    var body=document.getElementById('od-body'); if(!body) return;
+    var html='';
+    rows().forEach(function(r){
+      var cls = r[1]? 'od-ok' : (r[0]==='unanchored'||r[0]==='plot committed'?'od-bad':'od-warn');
+      html += '<div class="od-row"><span class="od-k">'+r[0]+'</span>'
+           +  '<span class="od-v '+cls+'">'+r[2]+'</span></div>';
+    });
+    var v=verdict();
+    html += '<div id="od-verdict"'+(v[1]?' class="good"':'')+'>'+v[0]+'</div>';
+    html += '<div id="od-act">'
+         +  '<button id="od-stamp">Anchor now</button>'
+         +  '<button id="od-re">Re-anchor all</button>'
+         +  '</div>';
+    body.innerHTML=html;
+    var a=document.getElementById('od-stamp'), b=document.getElementById('od-re');
+    if(a) a.onclick=function(){
+      try{ if(window.__omegaAnchorNow) window.__omegaAnchorNow();
+           else if(typeof _geoStampAll==='function') _geoStampAll(); }catch(e){}
+      paint();
+    };
+    if(b) b.onclick=function(){
+      if(!confirm('Clear every anchor and re-derive from the CURRENT view? Only do this when the drawing is sitting where it should.')) return;
+      try{ if(window.OmegaGeo && OmegaGeo.reanchorAll) OmegaGeo.reanchorAll(); }catch(e){}
+      paint();
+    };
+  }
+
+  function drag(){
+    var sx,sy,ox,oy,on=false;
+    function down(e){
+      if(e.target.tagName==='BUTTON') return;
+      on=true; var t=(e.touches&&e.touches[0])||e;
+      sx=t.clientX; sy=t.clientY;
+      var r=el.getBoundingClientRect(), h=document.getElementById('sc').getBoundingClientRect();
+      ox=r.left-h.left; oy=r.top-h.top;
+      el.style.right='auto'; el.style.left=ox+'px'; el.style.top=oy+'px';
+      e.preventDefault();
+    }
+    function move(e){
+      if(!on) return; var t=(e.touches&&e.touches[0])||e;
+      el.style.left=Math.max(4,ox+(t.clientX-sx))+'px';
+      el.style.top =Math.max(4,oy+(t.clientY-sy))+'px';
+      e.preventDefault();
+    }
+    function up(){ on=false; }
+    bar.addEventListener('mousedown',down); bar.addEventListener('touchstart',down,{passive:false});
+    document.addEventListener('mousemove',move); document.addEventListener('touchmove',move,{passive:false});
+    document.addEventListener('mouseup',up); document.addEventListener('touchend',up);
+  }
+
+  function build(){
+    if(document.getElementById('omega-diag')) return true;
+    var host=document.getElementById('sc'); if(!host) return false;
+    el=document.createElement('div'); el.id='omega-diag'; el.className='hidden';
+    el.innerHTML='<div id="od-bar"><span class="od-t">ANCHOR DIAGNOSTICS</span>'
+      +'<button id="od-x" title="Close" aria-label="Close">&#10005;</button></div>'
+      +'<div id="od-body"></div>';
+    host.appendChild(el);
+    bar=document.getElementById('od-bar');
+    document.getElementById('od-x').onclick=function(){ el.classList.add('hidden'); stop(); };
+    drag();
+    return true;
+  }
+
+  function start(){ paint(); if(!timer) timer=setInterval(paint,1000); }
+  function stop(){ if(timer){ clearInterval(timer); timer=null; } }
+
+  window.toggleDiagPanel=function(){
+    if(!el && !build()) return;
+    var hid=el.classList.toggle('hidden');
+    if(hid) stop(); else start();
+    return !hid;
   };
-  if(window.console) console.info('[compass] arrows pan the view; arrow keys work too. FIT frames the drawing.');
+
+  setInterval(build, 800);
+  if(document.readyState==='loading') document.addEventListener('DOMContentLoaded',build); else build();
 })();
 </script>
 </body>
