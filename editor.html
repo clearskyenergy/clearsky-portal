@@ -1530,6 +1530,7 @@ window.onerror = function(msg, src, line, col, err) {
       <div class="rpanel-body">
         
         <button class="rbtn" onclick="openRpPanel('summary')" title="Site map summary — BESS, conduit, equipment, DER"><span class="rb-ico">▤</span><span class="rb-lbl">Summary</span></button>
+        <button class="rbtn" id="rb-meters" aria-pressed="false" onclick="rbRun(toggleMeterPanel)" title="Group equipment by service meter — connected kW, storage and conduit per meter"><span class="rb-ico" style="color:#F59E0B">Ⓜ</span><span class="rb-lbl">Meters</span></button>
         <button class="rbtn" id="rb-site" aria-pressed="false" onclick="rbRun(toggleSitePanel)" title="Live takeoff measured from the geometry, plus the ground-vs-pixel scale proof"><span class="rb-ico" style="color:#00D4FF">▦</span><span class="rb-lbl">Site<br>Map</span></button>
         <button class="rbtn" id="rb-native" aria-pressed="false" onclick="rbRun(toggleNativeLayer)" title="Draw everything as native Google Maps objects — locked to the ground, to scale, no reprojection"><span class="rb-ico" style="color:#2FB54A">◈</span><span class="rb-lbl">Native<br>Layer</span></button>
         <button class="rbtn" id="rb-dock-left" aria-pressed="false" onclick="rbRun(toggleDockLeft)" title="Dock the tool panel to the left of the screen as a vertical column"><span class="rb-ico">◧</span><span class="rb-lbl">Dock Left</span></button>
@@ -47427,8 +47428,8 @@ window._crmToastModal=_crmToastModal;
    already been fixed in a build that was not the one loaded. This makes
    the running version checkable in one line. */
 (function(){
-  window.OMEGA_BUILD = { id:'73cb2b20', built:'2026-07-27 09:45 UTC' };
-  console.info('%cOMEGA build 73cb2b20  (2026-07-27 09:45 UTC)', 'color:#2FB54A;font-weight:bold');
+  window.OMEGA_BUILD = { id:'4d03c57d', built:'2026-07-27 09:45 UTC' };
+  console.info('%cOMEGA build 4d03c57d  (2026-07-27 09:45 UTC)', 'color:#2FB54A;font-weight:bold');
   window.OmegaVersion=function(){
     var have=[];
     [['OmegaFrozen','stale snapshot fix'],
@@ -47819,6 +47820,35 @@ window._crmToastModal=_crmToastModal;
     return moved;
   }
 
+  /* Reposition an element's existing node. Falls back to renderEl only
+     when there is no node yet, and clears any duplicates it finds - which
+     also heals a drawing already damaged by the old behaviour. */
+  function moveElNode(o){
+    var nodes=document.querySelectorAll('.cel[data-elid="'+o.id+'"]');
+    if(!nodes.length){
+      if(typeof renderEl==='function') renderEl(o);
+      return;
+    }
+    for(var i=1;i<nodes.length;i++){            /* keep the first, drop the rest */
+      if(nodes[i].parentNode) nodes[i].parentNode.removeChild(nodes[i]);
+    }
+    var n=nodes[0];
+    n.style.left=o.x+'px';
+    n.style.top =o.y+'px';
+  }
+
+  /* One-time sweep: remove duplicate .cel nodes left by earlier builds. */
+  function dedupeElements(){
+    var byId={}, dropped=0;
+    document.querySelectorAll('.cel[data-elid]').forEach(function(n){
+      var id=n.getAttribute('data-elid');
+      if(byId[id]){ if(n.parentNode){ n.parentNode.removeChild(n); dropped++; } }
+      else byId[id]=n;
+    });
+    return dropped;
+  }
+  window.OmegaDedupe=dedupeElements;
+
   var busy=false;
   function run(){
     if(busy) return 0;
@@ -47833,9 +47863,18 @@ window._crmToastModal=_crmToastModal;
           if(applyOne(o, ms, sz)){
             changed++;
             try{
+              /* renderShape and renderConduit both REMOVE their previous
+                 node first (by data-shid / data-cid) so calling them
+                 repeatedly is safe.
+
+                 renderEl does NOT - it creates a fresh div.cel and appends.
+                 Calling it on every pass of this engine appended a copy
+                 each time; during a map drag that fires continuously, so
+                 11 elements became hundreds of stacked renders. Move the
+                 existing node instead of re-rendering it. */
               if(coll==='shapes'   && typeof renderShape==='function')   renderShape(o);
               if(coll==='conduits' && typeof renderConduit==='function') renderConduit(o);
-              if(coll==='elements' && typeof renderEl==='function')      renderEl(o);
+              if(coll==='elements') moveElNode(o);
             }catch(e){}
           }
         });
@@ -47894,6 +47933,10 @@ window._crmToastModal=_crmToastModal;
     }
   }, 300);
   setInterval(function(){ standDown(); run(); }, 500);
+  setInterval(function(){
+    var n=dedupeElements();
+    if(n && window.console) console.info('[anchor] removed '+n+' duplicate element node(s)');
+  }, 2000);
 
   window.OmegaAnchor={
     run:run,
@@ -47911,6 +47954,388 @@ window._crmToastModal=_crmToastModal;
         : withAnchor.length<placeable.length
           ? (placeable.length-withAnchor.length)+' object(s) not yet anchored.'
         : 'All '+withAnchor.length+' object(s) anchored by one pass.';
+      console.table?console.table(o):console.log(o);
+      console.info(o.verdict);
+      return o;
+    }
+  };
+})();
+</script>
+<!-- ================= MULTI-METER REASONING =================
+     Which equipment sits behind which service.
+     ========================================================== -->
+<style>
+  #omega-meters{
+    position:fixed; right:14px; top:120px; width:250px; z-index:4300;
+    background:var(--panel,#0E1D33); border:1px solid var(--border,#1C3350);
+    border-radius:10px; box-shadow:0 8px 28px rgba(0,0,0,.45);
+    font-family:var(--font-sans,system-ui,sans-serif); color:var(--text,#E8F0FA);
+    cursor:grab; user-select:none; max-height:60vh; overflow-y:auto;
+  }
+  #omega-meters:active{ cursor:grabbing; }
+  #omega-meters.hidden{ display:none; }
+  #omega-meters button{ cursor:pointer; }
+  #om-bar{
+    display:flex; align-items:center; gap:6px; padding:6px 9px;
+    border-bottom:1px solid var(--border,#1C3350); position:sticky; top:0;
+    background:var(--panel,#0E1D33);
+    font:600 10px/1 var(--font-mono,ui-monospace,monospace);
+    letter-spacing:.14em; color:var(--sub,#7D95B4); text-transform:uppercase;
+  }
+  #om-bar .om-sp{ flex:1; }
+  #om-bar button{ all:unset; width:28px; height:28px; display:grid; place-items:center;
+    border-radius:4px; color:var(--sub,#7D95B4); font-size:14px; flex:0 0 28px; }
+  #om-bar button:hover{ background:rgba(255,255,255,.08); color:var(--text,#E8F0FA); }
+  #om-body{ padding:8px 10px 10px; }
+  .om-meter{ border:1px solid var(--border,#1C3350); border-radius:6px;
+    padding:7px 8px; margin-bottom:7px; background:rgba(0,0,0,.18); }
+  .om-meter h4{ font:600 11px/1.3 var(--font-mono,ui-monospace,monospace);
+    letter-spacing:.1em; color:var(--hl,#00D4FF); margin:0 0 4px; }
+  .om-row{ display:flex; justify-content:space-between;
+    font:400 10.5px/1.75 var(--font-mono,ui-monospace,monospace); color:var(--sub,#7D95B4); }
+  .om-row b{ color:var(--text,#E8F0FA); font-weight:500; }
+  .om-auto{ color:var(--warn,#F59E0B); }
+  .om-none{ border-color:var(--warn,#F59E0B); }
+  .om-note{ font:400 9.5px/1.45 var(--font-sans,system-ui,sans-serif);
+    color:var(--sub,#7D95B4); margin-top:5px; }
+</style>
+<script>
+(function(){
+  function S_(){ try{ return (typeof S!=='undefined'&&S)?S:null; }catch(e){ return null; } }
+  function MAP(){ try{ if(typeof _gmap!=='undefined'&&_gmap) return _gmap; }catch(e){} return window._gmap||null; }
+
+  /* ---- what counts as a meter ---- */
+  function isMeter(o){
+    if(!o) return false;
+    if(o.eqId==='meter') return true;
+    if(o.type==='meter') return true;
+    if(o.kind==='utility' && (o.utilType==='meter'||o.util==='meter')) return true;
+    return false;
+  }
+  function all(){
+    var s=S_(); if(!s) return [];
+    return [].concat(s.elements||[], s.shapes||[]);
+  }
+  function meters(){ return all().filter(isMeter); }
+
+  /* ---- stable tags ----
+     Assigned in placement order and stored on the object, so a tag keeps
+     meaning the same meter across reloads and re-sorts. */
+  function tag(){
+    var m=meters(), n=0, changed=0;
+    m.forEach(function(o){
+      n++;
+      if(!o.meterTag){ o.meterTag='M'+n; changed++; }
+    });
+    /* renumber only if there are collisions or gaps that would confuse */
+    var seen={}, dupe=false;
+    m.forEach(function(o){ if(seen[o.meterTag]) dupe=true; seen[o.meterTag]=1; });
+    if(dupe){ m.forEach(function(o,i){ o.meterTag='M'+(i+1); }); changed++; }
+    return changed;
+  }
+
+  /* ---- ground distance, so assignment does not change with zoom ---- */
+  function anchorLL(o){
+    if(o._geoAnchor) return o._geoAnchor;
+    if(o._geoPts && o._geoPts[0] && o._geoPts[0].lat!=null) return o._geoPts[0];
+    if(o._geoLat!=null) return {lat:o._geoLat, lng:o._geoLng};
+    return null;
+  }
+  function ftBetween(a,b){
+    var R=6378137, D=Math.PI/180;
+    var p1=a.lat*D,p2=b.lat*D,dp=(b.lat-a.lat)*D,dl=(b.lng-a.lng)*D;
+    var x=Math.sin(dp/2)*Math.sin(dp/2)+Math.cos(p1)*Math.cos(p2)*Math.sin(dl/2)*Math.sin(dl/2);
+    return 2*R*Math.asin(Math.sqrt(x))*3.28084;
+  }
+
+  /* ---- assignment ----
+     An explicit meterId always wins. Otherwise the nearest meter is used
+     as a DEFAULT and flagged, because proximity is a guess about the
+     electrical topology, not a fact about it. */
+  function assign(){
+    var ms=meters();
+    if(!ms.length) return 0;
+    var n=0;
+    all().forEach(function(o){
+      if(isMeter(o)) return;
+      if(o.meterId){ o._meterAuto=false; return; }   /* explicit wins */
+      var a=anchorLL(o); if(!a) return;
+      var best=null, bestD=Infinity;
+      ms.forEach(function(m){
+        var b=anchorLL(m); if(!b) return;
+        var d=ftBetween(a,b);
+        if(d<bestD){ bestD=d; best=m; }
+      });
+      if(best){
+        var t=best.meterTag;
+        if(o._meterAutoTag!==t){ o._meterAutoTag=t; n++; }
+        o._meterAuto=true;
+        o._meterDistFt=Math.round(bestD);
+      }
+    });
+    return n;
+  }
+  function meterOf(o){ return o.meterId || o._meterAutoTag || null; }
+
+  /* ---- rollup ---- */
+  function num(v){ var x=parseFloat(v); return isFinite(x)?x:0; }
+  function powerOf(o){
+    var kw  = num(o.kw) || num(o.unitKw) || num(o.kW) || 0;
+    var kwh = num(o.kwh)|| num(o.unitKwh)|| num(o.kWh)|| 0;
+    var kva = num(o.kva)|| 0;
+    var units = num(o.units)||1;
+    return { kw:kw*units, kwh:kwh*units, kva:kva*units };
+  }
+  function groups(){
+    tag(); assign();
+    var s=S_()||{}, ms=meters(), out={}, unassigned={items:[],kw:0,kwh:0,kva:0,auto:0};
+    ms.forEach(function(m){
+      out[m.meterTag]={ tag:m.meterTag, label:m.label||m.spec||'Meter',
+                        items:[], kw:0, kwh:0, kva:0, auto:0, conduitFt:0 };
+    });
+    all().forEach(function(o){
+      if(isMeter(o)) return;
+      var t=meterOf(o), g=t?out[t]:null;
+      var p=powerOf(o);
+      var rec={ id:o.id, kind:o.kind||o.type||o.eqId||'item',
+                label:o.label||o.model||o.kind||o.type||'', kw:p.kw, kwh:p.kwh,
+                auto:!!o._meterAuto, distFt:o._meterDistFt||null };
+      if(g){ g.items.push(rec); g.kw+=p.kw; g.kwh+=p.kwh; g.kva+=p.kva; if(rec.auto) g.auto++; }
+      else { unassigned.items.push(rec); unassigned.kw+=p.kw; unassigned.kwh+=p.kwh; }
+    });
+    /* conduit: attribute a run to the meter its nearest end belongs to */
+    (s.conduits||[]).forEach(function(c){
+      var a=anchorLL(c); if(!a) return;
+      var best=null,bestD=Infinity;
+      ms.forEach(function(m){ var b=anchorLL(m); if(!b) return;
+        var d=ftBetween(a,b); if(d<bestD){bestD=d;best=m;} });
+      var len=0;
+      try{
+        if(window.google&&google.maps&&google.maps.geometry&&c._geoPts){
+          var pts=c._geoPts.filter(Boolean).map(function(p){ return new google.maps.LatLng(p.lat,p.lng); });
+          if(pts.length>1) len=google.maps.geometry.spherical.computeLength(pts)*3.28084;
+        }
+      }catch(e){}
+      if(best && out[best.meterTag]) out[best.meterTag].conduitFt+=len;
+    });
+    return { meters:out, unassigned:unassigned, meterCount:ms.length };
+  }
+
+  /* ---- explicit override ---- */
+  window.OmegaSetMeter=function(objId, tagOrNull){
+    var o=all().filter(function(x){ return x.id===objId; })[0];
+    if(!o) return false;
+    if(tagOrNull){ o.meterId=tagOrNull; o._meterAuto=false; }
+    else { delete o.meterId; }
+    assign();
+    render();
+    try{ if(typeof pushHist==='function') pushHist(); }catch(e){}
+    return true;
+  };
+
+  /* ---- panel ---- */
+  var el=null, timer=null;
+  function build(){
+    if(document.getElementById('omega-meters')) return document.getElementById('omega-meters');
+    var d=document.createElement('div');
+    d.id='omega-meters'; d.className='hidden';
+    d.innerHTML='<div id="om-bar">METERS<span class="om-sp"></span>'
+      +'<button id="om-x" title="Close">\u00d7</button></div><div id="om-body"></div>';
+    document.body.appendChild(d);
+    d.querySelector('#om-x').onclick=hide;
+    drag(d);
+    return d;
+  }
+  function esc(t){ return String(t==null?'':t).replace(/[<>&]/g,function(c){
+    return c==='<'?'&lt;':c==='>'?'&gt;':'&amp;'; }); }
+  function render(){
+    if(!el || el.classList.contains('hidden')) return;
+    var g=groups(), body=document.getElementById('om-body');
+    if(!body) return;
+    if(!g.meterCount){
+      body.innerHTML='<div class="om-note">No meters placed. Use Draw \u2192 Utility \u2192 Meter. '
+        +'Once two or more exist, equipment is grouped by service.</div>';
+      return;
+    }
+    var h='';
+    Object.keys(g.meters).forEach(function(t){
+      var m=g.meters[t];
+      h+='<div class="om-meter"><h4>'+esc(m.tag)+'</h4>'
+        +'<div class="om-row"><span>Equipment</span><b>'+m.items.length+'</b></div>'
+        +(m.kw ? '<div class="om-row"><span>Connected kW</span><b>'+Math.round(m.kw).toLocaleString()+'</b></div>':'')
+        +(m.kwh? '<div class="om-row"><span>Storage kWh</span><b>'+Math.round(m.kwh).toLocaleString()+'</b></div>':'')
+        +(m.conduitFt? '<div class="om-row"><span>Conduit</span><b>'+Math.round(m.conduitFt).toLocaleString()+' ft</b></div>':'')
+        +(m.auto? '<div class="om-row om-auto"><span>By proximity</span><b>'+m.auto+'</b></div>':'')
+        +'</div>';
+    });
+    if(g.unassigned.items.length){
+      h+='<div class="om-meter om-none"><h4>UNASSIGNED</h4>'
+        +'<div class="om-row"><span>Equipment</span><b>'+g.unassigned.items.length+'</b></div>'
+        +'<div class="om-note">Not anchored yet, so no meter could be determined.</div></div>';
+    }
+    var autoTotal=Object.keys(g.meters).reduce(function(a,t){ return a+g.meters[t].auto; },0);
+    if(autoTotal){
+      h+='<div class="om-note">'+autoTotal+' item(s) assigned by proximity \u2014 a guess at the '
+        +'topology, not a reading of it. Override with '
+        +'<code>OmegaSetMeter(id,"M2")</code>.</div>';
+    }
+    body.innerHTML=h;
+  }
+  function drag(d){
+    var sx,sy,ox,oy,on=false;
+    function down(e){
+      if(e.target.closest && e.target.closest('button')) return;
+      on=true; var t=(e.touches&&e.touches[0])||e;
+      var r=d.getBoundingClientRect();
+      sx=t.clientX; sy=t.clientY; ox=r.left; oy=r.top;
+      d.style.right='auto'; d.style.left=ox+'px'; d.style.top=oy+'px';
+      e.preventDefault();
+    }
+    function move(e){ if(!on) return; var t=(e.touches&&e.touches[0])||e;
+      d.style.left=Math.max(0,Math.min(innerWidth-60, ox+t.clientX-sx))+'px';
+      d.style.top =Math.max(0,Math.min(innerHeight-30, oy+t.clientY-sy))+'px'; }
+    function up(){ on=false; }
+    d.addEventListener('mousedown',down); d.addEventListener('touchstart',down,{passive:false});
+    document.addEventListener('mousemove',move); document.addEventListener('touchmove',move,{passive:false});
+    document.addEventListener('mouseup',up); document.addEventListener('touchend',up);
+  }
+  function show(){ el=build(); el.classList.remove('hidden'); render();
+    if(!timer) timer=setInterval(render, 1200);
+    var b=document.getElementById('rb-meters'); if(b) b.setAttribute('aria-pressed','true'); }
+  function hide(){ if(el) el.classList.add('hidden');
+    if(timer){ clearInterval(timer); timer=null; }
+    var b=document.getElementById('rb-meters'); if(b) b.setAttribute('aria-pressed','false'); }
+
+  window.toggleMeterPanel=function(){
+    if(!el || el.classList.contains('hidden')) show(); else hide();
+    return !!(el && !el.classList.contains('hidden'));
+  };
+  window.OmegaMeters={
+    tag:tag, assign:assign, groups:groups, show:show, hide:hide,
+    set:window.OmegaSetMeter,
+    status:function(){
+      var g=groups();
+      var o={ meters:g.meterCount,
+              assigned:Object.keys(g.meters).reduce(function(a,t){ return a+g.meters[t].items.length; },0),
+              unassigned:g.unassigned.items.length,
+              byProximity:Object.keys(g.meters).reduce(function(a,t){ return a+g.meters[t].auto; },0) };
+      o.verdict = !o.meters ? 'No meters placed - the site is treated as one service.'
+        : o.meters===1 ? 'One meter: every item belongs to it.'
+        : o.byProximity ? o.meters+' meters. '+o.byProximity+' item(s) assigned by proximity - confirm those.'
+        : o.meters+' meters, all assignments explicit.';
+      console.table?console.table(o):console.log(o);
+      console.info(o.verdict);
+      return o;
+    }
+  };
+  setInterval(function(){ try{ tag(); assign(); }catch(e){} }, 1500);
+})();
+</script>
+<!-- ================= SCALE GUARD + NaN TRAP =================
+     S.pxPerFt was observed as null at rest. Renderers multiply and divide
+     by it, and null/undefined propagates to NaN, which is what
+     "<text> attribute x: Expected length, NaN" is.
+
+     Two things here:
+       1. keep S.pxPerFt a positive finite number, derived from the map
+       2. catch any NaN that still reaches the SVG, name the shape that
+          produced it, and drop that node rather than leaving a broken
+          attribute behind
+
+     The trap is instrumentation, not a fix. If it fires, the console says
+     exactly which shape to look at - which is what was missing while these
+     errors were only a count in DevTools.
+     ============================================================ -->
+<script>
+(function(){
+  function S_(){ try{ return (typeof S!=='undefined'&&S)?S:null; }catch(e){ return null; } }
+  function MAP(){ try{ if(typeof _gmap!=='undefined'&&_gmap) return _gmap; }catch(e){} return window._gmap||null; }
+
+  function scaleFromMap(){
+    var m=MAP(); if(!m||!m.getCenter) return null;
+    var c=m.getCenter(); if(!c) return null;
+    var z=m.getZoom(); if(z==null) return null;
+    var mp=156543.03392*Math.cos(c.lat()*Math.PI/180)/Math.pow(2,z);
+    var v=1/(mp*3.280839895013123);
+    return (isFinite(v)&&v>0)?v:null;
+  }
+
+  var warned=false;
+  function guardScale(){
+    var s=S_(); if(!s) return;
+    var v=s.pxPerFt;
+    if(typeof v==='number' && isFinite(v) && v>0) return;   /* healthy */
+    var from=scaleFromMap();
+    s.pxPerFt = from || 2.5;                                 /* never null */
+    if(!warned){
+      warned=true;
+      if(window.console) console.warn('[scale] S.pxPerFt was '+JSON.stringify(v)+
+        ' - renderers divide by this and produce NaN. Set to '+s.pxPerFt.toFixed(3)+
+        (from?' from the map.':' as a fallback.'));
+    }
+  }
+  guardScale();
+  setInterval(guardScale, 700);
+
+  /* ---- NaN trap ---- */
+  var seen={}, total=0;
+  function sweepNaN(){
+    var svg=document.getElementById('csvg'); if(!svg) return 0;
+    var ATTRS=['x','y','width','height','cx','cy','x1','y1','x2','y2','r'];
+    var bad=0;
+    var nodes=svg.querySelectorAll('*');
+    for(var i=0;i<nodes.length;i++){
+      var n=nodes[i], hit=false;
+      for(var a=0;a<ATTRS.length;a++){
+        var v=n.getAttribute(ATTRS[a]);
+        if(v!=null && (v==='NaN' || v.indexOf('NaN')>=0)){ hit=true; break; }
+      }
+      var d=n.getAttribute('d')||n.getAttribute('points');
+      if(!hit && d && d.indexOf('NaN')>=0) hit=true;
+      if(!hit) continue;
+      bad++; total++;
+      var g=n.closest('[data-shid],[data-cid]');
+      var who=g?(g.getAttribute('data-shid')||g.getAttribute('data-cid')):'(unknown)';
+      if(!seen[who]){
+        seen[who]=1;
+        if(window.console) console.warn('[nan] '+n.tagName+' with NaN in '+who+
+          ' - dropping the node. Inspect with OmegaNaN.find("'+who+'")');
+      }
+      if(n.parentNode) n.parentNode.removeChild(n);
+    }
+    return bad;
+  }
+  setInterval(sweepNaN, 900);
+
+  window.OmegaNaN={
+    sweep:sweepNaN,
+    offenders:function(){ return Object.keys(seen); },
+    find:function(id){
+      var s=S_(); if(!s) return null;
+      var o=[].concat(s.shapes||[], s.conduits||[], s.elements||[])
+              .filter(function(x){ return x.id===id; })[0];
+      if(!o){ console.warn('no object with id '+id); return null; }
+      var bad=[];
+      (function walk(v, pth, d){
+        if(!v || d>4) return;
+        if(Array.isArray(v)) return v.forEach(function(x,i){ walk(x, pth+'['+i+']', d+1); });
+        if(typeof v==='object') Object.keys(v).forEach(function(k){
+          var x=v[k];
+          if(typeof x==='number' && !isFinite(x)) bad.push(pth+'.'+k+'='+x);
+          else if(x && typeof x==='object') walk(x, pth+'.'+k, d+1);
+        });
+      })(o, id, 0);
+      console.log(o);
+      console.info(bad.length? ('non-finite fields: '+bad.join(', '))
+                             : 'model is clean - the NaN is produced by the renderer, not stored');
+      return o;
+    },
+    status:function(){
+      var s=S_()||{};
+      var o={ pxPerFt:s.pxPerFt, scaleFromMap:scaleFromMap(),
+              nanNodesRemoved:total, offenders:Object.keys(seen) };
+      o.verdict = total ? total+' NaN node(s) removed; offenders: '+(o.offenders.join(', ')||'?')
+                        : 'No NaN reaching the SVG.';
       console.table?console.table(o):console.log(o);
       console.info(o.verdict);
       return o;
