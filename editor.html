@@ -1381,6 +1381,8 @@ window.onerror = function(msg, src, line, col, err) {
             <div class="rb-fly-head">Solar</div>
             <button class="rb-fly-item" onclick="rbFlyDo('fly-der',function(){derSetSolar('ground')})"><span class="fi-ico">☀</span> Solar Ground</button>
             <button class="rb-fly-item" onclick="rbFlyDo('fly-der',function(){derSetSolar('roof')})"><span class="fi-ico">☀</span> Solar Roof</button>
+            <button class="rb-fly-item" onclick="rbFlyDo('fly-der',omegaCanopyCustom)" title="Trace the canopy outline - panels fit that exact shape, no rotating"><span class="fi-ico">⬡</span> Canopy — Custom Shape</button>
+            <button class="rb-fly-item" onclick="rbFlyDo('fly-der',omegaSolarCustomArea)" title="Trace any shape - the panels fill it at any angle, no rotating"><span class="fi-ico">▱</span> Solar — Custom Area</button>
             <button class="rb-fly-item" onclick="rbFlyDo('fly-der',function(){derSetSolar('adjacent')})"><span class="fi-ico">☀</span> Solar Canopy</button>
             <div class="rb-fly-head">Other Generation</div>
             <button class="rb-fly-item" onclick="rbFlyDo('fly-der',function(){derSetWind('wind_100')})"><span class="fi-ico">✲</span> Wind Turbine <span class="fi-sub">100 kW</span></button>
@@ -47428,8 +47430,8 @@ window._crmToastModal=_crmToastModal;
    already been fixed in a build that was not the one loaded. This makes
    the running version checkable in one line. */
 (function(){
-  window.OMEGA_BUILD = { id:'8279137c', built:'2026-07-27 09:45 UTC' };
-  console.info('%cOMEGA build 8279137c  (2026-07-27 09:45 UTC)', 'color:#2FB54A;font-weight:bold');
+  window.OMEGA_BUILD = { id:'1e065328', built:'2026-07-27 09:45 UTC' };
+  console.info('%cOMEGA build 1e065328  (2026-07-27 09:45 UTC)', 'color:#2FB54A;font-weight:bold');
   window.OmegaVersion=function(){
     var have=[];
     [['OmegaFrozen','stale snapshot fix'],
@@ -48405,6 +48407,227 @@ window._crmToastModal=_crmToastModal;
               nanNodesRemoved:total, offenders:Object.keys(seen) };
       o.verdict = total ? total+' NaN node(s) removed; offenders: '+(o.offenders.join(', ')||'?')
                         : 'No NaN reaching the SVG.';
+      console.table?console.table(o):console.log(o);
+      console.info(o.verdict);
+      return o;
+    }
+  };
+})();
+</script>
+<!-- ================= SOLAR: CUSTOM AREA =================
+     The pipeline for this already existed and was invisible.
+
+       _alFindBoundary() takes the largest closed rect/polyline/poly on
+       the canvas and uses it as the array boundary, and
+       computeGroundLayout() fills THAT POLYGON with panel tables - not
+       its bounding box.
+
+     So drawing a polyline round an angled car park and opening Auto
+     Layout has always worked. Nothing said so, and the two steps looked
+     unrelated, so the obvious move was to place a rectangle and rotate
+     it. This joins them into one action.
+     ======================================================= -->
+<script>
+(function(){
+  function S_(){ try{ return (typeof S!=='undefined'&&S)?S:null; }catch(e){ return null; } }
+
+  function closedShapes(){
+    var s=S_(); if(!s) return [];
+    return (s.shapes||[]).filter(function(sh){
+      return (sh.kind==='polyline'||sh.kind==='poly'||sh.kind==='rect')
+             && sh.pts && sh.pts.length>=3;
+    });
+  }
+
+  window.omegaSolarCustomArea=function(){
+    var s=S_(); if(!s) return false;
+    var have=closedShapes();
+
+    if(have.length){
+      /* A usable outline is already on the canvas - go straight to layout. */
+      openLayout(have.length);
+      return true;
+    }
+
+    /* Otherwise put them in polyline mode and say what happens next. */
+    try{ if(typeof setMode==='function') setMode('polyline'); }catch(e){}
+    if(typeof showBanner==='function'){
+      try{ showBanner('shape',
+        'Trace the array area \u2014 click each corner, double-click to close. '
+        + 'The panels will fill that exact shape, at any angle.'); }catch(e){}
+    }
+    watchForOutline();
+    return true;
+  };
+
+  /* Wait for them to finish the outline, then continue into layout. */
+  var watching=false;
+  function watchForOutline(){
+    if(watching) return;
+    watching=true;
+    var before=closedShapes().length, tries=0;
+    var iv=setInterval(function(){
+      if(++tries>600){ clearInterval(iv); watching=false; return; }   /* ~2 min */
+      var now=closedShapes().length;
+      if(now>before){
+        clearInterval(iv); watching=false;
+        setTimeout(function(){ openLayout(now); }, 250);
+      }
+    }, 200);
+  }
+
+  function openLayout(n){
+    var fn = window.openAutoLayout || window.alOpen || window.rbAutoLayout;
+    if(typeof fn==='function'){ try{ fn(); return; }catch(e){} }
+    /* fall back to the ribbon button so we do not depend on one name */
+    var btn=document.getElementById('rb-autolayout')
+         || document.querySelector('[onclick*="utoLayout"]');
+    if(btn){ btn.click(); return; }
+    if(typeof showBanner==='function'){
+      try{ showBanner('wiz','Outline ready ('+n+' shape'+(n>1?'s':'')+
+        '). Open Build \u2192 Auto Layout to fill it with panels.'); }catch(e){}
+    }
+  }
+
+  window.OmegaSolarArea={
+    status:function(){
+      var have=closedShapes();
+      var o={ closedOutlines:have.length,
+              largestAcres:(function(){
+                try{
+                  if(!have.length || typeof _alPolyAcres!=='function') return null;
+                  var best=0;
+                  have.forEach(function(sh){ var a=_alPolyAcres(sh.pts); if(a>best) best=a; });
+                  return +best.toFixed(3);
+                }catch(e){ return null; }
+              })(),
+              calibrated:(typeof _derScaled==='function')?_derScaled():null };
+      o.verdict = !o.calibrated ? 'Drawing is not calibrated - load the map first, or panels will be sized wrong.'
+        : !have.length ? 'No outline yet. Draw \u2192 Solar \u2192 Custom Area, or trace a polyline.'
+        : 'Outline ready ('+o.largestAcres+' acres). Auto Layout will fill this exact shape.';
+      console.table?console.table(o):console.log(o);
+      console.info(o.verdict);
+      return o;
+    }
+  };
+})();
+</script>
+<!-- ================= CANOPY FROM A TRACED SHAPE =================
+     Two different paths existed for solar, and only one took a polygon:
+
+       _derPlaceSolar(a,b)   two-point drag -> axis-aligned rectangle,
+                             which is why an angled canopy had to be
+                             drawn as a rectangle and then rotated
+       applyGroundLayout()   takes a BOUNDARY polygon and fills it with
+                             panel tables at any angle
+
+     A canopy is the same array with a different mount, so it can use the
+     same pipeline. Trace the shape, get a canopy that fits it - no
+     separate outline, no rotating.
+     ============================================================== -->
+<script>
+(function(){
+  function S_(){ try{ return (typeof S!=='undefined'&&S)?S:null; }catch(e){ return null; } }
+
+  function outlines(){
+    var s=S_(); if(!s) return [];
+    return (s.shapes||[]).filter(function(sh){
+      return (sh.kind==='polyline'||sh.kind==='poly'||sh.kind==='rect')
+             && sh.pts && sh.pts.length>=3;
+    });
+  }
+  function largest(){
+    var best=null, area=0;
+    outlines().forEach(function(sh){
+      var a=0;
+      try{ a=Math.abs(_alPolyAreaPx(sh.pts)); }catch(e){}
+      if(a>area){ area=a; best=sh; }
+    });
+    return best;
+  }
+
+  /* Build a canopy from a traced polygon, through the boundary pipeline. */
+  window.omegaCanopyFromShape=function(shape){
+    var s=S_(); if(!s) return null;
+    var src = shape || largest();
+    if(!src){
+      if(typeof showBanner==='function'){
+        try{ showBanner('shape','Trace the canopy outline first \u2014 Draw \u2192 Polyline, '
+          +'click each corner, double-click to close.'); }catch(e){}
+      }
+      return null;
+    }
+    if(typeof computeGroundLayout!=='function' || typeof applyGroundLayout!=='function'){
+      if(window.console) console.warn('[canopy] layout pipeline unavailable');
+      return null;
+    }
+    var boundary=src.pts.map(function(p){ return {x:p.x, y:p.y}; });
+    var layout=computeGroundLayout({ boundary:boundary, exclusions:[] });
+    if(!layout || !(layout.tableCount>0)){
+      if(typeof showBanner==='function'){
+        try{ showBanner('shape','That outline is too small for the setbacks \u2014 '
+          +'trace a larger area, or check the drawing is calibrated.'); }catch(e){}
+      }
+      return null;
+    }
+    var before=(s.shapes||[]).length;
+    applyGroundLayout(boundary, layout, []);
+    var made=(s.shapes||[]).slice(before).filter(function(x){ return x.kind==='dersolar'; })[0];
+    if(!made) return null;
+
+    /* Same array, canopy mount - so it labels and reports as a canopy. */
+    made.mount='adjacent';
+    made.canopy=true;
+    try{ if(typeof renderShape==='function') renderShape(made); }catch(e){}
+
+    /* The traced outline has done its job; remove it so it is not counted
+       twice or mistaken for a second boundary later. */
+    var i=(s.shapes||[]).indexOf(src);
+    if(i>=0){
+      s.shapes.splice(i,1);
+      var g=document.querySelector('[data-shid="'+src.id+'"]');
+      if(g && g.parentNode) g.parentNode.removeChild(g);
+    }
+    try{ if(typeof updShapeCount==='function') updShapeCount(); }catch(e){}
+    try{ if(typeof pushHist==='function') pushHist(); }catch(e){}
+    if(typeof showBanner==='function'){
+      try{ showBanner('shape','Canopy created \u2014 '+layout.tableCount+' tables, '
+        +Math.round(layout.kw)+' kW, fitted to your outline.'); }catch(e){}
+    }
+    return made;
+  };
+
+  /* One action: trace, then it builds itself. */
+  window.omegaCanopyCustom=function(){
+    var s=S_(); if(!s) return false;
+    if(largest()){ omegaCanopyFromShape(); return true; }
+    try{ if(typeof setMode==='function') setMode('polyline'); }catch(e){}
+    if(typeof showBanner==='function'){
+      try{ showBanner('shape','Trace the canopy \u2014 click each corner, double-click to close. '
+        +'Panels will fit that exact shape at any angle.'); }catch(e){}
+    }
+    var before=outlines().length, tries=0;
+    var iv=setInterval(function(){
+      if(++tries>600){ clearInterval(iv); return; }
+      if(outlines().length>before){
+        clearInterval(iv);
+        setTimeout(function(){ omegaCanopyFromShape(); }, 300);
+      }
+    }, 200);
+    return true;
+  };
+
+  window.OmegaCanopy={
+    fromShape:window.omegaCanopyFromShape,
+    custom:window.omegaCanopyCustom,
+    status:function(){
+      var s=S_()||{};
+      var o={ outlines:outlines().length,
+              canopies:(s.shapes||[]).filter(function(x){ return x.kind==='dersolar' && x.mount==='adjacent'; }).length,
+              calibrated:(typeof _derScaled==='function')?_derScaled():null };
+      o.verdict = !o.calibrated ? 'Not calibrated - load the map first or panels will be sized wrong.'
+        : o.outlines ? o.outlines+' outline(s) ready - Solar \u2192 Canopy (Custom Shape) will fit panels to the largest.'
+        : 'No outline. Solar \u2192 Canopy (Custom Shape) to trace one.';
       console.table?console.table(o):console.log(o);
       console.info(o.verdict);
       return o;
