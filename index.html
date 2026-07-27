@@ -919,16 +919,32 @@ body{font-family:'DM Sans',sans-serif;background:var(--cs-bg);color:var(--cs-tex
    Mirrors the 2026 Platform Tiers card. Every number below is a *default*;
    each contract can override any of them (that's what makes deals editable). */
 var TIERS = {
-  tier1:    { label:'Tier 1 · Field',      mode:'monthly', price:1299,   seatsIncl:3,  seatRate:200, svc:3400,  devHrs:0, devRate:250 },
-  tier2:    { label:'Tier 2 · Pro',        mode:'monthly', price:2499,   seatsIncl:5,  seatRate:200, svc:3400,  devHrs:0, devRate:250 },
-  tier3:    { label:'Tier 3 · Enterprise', mode:'annual',  price:150000, seatsIncl:20, seatRate:0,   svc:10000, devHrs:7, devRate:250,
+  tier1:    { label:'Tier 1 · Field',      short:'Field',      mode:'monthly', price:1299,   seatsIncl:3,  seatRate:200, svc:3400,  devHrs:0, devRate:250 },
+  tier2:    { label:'Tier 2 · Pro',        short:'Pro',        mode:'monthly', price:2499,   seatsIncl:5,  seatRate:200, svc:3400,  devHrs:0, devRate:250 },
+  tier3:    { label:'Tier 3 · Enterprise', short:'Enterprise', mode:'annual',  price:150000, seatsIncl:20, seatRate:0,   svc:10000, devHrs:7, devRate:250,
               band:'Band: $150k – $350k / yr' },
-  tier4:    { label:'Tier 4 · Platform',   mode:'custom',  price:0,      seatsIncl:0,  seatRate:0,   svc:0,     devHrs:0, devRate:250,
+  tier4:    { label:'Tier 4 · Platform',   short:'Platform',   mode:'custom',  price:0,      seatsIncl:0,  seatRate:0,   svc:0,     devHrs:0, devRate:250,
               band:'Bespoke — scoped per contract' },
-  internal: { label:'Internal',            mode:'monthly', price:0,      seatsIncl:0,  seatRate:0,   svc:0,     devHrs:0, devRate:0 },
-  partner:  { label:'Partner',             mode:'monthly', price:0,      seatsIncl:0,  seatRate:0,   svc:0,     devHrs:0, devRate:250 }
+  internal: { label:'Internal',            short:'Internal',   mode:'monthly', price:0,      seatsIncl:0,  seatRate:0,   svc:0,     devHrs:0, devRate:0 },
+  partner:  { label:'Partner',             short:'Partner',    mode:'monthly', price:0,      seatsIncl:0,  seatRate:0,   svc:0,     devHrs:0, devRate:250 }
 };
 window.OMEGA_TIERS = TIERS;
+
+/* ── 1b. DISPLAY LABELS — the single source of truth for what a tier is CALLED
+   anywhere in the console (CRM chips, Client Inventory, filter pills, tier
+   cards). Change a value here and it changes everywhere, including views still
+   rendered by admin-console.js.  Old names that get rewritten on sight are
+   listed in ALIASES. */
+var TIER_LABELS = {
+  tier1:'Field', tier2:'Pro', tier3:'Enterprise', tier4:'Platform',
+  internal:'Internal', partner:'Partner'
+};
+var ALIASES = {
+  'core':'tier1', 'standard':'tier1', 'field':'tier1',
+  'performance':'tier2', 'deluxe':'tier2', 'pro':'tier2',
+  'enterprise':'tier3', 'platform':'tier4',
+  'internal':'internal', 'partner':'partner'
+};
 
 var STORE_KEY = 'omega_contracts_v1';
 var COLL      = 'omega_contracts';
@@ -1267,7 +1283,7 @@ function renderDash(){
   var html = '';
   for(var i=0;i<keys.length;i++){
     var key = keys[i], c = DATA[key], m = calc(c), r = renewalOf(c.start), d = daysUntil(r);
-    var tier = TIERS[c.tier] || { label: c.tier || '—' };
+    var tier = TIERS[c.tier] || { short: c.tier || '—' };
     var chipCls = (c.tier && c.tier.indexOf('tier') === 0) ? c.tier : 'gray';
     var discTxt = c.discType === 'pct' ? c.discVal + '% off'
                 : c.discType === 'amt' ? money(c.discVal) + '/mo off' : '—';
@@ -1280,7 +1296,7 @@ function renderDash(){
     html += '<tr class="clickable"' + dim + ' onclick="ctOpenClient(\'' + esc(key).replace(/'/g,"\\'") + '\')">' +
       '<td class="site-nm">' + esc(c.name || key) + (counts(c) ? '' : ' <span class="chip gray">' + esc(c.status || '') + '</span>') +
         (c.note ? '<div class="sub-txt">' + esc(c.note) + '</div>' : '') + '</td>' +
-      '<td><span class="chip ' + chipCls + '">' + esc(tier.label) + '</span></td>' +
+      '<td><span class="chip ' + chipCls + '">' + esc(TIER_LABELS[c.tier] || tier.short) + '</span></td>' +
       '<td class="num">' + num(c.seats) + (m.extraSeats ? ' <span class="sub-txt">(+' + m.extraSeats + ')</span>' : '') + '</td>' +
       '<td class="num">' + discTxt + '</td>' +
       '<td class="num"><b>' + money(m.mrr) + '</b></td>' +
@@ -1346,12 +1362,69 @@ function bind(){
   }
 }
 
+/* ── 9. tier relabeling across views still rendered by admin-console.js ────
+   The CRM table, Client Inventory, filter pills and tier cards are drawn by
+   admin-console.js, which carries its own hard-coded names (Core / Performance
+   / Standard / Deluxe). This rewrites them from TIER_LABELS on every render so
+   a tier change on an account shows the right name everywhere. */
+var relabelBusy = false;
+
+function labelFor(el){
+  /* prefer the tier key on the element's class — most reliable */
+  var cls = ' ' + (el.className || '') + ' ';
+  for(var key in TIER_LABELS){
+    if(!TIER_LABELS.hasOwnProperty(key)) continue;
+    if(cls.indexOf(' ' + key + ' ') !== -1) return TIER_LABELS[key];
+  }
+  /* otherwise match the old name it's printing */
+  var txt = (el.textContent || '').replace(/\s+/g,' ').replace(/^\s+|\s+$/g,'');
+  var hit = ALIASES[txt.toLowerCase()];
+  return hit ? TIER_LABELS[hit] : null;
+}
+function relabelTiers(){
+  if(relabelBusy) return;
+  relabelBusy = true;
+  try {
+    var sel = document.querySelectorAll('.chip, .fpill, .tier-name, .pc-tag');
+    for(var i=0;i<sel.length;i++){
+      var el = sel[i];
+      if(el.children.length) continue;                 /* leave composite nodes alone */
+      var want = labelFor(el);
+      if(want && el.textContent !== want) el.textContent = want;
+    }
+  } catch(e){}
+  relabelBusy = false;
+}
+window.omegaRelabelTiers = relabelTiers;
+
+function watchRenders(){
+  relabelTiers();
+  try {
+    if(window.MutationObserver){
+      var main = $('main');
+      if(main){
+        var pending = null;
+        new MutationObserver(function(){
+          if(pending) clearTimeout(pending);
+          pending = setTimeout(function(){ pending = null; relabelTiers(); }, 60);
+        }).observe(main, { childList:true, subtree:true });
+      }
+    }
+  } catch(e){}
+  if(typeof window.switchTab === 'function' && !window.switchTab.__ct){
+    var orig = window.switchTab;
+    var w = function(){ var out = orig.apply(this, arguments); setTimeout(relabelTiers, 30); return out; };
+    w.__ct = 1; window.switchTab = w;
+  }
+}
+
 function boot(){
   loadLocal();
   bind();
   fillForm(null);
   renderDash();
   wrap();
+  watchRenders();
   var tries = 0;
   var t = setInterval(function(){ wrap(); if(++tries > 20) clearInterval(t); }, 400);
   try {
