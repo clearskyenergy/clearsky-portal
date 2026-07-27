@@ -350,6 +350,31 @@ body{font-family:'DM Sans',sans-serif;background:var(--cs-bg);color:var(--cs-tex
 .mut{color:var(--cs-sub)}
 .mono{font-family:'DM Mono',monospace}
 
+/* ── CONTRACT & PRICING ── */
+.chip.tier4{background:rgba(0,169,164,.16);color:#00736F}
+.ct-fieldset{border:1px solid var(--cs-border);border-radius:12px;padding:16px;margin:18px 0 4px;background:#FAFCFD}
+.ct-legend{display:flex;align-items:center;justify-content:space-between;gap:10px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:var(--cs-navy);margin-bottom:14px}
+.ct-legend em{font-style:normal;font-size:10px;font-weight:600;color:var(--cs-sub);text-transform:none;letter-spacing:0}
+.ct-legend a{font-size:10.5px;font-weight:600;color:var(--cs-red);cursor:pointer;text-transform:none;letter-spacing:0}
+.ct-hint{font-size:10.5px;color:var(--cs-sub);margin-top:4px}
+.ct-mini{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.ct-toggle{display:flex;align-items:center;gap:10px;background:#fff;border:1.5px solid var(--cs-border);border-radius:8px;padding:8px 12px;cursor:pointer;user-select:none}
+.ct-toggle input{display:none}
+.ct-track{width:38px;height:21px;border-radius:12px;background:var(--cs-border);position:relative;flex-shrink:0;transition:background .15s}
+.ct-track::after{content:'';position:absolute;top:3px;left:3px;width:15px;height:15px;border-radius:50%;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.25);transition:transform .15s}
+.ct-toggle.on .ct-track{background:var(--cs-amber)}
+.ct-toggle.on .ct-track::after{transform:translateX(17px)}
+.ct-toggle span.lbl{font-size:12px;font-weight:600;color:var(--cs-sub)}
+.ct-toggle.on span.lbl{color:#9A5B00}
+.ct-preview{margin-top:16px;background:var(--cs-navy);border-radius:10px;padding:14px 16px;display:grid;grid-template-columns:repeat(4,1fr);gap:12px}
+.ct-preview div{font-size:9.5px;color:rgba(255,255,255,.55);text-transform:uppercase;letter-spacing:.5px;font-weight:600}
+.ct-preview b{display:block;font-family:'DM Mono',monospace;font-size:16px;font-weight:500;color:#fff;margin-top:4px;letter-spacing:-.3px}
+.ct-preview i{display:block;font-style:normal;font-size:10px;color:var(--cs-gold);margin-top:3px}
+@media(max-width:520px){.ct-preview{grid-template-columns:repeat(2,1fr)}}
+.ct-waived{text-decoration:line-through;opacity:.6}
+.ct-flag{font-size:10px;font-weight:700;color:var(--cs-amber)}
+.ct-store-note{color:var(--cs-amber);font-weight:600}
+
 @media(max-width:1024px){
   .kpi-grid{grid-template-columns:repeat(2,1fr)}
 }
@@ -451,6 +476,22 @@ body{font-family:'DM Sans',sans-serif;background:var(--cs-bg);color:var(--cs-tex
         <div><div class="block-title">Clients by Tier</div><div class="block-sub">Core · Performance · Enterprise — onboarded client accounts by plan</div></div>
       </div>
       <div class="kpi-grid" id="ov-tier-grid" style="grid-template-columns:repeat(4,1fr)"></div>
+
+      <!-- CONTRACT REVENUE -->
+      <div class="block-head">
+        <div><div class="block-title">Contract Revenue</div><div class="block-sub">Live roll-up of every active contract — month-to-month, each on a 12-month term</div></div>
+        <button class="btn-ghost" onclick="ctExportCsv()">Export CSV</button>
+      </div>
+      <div class="kpi-grid" id="ct-kpis"></div>
+      <div class="table-wrap" style="margin-top:14px">
+        <table class="ptable">
+          <thead>
+            <tr><th>Client</th><th>Tier</th><th>Seats</th><th>Discount</th><th>MRR</th><th>Annual Total</th><th>Dev Hrs/mo</th><th>Service Fee</th><th>Renewal</th></tr>
+          </thead>
+          <tbody id="ct-body"></tbody>
+        </table>
+        <div class="table-foot">Click a row to edit pricing, apply a discount, or waive the service fee. <span id="ct-store-note"></span></div>
+      </div>
 
       <!-- OPEN WORK / OPS -->
       <div class="block-head">
@@ -640,7 +681,14 @@ body{font-family:'DM Sans',sans-serif;background:var(--cs-bg);color:var(--cs-tex
     <div class="modal-sub">One entry per customer portal. This appears in the Inventory, Status Board &amp; CRM.</div>
     <div class="mrow"><label>Client / Workspace Name</label><input id="cm-name" placeholder="e.g. NextNRG"></div>
     <div class="mrow two">
-      <div><label>Tier</label><select id="cm-tier"><option value="tier1">Core</option><option value="tier2">Performance</option><option value="tier3">Enterprise</option><option value="internal">Internal</option><option value="partner">Partner</option></select></div>
+      <div><label>Tier</label><select id="cm-tier">
+        <option value="tier1">Tier 1 · Field — $1,299/mo</option>
+        <option value="tier2">Tier 2 · Pro — $2,499/mo</option>
+        <option value="tier3">Tier 3 · Enterprise — $150k–350k/yr</option>
+        <option value="tier4">Tier 4 · Platform — custom</option>
+        <option value="internal">Internal</option>
+        <option value="partner">Partner</option>
+      </select></div>
       <div><label>Account Type</label><select id="cm-type"><option value="developer">Developer</option><option value="partner">Partner</option><option value="internal">Internal</option></select></div>
     </div>
     <div class="mrow two">
@@ -657,6 +705,84 @@ body{font-family:'DM Sans',sans-serif;background:var(--cs-bg);color:var(--cs-tex
       <div><label>Next Action</label><input id="cm-next" placeholder="e.g. Wire Monday.com write-back"></div>
       <div><label>Sold By / Channel Partner</label><input id="cm-soldby" placeholder="e.g. Amperage Capital · or Direct / ClearSky"></div>
     </div>
+
+    <!-- ══ CONTRACT & PRICING (2026 tier card) ══ -->
+    <div class="ct-fieldset">
+      <div class="ct-legend">
+        <span>Contract &amp; Pricing <em>· month-to-month, on a 12-month term</em></span>
+        <a onclick="ctClear()">Clear contract</a>
+      </div>
+
+      <div class="mrow two">
+        <div><label>Contract Status</label><select id="ct-status">
+          <option value="active">Active — counts toward revenue</option>
+          <option value="pending">Pending / in negotiation</option>
+          <option value="paused">Paused</option>
+          <option value="churned">Churned</option>
+          <option value="none">No contract (internal / partner)</option>
+        </select></div>
+        <div><label>Billing Cadence</label><select id="ct-billing">
+          <option value="monthly">Monthly</option>
+          <option value="annual">Annual prepay (2 months free)</option>
+        </select></div>
+      </div>
+
+      <div class="mrow two">
+        <div><label>Contract Start</label><input id="ct-start" type="date"></div>
+        <div><label>Renewal Date (start + 12 mo)</label><input id="ct-renew" readonly style="background:var(--cs-bg);color:var(--cs-sub)"></div>
+      </div>
+
+      <div class="mrow two">
+        <div>
+          <label id="ct-base-lbl">Base Rate ($/mo)</label>
+          <input id="ct-base" type="number" min="0" step="1" placeholder="1299">
+          <div class="ct-hint" id="ct-base-hint">List rate for the selected tier — override to price the deal.</div>
+        </div>
+        <div>
+          <label>Seats</label>
+          <div class="ct-mini">
+            <input id="ct-seats" type="number" min="0" step="1" placeholder="Total">
+            <input id="ct-seatsincl" type="number" min="0" step="1" placeholder="Included">
+          </div>
+          <div class="ct-hint">Total / included. Extra seats bill at <span id="ct-seatrate-inline"></span>.</div>
+        </div>
+      </div>
+
+      <div class="mrow two">
+        <div><label>Extra Seat Rate ($/mo)</label><input id="ct-seatrate" type="number" min="0" step="1" placeholder="200"></div>
+        <div>
+          <label>Discount</label>
+          <div class="ct-mini">
+            <select id="ct-disctype"><option value="none">No discount</option><option value="pct">% off</option><option value="amt">$ off /mo</option></select>
+            <input id="ct-discval" type="number" min="0" step="0.5" placeholder="0">
+          </div>
+          <div class="ct-hint">Applied to the monthly recurring line, before service fee.</div>
+        </div>
+      </div>
+
+      <div class="mrow two">
+        <div>
+          <label>Annual Service Fee ($/yr)</label>
+          <input id="ct-svc" type="number" min="0" step="1" placeholder="3400">
+          <div class="ct-hint">Year one covers onboarding — no separate setup line.</div>
+        </div>
+        <div>
+          <label>Service Fee Waived?</label>
+          <label class="ct-toggle" id="ct-svc-toggle"><input type="checkbox" id="ct-svcwaived"><span class="ct-track"></span><span class="lbl">Billing normally</span></label>
+          <div class="ct-hint" id="ct-svc-hint">Waive it and it drops out of revenue now, and is picked up at renewal.</div>
+        </div>
+      </div>
+
+      <div class="mrow two">
+        <div><label>Included Dev Hours / mo</label><input id="ct-devhrs" type="number" min="0" step="0.5" placeholder="0"></div>
+        <div><label>Dev Rate ($/hr)</label><input id="ct-devrate" type="number" min="0" step="5" placeholder="250"></div>
+      </div>
+
+      <div class="mrow"><label>Deal / Discount Note</label><input id="ct-note" placeholder="e.g. 15% off first 12 mo — signed via Andrew, service fee waived year one"></div>
+
+      <div class="ct-preview" id="ct-preview"></div>
+    </div>
+
     <div class="mbtns"><button class="mb-cancel" onclick="closeModal('client-modal')">Cancel</button><button class="mb-create" onclick="saveClient()">Save</button></div>
   </div>
 </div>
@@ -783,5 +909,461 @@ body{font-family:'DM Sans',sans-serif;background:var(--cs-bg);color:var(--cs-tex
 
 <script src="/omega-tools.js"></script>
 <script src="/admin-console.js"></script>
+
+<!-- ══════════════ CONTRACTS & PRICING ENGINE (self-contained, ES5) ══════════════ -->
+<script>
+(function(){
+'use strict';
+
+/* ── 1. TIER CATALOG — edit here to reprice the whole platform ──────────────
+   Mirrors the 2026 Platform Tiers card. Every number below is a *default*;
+   each contract can override any of them (that's what makes deals editable). */
+var TIERS = {
+  tier1:    { label:'Tier 1 · Field',      mode:'monthly', price:1299,   seatsIncl:3,  seatRate:200, svc:3400,  devHrs:0, devRate:250 },
+  tier2:    { label:'Tier 2 · Pro',        mode:'monthly', price:2499,   seatsIncl:5,  seatRate:200, svc:3400,  devHrs:0, devRate:250 },
+  tier3:    { label:'Tier 3 · Enterprise', mode:'annual',  price:150000, seatsIncl:20, seatRate:0,   svc:10000, devHrs:7, devRate:250,
+              band:'Band: $150k – $350k / yr' },
+  tier4:    { label:'Tier 4 · Platform',   mode:'custom',  price:0,      seatsIncl:0,  seatRate:0,   svc:0,     devHrs:0, devRate:250,
+              band:'Bespoke — scoped per contract' },
+  internal: { label:'Internal',            mode:'monthly', price:0,      seatsIncl:0,  seatRate:0,   svc:0,     devHrs:0, devRate:0 },
+  partner:  { label:'Partner',             mode:'monthly', price:0,      seatsIncl:0,  seatRate:0,   svc:0,     devHrs:0, devRate:250 }
+};
+window.OMEGA_TIERS = TIERS;
+
+var STORE_KEY = 'omega_contracts_v1';
+var COLL      = 'omega_contracts';
+var DATA      = {};      /* key -> contract */
+var curKey    = null;    /* client key currently open in the modal */
+var remoteOk  = false;
+
+/* ── 2. helpers ───────────────────────────────────────────────────────────── */
+function $(id){ return document.getElementById(id); }
+function num(v){ v = parseFloat(v); return isNaN(v) ? 0 : v; }
+function val(id){ var e = $(id); return e ? e.value : ''; }
+function setVal(id,v){ var e = $(id); if(e) e.value = (v===null||v===undefined) ? '' : v; }
+function slug(s){ return String(s||'').toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'') || 'client'; }
+
+function money(n){
+  n = Math.round(num(n));
+  return '$' + String(n).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+}
+function moneyShort(n){
+  n = num(n);
+  if(n >= 1000000) return '$' + (n/1000000).toFixed(n>=10000000?0:1) + 'M';
+  if(n >= 10000)   return '$' + Math.round(n/1000) + 'k';
+  return money(n);
+}
+function toDate(s){
+  if(!s) return null;
+  var p = String(s).split('-');
+  if(p.length !== 3) return null;
+  var d = new Date(num(p[0]), num(p[1])-1, num(p[2]));
+  return isNaN(d.getTime()) ? null : d;
+}
+function pad(n){ return n < 10 ? '0'+n : ''+n; }
+function iso(d){ return d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate()); }
+function renewalOf(startStr){
+  var d = toDate(startStr);
+  if(!d) return null;
+  return new Date(d.getFullYear()+1, d.getMonth(), d.getDate());
+}
+function prettyDate(d){
+  if(!d) return '—';
+  var m = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  return m[d.getMonth()] + ' ' + d.getDate() + ', ' + d.getFullYear();
+}
+function daysUntil(d){
+  if(!d) return null;
+  return Math.ceil((d.getTime() - new Date().getTime()) / 86400000);
+}
+function esc(s){
+  return String(s===null||s===undefined?'':s)
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+/* ── 3. the math ──────────────────────────────────────────────────────────── */
+function calc(c){
+  c = c || {};
+  var base = (c.mode === 'annual') ? num(c.base)/12 : num(c.base);
+  var extraSeats = Math.max(0, num(c.seats) - num(c.seatsIncl));
+  var seatRev = extraSeats * num(c.seatRate);
+  var gross = base + seatRev;
+
+  var disc = 0;
+  if(c.discType === 'pct')      disc = gross * (num(c.discVal)/100);
+  else if(c.discType === 'amt') disc = num(c.discVal);
+  if(disc > gross) disc = gross;
+  if(disc < 0) disc = 0;
+
+  var net = gross - disc;
+  /* annual prepay = 2 months free, normalized back to a monthly figure */
+  var annualRec = (c.billing === 'annual') ? net * 10 : net * 12;
+  var mrr = annualRec / 12;
+
+  var svcFee   = num(c.svc);
+  var svcBill  = c.svcWaived ? 0 : svcFee;
+  var devHrs   = num(c.devHrs);
+
+  return {
+    gross:gross, disc:disc, mrr:mrr, annualRec:annualRec,
+    arr: annualRec + svcBill,
+    svcFee:svcFee, svcBill:svcBill, svcWaived:!!c.svcWaived,
+    devHrs:devHrs, devVal: devHrs * num(c.devRate),
+    extraSeats:extraSeats, seatRev:seatRev
+  };
+}
+function counts(c){ return c && c.status === 'active'; }
+window.omegaContractCalc = calc;
+
+/* ── 4. storage — Firestore with a localStorage mirror ────────────────────── */
+function db(){
+  try { return (window.firebase && firebase.apps && firebase.apps.length) ? firebase.firestore() : null; }
+  catch(e){ return null; }
+}
+function saveLocal(){
+  try { localStorage.setItem(STORE_KEY, JSON.stringify(DATA)); } catch(e){}
+}
+function loadLocal(){
+  try {
+    var raw = localStorage.getItem(STORE_KEY);
+    if(raw) DATA = JSON.parse(raw) || {};
+  } catch(e){ DATA = {}; }
+}
+function persist(key, c){
+  DATA[key] = c;
+  saveLocal();
+  var d = db();
+  if(!d) { storeNote(); return; }
+  d.collection(COLL).doc(key).set(c).then(function(){
+    remoteOk = true; storeNote();
+  })['catch'](function(err){
+    remoteOk = false; storeNote(err);
+  });
+}
+function loadRemote(){
+  var d = db();
+  if(!d) { storeNote(); return; }
+  d.collection(COLL).get().then(function(snap){
+    snap.forEach(function(doc){ DATA[doc.id] = doc.data(); });
+    remoteOk = true;
+    saveLocal(); storeNote(); renderDash();
+  })['catch'](function(err){ remoteOk = false; storeNote(err); });
+}
+function storeNote(err){
+  var e = $('ct-store-note');
+  if(!e) return;
+  if(remoteOk){ e.innerHTML = 'Synced to Firestore · <span class="mono">' + COLL + '</span>'; e.className=''; }
+  else { e.innerHTML = 'Saved on this device only — add a Firestore rule for <span class="mono">' + COLL + '</span> to sync.'; e.className='ct-store-note'; }
+}
+
+/* ── 5. modal wiring ──────────────────────────────────────────────────────── */
+function tierOf(){ return TIERS[val('cm-tier')] || TIERS.tier1; }
+
+function applyTierDefaults(){
+  var t = tierOf();
+  setVal('ct-base',      t.price || '');
+  setVal('ct-seats',     t.seatsIncl || 0);
+  setVal('ct-seatsincl', t.seatsIncl || 0);
+  setVal('ct-seatrate',  t.seatRate || 0);
+  setVal('ct-svc',       t.svc || 0);
+  setVal('ct-devhrs',    t.devHrs || 0);
+  setVal('ct-devrate',   t.devRate || 0);
+  syncTierLabels();
+  preview();
+}
+function syncTierLabels(){
+  var t = tierOf();
+  var lbl = $('ct-base-lbl'), hint = $('ct-base-hint');
+  if(lbl)  lbl.textContent = (t.mode === 'annual') ? 'Annual Contract Value ($/yr)' : 'Base Rate ($/mo)';
+  if(hint) hint.textContent = t.band ? t.band : 'List rate for ' + t.label + ' — override to price the deal.';
+  var inline = $('ct-seatrate-inline');
+  if(inline) inline.textContent = money(num(val('ct-seatrate'))) + '/mo';
+}
+function readForm(){
+  var t = tierOf();
+  return {
+    name:       val('cm-name'),
+    tier:       val('cm-tier'),
+    mode:       t.mode === 'annual' ? 'annual' : 'monthly',
+    status:     val('ct-status'),
+    billing:    val('ct-billing'),
+    start:      val('ct-start'),
+    base:       num(val('ct-base')),
+    seats:      num(val('ct-seats')),
+    seatsIncl:  num(val('ct-seatsincl')),
+    seatRate:   num(val('ct-seatrate')),
+    discType:   val('ct-disctype'),
+    discVal:    num(val('ct-discval')),
+    svc:        num(val('ct-svc')),
+    svcWaived:  !!($('ct-svcwaived') && $('ct-svcwaived').checked),
+    devHrs:     num(val('ct-devhrs')),
+    devRate:    num(val('ct-devrate')),
+    note:       val('ct-note'),
+    updated:    new Date().toISOString()
+  };
+}
+function fillForm(key){
+  var c = DATA[key];
+  if(!c){
+    setVal('ct-status','pending'); setVal('ct-billing','monthly');
+    setVal('ct-start', iso(new Date()));
+    setVal('ct-disctype','none'); setVal('ct-discval',0); setVal('ct-note','');
+    if($('ct-svcwaived')) $('ct-svcwaived').checked = false;
+    applyTierDefaults();
+    syncWaiveUi(); preview();
+    return;
+  }
+  if(c.tier && $('cm-tier')) $('cm-tier').value = c.tier;
+  setVal('ct-status',   c.status || 'active');
+  setVal('ct-billing',  c.billing || 'monthly');
+  setVal('ct-start',    c.start || '');
+  setVal('ct-base',     c.base);
+  setVal('ct-seats',    c.seats);
+  setVal('ct-seatsincl',c.seatsIncl);
+  setVal('ct-seatrate', c.seatRate);
+  setVal('ct-disctype', c.discType || 'none');
+  setVal('ct-discval',  c.discVal);
+  setVal('ct-svc',      c.svc);
+  setVal('ct-devhrs',   c.devHrs);
+  setVal('ct-devrate',  c.devRate);
+  setVal('ct-note',     c.note || '');
+  if($('ct-svcwaived')) $('ct-svcwaived').checked = !!c.svcWaived;
+  syncTierLabels(); syncWaiveUi(); preview();
+}
+function syncWaiveUi(){
+  var box = $('ct-svcwaived'), wrap = $('ct-svc-toggle'), hint = $('ct-svc-hint');
+  if(!box || !wrap) return;
+  var r = renewalOf(val('ct-start'));
+  if(box.checked){
+    wrap.className = 'ct-toggle on';
+    wrap.getElementsByClassName('lbl')[0].textContent = 'Waived this term';
+    if(hint) hint.innerHTML = 'Out of revenue now — picked up at renewal' + (r ? ' on <b>' + prettyDate(r) + '</b>' : '') + '.';
+  } else {
+    wrap.className = 'ct-toggle';
+    wrap.getElementsByClassName('lbl')[0].textContent = 'Billing normally';
+    if(hint) hint.textContent = 'Waive it and it drops out of revenue now, and is picked up at renewal.';
+  }
+}
+function preview(){
+  var c = readForm(), k = calc(c);
+  var r = renewalOf(c.start);
+  setVal('ct-renew', r ? prettyDate(r) : '—');
+  syncWaiveUi();
+  var inline = $('ct-seatrate-inline');
+  if(inline) inline.textContent = money(c.seatRate) + '/mo';
+
+  var el = $('ct-preview');
+  if(!el) return;
+  var discTxt = k.disc > 0
+    ? '<i>−' + money(k.disc) + '/mo off list</i>'
+    : (k.extraSeats > 0 ? '<i>+' + k.extraSeats + ' seats · ' + money(k.seatRev) + '</i>' : '');
+  var svcTxt = k.svcWaived
+    ? '<i>waived → bills ' + (r ? prettyDate(r) : 'at renewal') + '</i>'
+    : (k.svcFee ? '<i>billed this term</i>' : '');
+  el.innerHTML =
+    '<div>MRR' + '<b>' + money(k.mrr) + '</b>' + discTxt + '</div>' +
+    '<div>Annual Total' + '<b>' + money(k.arr) + '</b><i>' + money(k.annualRec) + ' + fee</i></div>' +
+    '<div>Dev Hours' + '<b>' + (k.devHrs || 0) + ' hr/mo</b>' + (k.devVal ? '<i>' + money(k.devVal) + '/mo value</i>' : '') + '</div>' +
+    '<div>Service Fee' + '<b' + (k.svcWaived ? ' class="ct-waived"' : '') + '>' + money(k.svcFee) + '/yr</b>' + svcTxt + '</div>';
+}
+
+/* ── 6. public actions ────────────────────────────────────────────────────── */
+window.ctPreview = preview;
+window.ctClear = function(){
+  if(!confirm('Clear the contract & pricing on this client?')) return;
+  if(curKey && DATA[curKey]){
+    delete DATA[curKey];
+    saveLocal();
+    var d = db();
+    if(d) d.collection(COLL).doc(curKey)['delete']()['catch'](function(){});
+    renderDash();
+  }
+  fillForm(null);
+};
+window.ctExportCsv = function(){
+  var rows = ['Client,Tier,Status,Billing,Start,Renewal,Base,Seats,Extra Seats,Discount,MRR,Annual Recurring,Service Fee,Fee Waived,Annual Total,Dev Hrs/mo,Dev Rate,Note'];
+  for(var k in DATA){
+    if(!DATA.hasOwnProperty(k)) continue;
+    var c = DATA[k], m = calc(c), r = renewalOf(c.start);
+    rows.push([
+      '"'+(c.name||k)+'"', (TIERS[c.tier]||{}).label||c.tier, c.status, c.billing, c.start||'',
+      r?iso(r):'', c.base, c.seats, m.extraSeats,
+      (c.discType==='pct'? c.discVal+'%' : c.discType==='amt'? '$'+c.discVal : ''),
+      Math.round(m.mrr), Math.round(m.annualRec), m.svcFee, c.svcWaived?'yes':'no',
+      Math.round(m.arr), c.devHrs, c.devRate, '"'+String(c.note||'').replace(/"/g,'""')+'"'
+    ].join(','));
+  }
+  var blob = new Blob([rows.join('\n')], {type:'text/csv'});
+  var a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'omega-contracts-' + iso(new Date()) + '.csv';
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+};
+window.ctOpenClient = function(key){
+  curKey = key;
+  var c = DATA[key] || {};
+  var opened = false;
+  if(typeof window.openClientModal === 'function'){
+    try { window.openClientModal(key); opened = true; } catch(e){ opened = false; }
+  }
+  var modal = $('client-modal');
+  if(modal && modal.className.indexOf('on') === -1) modal.className = 'modal-bg on';
+  if(!opened && $('cm-name') && !val('cm-name')) setVal('cm-name', c.name || '');
+  curKey = key;
+  fillForm(key);
+};
+
+/* ── 7. dashboard ─────────────────────────────────────────────────────────── */
+function rollup(){
+  var t = { mrr:0, arr:0, devHrs:0, devVal:0, svcBill:0, svcWaived:0, waivedCount:0, active:0, total:0, disc:0, next:null };
+  for(var k in DATA){
+    if(!DATA.hasOwnProperty(k)) continue;
+    var c = DATA[k];
+    t.total++;
+    if(!counts(c)) continue;
+    var m = calc(c);
+    t.active++;
+    t.mrr += m.mrr; t.arr += m.arr; t.disc += m.disc;
+    t.devHrs += m.devHrs; t.devVal += m.devVal;
+    t.svcBill += m.svcBill;
+    if(m.svcWaived && m.svcFee){ t.svcWaived += m.svcFee; t.waivedCount++; }
+    var r = renewalOf(c.start);
+    if(r && (!t.next || r < t.next)) t.next = r;
+  }
+  return t;
+}
+function kpi(cls, label, value, foot){
+  return '<div class="kpi ' + cls + '"><div class="kpi-label">' + label + '</div>' +
+         '<div class="kpi-val">' + value + '</div>' +
+         '<div class="kpi-foot">' + foot + '</div></div>';
+}
+function renderDash(){
+  var grid = $('ct-kpis'), body = $('ct-body');
+  if(!grid || !body) return;
+  var t = rollup();
+  var dn = daysUntil(t.next);
+
+  grid.innerHTML =
+    kpi('green','Monthly Recurring Revenue', money(t.mrr),
+        t.active + ' active contract' + (t.active===1?'':'s') + (t.disc>0 ? ' · <span class="dn">' + money(t.disc) + '</span> discounted' : '')) +
+    kpi('blue','Annual Total Revenue', t.arr >= 10000000 ? moneyShort(t.arr) : money(t.arr),
+        money(t.mrr*12) + ' recurring + ' + money(t.svcBill) + ' service fees') +
+    kpi('purple','Allocated Dev Hours', t.devHrs + '<span class="unit">hr/mo</span>',
+        (t.devHrs*12) + ' hr/yr · ' + money(t.devVal*12) + ' included value') +
+    kpi('','Annual Service Fees', money(t.svcBill),
+        t.waivedCount ? '<span class="ct-flag">' + money(t.svcWaived) + '</span> waived across ' + t.waivedCount + ' — bills at renewal'
+                      : (t.next ? 'Next renewal ' + prettyDate(t.next) + (dn!==null ? ' · ' + dn + ' days' : '') : 'No renewals scheduled'));
+
+  var keys = [];
+  for(var k in DATA){ if(DATA.hasOwnProperty(k)) keys.push(k); }
+  keys.sort(function(a,b){ return calc(DATA[b]).mrr - calc(DATA[a]).mrr; });
+
+  if(!keys.length){
+    body.innerHTML = '<tr><td colspan="9" style="padding:28px;text-align:center;color:var(--cs-sub)">No contracts yet — open a client and fill in Contract &amp; Pricing.</td></tr>';
+    storeNote();
+    return;
+  }
+
+  var html = '';
+  for(var i=0;i<keys.length;i++){
+    var key = keys[i], c = DATA[key], m = calc(c), r = renewalOf(c.start), d = daysUntil(r);
+    var tier = TIERS[c.tier] || { label: c.tier || '—' };
+    var chipCls = (c.tier && c.tier.indexOf('tier') === 0) ? c.tier : 'gray';
+    var discTxt = c.discType === 'pct' ? c.discVal + '% off'
+                : c.discType === 'amt' ? money(c.discVal) + '/mo off' : '—';
+    var svcTxt = !m.svcFee ? '—'
+               : m.svcWaived ? '<span class="ct-waived">' + money(m.svcFee) + '</span> <span class="ct-flag">WAIVED</span>'
+               : money(m.svcFee);
+    var renewTxt = r ? prettyDate(r) + (d !== null && d <= 60 && d >= 0 ? ' <span class="ct-flag">' + d + 'd</span>' : '') : '—';
+    var dim = counts(c) ? '' : ' style="opacity:.5"';
+
+    html += '<tr class="clickable"' + dim + ' onclick="ctOpenClient(\'' + esc(key).replace(/'/g,"\\'") + '\')">' +
+      '<td class="site-nm">' + esc(c.name || key) + (counts(c) ? '' : ' <span class="chip gray">' + esc(c.status || '') + '</span>') +
+        (c.note ? '<div class="sub-txt">' + esc(c.note) + '</div>' : '') + '</td>' +
+      '<td><span class="chip ' + chipCls + '">' + esc(tier.label) + '</span></td>' +
+      '<td class="num">' + num(c.seats) + (m.extraSeats ? ' <span class="sub-txt">(+' + m.extraSeats + ')</span>' : '') + '</td>' +
+      '<td class="num">' + discTxt + '</td>' +
+      '<td class="num"><b>' + money(m.mrr) + '</b></td>' +
+      '<td class="num">' + money(m.arr) + '</td>' +
+      '<td class="num">' + (m.devHrs || '—') + '</td>' +
+      '<td class="num">' + svcTxt + '</td>' +
+      '<td class="num">' + renewTxt + '</td>' +
+    '</tr>';
+  }
+  body.innerHTML = html;
+  storeNote();
+}
+window.ctRenderDash = renderDash;
+
+/* ── 8. hook into the existing client modal ───────────────────────────────── */
+function keyFrom(arg){
+  if(typeof arg === 'string' && arg) return arg;
+  if(arg && typeof arg === 'object' && (arg.id || arg.key)) return arg.id || arg.key;
+  return null;
+}
+function wrap(){
+  if(typeof window.openClientModal === 'function' && !window.openClientModal.__ct){
+    var orig = window.openClientModal;
+    var w = function(){
+      var out = orig.apply(this, arguments);
+      curKey = keyFrom(arguments[0]) || (val('cm-name') ? slug(val('cm-name')) : null);
+      fillForm(curKey);
+      return out;
+    };
+    w.__ct = 1; window.openClientModal = w;
+  }
+  if(typeof window.saveClient === 'function' && !window.saveClient.__ct){
+    var origS = window.saveClient;
+    var ws = function(){
+      var c = readForm();
+      var key = curKey || slug(c.name);
+      var out = origS.apply(this, arguments);
+      if(c.status !== 'none' && (c.base || c.svc || c.devHrs)){ persist(key, c); }
+      curKey = null;
+      renderDash();
+      return out;
+    };
+    ws.__ct = 1; window.saveClient = ws;
+  }
+}
+
+function bind(){
+  var ids = ['ct-status','ct-billing','ct-start','ct-base','ct-seats','ct-seatsincl','ct-seatrate',
+             'ct-disctype','ct-discval','ct-svc','ct-svcwaived','ct-devhrs','ct-devrate'];
+  for(var i=0;i<ids.length;i++){
+    var e = $(ids[i]);
+    if(!e) continue;
+    e.onchange = preview;
+    if(e.tagName === 'INPUT' && e.type !== 'checkbox') e.oninput = preview;
+  }
+  var tierSel = $('cm-tier');
+  if(tierSel){
+    tierSel.addEventListener('change', function(){
+      var c = DATA[curKey];
+      if(!c || c.tier !== tierSel.value) applyTierDefaults();
+      else fillForm(curKey);
+    });
+  }
+}
+
+function boot(){
+  loadLocal();
+  bind();
+  fillForm(null);
+  renderDash();
+  wrap();
+  var tries = 0;
+  var t = setInterval(function(){ wrap(); if(++tries > 20) clearInterval(t); }, 400);
+  try {
+    if(window.firebase && firebase.auth){
+      firebase.auth().onAuthStateChanged(function(u){ if(u) loadRemote(); });
+    }
+  } catch(e){}
+}
+if(document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot);
+else boot();
+
+})();
+</script>
 </body>
 </html>
