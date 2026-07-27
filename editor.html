@@ -45128,7 +45128,13 @@ window._crmToastModal=_crmToastModal;
       count.conduits++;
     });
 
-    (s.elements||[]).forEach(function(el){
+    /* EQUIPMENT IS NOT DRAWN NATIVELY.
+       Elements are .cel DOM nodes carrying real icons. Rendering them as
+       bare polygons here replaced every icon with a blue rectangle - and
+       because hideLegacy() then hid #els, the icons were gone rather than
+       merely covered. They stay in the legacy layer, where they keep their
+       artwork, and _geoReprojectAll keeps them anchored. */
+    if(false) (s.elements||[]).forEach(function(el){
       if(el._geoLat==null||el._geoLng==null){ count.skipped++; return; }
       var wFt=el._geoWFt, hFt=el._geoHFt;
       if(wFt==null && P && el.w>0) wFt=el.w/P;
@@ -45143,10 +45149,12 @@ window._crmToastModal=_crmToastModal;
   }
 
   function hideLegacy(hide){
-    ['els','csvg'].forEach(function(id){
-      var e=document.getElementById(id);
-      if(e) e.style.display = hide ? 'none' : '';
-    });
+    /* Only #csvg. #els holds equipment icons that nothing else draws, so
+       hiding it makes them disappear entirely rather than be replaced. */
+    var e=document.getElementById('csvg');
+    if(e) e.style.display = hide ? 'none' : '';
+    var els=document.getElementById('els');
+    if(els && els.style.display==='none') els.style.display='';
   }
 
   var warned=false;
@@ -45219,6 +45227,19 @@ window._crmToastModal=_crmToastModal;
               mapObjects:objs.length };
       o.legacyHidden = (function(){var e=document.getElementById('els');
         return e ? e.style.display==='none' : null;})();
+      /* Name WHICH objects lack coordinates. A count alone told you
+         something was blocking but never what, which is why a single
+         callout hid in plain sight. */
+      o.blocking = (function(){
+        var out=[], sx=s.shapes||[], el=s.elements||[], cd=s.conduits||[];
+        sx.forEach(function(x){ if(!x._geoPts||!x._geoPts.filter(Boolean).length)
+          out.push('shape:'+(x.kind||x.type||'?')+(x.id?'#'+x.id:'')); });
+        cd.forEach(function(x){ if(!x._geoPts||!x._geoPts.filter(Boolean).length)
+          out.push('conduit'+(x.id?'#'+x.id:'')); });
+        el.forEach(function(x){ if(x._geoLat==null)
+          out.push('element:'+(x.type||'?')+(x.id?'#'+x.id:'')); });
+        return out;
+      })();
       o.verdict = !o.liveMap ? 'No live JS map - Clear Plot, or the embed fallback is in use.'
                 : !o.geometryLib ? 'geometry library not loaded (&libraries=geometry).'
                 : o.skippedNoGeo ? o.skippedNoGeo+' object(s) have no lat/lng yet - they will appear once stamped.'
@@ -45256,16 +45277,16 @@ window._crmToastModal=_crmToastModal;
   /* Modes where a click should place something. Mirrors the list that
      setMode() uses to switch #cov on, so the two cannot disagree. */
   function placing(){
+    /* Do not maintain a list of placement modes. The previous version did,
+       and it silently omitted 'bespad' - so BESS Pad clicks were ignored
+       with no error, exactly like the tool was broken. Any mode that is
+       not 'select' is a placement mode; covClick itself decides whether
+       there is anything to do, and it is the authority on that. */
     var s=S_(); if(!s) return false;
     var m=s.mode;
-    if(!m||m==='select') return false;
-    if(m==='conduit'||m==='dimension') return true;
-    try{ if(typeof SHAPE_MODES!=='undefined' && SHAPE_MODES[m]) return true; }catch(e){}
-    return ['clusterplace','dcclusterplace','emsplace','sourceplace','topoinsert',
-            'chargerplace','derbuildplace','wizplace','dcfcplace','bgbplace',
-            'evstencil','adastencil','adaaisle','padplace','utilityplace',
-            'parkingplace','solarplace','datactrplace'].indexOf(m)>=0;
+    return !!(m && m!=='select');
   }
+
 
   /* Build the map state ourselves rather than calling _liveMapState(),
      which reads the lexical `let _gmap` - a binding that does not always
@@ -45324,6 +45345,19 @@ window._crmToastModal=_crmToastModal;
         sh._geoPts=sh.pts.map(function(p){
           var g=pxToGeo(p.x,p.y); return g?{lat:g.lat,lng:g.lng}:null; });
         if(sh._geoPts.some(Boolean)) n++; else delete sh._geoPts;
+      } else if(sh.target || sh.anchor){
+        /* Callouts carry target/anchor instead of pts, so the pts-only
+           branch skipped them. One unanchorable object is enough to keep
+           the whole legacy renderer visible, because the fail-safe is
+           all-or-nothing - so a single callout was suppressing native
+           rendering for every other object on the drawing. */
+        var cp=[];
+        [sh.target, sh.anchor].forEach(function(q){
+          if(!q || q.x==null) return;
+          var g=pxToGeo(q.x, q.y);
+          if(g) cp.push({lat:g.lat, lng:g.lng});
+        });
+        if(cp.length){ sh._geoPts=cp; n++; }
       }
     }
 
@@ -45612,19 +45646,21 @@ window._crmToastModal=_crmToastModal;
 
   /* Wherever the project keeps its address. */
   function projectAddress(){
-    var tries=[
-      function(){ var e=document.getElementById('addr'); return e&&e.value; },
-      function(){ try{ return (typeof S!=='undefined'&&S)?(S.address||S.siteAddress):null; }catch(e){ return null; } },
-      function(){ var e=document.getElementById('pn-title'); return e&&e.textContent; },
-      function(){ var e=document.querySelector('#tb-right input, .tb-right input'); return e&&e.value; },
-      function(){ try{ return window._lastAddr||null; }catch(e){ return null; } }
-    ];
-    for(var i=0;i<tries.length;i++){
-      var v=null; try{ v=tries[i](); }catch(e){}
-      if(v && String(v).trim() && !/^new project$/i.test(String(v).trim())) return String(v).trim();
-    }
-    return null;
+    /* #addr-in is the site-address field; _loadProject fills it from
+       d.address || d.mapState.address. An earlier version looked for
+       '#addr' - which does not exist - then fell through to guessed
+       fallbacks including the project TITLE, so it loaded the client name
+       as a street address. */
+    var e=document.getElementById('addr-in');
+    var v=e && e.value ? String(e.value).trim() : '';
+    if(!v){ try{ v=(window._lastAddr||'').trim(); }catch(err){ v=''; } }
+    if(!v) return null;
+    if(!/\d/.test(v) && !/\b(st|street|rd|road|ave|avenue|blvd|dr|drive|ln|lane|way|hwy|route|pkwy|ct|court|pl|place)\b/i.test(v)) return null;
+    return v;
   }
+
+
+
 
   var done=false, tries=0;
   var iv=setInterval(function(){
@@ -45650,8 +45686,21 @@ window._crmToastModal=_crmToastModal;
 
   function fillField(addr){
     var i=document.getElementById('omega-addr-in');
-    if(i && !i.value){ i.value = addr || projectAddress() || ''; }
+    var real=document.getElementById('addr-in');
+    var v = addr || projectAddress() || (real && real.value) || '';
+    if(i && !i.value && v) i.value = v;
   }
+  /* Mirror the site address into the View field whenever a project loads,
+     and never overwrite it with anything that is not an address. */
+  setInterval(function(){
+    try{
+      var mine=document.getElementById('omega-addr-in');
+      var real=document.getElementById('addr-in');
+      if(!mine||!real) return;
+      if(real.value && !mine.value) mine.value=real.value;
+      if(mine.value && real.value!==mine.value && document.activeElement!==mine) real.value=mine.value;
+    }catch(e){}
+  }, 1200);
 
   window.OmegaLive={
     status:function(){
@@ -45744,16 +45793,17 @@ window._crmToastModal=_crmToastModal;
   }
 
   function projectAddress(){
-    var t=[
-      function(){ var e=document.getElementById('addr'); return e&&e.value; },
-      function(){ try{ return (typeof S!=='undefined'&&S)?(S.address||S.siteAddress):null; }catch(e){ return null; } },
-      function(){ try{ return window._lastAddr||null; }catch(e){ return null; } }
-    ];
-    for(var i=0;i<t.length;i++){
-      var v=null; try{ v=t[i](); }catch(e){}
-      if(v && String(v).trim() && !/^new project$/i.test(String(v).trim())) return String(v).trim();
-    }
-    return null;
+    /* #addr-in is the site-address field; _loadProject fills it from
+       d.address || d.mapState.address. An earlier version looked for
+       '#addr' - which does not exist - then fell through to guessed
+       fallbacks including the project TITLE, so it loaded the client name
+       as a street address. */
+    var e=document.getElementById('addr-in');
+    var v=e && e.value ? String(e.value).trim() : '';
+    if(!v){ try{ v=(window._lastAddr||'').trim(); }catch(err){ v=''; } }
+    if(!v) return null;
+    if(!/\d/.test(v) && !/\b(st|street|rd|road|ave|avenue|blvd|dr|drive|ln|lane|way|hwy|route|pkwy|ct|court|pl|place)\b/i.test(v)) return null;
+    return v;
   }
 
   function prompt(){
@@ -46872,6 +46922,12 @@ window._crmToastModal=_crmToastModal;
 
   function enforce(){
     try{
+      /* A saved project restores mapState.locked into _mapLocked, and a
+         saved plot into _committedPlot. Neither concept exists any more,
+         so clear them here rather than letting an old project reintroduce
+         a lock that cannot be turned off from the UI. */
+      if(window._mapLocked) window._mapLocked=false;
+      if(window._userLockedMap) window._userLockedMap=false;
       if(window._committedPlot) return;      /* a plot legitimately owns the surface */
       var m=MAP(); if(!m) return;
 
@@ -46947,6 +47003,15 @@ window._crmToastModal=_crmToastModal;
      coordinate conversion measured against it is unchanged. */
   body.omega-map-surface #sc{ pointer-events:none !important; }
 
+  /* The layer CONTAINERS must never take events - only the individual
+     items inside them. #els stays visible now (it holds the equipment
+     icons), so without this an #els that acquires pointer-events would
+     cover the whole canvas and block the map, which is precisely the
+     failure the native layer used to hide by making it display:none. */
+  body.omega-map-surface #els,
+  body.omega-map-surface #csvg,
+  body.omega-map-surface #cov{ pointer-events:none !important; }
+
   /* Everything inside that genuinely needs input opts back in. */
   body.omega-map-surface #sc .cel,
   body.omega-map-surface #sc .h-nw, body.omega-map-surface #sc .h-ne,
@@ -47006,8 +47071,17 @@ window._crmToastModal=_crmToastModal;
       /* #cov is inside the overlay; with a map present it must not take
          events. Without one it is the only way to draw, so the existing
          routing still governs that case. */
-      var cov=document.getElementById('cov');
-      if(cov) cov.style.setProperty('pointer-events','none','important');
+      /* Enforce inline, not just via the stylesheet. An inline
+         !important beats a stylesheet !important, so any code that sets
+         pointer-events directly on a layer container would otherwise win
+         and blanket the map. Re-asserting here every pass makes the
+         surface guarantee hold regardless of who else writes to them. */
+      ['cov','els','csvg'].forEach(function(id){
+        var e=document.getElementById(id);
+        if(e && e.style.pointerEvents!=='none'){
+          e.style.setProperty('pointer-events','none','important');
+        }
+      });
 
       moved=true;
       return true;
