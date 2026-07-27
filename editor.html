@@ -47430,8 +47430,8 @@ window._crmToastModal=_crmToastModal;
    already been fixed in a build that was not the one loaded. This makes
    the running version checkable in one line. */
 (function(){
-  window.OMEGA_BUILD = { id:'39b0a5c3', built:'2026-07-27 09:45 UTC' };
-  console.info('%cOMEGA build 39b0a5c3  (2026-07-27 09:45 UTC)', 'color:#2FB54A;font-weight:bold');
+  window.OMEGA_BUILD = { id:'db02d42d', built:'2026-07-27 09:45 UTC' };
+  console.info('%cOMEGA build db02d42d  (2026-07-27 09:45 UTC)', 'color:#2FB54A;font-weight:bold');
   window.OmegaVersion=function(){
     var have=[];
     [['OmegaFrozen','stale snapshot fix'],
@@ -48906,6 +48906,144 @@ window._crmToastModal=_crmToastModal;
       o.verdict = !gs.length ? 'No shapes on the canvas.'
         : bad ? bad+' shape(s) only grabbable on their outline.'
         : 'All shapes grabbable anywhere inside.';
+      console.table?console.table(o):console.log(o);
+      console.info(o.verdict);
+      return o;
+    }
+  };
+})();
+</script>
+<!-- ================= CAPTURE THE MAP FOR EXPORT =================
+     _ppMapLayer reads #backdrop's src to put the satellite behind E1.0 /
+     E1.1. #backdrop was only ever filled by _applyFrozenMap() - the
+     freeze step that came with the old locked-map workflow.
+
+     With locks gone nothing fills it, so exports came out with the
+     drawing on white. Removing the lock was right; removing the only
+     thing that produced an export raster with it was not.
+
+     Line 40 of this file already patches WebGL with preserveDrawingBuffer
+     precisely so html2canvas can read Google Maps tiles. So capture the
+     live map at export time instead of asking for a freeze up front.
+     =============================================================== -->
+<script>
+(function(){
+  function MAP(){ try{ if(typeof _gmap!=='undefined'&&_gmap) return _gmap; }catch(e){} return window._gmap||null; }
+
+  window.OmegaCaptureMap=async function(){
+    var md=document.getElementById('_gmapDiv');
+    if(!md || !MAP()){
+      if(window.console) console.warn('[capture] no live map to capture');
+      return null;
+    }
+    if(typeof html2canvas!=='function'){
+      if(window.console) console.warn('[capture] html2canvas not loaded');
+      return null;
+    }
+    try{
+      var cvs=await html2canvas(md, {
+        useCORS:true, allowTaint:false, backgroundColor:null,
+        logging:false, scale:1,
+        width:md.clientWidth, height:md.clientHeight
+      });
+      var url=cvs.toDataURL('image/png');
+      if(!url || url.length<2000){                  /* a blank capture */
+        if(window.console) console.warn('[capture] map capture came back empty');
+        return null;
+      }
+      var bd=document.getElementById('backdrop');
+      if(bd) bd.src=url;                            /* _ppMapLayer reads this */
+      window._frozenMapImg=url;                     /* and the proposal path */
+      if(window.console) console.info('[capture] map captured for export ('+Math.round(url.length/1024)+'KB)');
+      return url;
+    }catch(e){
+      if(window.console) console.warn('[capture] failed:', e && e.message);
+      return null;
+    }
+  };
+
+  /* KEEP THE BACKDROP FRESH INSTEAD OF WRAPPING THE EXPORTS.
+
+     Wrapping window.openBlueprintExport does not catch a ribbon click:
+     it is a top-level function declaration, so the click resolves the
+     lexical binding, not the window property. That is the same split that
+     hid _liveMapState and setMapInteractive earlier, and it cannot be
+     patched from here.
+
+     So do not depend on intercepting the call. Refresh the capture when
+     the map settles, and every export - however it is invoked - finds a
+     current image already in #backdrop. */
+  var lastCap=0, capturing=false;
+  function refresh(force){
+    if(capturing) return;
+    if(!force && Date.now()-lastCap < 4000) return;
+    if(!MAP() || typeof html2canvas!=='function') return;
+    capturing=true;
+    var done=function(){ capturing=false; lastCap=Date.now(); };
+    try{
+      var r=window.OmegaCaptureMap();
+      if(r && typeof r.then==='function') r.then(done, done); else done();
+    }catch(e){ done(); }
+  }
+  /* on settle, and as a slow backstop */
+  var t2=0;
+  var iv2=setInterval(function(){
+    if(++t2>200){ clearInterval(iv2); return; }
+    var m=MAP(); if(!m) return;
+    clearInterval(iv2);
+    try{
+      if(window.google && google.maps && google.maps.event){
+        google.maps.event.addListener(m,'idle',function(){ refresh(false); });
+      }
+    }catch(e){}
+    refresh(true);
+  }, 300);
+  setInterval(function(){ refresh(false); }, 6000);
+  window.OmegaRefreshExportBg=function(){ refresh(true); return true; };
+
+  /* Still wrap where we can - it costs nothing and helps the paths that
+     are reached through window. */
+  var TARGETS=['openBlueprintExport','openPlotPlanExport','openProposalExport','omegaPrint'];
+  var tries=0;
+  var iv=setInterval(function(){
+    if(++tries>120){ clearInterval(iv); return; }
+    var wrapped=0;
+    TARGETS.forEach(function(name){
+      var fn=window[name];
+      if(typeof fn!=='function' || fn.__omegaCaptures) return;
+      var w=function(){
+        var args=arguments, self=this;
+        /* Capture first, then run the export. If capture fails the export
+           still runs - a drawing on white beats no export at all. */
+        try{
+          var r=window.OmegaCaptureMap();
+          if(r && typeof r.then==='function'){
+            return r.then(function(){ return fn.apply(self,args); },
+                          function(){ return fn.apply(self,args); });
+          }
+        }catch(e){}
+        return fn.apply(self,args);
+      };
+      w.__omegaCaptures=true;
+      window[name]=w;
+      wrapped++;
+    });
+    if(wrapped && window.console) console.info('[capture] '+wrapped+' export path(s) will capture the map first');
+  }, 250);
+
+  window.OmegaExportBg={
+    capture:window.OmegaCaptureMap,
+    status:function(){
+      var bd=document.getElementById('backdrop');
+      var o={ liveMap:!!MAP(),
+              html2canvas: typeof html2canvas==='function',
+              backdropHasImage: !!(bd && bd.src && bd.src.length>100),
+              backdropKB: bd && bd.src ? Math.round(bd.src.length/1024) : 0,
+              wrapped: TARGETS.filter(function(n){ return window[n] && window[n].__omegaCaptures; }) };
+      o.verdict = !o.liveMap ? 'No live map - exports will have no satellite background.'
+        : !o.html2canvas ? 'html2canvas missing - cannot capture the map.'
+        : o.backdropHasImage ? 'Backdrop holds a '+o.backdropKB+'KB capture; exports will include it.'
+        : 'No capture yet - it is taken when you open an export.';
       console.table?console.table(o):console.log(o);
       console.info(o.verdict);
       return o;
