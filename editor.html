@@ -45149,10 +45149,15 @@ window._crmToastModal=_crmToastModal;
   }
 
   function hideLegacy(hide){
-    /* Only #csvg. #els holds equipment icons that nothing else draws, so
-       hiding it makes them disappear entirely rather than be replaced. */
-    var e=document.getElementById('csvg');
-    if(e) e.style.display = hide ? 'none' : '';
+    /* ONLY #csvg, ever.
+       The native layer draws shapes and conduits; it deliberately does
+       NOT draw equipment, because equipment is a .cel node carrying a real
+       icon that a polygon cannot represent. So #els must stay visible even
+       when native is switched on - hiding it does not replace the icons,
+       it deletes them. I made this mistake twice; the second time was
+       while consolidating, which is exactly when it is easiest to make. */
+    var csvg=document.getElementById('csvg');
+    if(csvg) csvg.style.display = hide ? 'none' : '';
     var els=document.getElementById('els');
     if(els && els.style.display==='none') els.style.display='';
   }
@@ -45258,6 +45263,12 @@ window._crmToastModal=_crmToastModal;
     if(++tries>60){ clearInterval(boot); return; }
     if(!MAP()) return;
     clearInterval(boot);
+    /* OFF unless explicitly turned on. Two renderers drawing the same
+       model caused most of what went wrong: equipment came out as blue
+       blocks instead of its icon, rotation was lost because GroundOverlay
+       cannot rotate, and things appeared to move because one renderer had
+       anchored them and the other had not. The legacy renderer draws
+       icons, rotates, and is what every tool was written against. */
     var want=false; try{ want=localStorage.getItem('omegaNative')==='1'; }catch(e){}
     if(want) OmegaNative.enable();
   }, 500);
@@ -45593,7 +45604,7 @@ window._crmToastModal=_crmToastModal;
     if(!MAP() || !window.OmegaNative) return;
     clearInterval(iv);
     var pref=null; try{ pref=localStorage.getItem('omegaNative'); }catch(e){}
-    if(pref!=='0' && !OmegaNative.isOn()) OmegaNative.enable();
+    if(pref==='1' && !OmegaNative.isOn()) OmegaNative.enable();
   }, 400);
 
   window.OmegaModel={
@@ -46491,6 +46502,14 @@ window._crmToastModal=_crmToastModal;
   };
 
   try{ if(localStorage.getItem('omegaSitePanel')==='1') setTimeout(show, 1200); }catch(e){}
+  /* Earlier builds defaulted the native layer ON and persisted it. Clear
+     that once so an old browser does not keep resurrecting the split. */
+  try{
+    if(localStorage.getItem('omegaNativeMigrated')!=='1'){
+      localStorage.setItem('omegaNative','0');
+      localStorage.setItem('omegaNativeMigrated','1');
+    }
+  }catch(e){}
 })();
 </script>
 <!-- ================= #cov INPUT ROUTING =================
