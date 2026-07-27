@@ -1381,7 +1381,7 @@ window.onerror = function(msg, src, line, col, err) {
             <div class="rb-fly-head">Solar</div>
             <button class="rb-fly-item" onclick="rbFlyDo('fly-der',function(){derSetSolar('ground')})"><span class="fi-ico">☀</span> Solar Ground</button>
             <button class="rb-fly-item" onclick="rbFlyDo('fly-der',function(){derSetSolar('roof')})"><span class="fi-ico">☀</span> Solar Roof</button>
-            <button class="rb-fly-item" onclick="rbFlyDo('fly-der',function(){derSetSolar('adjacent')})"><span class="fi-ico">☀</span> Solar Adjacent</button>
+            <button class="rb-fly-item" onclick="rbFlyDo('fly-der',function(){derSetSolar('adjacent')})"><span class="fi-ico">☀</span> Solar Canopy</button>
             <div class="rb-fly-head">Other Generation</div>
             <button class="rb-fly-item" onclick="rbFlyDo('fly-der',function(){derSetWind('wind_100')})"><span class="fi-ico">✲</span> Wind Turbine <span class="fi-sub">100 kW</span></button>
             <button class="rb-fly-item" onclick="rbFlyDo('fly-der',function(){derSetAlt('gen_ng')})"><span class="fi-ico">⊙</span> NG Genset <span class="fi-sub">750 kW</span></button>
@@ -34618,7 +34618,7 @@ function derSetAlt(id){  if(DERC_ALT[id]) _derAltId=id;  if(typeof rbMode==='fun
   _derBanner('Click to place '+DERC_ALT[_derAltId].label); }
 function derSetSolar(mount){ _derSolarMount = (mount==='roof'||mount==='adjacent')?mount:'ground';
   if(typeof rbMode==='function') rbMode('solar');
-  var _where = _derSolarMount==='roof'?'rooftop':(_derSolarMount==='adjacent'?'area next to the building':'land');
+  var _where = _derSolarMount==='roof'?'rooftop':(_derSolarMount==='adjacent'?'canopy area':'land');
   _derBanner('Solar ('+_derSolarMount+'): click and drag a rectangle over the '+_where); }
 function _derBanner(msg){ if(typeof showBanner==='function') showBanner('shape',' '+msg); }
 
@@ -34969,7 +34969,7 @@ function _derRenderSolar(g, sh){
     l2.setAttribute('x1',gx);l2.setAttribute('y1',ly);l2.setAttribute('x2',gx+gw);l2.setAttribute('y2',ly);
     l2.setAttribute('stroke','#2563EB');l2.setAttribute('stroke-width',0.5);l2.setAttribute('opacity',0.5);g.appendChild(l2); }
   _derText(g, x+w/2, y+h/2, '\u2600 '+(sh.kw||0)+' kW-DC', 11, '#1D4ED8', 'middle', '800');
-  var _ml = sh.mount==='roof'?'ROOFTOP':(sh.mount==='adjacent'?'ADJACENT':'GROUND');
+  var _ml = sh.mount==='roof'?'ROOFTOP':(sh.mount==='adjacent'?'SOLAR CANOPY':'GROUND');
   _derText(g, x+w/2, y+h/2+13, _ml+' \u2022 '+(sh.sqft||0).toLocaleString()+' sqft', 8, '#3B82F6', 'middle', '600');
   /* Third line: the layout assumptions driving the kW, so a reviewer can
      see why capacity differs from gross area. */
@@ -47428,8 +47428,8 @@ window._crmToastModal=_crmToastModal;
    already been fixed in a build that was not the one loaded. This makes
    the running version checkable in one line. */
 (function(){
-  window.OMEGA_BUILD = { id:'6f4cd347', built:'2026-07-27 09:45 UTC' };
-  console.info('%cOMEGA build 6f4cd347  (2026-07-27 09:45 UTC)', 'color:#2FB54A;font-weight:bold');
+  window.OMEGA_BUILD = { id:'8279137c', built:'2026-07-27 09:45 UTC' };
+  console.info('%cOMEGA build 8279137c  (2026-07-27 09:45 UTC)', 'color:#2FB54A;font-weight:bold');
   window.OmegaVersion=function(){
     var have=[];
     [['OmegaFrozen','stale snapshot fix'],
@@ -47810,6 +47810,39 @@ window._crmToastModal=_crmToastModal;
 
     var dx=t.x-a.x, dy=t.y-a.y;
     var moved=false;
+
+    /* PER-VERTEX GEOMETRY IS PROJECTED, NOT TRANSLATED.
+
+       A conduit stores a _geoPts entry for EVERY vertex. Translating the
+       run as a rigid body keeps its pixel shape from whatever zoom it was
+       drawn at, so the drawn length stops matching the stored one -
+       measured 309.53 ft of geometry drawn as 127.87 ft after a zoom
+       round trip. Each vertex has its own ground position, so each one
+       gets projected from it. Rigid translation is only right for shapes
+       whose single anchor defines them. */
+    if(o._geoPts && o.pts && o._geoPts.length===o.pts.length && o.pts.length>1){
+      var any=false;
+      for(var vi=0; vi<o.pts.length; vi++){
+        var gp=o._geoPts[vi]; if(!gp || gp.lat==null) continue;
+        var pv=_latLngToPx(gp.lat, gp.lng, ms, sz.w, sz.h); if(!pv) continue;
+        if(Math.abs(pv.x-o.pts[vi].x)>0.01 || Math.abs(pv.y-o.pts[vi].y)>0.01){
+          o.pts[vi].x=pv.x; o.pts[vi].y=pv.y; any=true;
+        }
+      }
+      if(any) moved=true;
+      /* auxiliary arrays still follow the anchor */
+      var anchorNow2=anchorOf(o);
+      if(anchorNow2){
+        var sc2=ppf(ms);
+        for(var ai=0; ai<AUX_ARRAYS.length; ai++){
+          var ak=AUX_ARRAYS[ai];
+          if(!o[ak] || !o[ak].length) continue;
+          if(!(o._auxFt && o._auxFt[ak])) recordOffsets(o, anchorNow2, ak);
+          else { applyOffsets(o, anchorNow2, ak, sc2); moved=true; }
+        }
+      }
+      return moved;
+    }
 
     /* Move the anchor itself to the absolute target. Never accumulated,
        so a second pass in the same frame is a no-op. */
@@ -48288,13 +48321,26 @@ window._crmToastModal=_crmToastModal;
     var s=S_(); if(!s) return;
     var v=s.pxPerFt;
     if(typeof v==='number' && isFinite(v) && v>0) return;   /* healthy */
+
+    /* NO MAP MEANS NO CALIBRATION - and that is a normal state, not a
+       fault. An earlier version forced 2.5 here, which was worse than the
+       problem it solved: _derScaled() reads `S.pxPerFt > 0` to decide
+       whether the drawing is calibrated, and the BESS modal shows
+       "Drawing is calibrated - pad will be true-to-scale" on the strength
+       of it. Inventing a scale made that claim false.
+
+       The renderers already cope: _derScale() falls back to 6 on its own.
+       So leave it null, say nothing, and wait for a real scale. */
     var from=scaleFromMap();
-    s.pxPerFt = from || 2.5;                                 /* never null */
+    if(!from) return;
+
+    /* A map exists but the scale is unusable - that IS worth fixing and
+       worth reporting, because it does produce NaN. */
+    s.pxPerFt = from;
     if(!warned){
       warned=true;
       if(window.console) console.warn('[scale] S.pxPerFt was '+JSON.stringify(v)+
-        ' - renderers divide by this and produce NaN. Set to '+s.pxPerFt.toFixed(3)+
-        (from?' from the map.':' as a fallback.'));
+        ' with a live map - derived '+from.toFixed(3)+' px/ft from the map instead.');
     }
   }
   guardScale();
