@@ -47427,8 +47427,8 @@ window._crmToastModal=_crmToastModal;
    already been fixed in a build that was not the one loaded. This makes
    the running version checkable in one line. */
 (function(){
-  window.OMEGA_BUILD = { id:'2645486b', built:'2026-07-27 09:45 UTC' };
-  console.info('%cOMEGA build 2645486b  (2026-07-27 09:45 UTC)', 'color:#2FB54A;font-weight:bold');
+  window.OMEGA_BUILD = { id:'73cb2b20', built:'2026-07-27 09:45 UTC' };
+  console.info('%cOMEGA build 73cb2b20  (2026-07-27 09:45 UTC)', 'color:#2FB54A;font-weight:bold');
   window.OmegaVersion=function(){
     var have=[];
     [['OmegaFrozen','stale snapshot fix'],
@@ -47639,6 +47639,278 @@ window._crmToastModal=_crmToastModal;
       o.verdict = !o.liveState ? 'No live map - nothing to reproject against.'
         : (comp.length||xy.length) ? 'Tracking '+o.tracked+' shape anchor(s); auxiliary geometry follows.'
         : 'No composite shapes on the canvas.';
+      console.table?console.table(o):console.log(o);
+      console.info(o.verdict);
+      return o;
+    }
+  };
+})();
+</script>
+<!-- ================= UNIFIED ANCHORING =================
+     The single owner of geometry <-> lat/lng. Every other pass defers.
+     ====================================================== -->
+<script>
+(function(){
+  function S_(){ try{ return (typeof S!=='undefined'&&S)?S:null; }catch(e){ return null; } }
+  function MAP(){ try{ if(typeof _gmap!=='undefined'&&_gmap) return _gmap; }catch(e){} return window._gmap||null; }
+  function state(){
+    try{ if(typeof mapLockState==='function' && mapLockState().hasPlot) return null; }catch(e){}
+    var m=MAP(); if(!m||!m.getCenter) return null;
+    var c=m.getCenter(); if(!c) return null;
+    var z=m.getZoom(); if(z==null) return null;
+    return { lat:c.lat(), lng:c.lng(), zoom:z };
+  }
+  function size(){ try{ return _getCanvasSize(); }catch(e){ return {w:1200,h:800}; } }
+
+  /* ---- the one place that decides where a thing "is" ---- */
+  function anchorOf(o){
+    if(o.pts && o.pts.length && o.pts[0]) return o.pts[0];
+    if(o.cx!=null && o.cy!=null)           return {x:o.cx, y:o.cy, __cxcy:true};
+    if(typeof o.x==='number' && typeof o.y==='number') return {x:o.x, y:o.y, __xy:true};
+    return null;
+  }
+  function setAnchor(o, x, y){
+    if(o.pts && o.pts.length && o.pts[0]){ /* pts move with the bulk shift */ }
+    if(o.cx!=null && o.cy!=null){ o.cx=x; o.cy=y; return; }
+    if(typeof o.x==='number' && typeof o.y==='number' && !(o.pts&&o.pts.length)){ o.x=x; o.y=y; }
+  }
+
+  /* Fields holding ABSOLUTE pixel coordinates. Only these may be shifted.
+
+     'parts' is deliberately NOT here. _doPlaceBesPad documents it:
+       "Parts store FEET-space offsets (dx,dy) from the assembly center"
+     They are relative, and translating them corrupts the assembly - the
+     first version of this list included them and the internal offsets
+     test caught it immediately. 'bollards' and 'fence' are derived at
+     render time from the centre for the same reason. */
+  var PIXEL_ARRAYS = ['pts','boundary','tables','exclusions','poly'];
+  /* pts is the anchor itself and is handled directly; these are the parts
+     that must follow it. */
+  var AUX_ARRAYS = ['boundary','tables','exclusions','poly'];
+
+  function shiftArr(a, dx, dy){
+    if(!a) return;
+    for(var i=0;i<a.length;i++){
+      var p=a[i]; if(!p) continue;
+      if(Array.isArray(p)){ shiftArr(p, dx, dy); continue; }
+      if(typeof p.x==='number') p.x+=dx;
+      if(typeof p.y==='number') p.y+=dy;
+    }
+  }
+  function shiftAll(o, dx, dy){
+    for(var i=0;i<PIXEL_ARRAYS.length;i++){
+      var k=PIXEL_ARRAYS[i];
+      if(o[k] && o[k].length) shiftArr(o[k], dx, dy);
+    }
+    if(o.cx!=null){ o.cx+=dx; o.cy+=dy; }
+    if(typeof o.x==='number' && !(o.pts&&o.pts.length)){ o.x+=dx; o.y+=dy; }
+  }
+
+  function stampOne(o, ms, sz){
+    if(o._geoAnchor) return false;
+
+    /* ADOPT AN EXISTING ANCHOR, NEVER RE-DERIVE ONE.
+       If _geoPts or _geoLat is already set, that IS the ground truth -
+       it was recorded when the object was placed. Converting the current
+       pixels again would capture wherever the map happens to be now, and
+       overwrite the original. That produced a fixed 502ft error in the
+       drift tests: the anchor was silently re-stamped after a pan. */
+    if(o._geoPts && o._geoPts[0] && o._geoPts[0].lat!=null){
+      o._geoAnchor={lat:o._geoPts[0].lat, lng:o._geoPts[0].lng};
+      return true;
+    }
+    if(o._geoLat!=null && o._geoLng!=null){
+      o._geoAnchor={lat:o._geoLat, lng:o._geoLng};
+      return true;
+    }
+
+    var a=anchorOf(o); if(!a) return false;
+    if(typeof _pxToLatLng!=='function') return false;
+    var g=_pxToLatLng(a.x, a.y, ms, sz.w, sz.h);
+    if(!g) return false;
+    o._geoAnchor={lat:g.lat, lng:g.lng};
+
+    /* Keep _geoPts in step. The native layer, the Site Map takeoff, the
+       GeoJSON export and the diagnostics all read _geoPts; switching the
+       engine to _geoAnchor without this silently made every one of them
+       think nothing was anchored. */
+    if(!o._geoPts) o._geoPts=[{lat:g.lat, lng:g.lng}];
+    else if(o._geoPts.length===1) o._geoPts[0]={lat:g.lat, lng:g.lng};
+    if(o._geoLat==null && typeof o.x==='number' && !(o.pts&&o.pts.length)){
+      o._geoLat=g.lat; o._geoLng=g.lng;
+    }
+    return true;
+  }
+
+  /* Pixels per foot for the current view - auxiliary geometry is stored
+     in feet so it survives zoom, not just pan. */
+  function ppf(ms){
+    var mp=156543.03392*Math.cos(ms.lat*Math.PI/180)/Math.pow(2,ms.zoom);
+    return 1/(mp*3.280839895013123);
+  }
+
+  /* AUXILIARY GEOMETRY IS DERIVED, NOT TRACKED.
+
+     Tracking a delta only works if this pass is the sole owner of the
+     anchor. It is not: _geoReprojectAll is a lexical binding that cannot
+     be replaced from here, so it still moves pts first and this pass then
+     sees zero delta and never moves the boundary. Measured: anchor
+     700,450 -> -120,1049 while the boundary offset stayed at 100,0.
+
+     So record each auxiliary point ONCE as an offset in FEET from the
+     anchor, then rebuild its pixel position every pass from
+     anchor + offset*pxPerFt. Whoever moved the anchor, the parts follow,
+     and because the offsets are in feet they stay correct through zoom. */
+  function recordOffsets(o, a, k){
+    var s=ppf(_lastMs); if(!s || !isFinite(s)) return;
+    o._auxFt=o._auxFt||{};
+    var out=[];
+    (function walk(arr, into){
+      for(var i=0;i<arr.length;i++){
+        var p=arr[i];
+        if(Array.isArray(p)){ var sub=[]; walk(p, sub); into.push(sub); continue; }
+        if(p && typeof p.x==='number') into.push({fx:(p.x-a.x)/s, fy:(p.y-a.y)/s});
+        else into.push(null);
+      }
+    })(o[k], out);
+    o._auxFt[k]=out;
+  }
+  function applyOffsets(o, a, k, s){
+    var rec=o._auxFt && o._auxFt[k]; if(!rec) return;
+    (function walk(arr, recArr){
+      for(var i=0;i<arr.length && i<recArr.length;i++){
+        var p=arr[i], r=recArr[i];
+        if(Array.isArray(p) && Array.isArray(r)){ walk(p, r); continue; }
+        if(p && r && typeof p.x==='number'){ p.x=a.x+r.fx*s; p.y=a.y+r.fy*s; }
+      }
+    })(o[k], rec);
+  }
+
+  var _lastMs=null;
+  function applyOne(o, ms, sz){
+    if(!o._geoAnchor) return false;
+    if(typeof _latLngToPx!=='function') return false;
+    _lastMs=ms;
+    var a=anchorOf(o); if(!a) return false;
+    var t=_latLngToPx(o._geoAnchor.lat, o._geoAnchor.lng, ms, sz.w, sz.h);
+    if(!t) return false;
+
+    var dx=t.x-a.x, dy=t.y-a.y;
+    var moved=false;
+
+    /* Move the anchor itself to the absolute target. Never accumulated,
+       so a second pass in the same frame is a no-op. */
+    if(Math.abs(dx)>0.01 || Math.abs(dy)>0.01){
+      if(o.pts && o.pts.length) shiftArr(o.pts, dx, dy);
+      if(o.cx!=null){ o.cx+=dx; o.cy+=dy; }
+      if(typeof o.x==='number' && !(o.pts&&o.pts.length)){ o.x+=dx; o.y+=dy; }
+      moved=true;
+    }
+
+    /* Rebuild every auxiliary array from its recorded feet offsets. */
+    var anchorNow=anchorOf(o); if(!anchorNow) return moved;
+    var s=ppf(ms);
+    for(var i=0;i<AUX_ARRAYS.length;i++){
+      var k=AUX_ARRAYS[i];
+      if(!o[k] || !o[k].length) continue;
+      if(!(o._auxFt && o._auxFt[k])) recordOffsets(o, anchorNow, k);
+      else { applyOffsets(o, anchorNow, k, s); moved=true; }
+    }
+    return moved;
+  }
+
+  var busy=false;
+  function run(){
+    if(busy) return 0;
+    var s=S_(); if(!s) return 0;
+    var ms=state(); if(!ms) return 0;
+    busy=true;
+    var sz=size(), changed=0, stamped=0;
+    try{
+      ['shapes','elements','conduits'].forEach(function(coll){
+        (s[coll]||[]).forEach(function(o){
+          if(stampOne(o, ms, sz)) stamped++;
+          if(applyOne(o, ms, sz)){
+            changed++;
+            try{
+              if(coll==='shapes'   && typeof renderShape==='function')   renderShape(o);
+              if(coll==='conduits' && typeof renderConduit==='function') renderConduit(o);
+              if(coll==='elements' && typeof renderEl==='function')      renderEl(o);
+            }catch(e){}
+          }
+        });
+      });
+    } finally { busy=false; }
+    return changed;
+  }
+
+  /* Re-stamp after a deliberate move: the new pixels become the truth. */
+  function restamp(o){ if(o) delete o._geoAnchor; }
+  window.OmegaReanchor=function(which){
+    var s=S_(); if(!s) return 0;
+    var n=0;
+    ['shapes','elements','conduits'].forEach(function(coll){
+      (s[coll]||[]).forEach(function(o){
+        if(!which || which===coll || o.id===which){ restamp(o); n++; }
+      });
+    });
+    run();
+    return n;
+  };
+
+  /* ---- stand the competing passes down ---- */
+  var stoodDown=false;
+  function standDown(){
+    if(stoodDown) return;
+    stoodDown=true;
+    /* _geoReprojectAll moved pts on its own schedule. With one owner it
+       must not also run, or the two disagree by a frame. */
+    if(typeof window._geoReprojectAll==='function' && !window._geoReprojectAll.__omegaOff){
+      var orig=window._geoReprojectAll;
+      window._geoReprojectAll=function(){ return run(); };
+      window._geoReprojectAll.__omegaOff=true;
+      window.__omegaOrigReproject=orig;
+    }
+    /* the two modules I added earlier are now subsumed */
+    try{ if(window.OmegaComposite) window.OmegaComposite.sync=function(){ return 0; }; }catch(e){}
+    try{ if(window.OmegaAssembly){
+      window.OmegaAssembly.reproject=function(){ return 0; };
+      window.OmegaAssembly.stamp=function(){ return run(); };
+    } }catch(e){}
+    if(window.console) console.info('[anchor] unified engine active; other passes stood down');
+  }
+
+  var wired=false, t=0;
+  var iv=setInterval(function(){
+    if(++t>150){ clearInterval(iv); return; }
+    var m=MAP(); if(!m) return;
+    standDown();
+    run();
+    if(!wired && window.google && google.maps && google.maps.event){
+      wired=true;
+      ['idle','center_changed','zoom_changed','bounds_changed'].forEach(function(ev){
+        try{ google.maps.event.addListener(m, ev, run); }catch(e){}
+      });
+    }
+  }, 300);
+  setInterval(function(){ standDown(); run(); }, 500);
+
+  window.OmegaAnchor={
+    run:run,
+    reanchor:window.OmegaReanchor,
+    status:function(){
+      var s=S_()||{}, ms=state();
+      var all=[];
+      ['shapes','elements','conduits'].forEach(function(c){ (s[c]||[]).forEach(function(o){ all.push(o); }); });
+      var withAnchor=all.filter(function(o){ return !!o._geoAnchor; });
+      var placeable=all.filter(anchorOf);
+      var o={ objects:all.length, anchorable:placeable.length, anchored:withAnchor.length,
+              liveMap:!!ms, otherPassesOff:stoodDown };
+      o.verdict = !o.liveMap ? 'No live map - nothing can be anchored.'
+        : !placeable.length ? 'Nothing on the canvas yet.'
+        : withAnchor.length<placeable.length
+          ? (placeable.length-withAnchor.length)+' object(s) not yet anchored.'
+        : 'All '+withAnchor.length+' object(s) anchored by one pass.';
       console.table?console.table(o):console.log(o);
       console.info(o.verdict);
       return o;
