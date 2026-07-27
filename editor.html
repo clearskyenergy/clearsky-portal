@@ -47128,5 +47128,101 @@ window._crmToastModal=_crmToastModal;
   };
 })();
 </script>
+<!-- ================= DIRECT MAP PANNING =================
+     Drives map.panBy() from pointer movement, so panning cannot be
+     blocked by whatever else is listening.
+     ======================================================= -->
+<script>
+(function(){
+  var THRESHOLD = 3;          /* px before a press counts as a drag */
+  function MAP(){ try{ if(typeof _gmap!=='undefined'&&_gmap) return _gmap; }catch(e){} return window._gmap||null; }
+
+  /* Grabs that belong to something else. */
+  function reserved(t){
+    if(!t || !t.closest) return false;
+    return !!t.closest(
+      '#omega-compass,#omega-site,#omega-diag,#lp,#rp,#scorep,' +
+      '#tb,#ribbon,#ribbon-tabs,#doc-tabs,#tabs,#statusbar,#legend-box,' +
+      '.cel,.h-nw,.h-ne,.h-sw,.h-se,.h-rot,.h-del,#schem-handle,#schem-resize,' +
+      'button,input,select,textarea,a'
+    );
+  }
+  /* Only over the drawing area. */
+  function overCanvas(t){
+    if(!t || !t.closest) return false;
+    return !!(t.closest('#sc') || t.closest('#_gmapDiv') || t.closest('#cw'));
+  }
+
+  var active=false, lastX=0, lastY=0, moved=0, startC=null, nativeMoving=false;
+
+  function centreOf(m){
+    try{ var c=m.getCenter(); return c?{lat:c.lat(),lng:c.lng()}:null; }catch(e){ return null; }
+  }
+
+  function down(e){
+    var m=MAP(); if(!m || !m.panBy) return;
+    if(window._committedPlot) return;
+    var t=e.target;
+    if(reserved(t) || !overCanvas(t)) return;
+    var pt=(e.touches&&e.touches[0])||e;
+    active=true; moved=0;
+    lastX=pt.clientX; lastY=pt.clientY;
+    startC=centreOf(m);
+    nativeMoving=false;
+  }
+
+  function move(e){
+    if(!active) return;
+    var m=MAP(); if(!m||!m.panBy){ active=false; return; }
+    var pt=(e.touches&&e.touches[0])||e;
+    var dx=pt.clientX-lastX, dy=pt.clientY-lastY;
+    if(!dx && !dy) return;
+    moved += Math.abs(dx)+Math.abs(dy);
+    if(moved < THRESHOLD){ return; }
+
+    /* If Google's own handler is already panning, leave it alone -
+       otherwise both would move the map and it would travel double. */
+    if(!nativeMoving && startC){
+      var now=centreOf(m);
+      if(now && (now.lat!==startC.lat || now.lng!==startC.lng)){
+        nativeMoving=true;
+      }
+    }
+    if(nativeMoving){ lastX=pt.clientX; lastY=pt.clientY; return; }
+
+    lastX=pt.clientX; lastY=pt.clientY;
+    try{ m.panBy(-dx, -dy); }catch(err){}
+    if(e.cancelable) e.preventDefault();
+  }
+
+  function up(){ active=false; nativeMoving=false; }
+
+  document.addEventListener('mousedown', down, true);
+  document.addEventListener('mousemove', move, true);
+  document.addEventListener('mouseup',   up,   true);
+  document.addEventListener('touchstart', down, {capture:true, passive:true});
+  document.addEventListener('touchmove',  move, {capture:true, passive:false});
+  document.addEventListener('touchend',   up,   true);
+  document.addEventListener('touchcancel',up,   true);
+
+  window.OmegaPan={
+    /* Movement under the threshold is still a click, so placement is
+       unaffected - worth being able to check. */
+    threshold:function(v){ if(v!=null) THRESHOLD=v; return THRESHOLD; },
+    status:function(){
+      var m=MAP();
+      var o={ map:!!m, canPan:!!(m&&m.panBy), active:active,
+              committedPlot:!!window._committedPlot, threshold:THRESHOLD };
+      o.verdict = !o.map ? 'No map.'
+        : !o.canPan ? 'Map has no panBy - not a JS map.'
+        : o.committedPlot ? 'A plot is committed; panning is intentionally off.'
+        : 'Click-drag panning is armed and driven directly.';
+      console.table?console.table(o):console.log(o);
+      console.info(o.verdict);
+      return o;
+    }
+  };
+})();
+</script>
 </body>
 </html>
