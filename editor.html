@@ -46761,5 +46761,95 @@ window._crmToastModal=_crmToastModal;
   };
 })();
 </script>
+<!-- ================= WHAT IS BLOCKING THE MAP =================
+     _gmapDiv is the FIRST child of #sc at z-index 0, so every other child
+     of #sc paints on top of it. Any one of them that accepts pointer
+     events will swallow a drag before the map sees it. Rather than guess
+     which, measure it.
+     ============================================================= -->
+<script>
+(function(){
+  function MAP(){ try{ if(typeof _gmap!=='undefined'&&_gmap) return _gmap; }catch(e){} return window._gmap||null; }
+  function name(e){
+    if(!e) return 'null';
+    return (e.id?'#'+e.id:'') + (e.className && e.className.toString ?
+           '.'+e.className.toString().trim().split(/\s+/)[0] : '') + '<'+e.tagName.toLowerCase()+'>';
+  }
+  /* Panels are SUPPOSED to take events - never blame or disable them. */
+  function isPanel(e){
+    return !!(e.closest && e.closest('#omega-compass,#omega-site,#omega-diag,#lp,#rp,#scorep,.rpanel,#tb,#ribbon'));
+  }
+
+  window.OmegaWhatsBlocking=function(fix){
+    var sc=document.getElementById('sc');
+    if(!sc){ console.warn('no #sc'); return null; }
+    var r=sc.getBoundingClientRect();
+    var md=document.getElementById('_gmapDiv');
+
+    /* 1. what is actually on top at points across the canvas */
+    var samples=[[0.5,0.5],[0.25,0.3],[0.75,0.3],[0.25,0.7],[0.75,0.7]].map(function(f){
+      var x=Math.round(r.x+r.width*f[0]), y=Math.round(r.y+r.height*f[1]);
+      var el=document.elementFromPoint(x,y);
+      var onMap = !!(md && el && (el===md || md.contains(el)));
+      return { at:f.join(','), top:name(el), pe:el?getComputedStyle(el).pointerEvents:'-',
+               reachesMap:onMap, panel: el?isPanel(el):false };
+    });
+
+    /* 2. anything large enough to matter that still accepts events */
+    var covering=[].slice.call(sc.querySelectorAll('*')).filter(function(e){
+      if(md && (e===md || md.contains(e))) return false;
+      var cs=getComputedStyle(e);
+      if(cs.pointerEvents==='none'||cs.display==='none'||cs.visibility==='hidden') return false;
+      var b=e.getBoundingClientRect();
+      return b.width>r.width*0.5 && b.height>r.height*0.5;
+    });
+
+    var blockers=covering.filter(function(e){ return !isPanel(e); });
+
+    var out={
+      mapPresent:!!MAP(),
+      mapDiv: md?('present, pe='+getComputedStyle(md).pointerEvents):'ABSENT',
+      scPointerEvents: sc.style.pointerEvents||'(default)',
+      dragReachesMap: samples.filter(function(s){ return s.reachesMap; }).length+'/'+samples.length,
+      blockers: blockers.map(function(e){
+        return name(e)+'  pe='+getComputedStyle(e).pointerEvents+'  z='+getComputedStyle(e).zIndex; }),
+      samples: samples
+    };
+    out.verdict = !out.mapPresent ? 'No map.'
+      : md===null ? 'No _gmapDiv - the map was never attached.'
+      : blockers.length ? blockers.length+' element(s) sit over the map and accept events. Run OmegaWhatsBlocking(true) to disable them.'
+      : out.dragReachesMap==='0/5' ? 'Nothing large is blocking, yet no sample reaches the map - check z-index or that #sc is pointer-events:none.'
+      : 'Nothing is blocking; drags should reach the map.';
+
+    if(fix && blockers.length){
+      blockers.forEach(function(e){
+        try{ e.style.setProperty('pointer-events','none','important');
+             e.setAttribute('data-omega-unblocked','1'); }catch(err){}
+      });
+      out.fixed = blockers.map(name);
+      out.verdict = 'Disabled '+blockers.length+' blocking element(s). Try dragging now.';
+    }
+    console.table?console.table({ map:out.mapPresent, mapDiv:out.mapDiv,
+      sc:out.scPointerEvents, reaches:out.dragReachesMap, blockers:out.blockers.join(' | ')||'(none)' }):console.log(out);
+    console.info(out.verdict);
+    if(out.blockers.length) console.warn('blocking:', out.blockers);
+    return out;
+  };
+
+  /* Keep the known blocker down. gmap-block is an interaction shield for
+     the old locked-map mode; with locks gone it should never be shown. */
+  setInterval(function(){
+    try{
+      var blk=document.getElementById('gmap-block');
+      if(blk && getComputedStyle(blk).display!=='none') blk.style.setProperty('display','none','important');
+      if(window._committedPlot) return;
+      var wrap=document.getElementById('gmap-wrap');
+      if(wrap && MAP() && getComputedStyle(wrap).pointerEvents==='none' && wrap.contains(document.getElementById('_gmapDiv'))){
+        wrap.style.pointerEvents='auto';
+      }
+    }catch(e){}
+  }, 1000);
+})();
+</script>
 </body>
 </html>
