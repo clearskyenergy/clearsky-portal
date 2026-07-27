@@ -45410,6 +45410,10 @@ window._crmToastModal=_crmToastModal;
   }
 
   function onMapClick(e){
+    /* If #cov is handling this mode, the app's own drawing code owns the
+       gesture and this must not also fire - that would place twice. */
+    var _cov=document.getElementById('cov');
+    if(_cov && _cov.classList.contains('on')) return;
     if(!placing() || dragging) return;
     if(!e || !e.latLng) return;
     var c=toClient(e.latLng); if(!c) return;
@@ -46499,10 +46503,18 @@ window._crmToastModal=_crmToastModal;
   var last=null;
   function route(){
     var cov=document.getElementById('cov'); if(!cov) return;
-    /* Map present: the map is the input surface, so #cov must pass events
-       through or panning dies. No map: the pixel path is the only way to
-       draw, so #cov must receive them. */
-    var want = MAP() ? 'none' : 'auto';
+    /* ONE RULE, keyed on the mode - not on whether a map exists.
+
+       Keying on map presence forced #cov to 'none' whenever a map was
+       loaded, which killed drag-to-draw for every shape tool. The app
+       already marks drawing modes by adding .on to #cov; use that.
+
+         drawing mode -> auto : the drag draws the shape
+         select mode  -> none : the gesture falls through to the map
+
+       This is also correct with no map: drawing modes still get #cov,
+       and in select mode #sc handles it as it always did. */
+    var want = cov.classList.contains('on') ? 'auto' : 'none';
     if(want===last) return;
     last=want;
     try{ cov.style.setProperty('pointer-events', want, 'important'); }catch(e){
@@ -46944,10 +46956,11 @@ window._crmToastModal=_crmToastModal;
       var sc=document.getElementById('sc');
       if(sc && sc.style.pointerEvents!=='none') sc.style.pointerEvents='none';
 
-      var cov=document.getElementById('cov');
-      if(cov && getComputedStyle(cov).pointerEvents!=='none'){
-        cov.style.setProperty('pointer-events','none','important');
-      }
+      /* #cov is mode-governed, NOT map-governed. Pinning it to 'none'
+         here whenever a map existed was the third module doing so, and it
+         overrode the other two - so every shape tool stayed dead however
+         many times I fixed the rule elsewhere. Leave it to the single
+         owner: the mode-based pass. */
       var blk=document.getElementById('gmap-block');
       if(blk && getComputedStyle(blk).display!=='none') blk.style.setProperty('display','none','important');
 
@@ -47009,8 +47022,8 @@ window._crmToastModal=_crmToastModal;
      cover the whole canvas and block the map, which is precisely the
      failure the native layer used to hide by making it display:none. */
   body.omega-map-surface #els,
-  body.omega-map-surface #csvg,
-  body.omega-map-surface #cov{ pointer-events:none !important; }
+  body.omega-map-surface #csvg{ pointer-events:none !important; }
+  /* #cov is governed by the mode, in script - see the restructure pass. */
 
   /* Everything inside that genuinely needs input opts back in. */
   body.omega-map-surface #sc .cel,
@@ -47071,17 +47084,32 @@ window._crmToastModal=_crmToastModal;
       /* #cov is inside the overlay; with a map present it must not take
          events. Without one it is the only way to draw, so the existing
          routing still governs that case. */
-      /* Enforce inline, not just via the stylesheet. An inline
-         !important beats a stylesheet !important, so any code that sets
-         pointer-events directly on a layer container would otherwise win
-         and blanket the map. Re-asserting here every pass makes the
-         surface guarantee hold regardless of who else writes to them. */
-      ['cov','els','csvg'].forEach(function(id){
+      /* #els and #csvg are pure display and must never intercept. */
+      ['els','csvg'].forEach(function(id){
         var e=document.getElementById(id);
         if(e && e.style.pointerEvents!=='none'){
           e.style.setProperty('pointer-events','none','important');
         }
       });
+
+      /* #cov FOLLOWS THE MODE, not the map.
+         Shapes - rect, circle, polyline, parking, bespad - are drawn by
+         DRAGGING on #cov: mousedown, mousemove, mouseup. Forcing #cov to
+         pointer-events:none whenever a map existed meant that sequence
+         never reached it, and every shape tool silently did nothing.
+
+         The app already computes exactly this distinction: setMode() adds
+         .on to #cov for drawing modes. Respect that instead of inventing
+         a second rule.
+
+           drawing mode -> #cov auto : the drag draws
+           select mode  -> #cov none : the map pans */
+      var cov=document.getElementById('cov');
+      if(cov){
+        var drawing = cov.classList.contains('on');
+        var want = drawing ? 'auto' : 'none';
+        if(cov.style.pointerEvents!==want) cov.style.setProperty('pointer-events', want, 'important');
+      }
 
       moved=true;
       return true;
@@ -47124,102 +47152,6 @@ window._crmToastModal=_crmToastModal;
       document.body.classList.remove('omega-map-surface');
       moved=false;
       return 'reverted to the nested layout';
-    }
-  };
-})();
-</script>
-<!-- ================= DIRECT MAP PANNING =================
-     Drives map.panBy() from pointer movement, so panning cannot be
-     blocked by whatever else is listening.
-     ======================================================= -->
-<script>
-(function(){
-  var THRESHOLD = 3;          /* px before a press counts as a drag */
-  function MAP(){ try{ if(typeof _gmap!=='undefined'&&_gmap) return _gmap; }catch(e){} return window._gmap||null; }
-
-  /* Grabs that belong to something else. */
-  function reserved(t){
-    if(!t || !t.closest) return false;
-    return !!t.closest(
-      '#omega-compass,#omega-site,#omega-diag,#lp,#rp,#scorep,' +
-      '#tb,#ribbon,#ribbon-tabs,#doc-tabs,#tabs,#statusbar,#legend-box,' +
-      '.cel,.h-nw,.h-ne,.h-sw,.h-se,.h-rot,.h-del,#schem-handle,#schem-resize,' +
-      'button,input,select,textarea,a'
-    );
-  }
-  /* Only over the drawing area. */
-  function overCanvas(t){
-    if(!t || !t.closest) return false;
-    return !!(t.closest('#sc') || t.closest('#_gmapDiv') || t.closest('#cw'));
-  }
-
-  var active=false, lastX=0, lastY=0, moved=0, startC=null, nativeMoving=false;
-
-  function centreOf(m){
-    try{ var c=m.getCenter(); return c?{lat:c.lat(),lng:c.lng()}:null; }catch(e){ return null; }
-  }
-
-  function down(e){
-    var m=MAP(); if(!m || !m.panBy) return;
-    if(window._committedPlot) return;
-    var t=e.target;
-    if(reserved(t) || !overCanvas(t)) return;
-    var pt=(e.touches&&e.touches[0])||e;
-    active=true; moved=0;
-    lastX=pt.clientX; lastY=pt.clientY;
-    startC=centreOf(m);
-    nativeMoving=false;
-  }
-
-  function move(e){
-    if(!active) return;
-    var m=MAP(); if(!m||!m.panBy){ active=false; return; }
-    var pt=(e.touches&&e.touches[0])||e;
-    var dx=pt.clientX-lastX, dy=pt.clientY-lastY;
-    if(!dx && !dy) return;
-    moved += Math.abs(dx)+Math.abs(dy);
-    if(moved < THRESHOLD){ return; }
-
-    /* If Google's own handler is already panning, leave it alone -
-       otherwise both would move the map and it would travel double. */
-    if(!nativeMoving && startC){
-      var now=centreOf(m);
-      if(now && (now.lat!==startC.lat || now.lng!==startC.lng)){
-        nativeMoving=true;
-      }
-    }
-    if(nativeMoving){ lastX=pt.clientX; lastY=pt.clientY; return; }
-
-    lastX=pt.clientX; lastY=pt.clientY;
-    try{ m.panBy(-dx, -dy); }catch(err){}
-    if(e.cancelable) e.preventDefault();
-  }
-
-  function up(){ active=false; nativeMoving=false; }
-
-  document.addEventListener('mousedown', down, true);
-  document.addEventListener('mousemove', move, true);
-  document.addEventListener('mouseup',   up,   true);
-  document.addEventListener('touchstart', down, {capture:true, passive:true});
-  document.addEventListener('touchmove',  move, {capture:true, passive:false});
-  document.addEventListener('touchend',   up,   true);
-  document.addEventListener('touchcancel',up,   true);
-
-  window.OmegaPan={
-    /* Movement under the threshold is still a click, so placement is
-       unaffected - worth being able to check. */
-    threshold:function(v){ if(v!=null) THRESHOLD=v; return THRESHOLD; },
-    status:function(){
-      var m=MAP();
-      var o={ map:!!m, canPan:!!(m&&m.panBy), active:active,
-              committedPlot:!!window._committedPlot, threshold:THRESHOLD };
-      o.verdict = !o.map ? 'No map.'
-        : !o.canPan ? 'Map has no panBy - not a JS map.'
-        : o.committedPlot ? 'A plot is committed; panning is intentionally off.'
-        : 'Click-drag panning is armed and driven directly.';
-      console.table?console.table(o):console.log(o);
-      console.info(o.verdict);
-      return o;
     }
   };
 })();
