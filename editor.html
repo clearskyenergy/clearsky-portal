@@ -47428,8 +47428,8 @@ window._crmToastModal=_crmToastModal;
    already been fixed in a build that was not the one loaded. This makes
    the running version checkable in one line. */
 (function(){
-  window.OMEGA_BUILD = { id:'4d03c57d', built:'2026-07-27 09:45 UTC' };
-  console.info('%cOMEGA build 4d03c57d  (2026-07-27 09:45 UTC)', 'color:#2FB54A;font-weight:bold');
+  window.OMEGA_BUILD = { id:'6f4cd347', built:'2026-07-27 09:45 UTC' };
+  console.info('%cOMEGA build 6f4cd347  (2026-07-27 09:45 UTC)', 'color:#2FB54A;font-weight:bold');
   window.OmegaVersion=function(){
     var have=[];
     [['OmegaFrozen','stale snapshot fix'],
@@ -47743,11 +47743,23 @@ window._crmToastModal=_crmToastModal;
     return true;
   }
 
-  /* Pixels per foot for the current view - auxiliary geometry is stored
-     in feet so it survives zoom, not just pan. */
+  /* Pixels per foot. Auxiliary geometry is stored in feet so it survives
+     zoom, not just pan.
+
+     Use S.pxPerFt - the SAME number the renderers use. _derScale() is
+     literally `S.pxPerFt || 6`, so computing an independent scale from the
+     map meant the solar boundary was repositioned with one value and drawn
+     with another. Any disagreement between them shows up as the array
+     sliding relative to its panels on zoom. Falling back to the map only
+     when S.pxPerFt is unusable. */
   function ppf(ms){
+    try{
+      var s=S_();
+      if(s && typeof s.pxPerFt==='number' && isFinite(s.pxPerFt) && s.pxPerFt>0) return s.pxPerFt;
+    }catch(e){}
     var mp=156543.03392*Math.cos(ms.lat*Math.PI/180)/Math.pow(2,ms.zoom);
-    return 1/(mp*3.280839895013123);
+    var v=1/(mp*3.280839895013123);
+    return (isFinite(v)&&v>0)?v:6;
   }
 
   /* AUXILIARY GEOMETRY IS DERIVED, NOT TRACKED.
@@ -47838,15 +47850,25 @@ window._crmToastModal=_crmToastModal;
   }
 
   /* One-time sweep: remove duplicate .cel nodes left by earlier builds. */
+  /* Every keyed node, not just .cel. A duplicate of any of these is a
+     render that was appended instead of replaced, and leaving it costs
+     nothing to detect. Runs on every pass so duplicates cannot pile up
+     between sweeps - which is what made a drag produce hundreds. */
+  var _dupTotal=0;
   function dedupeElements(){
-    var byId={}, dropped=0;
-    document.querySelectorAll('.cel[data-elid]').forEach(function(n){
-      var id=n.getAttribute('data-elid');
-      if(byId[id]){ if(n.parentNode){ n.parentNode.removeChild(n); dropped++; } }
-      else byId[id]=n;
+    var dropped=0;
+    ['data-elid','data-shid','data-cid'].forEach(function(attr){
+      var byId={};
+      document.querySelectorAll('['+attr+']').forEach(function(n){
+        var id=n.getAttribute(attr);
+        if(byId[id]){ if(n.parentNode){ n.parentNode.removeChild(n); dropped++; } }
+        else byId[id]=n;
+      });
     });
+    _dupTotal+=dropped;
     return dropped;
   }
+  window.OmegaDupeCount=function(){ return _dupTotal; };
   window.OmegaDedupe=dedupeElements;
 
   var busy=false;
@@ -47879,6 +47901,7 @@ window._crmToastModal=_crmToastModal;
           }
         });
       });
+      dedupeElements();
     } finally { busy=false; }
     return changed;
   }
