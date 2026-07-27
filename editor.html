@@ -47427,8 +47427,8 @@ window._crmToastModal=_crmToastModal;
    already been fixed in a build that was not the one loaded. This makes
    the running version checkable in one line. */
 (function(){
-  window.OMEGA_BUILD = { id:'42e766c2', built:'2026-07-27 09:45 UTC' };
-  console.info('%cOMEGA build 42e766c2  (2026-07-27 09:45 UTC)', 'color:#2FB54A;font-weight:bold');
+  window.OMEGA_BUILD = { id:'2645486b', built:'2026-07-27 09:45 UTC' };
+  console.info('%cOMEGA build 2645486b  (2026-07-27 09:45 UTC)', 'color:#2FB54A;font-weight:bold');
   window.OmegaVersion=function(){
     var have=[];
     [['OmegaFrozen','stale snapshot fix'],
@@ -47516,6 +47516,129 @@ window._crmToastModal=_crmToastModal;
         : (o.crosshair==='block' && (!o.mode || o.mode==='select'))
           ? 'Crosshair is showing in select mode - it should be hidden.'
         : 'Placement state looks consistent.';
+      console.table?console.table(o):console.log(o);
+      console.info(o.verdict);
+      return o;
+    }
+  };
+})();
+</script>
+<!-- ================= COMPOSITE SHAPE ANCHORING =================
+     Shapes do not all store geometry the same way:
+
+       pts            most tools                     already reprojected
+       cx / cy        assembly, utility               handled separately
+       x / y only     callout                         was not handled
+       boundary[]     dersolar - the array outline    was not handled
+       exclusions[][] dersolar - keep-out zones       was not handled
+       tables[]       dersolar - each panel row       was not handled
+
+     _geoReprojectAll moves pts. For a solar array that is a single corner
+     point, so the anchor moved while the outline and every panel table
+     stayed at their original pixels - the array appeared to drift or
+     distort the moment the map moved.
+
+     Rather than add a case per shape kind, translate every auxiliary
+     pixel array by the SAME delta the anchor moved. That is correct for
+     any composite shape whose parts are stored relative to the same view,
+     and it needs no knowledge of what the parts mean.
+     ============================================================== -->
+<script>
+(function(){
+  function S_(){ try{ return (typeof S!=='undefined'&&S)?S:null; }catch(e){ return null; } }
+  function MAP(){ try{ if(typeof _gmap!=='undefined'&&_gmap) return _gmap; }catch(e){} return window._gmap||null; }
+  function state(){
+    try{ if(typeof mapLockState==='function' && mapLockState().hasPlot) return null; }catch(e){}
+    var m=MAP(); if(!m||!m.getCenter) return null;
+    var c=m.getCenter(); if(!c) return null;
+    return { lat:c.lat(), lng:c.lng(), zoom:m.getZoom() };
+  }
+  function size(){ try{ return _getCanvasSize(); }catch(e){ return {w:1200,h:800}; } }
+
+  function shiftPts(arr, dx, dy){
+    if(!arr) return;
+    for(var i=0;i<arr.length;i++){
+      var p=arr[i];
+      if(!p) continue;
+      if(Array.isArray(p)){ shiftPts(p, dx, dy); continue; }
+      if(typeof p.x==='number') p.x+=dx;
+      if(typeof p.y==='number') p.y+=dy;
+    }
+  }
+
+  /* Every auxiliary pixel array a shape might carry. */
+  function shiftAux(sh, dx, dy){
+    if(!dx && !dy) return false;
+    var touched=false;
+    ['boundary','tables','exclusions','poly','parts','bollards','fence'].forEach(function(k){
+      if(sh[k] && sh[k].length){ shiftPts(sh[k], dx, dy); touched=true; }
+    });
+    /* x/y-only shapes (callout) never had any reprojection at all */
+    if(sh.pts==null && sh.cx==null && typeof sh.x==='number' && typeof sh.y==='number'){
+      sh.x+=dx; sh.y+=dy; touched=true;
+    }
+    return touched;
+  }
+
+  /* Remember where each shape's anchor was, so we can measure the delta. */
+  var lastPos={};
+  function sync(){
+    var s=S_(); if(!s) return 0;
+    var ms=state(); if(!ms) return 0;
+    if(typeof _latLngToPx!=='function') return 0;
+    var sz=size(), moved=0;
+    (s.shapes||[]).forEach(function(sh){
+      var anchor=null;
+      if(sh.pts && sh.pts.length) anchor=sh.pts[0];
+      else if(sh.cx!=null) anchor={x:sh.cx,y:sh.cy};
+      else if(typeof sh.x==='number') anchor={x:sh.x,y:sh.y};
+      if(!anchor) return;
+      var prev=lastPos[sh.id];
+      if(prev){
+        var dx=anchor.x-prev.x, dy=anchor.y-prev.y;
+        if(Math.abs(dx)>0.01 || Math.abs(dy)>0.01){
+          if(shiftAux(sh, dx, dy)){
+            moved++;
+            try{ if(typeof renderShape==='function') renderShape(sh); }catch(e){}
+          }
+        }
+      }
+      lastPos[sh.id]={x:anchor.x,y:anchor.y};
+    });
+    /* forget shapes that no longer exist */
+    var live={}; (s.shapes||[]).forEach(function(x){ live[x.id]=1; });
+    Object.keys(lastPos).forEach(function(id){ if(!live[id]) delete lastPos[id]; });
+    return moved;
+  }
+
+  var wired=false, t=0;
+  var iv=setInterval(function(){
+    if(++t>120){ clearInterval(iv); return; }
+    var m=MAP(); if(!m) return;
+    sync();
+    if(!wired && window.google && google.maps && google.maps.event){
+      wired=true;
+      ['idle','center_changed','zoom_changed'].forEach(function(ev){
+        try{ google.maps.event.addListener(m, ev, sync); }catch(e){}
+      });
+    }
+  }, 400);
+  setInterval(sync, 600);
+
+  window.OmegaComposite={
+    sync:sync,
+    status:function(){
+      var s=S_()||{};
+      var comp=(s.shapes||[]).filter(function(x){
+        return (x.boundary&&x.boundary.length)||(x.tables&&x.tables.length)||
+               (x.exclusions&&x.exclusions.length); });
+      var xy=(s.shapes||[]).filter(function(x){
+        return x.pts==null && x.cx==null && typeof x.x==='number'; });
+      var o={ compositeShapes:comp.length, xyOnlyShapes:xy.length,
+              tracked:Object.keys(lastPos).length, liveState:!!state() };
+      o.verdict = !o.liveState ? 'No live map - nothing to reproject against.'
+        : (comp.length||xy.length) ? 'Tracking '+o.tracked+' shape anchor(s); auxiliary geometry follows.'
+        : 'No composite shapes on the canvas.';
       console.table?console.table(o):console.log(o);
       console.info(o.verdict);
       return o;
