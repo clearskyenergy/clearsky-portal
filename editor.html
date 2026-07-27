@@ -46851,5 +46851,92 @@ window._crmToastModal=_crmToastModal;
   }, 1000);
 })();
 </script>
+<!-- ================= MAP INPUT, ENFORCED =================
+     Four things must ALL be true for a mouse drag to pan the map:
+
+       1. #sc          pointer-events: none   (so it does not swallow)
+       2. #_gmapDiv    pointer-events: auto   (so the map opts back in)
+       3. #cov         pointer-events: none   (it covers the whole canvas)
+       4. map options  draggable:true, gestureHandling:'greedy'
+
+     Every previous fix made one of these conditional on some other state -
+     on whether #sc was "intercepting", on whether the map was "locked", on
+     whether options were "explicitly disabled". Each condition was a way
+     for the required state to never be applied. This applies all four
+     unconditionally whenever a live map exists and no plot is committed,
+     starting immediately rather than on the next poll.
+     ======================================================== -->
+<script>
+(function(){
+  function MAP(){ try{ if(typeof _gmap!=='undefined'&&_gmap) return _gmap; }catch(e){} return window._gmap||null; }
+
+  function enforce(){
+    try{
+      if(window._committedPlot) return;      /* a plot legitimately owns the surface */
+      var m=MAP(); if(!m) return;
+
+      var md=document.getElementById('_gmapDiv');
+      if(md){
+        if(md.style.pointerEvents!=='auto') md.style.setProperty('pointer-events','auto','important');
+        if(md.style.touchAction!=='none')   md.style.setProperty('touch-action','none','important');
+        if(getComputedStyle(md).display==='none') md.style.display='block';
+      }
+      var wrap=document.getElementById('gmap-wrap');
+      if(wrap && md && wrap.contains(md) && getComputedStyle(wrap).pointerEvents==='none'){
+        wrap.style.setProperty('pointer-events','auto','important');
+      }
+      var sc=document.getElementById('sc');
+      if(sc && sc.style.pointerEvents!=='none') sc.style.pointerEvents='none';
+
+      var cov=document.getElementById('cov');
+      if(cov && getComputedStyle(cov).pointerEvents!=='none'){
+        cov.style.setProperty('pointer-events','none','important');
+      }
+      var blk=document.getElementById('gmap-block');
+      if(blk && getComputedStyle(blk).display!=='none') blk.style.setProperty('display','none','important');
+
+      if(m.setOptions){
+        var gh=null, dr=null;
+        try{ gh=m.get('gestureHandling'); dr=m.get('draggable'); }catch(e){}
+        if(gh!=='greedy' || dr!==true){
+          m.setOptions({ gestureHandling:'greedy', draggable:true, scrollwheel:true,
+                         zoomControl:true, disableDoubleClickZoom:false, keyboardShortcuts:true });
+        }
+      }
+    }catch(e){}
+  }
+
+  enforce();
+  setInterval(enforce, 400);
+  ['load','resize','visibilitychange'].forEach(function(ev){ addEventListener(ev, enforce); });
+
+  window.OmegaFixDrag=function(){
+    enforce();
+    var md=document.getElementById('_gmapDiv'), sc=document.getElementById('sc');
+    var out={
+      mapDiv: md?getComputedStyle(md).pointerEvents:'ABSENT',
+      sc: sc?(sc.style.pointerEvents||'(default)'):'absent',
+      cov:(function(){var c=document.getElementById('cov');
+        return c?getComputedStyle(c).pointerEvents:'absent';})(),
+      draggable:(function(){var m=MAP(); try{ return m&&m.get?m.get('draggable'):null; }catch(e){ return null; }})(),
+      gestureHandling:(function(){var m=MAP(); try{ return m&&m.get?m.get('gestureHandling'):null; }catch(e){ return null; }})()
+    };
+    /* Does a drag actually land on the map? */
+    if(sc && md){
+      var r=sc.getBoundingClientRect();
+      var el=document.elementFromPoint(Math.round(r.x+r.width/2), Math.round(r.y+r.height/2));
+      out.centreHit = el?((el.id||el.tagName)):'null';
+      out.reachesMap = !!(el && (el===md || md.contains(el)));
+    }
+    out.verdict = !out.reachesMap
+      ? 'A drag at the centre lands on '+out.centreHit+', not the map. Run OmegaWhatsBlocking(true).'
+      : (out.draggable!==true ? 'Reaches the map but draggable is '+out.draggable+'.'
+                              : 'All four conditions met - dragging should pan.');
+    console.table?console.table(out):console.log(out);
+    console.info(out.verdict);
+    return out;
+  };
+})();
+</script>
 </body>
 </html>
