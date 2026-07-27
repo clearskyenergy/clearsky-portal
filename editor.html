@@ -47175,5 +47175,190 @@ window._crmToastModal=_crmToastModal;
   };
 })();
 </script>
+<!-- ================= ASSEMBLY ANCHORING =================
+     A full BESS assembly is stored as cx/cy - a CENTRE in canvas pixels -
+     with its parts held as feet-space offsets from that centre. It has no
+     pts array.
+
+     Every anchoring path, theirs and mine, keys on sh.pts:
+
+        _geoStampAll     if(sh.pts && sh.pts.length) ...
+        _geoReprojectAll if(!sh._geoPts || !sh.pts) return;
+        anchorNew        same
+
+     So assemblies were never stamped and never reprojected. They stayed
+     at fixed pixels while everything else moved with the map, which is
+     why the pad appeared to drift the moment you panned.
+     ====================================================== -->
+<script>
+(function(){
+  function S_(){ try{ return (typeof S!=='undefined'&&S)?S:null; }catch(e){ return null; } }
+  function MAP(){ try{ if(typeof _gmap!=='undefined'&&_gmap) return _gmap; }catch(e){} return window._gmap||null; }
+  function state(){
+    try{ if(typeof mapLockState==='function' && mapLockState().hasPlot) return null; }catch(e){}
+    var m=MAP(); if(!m||!m.getCenter) return null;
+    var c=m.getCenter(); if(!c) return null;
+    return { lat:c.lat(), lng:c.lng(), zoom:m.getZoom() };
+  }
+  function size(){ try{ return _getCanvasSize(); }catch(e){ return {w:1200,h:800}; } }
+
+  /* Which shapes use a centre instead of a point list. */
+  function centred(sh){ return sh && sh.cx!=null && sh.cy!=null; }
+
+  function stamp(){
+    var s=S_(); if(!s) return 0;
+    var ms=state(); if(!ms) return 0;
+    if(typeof _pxToLatLng!=='function') return 0;
+    var sz=size(), n=0;
+    (s.shapes||[]).forEach(function(sh){
+      if(!centred(sh) || sh._geoPts) return;
+      var g=_pxToLatLng(sh.cx, sh.cy, ms, sz.w, sz.h);
+      if(g){ sh._geoPts=[{lat:g.lat, lng:g.lng}]; sh._geoCentred=true; n++; }
+    });
+    return n;
+  }
+
+  function reproject(){
+    var s=S_(); if(!s) return 0;
+    var ms=state(); if(!ms) return 0;
+    if(typeof _latLngToPx!=='function') return 0;
+    var sz=size(), n=0;
+    (s.shapes||[]).forEach(function(sh){
+      if(!centred(sh) || !sh._geoPts || !sh._geoPts[0]) return;
+      var px=_latLngToPx(sh._geoPts[0].lat, sh._geoPts[0].lng, ms, sz.w, sz.h);
+      if(!px) return;
+      if(Math.abs(px.x-sh.cx)>0.01 || Math.abs(px.y-sh.cy)>0.01){
+        sh.cx=px.x; sh.cy=px.y;
+        try{ if(typeof renderShape==='function') renderShape(sh); }catch(e){}
+        n++;
+      }
+    });
+    return n;
+  }
+
+  /* Re-stamp after a drag: the user moved it, so the new pixel position
+     becomes the new ground truth. */
+  window.OmegaRestampAssemblies=function(){
+    var s=S_(); if(!s) return 0;
+    (s.shapes||[]).forEach(function(sh){ if(centred(sh)) delete sh._geoPts; });
+    return stamp();
+  };
+
+  var wired=false, t=0;
+  var iv=setInterval(function(){
+    if(++t>120){ clearInterval(iv); return; }
+    var m=MAP(); if(!m) return;
+    stamp();
+    if(!wired && window.google && google.maps && google.maps.event){
+      wired=true;
+      ['idle','center_changed','zoom_changed','bounds_changed'].forEach(function(ev){
+        try{ google.maps.event.addListener(m, ev, function(){ stamp(); reproject(); }); }catch(e){}
+      });
+    }
+  }, 400);
+  setInterval(function(){ stamp(); reproject(); }, 700);
+
+  window.OmegaAssembly={
+    status:function(){
+      var s=S_()||{};
+      var all=(s.shapes||[]).filter(centred);
+      var o={ centredShapes:all.length,
+              anchored:all.filter(function(x){ return !!x._geoPts; }).length,
+              liveState:!!state() };
+      o.verdict = !all.length ? 'No centre-based shapes (assemblies) on the canvas.'
+        : !o.liveState ? 'No live map state - cannot anchor.'
+        : o.anchored===all.length ? 'All assemblies anchored and reprojecting.'
+        : (all.length-o.anchored)+' assembly(ies) not yet anchored.';
+      console.table?console.table(o):console.log(o);
+      console.info(o.verdict);
+      return o;
+    }
+  };
+})();
+</script>
+<!-- ================= FROZEN SNAPSHOT ON RELOAD =================
+     Saved projects carry mapState.hasFrozen from the old locked-map
+     workflow. On load, _loadProject reads cs_frozen_map_<id> out of
+     localStorage and _applyFrozenMap() paints it as #frozen-map-img at
+     z-index 3 - ABOVE the live map (z 2).
+
+     It is pointer-events:none, so it never blocked panning; it simply
+     showed a stale picture of a previous view over the top of the real
+     one. That is why a reload looked broken while the controls still
+     worked, and why it only happened on projects saved before.
+
+     The image itself is kept on window._frozenMapImg because the export
+     path uses it. Only the on-screen cover is removed.
+     ============================================================== -->
+<script>
+(function(){
+  function MAP(){ try{ if(typeof _gmap!=='undefined'&&_gmap) return _gmap; }catch(e){} return window._gmap||null; }
+  var told=false;
+
+  function clearCover(){
+    try{
+      if(window._committedPlot) return;   /* a plot legitimately owns the view */
+      if(!MAP()) return;                  /* no live map: the snapshot is all there is */
+      var f=document.getElementById('frozen-map-img');
+      if(f && getComputedStyle(f).display!=='none'){
+        f.style.setProperty('display','none','important');
+        if(!told){
+          told=true;
+          if(window.console) console.info('[frozen] stale snapshot hidden - showing the live map');
+          if(typeof showBanner==='function'){
+            try{ showBanner('wiz','Showing the live map \u2014 a saved frozen snapshot was covering it.'); }catch(e){}
+          }
+        }
+      }
+    }catch(e){}
+  }
+  clearCover();
+  setInterval(clearCover, 600);
+
+  window.OmegaFrozen={
+    status:function(){
+      var f=document.getElementById('frozen-map-img');
+      var o={ liveMap:!!MAP(),
+              snapshotElement: f?getComputedStyle(f).display:'absent',
+              snapshotInMemory: !!window._frozenMapImg,
+              committedPlot: !!window._committedPlot };
+      o.verdict = !o.liveMap ? 'No live map - the snapshot is the only imagery.'
+        : o.snapshotElement!=='none' && o.snapshotElement!=='absent'
+          ? 'A frozen snapshot is covering the live map.'
+        : 'Live map visible; no snapshot covering it.';
+      console.table?console.table(o):console.log(o);
+      console.info(o.verdict);
+      return o;
+    },
+    show:function(){ var f=document.getElementById('frozen-map-img');
+      if(f) f.style.setProperty('display','block','important'); return !!f; }
+  };
+})();
+</script>
+<script>
+/* Build marker. Several rounds were spent debugging behaviour that had
+   already been fixed in a build that was not the one loaded. This makes
+   the running version checkable in one line. */
+(function(){
+  window.OMEGA_BUILD = { id:'04c1b79c', built:'2026-07-27 09:45 UTC' };
+  console.info('%cOMEGA build 04c1b79c  (2026-07-27 09:45 UTC)', 'color:#2FB54A;font-weight:bold');
+  window.OmegaVersion=function(){
+    var have=[];
+    [['OmegaFrozen','stale snapshot fix'],
+     ['OmegaAssembly','BESS pad anchoring'],
+     ['OmegaSurface','map is the input surface'],
+     ['OmegaFixDrag','four input conditions'],
+     ['OmegaWhatsBlocking','blocker finder'],
+     ['OmegaMapDoctor','maps load diagnosis'],
+     ['OmegaProjectTypes','project type selector'],
+     ['OmegaSite','site map panel']].forEach(function(p){
+      have.push((typeof window[p[0]]!=='undefined' ? 'yes ' : 'NO  ')+p[1]);
+    });
+    console.info('build '+window.OMEGA_BUILD.id+'  built '+window.OMEGA_BUILD.built);
+    have.forEach(function(l){ console.info('  '+l); });
+    return window.OMEGA_BUILD;
+  };
+})();
+</script>
 </body>
 </html>
