@@ -47430,8 +47430,8 @@ window._crmToastModal=_crmToastModal;
    already been fixed in a build that was not the one loaded. This makes
    the running version checkable in one line. */
 (function(){
-  window.OMEGA_BUILD = { id:'1e065328', built:'2026-07-27 09:45 UTC' };
-  console.info('%cOMEGA build 1e065328  (2026-07-27 09:45 UTC)', 'color:#2FB54A;font-weight:bold');
+  window.OMEGA_BUILD = { id:'39b0a5c3', built:'2026-07-27 09:45 UTC' };
+  console.info('%cOMEGA build 39b0a5c3  (2026-07-27 09:45 UTC)', 'color:#2FB54A;font-weight:bold');
   window.OmegaVersion=function(){
     var have=[];
     [['OmegaFrozen','stale snapshot fix'],
@@ -48628,6 +48628,284 @@ window._crmToastModal=_crmToastModal;
       o.verdict = !o.calibrated ? 'Not calibrated - load the map first or panels will be sized wrong.'
         : o.outlines ? o.outlines+' outline(s) ready - Solar \u2192 Canopy (Custom Shape) will fit panels to the largest.'
         : 'No outline. Solar \u2192 Canopy (Custom Shape) to trace one.';
+      console.table?console.table(o):console.log(o);
+      console.info(o.verdict);
+      return o;
+    }
+  };
+})();
+</script>
+<!-- ================= TOOL SELECTION IS IMMEDIATE =================
+     #cov's pointer-events follow the mode, but that was applied by a
+     500ms poll. Selecting Polyline and clicking straight away landed on
+     the map instead - measured covOn:true with pointer-events:none and
+     the click reaching #_gmapDiv. Half a second is exactly the gap
+     between choosing a tool and using it, so it failed almost every time
+     while looking correct a moment later.
+
+     Apply it in the same turn as the mode change instead.
+     =============================================================== -->
+<script>
+(function(){
+  function S_(){ try{ return (typeof S!=='undefined'&&S)?S:null; }catch(e){ return null; } }
+
+  function applyNow(){
+    var cov=document.getElementById('cov'); if(!cov) return;
+    var drawing=cov.classList.contains('on');
+    var want=drawing?'auto':'none';
+    if(cov.style.pointerEvents!==want){
+      cov.style.setProperty('pointer-events', want, 'important');
+    }
+    /* the crosshair follows the same signal */
+    try{ if(typeof _chUpdateVisibility==='function') _chUpdateVisibility(); }catch(e){}
+  }
+
+  /* Wrap setMode so the surface is ready before the next click can land. */
+  var tries=0;
+  var iv=setInterval(function(){
+    if(++tries>100){ clearInterval(iv); return; }
+    if(typeof window.setMode!=='function') return;
+    if(window.setMode.__omegaImmediate){ clearInterval(iv); return; }
+    var orig=window.setMode;
+    var wrapped=function(){
+      var r=orig.apply(this, arguments);
+      try{ applyNow(); }catch(e){}
+      /* .on is toggled inside setMode; re-apply on the next tick too, in
+         case a later line of it changes the class again. */
+      setTimeout(applyNow, 0);
+      return r;
+    };
+    wrapped.__omegaImmediate=true;
+    window.setMode=wrapped;
+    clearInterval(iv);
+    if(window.console) console.info('[tools] tool selection applies immediately');
+  }, 100);
+
+  /* A class change on #cov from any other route is honoured at once. */
+  try{
+    var cov=document.getElementById('cov');
+    if(cov && window.MutationObserver){
+      new MutationObserver(applyNow).observe(cov, {attributes:true, attributeFilter:['class']});
+    } else {
+      var seen=null;
+      setInterval(function(){
+        var c=document.getElementById('cov'); if(!c) return;
+        var on=c.classList.contains('on');
+        if(on!==seen){ seen=on; applyNow(); }
+      }, 60);
+    }
+  }catch(e){}
+
+  window.OmegaTools={
+    apply:applyNow,
+    status:function(){
+      var s=S_()||{}, cov=document.getElementById('cov');
+      var o={ mode:s.mode||'(none)',
+              covOn: cov?cov.classList.contains('on'):null,
+              covPointerEvents: cov?getComputedStyle(cov).pointerEvents:'absent',
+              wrapped: !!(window.setMode && window.setMode.__omegaImmediate) };
+      o.verdict = o.covOn && o.covPointerEvents!=='auto'
+          ? 'Drawing mode but #cov cannot receive clicks - they will hit the map.'
+        : !o.covOn && o.covPointerEvents==='auto'
+          ? 'Select mode but #cov is intercepting - the map will not pan.'
+        : 'Tool surface matches the mode.';
+      console.table?console.table(o):console.log(o);
+      console.info(o.verdict);
+      return o;
+    }
+  };
+})();
+</script>
+<!-- ================= CAPTURE THE MAP FOR EXPORT =================
+     The satellite raster used by exports was fetched inside the Lock Map
+     flow - the very next line was "Map locked in place, now place your
+     BESS equipment". Removing Lock Map removed the only thing that ever
+     populated window._frozenMapImg, so #backdrop had no src and every
+     export came out with a black background.
+
+     html2canvas cannot read Google's live tiles (cross-origin), which is
+     why a raster is needed at all. Fetching it at EXPORT time is better
+     than at lock time: it captures the view being exported, at the zoom
+     being exported, rather than whatever was on screen when someone
+     happened to press Lock.
+     =============================================================== -->
+<script>
+(function(){
+  function MAP(){ try{ if(typeof _gmap!=='undefined'&&_gmap) return _gmap; }catch(e){} return window._gmap||null; }
+  function key(){
+    try{ if(typeof _CFG!=='undefined' && _CFG.googleMapsKey) return _CFG.googleMapsKey; }catch(e){}
+    try{ return localStorage.getItem('omegaMapsKey')||''; }catch(e){ return ''; }
+  }
+
+  var MAXD=1280;   /* Static Maps hard limit per side before scale */
+
+  window.omegaCaptureMapForExport=async function(){
+    var m=MAP();
+    if(!m||!m.getCenter){ return {ok:false, why:'no live map'}; }
+    var k=key();
+    if(!k){ return {ok:false, why:'no Maps API key'}; }
+    var c=m.getCenter(); if(!c) return {ok:false, why:'map has no centre'};
+    var z=m.getZoom(); if(z==null) return {ok:false, why:'map has no zoom'};
+
+    var sc=document.getElementById('sc');
+    var w=sc?Math.round(sc.clientWidth):1280, hgt=sc?Math.round(sc.clientHeight):800;
+
+    /* Static Maps caps each side at 1280. The image must cover EXACTLY the
+       same ground as the canvas or it will not line up with the drawing.
+
+       Ground covered = size x metresPerPixel(zoom), and metresPerPixel
+       doubles per zoom level down. So the only shrink that preserves
+       coverage is halving the size AND dropping one zoom - together.
+
+       An arbitrary scale factor with a zoom drop, which is what this did
+       first, changes the coverage: 1440x900 at z20 became 1280x800 at
+       z19, covering roughly twice the ground per axis. The raster would
+       have been silently misaligned under the drawing. */
+    while((w>MAXD || hgt>MAXD) && z>1){
+      w=Math.max(1,Math.round(w/2));
+      hgt=Math.max(1,Math.round(hgt/2));
+      z=z-1;
+    }
+    z=Math.max(1,Math.min(21,Math.round(z)));
+    /* scale=2 gives back double the pixels for the same ground, so detail
+       is recovered without changing what the image covers. */
+
+    var url='https://maps.googleapis.com/maps/api/staticmap'
+          + '?center='+c.lat()+','+c.lng()
+          + '&zoom='+z+'&size='+w+'x'+hgt
+          + '&scale=2&maptype=satellite&key='+encodeURIComponent(k);
+    try{
+      var r=await fetch(url);
+      if(!r.ok) return {ok:false, why:'static maps returned '+r.status};
+      var blob=await r.blob();
+      if(blob.size<1200) return {ok:false, why:'image too small - key may be restricted'};
+      var data=await new Promise(function(res,rej){
+        var rd=new FileReader(); rd.onload=function(){res(rd.result);}; rd.onerror=rej;
+        rd.readAsDataURL(blob);
+      });
+      window._frozenMapImg=data;
+      var bd=document.getElementById('backdrop');
+      if(bd){ bd.src=data; }
+      return {ok:true, bytes:blob.size, zoom:z, size:w+'x'+hgt};
+    }catch(e){
+      return {ok:false, why:(e&&e.message)||'fetch failed'};
+    }
+  };
+
+  /* Run it before any export that renders the canvas. */
+  var WRAP=['openBlueprintExport','omegaPrint','openProposalExport','sendToPermitCreator'];
+  var tries=0;
+  var iv=setInterval(function(){
+    if(++tries>120){ clearInterval(iv); return; }
+    var done=0;
+    WRAP.forEach(function(name){
+      var fn=window[name];
+      if(typeof fn!=='function' || fn.__omegaCaptures){ if(typeof fn==='function') done++; return; }
+      var wrapped=function(){
+        var self=this, args=arguments;
+        try{
+          omegaCaptureMapForExport().then(function(r){
+            if(!r.ok && window.console) console.warn('[export] map capture failed: '+r.why+
+              ' - the background will be blank.');
+          });
+        }catch(e){}
+        return fn.apply(self, args);
+      };
+      wrapped.__omegaCaptures=true;
+      window[name]=wrapped;
+      done++;
+    });
+    if(done>=1) clearInterval(iv);
+  }, 200);
+
+  window.OmegaExportMap={
+    capture:window.omegaCaptureMapForExport,
+    status:function(){
+      var m=MAP();
+      var o={ liveMap:!!m, haveKey:!!key(),
+              snapshotBytes: window._frozenMapImg ? window._frozenMapImg.length : 0,
+              backdropSet: (function(){ var b=document.getElementById('backdrop');
+                return !!(b && b.getAttribute('src')); })() };
+      o.verdict = !o.liveMap ? 'No live map - nothing to capture.'
+        : !o.haveKey ? 'No Maps API key - Settings > API Keys.'
+        : !o.snapshotBytes ? 'No snapshot yet - it is taken when you open an export.'
+        : 'Snapshot ready ('+Math.round(o.snapshotBytes/1024)+' KB).';
+      console.table?console.table(o):console.log(o);
+      console.info(o.verdict);
+      return o;
+    }
+  };
+})();
+</script>
+<!-- ================= SHAPES GRABBABLE ANYWHERE =================
+     renderShape sets pointer-events:visiblePainted on each shape group.
+     That means the shape responds only WHERE IT IS PAINTED - so an
+     unfilled rectangle is grabbable on its 2.5px stroke and nowhere else.
+     Press anywhere inside and it falls through to the map, which is why a
+     placed product could not be dragged to a new spot.
+
+     That was survivable when #sc took the clicks: missing the shape just
+     did nothing. Now the map is underneath, so missing it pans the map
+     instead - the same miss, a much more confusing result.
+
+     pointer-events:all makes a shape respond across its whole geometry,
+     filled or not, which is what "click the thing and drag it" expects.
+     ============================================================== -->
+<style>
+  /* The group and its drawn children. Text labels stay click-through so
+     they never steal a grab from the shape they annotate. */
+  #csvg [data-shid],
+  #csvg [data-shid] path,
+  #csvg [data-shid] rect,
+  #csvg [data-shid] polygon,
+  #csvg [data-shid] polyline,
+  #csvg [data-shid] circle,
+  #csvg [data-shid] ellipse{ pointer-events:all; }
+  #csvg [data-shid] text,
+  #csvg [data-shid] tspan{ pointer-events:none; }
+
+  /* Conduits are lines - give them a usable grab width rather than the
+     hairline they are drawn with. */
+  #csvg [data-cid] path,
+  #csvg [data-cid] polyline,
+  #csvg [data-cid] line{ pointer-events:stroke; stroke-linecap:round; }
+</style>
+<script>
+(function(){
+  /* renderShape rewrites the style attribute each time it draws, so the
+     rule above can be undone by a re-render. Re-assert after paint. */
+  function fix(){
+    try{
+      var svg=document.getElementById('csvg'); if(!svg) return;
+      var gs=svg.querySelectorAll('[data-shid]');
+      for(var i=0;i<gs.length;i++){
+        var g=gs[i];
+        if(g.style.pointerEvents!=='all') g.style.setProperty('pointer-events','all','important');
+      }
+    }catch(e){}
+  }
+  fix();
+  setInterval(fix, 800);
+  try{
+    var svg=document.getElementById('csvg');
+    if(svg && window.MutationObserver){
+      new MutationObserver(fix).observe(svg, {childList:true, subtree:true});
+    }
+  }catch(e){}
+
+  window.OmegaGrab={
+    status:function(){
+      var svg=document.getElementById('csvg');
+      var gs=svg?svg.querySelectorAll('[data-shid]'):[];
+      var bad=0;
+      for(var i=0;i<gs.length;i++){
+        if(getComputedStyle(gs[i]).pointerEvents!=='all') bad++;
+      }
+      var o={ shapes:gs.length, notGrabbable:bad,
+              csvgPointerEvents: svg?getComputedStyle(svg).pointerEvents:'absent' };
+      o.verdict = !gs.length ? 'No shapes on the canvas.'
+        : bad ? bad+' shape(s) only grabbable on their outline.'
+        : 'All shapes grabbable anywhere inside.';
       console.table?console.table(o):console.log(o);
       console.info(o.verdict);
       return o;
