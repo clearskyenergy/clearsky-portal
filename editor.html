@@ -46938,5 +46938,121 @@ window._crmToastModal=_crmToastModal;
   };
 })();
 </script>
+<!-- ================= MAP IS THE SURFACE =================
+     The prototype's structure. Map underneath as a sibling, drawing layer
+     above it as an overlay that cannot take events unless a child asks.
+     ====================================================== -->
+<style>
+  /* #sc becomes an overlay. It keeps identical geometry so every
+     coordinate conversion measured against it is unchanged. */
+  body.omega-map-surface #sc{ pointer-events:none !important; }
+
+  /* Everything inside that genuinely needs input opts back in. */
+  body.omega-map-surface #sc .cel,
+  body.omega-map-surface #sc .h-nw, body.omega-map-surface #sc .h-ne,
+  body.omega-map-surface #sc .h-sw, body.omega-map-surface #sc .h-se,
+  body.omega-map-surface #sc .h-rot, body.omega-map-surface #sc .h-del,
+  body.omega-map-surface #sc #schem-handle,
+  body.omega-map-surface #sc #schem-resize,
+  body.omega-map-surface #omega-compass,
+  body.omega-map-surface #omega-diag,
+  body.omega-map-surface #omega-site{ pointer-events:auto !important; }
+
+  /* The map, now a sibling behind the overlay. */
+  body.omega-map-surface #_gmapDiv{
+    position:absolute; inset:0; z-index:0;
+    pointer-events:auto !important; touch-action:none !important;
+  }
+  body.omega-map-surface #sc{ z-index:1; }
+</style>
+<script>
+(function(){
+  function MAP(){ try{ if(typeof _gmap!=='undefined'&&_gmap) return _gmap; }catch(e){} return window._gmap||null; }
+
+  var moved=false;
+  function restructure(){
+    try{
+      var md=document.getElementById('_gmapDiv');
+      var sc=document.getElementById('sc');
+      var cw=document.getElementById('cw');
+      if(!md||!sc||!cw) return false;
+
+      /* Only when a live map exists - a committed plot still owns the
+         surface the old way. */
+      if(window._committedPlot) return false;
+      if(!MAP()) return false;
+
+      if(md.parentElement!==cw){
+        /* Behind #sc, same box. Geometry is unchanged because both are
+           inset:0 within #cw. */
+        cw.insertBefore(md, cw.firstChild);
+        md.style.position='absolute';
+        md.style.inset='0';
+        md.style.zIndex='0';
+        if(window.console && !moved){
+          console.info('[surface] map moved out of #sc - it is now the input surface');
+        }
+      }
+      md.style.setProperty('pointer-events','auto','important');
+      md.style.setProperty('touch-action','none','important');
+
+      if(!document.body.classList.contains('omega-map-surface')){
+        document.body.classList.add('omega-map-surface');
+      }
+      /* #sc no longer needs the inline dance - the class handles it. */
+      if(sc.style.pointerEvents) sc.style.pointerEvents='';
+      sc.style.zIndex='1';
+
+      /* #cov is inside the overlay; with a map present it must not take
+         events. Without one it is the only way to draw, so the existing
+         routing still governs that case. */
+      var cov=document.getElementById('cov');
+      if(cov) cov.style.setProperty('pointer-events','none','important');
+
+      moved=true;
+      return true;
+    }catch(e){ return false; }
+  }
+
+  restructure();
+  setInterval(restructure, 500);
+  addEventListener('resize', restructure);
+
+  window.OmegaSurface={
+    status:function(){
+      var md=document.getElementById('_gmapDiv'), sc=document.getElementById('sc'),
+          cw=document.getElementById('cw');
+      var o={
+        mapPresent:!!MAP(),
+        mapParent: md&&md.parentElement?(md.parentElement.id||md.parentElement.tagName):'ABSENT',
+        mapIsSurface: !!(md&&cw&&md.parentElement===cw),
+        scPointerEvents: sc?getComputedStyle(sc).pointerEvents:'absent',
+        mapPointerEvents: md?getComputedStyle(md).pointerEvents:'absent',
+        bodyClass: document.body.classList.contains('omega-map-surface')
+      };
+      if(sc&&md){
+        var r=sc.getBoundingClientRect();
+        var el=document.elementFromPoint(Math.round(r.x+r.width/2), Math.round(r.y+r.height/2));
+        o.centreHit = el?(el.id||el.tagName):'null';
+        o.reachesMap = !!(el && (el===md || md.contains(el)));
+      }
+      o.verdict = !o.mapPresent ? 'No map yet.'
+        : !o.mapIsSurface ? 'Map is still inside '+o.mapParent+' - restructure has not run.'
+        : o.reachesMap ? 'Map is the surface; drags reach it directly.'
+        : 'Map is a sibling but a drag lands on '+o.centreHit+'.';
+      console.table?console.table(o):console.log(o);
+      console.info(o.verdict);
+      return o;
+    },
+    revert:function(){
+      var md=document.getElementById('_gmapDiv'), sc=document.getElementById('sc');
+      if(md&&sc&&md.parentElement!==sc) sc.insertBefore(md, sc.firstChild);
+      document.body.classList.remove('omega-map-surface');
+      moved=false;
+      return 'reverted to the nested layout';
+    }
+  };
+})();
+</script>
 </body>
 </html>
