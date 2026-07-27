@@ -2,6 +2,56 @@
 <html lang="en">
 <head>
 <script>
+/* EARLY SAFETY STUBS - must load before anything that can fire a callback.
+
+   The Firebase auth callback (script block at line ~3332) calls:
+
+       _setSaved('saved');
+       _projectId = p.get('project') || p.get('id');
+       if (_projectId) _loadProject(_projectId);
+
+   but _setSaved is a function declaration in a LATER <script> block
+   (~18020). Function declarations hoist within their own block, not
+   across blocks - and auth resolves asynchronously. On a warm reload the
+   cached credential comes back before that later block has parsed, so
+   _setSaved does not exist, the callback throws inside a promise, and
+   every line after it is skipped. Including _loadProject.
+
+   That is why a reload could leave the project unloaded while the page
+   itself looked fine: one ReferenceError swallowed the load step.
+
+   These stubs are replaced by the real functions as soon as their block
+   parses; they exist only to keep the callback from throwing. */
+(function(){
+  if (typeof window._setSaved !== 'function') {
+    window._setSaved = function(state){
+      /* remember it so the real one can reflect the last state */
+      window.__omegaPendingSaveState = state;
+    };
+  }
+  if (typeof window._loadProject !== 'function') {
+    window.__omegaPendingProjectId = null;
+    window._loadProject = function(id){
+      /* Defer: the real loader is not here yet. Retry until it is. */
+      window.__omegaPendingProjectId = id;
+      var tries = 0;
+      var iv = setInterval(function(){
+        if (++tries > 200) { clearInterval(iv); return; }
+        if (typeof window._loadProject === 'function' &&
+            window._loadProject !== arguments.callee &&
+            !window._loadProject.__isOmegaStub) {
+          clearInterval(iv);
+          try { window._loadProject(id); } catch(e){
+            if (window.console) console.error('[boot] deferred _loadProject failed:', e && e.message);
+          }
+        }
+      }, 50);
+    };
+    window._loadProject.__isOmegaStub = true;
+  }
+})();
+</script>
+<script>
 // Intercept ALL errors before Safari console captures them
 window.addEventListener('error', function(e) {
   if (!e.filename || e.message === 'Script error.' || e.message === 'Script error') {
@@ -30102,7 +30152,7 @@ async function exportPermitPPTX() {
     setTimeout(function(){ URL.revokeObjectURL(url); }, 30000);
 
     if (status) status.textContent = 'Permit set downloaded! Open in PowerPoint or Google Slides.';
-    alert('\u2705 Permit Set Downloaded!\n\nFile: ' + fname2 + '\n\nNext steps:\n1. Open in Microsoft PowerPoint\n2. Update any [PLACEHOLDER] fields\n3. Have your PE review + wet stamp\n4. Submit to AHJ');
+    alert('\u2705 Permit Set Downloaded!\n\nFile: ' + fname2 + '\n\nNext steps:\n1. Open in Microsoft PowerPoint\n2. Update any [59d8dee6] fields\n3. Have your PE review + wet stamp\n4. Submit to AHJ');
 
   } catch(err) {
     console.error('exportPermitPPTX error:', err);
@@ -47340,8 +47390,8 @@ window._crmToastModal=_crmToastModal;
    already been fixed in a build that was not the one loaded. This makes
    the running version checkable in one line. */
 (function(){
-  window.OMEGA_BUILD = { id:'04c1b79c', built:'2026-07-27 09:45 UTC' };
-  console.info('%cOMEGA build 04c1b79c  (2026-07-27 09:45 UTC)', 'color:#2FB54A;font-weight:bold');
+  window.OMEGA_BUILD = { id:'59d8dee6', built:'2026-07-27 09:45 UTC' };
+  console.info('%cOMEGA build 59d8dee6  (2026-07-27 09:45 UTC)', 'color:#2FB54A;font-weight:bold');
   window.OmegaVersion=function(){
     var have=[];
     [['OmegaFrozen','stale snapshot fix'],
