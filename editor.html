@@ -47430,8 +47430,8 @@ window._crmToastModal=_crmToastModal;
    already been fixed in a build that was not the one loaded. This makes
    the running version checkable in one line. */
 (function(){
-  window.OMEGA_BUILD = { id:'e958587f', built:'2026-07-27 09:45 UTC' };
-  console.info('%cOMEGA build e958587f  (2026-07-27 09:45 UTC)', 'color:#2FB54A;font-weight:bold');
+  window.OMEGA_BUILD = { id:'1d16ab3a', built:'2026-07-27 09:45 UTC' };
+  console.info('%cOMEGA build 1d16ab3a  (2026-07-27 09:45 UTC)', 'color:#2FB54A;font-weight:bold');
   window.OmegaVersion=function(){
     var have=[];
     [['OmegaFrozen','stale snapshot fix'],
@@ -49152,6 +49152,215 @@ window._crmToastModal=_crmToastModal;
               savedView:window._restoreView||null };
       o.verdict = o.pinned ? 'View is pinned - zoom and pan will snap back until you interact.'
                            : 'View is free.';
+      console.table?console.table(o):console.log(o);
+      console.info(o.verdict);
+      return o;
+    }
+  };
+})();
+</script>
+<!-- ================= ENGINEERING MODE: SHOW ITS STATE =================
+     toggleEngMode() works - it flips ENG_MODE and restyles conduits. But
+     it only affects CONDUITS, and the menu item looks identical either
+     way. Click it with no conduits drawn and there is nothing to see, so
+     it reads as a dead button.
+
+     Two fixes, neither of which changes what the mode does:
+       - the menu item shows which state it is in
+       - if there is nothing on the canvas for it to affect, say so
+     ==================================================================== -->
+<style>
+  .rb-fly-item.omega-toggle-on{
+    background:rgba(0,212,255,.14);
+    box-shadow:inset 2px 0 0 var(--hl,#00D4FF);
+  }
+  .rb-fly-item .omega-state{
+    float:right; font:600 9px/1 var(--font-mono,ui-monospace,monospace);
+    letter-spacing:.1em; opacity:.85; padding-left:10px;
+  }
+  .rb-fly-item.omega-toggle-on .omega-state{ color:var(--hl,#00D4FF); }
+</style>
+<script>
+(function(){
+  function S_(){ try{ return (typeof S!=='undefined'&&S)?S:null; }catch(e){ return null; } }
+  function item(){
+    return Array.prototype.slice.call(document.querySelectorAll('.rb-fly-item'))
+      .filter(function(b){ return /toggleEngMode/.test(b.getAttribute('onclick')||''); })[0];
+  }
+
+  function paint(){
+    var el=item(); if(!el) return;
+    var on = (typeof _engActive==='function') ? _engActive() : (window.ENG_MODE!==false);
+    el.classList.toggle('omega-toggle-on', !!on);
+    var tag=el.querySelector('.omega-state');
+    if(!tag){
+      tag=document.createElement('span');
+      tag.className='omega-state';
+      el.appendChild(tag);
+    }
+    tag.textContent = on ? 'ON' : 'OFF';
+    el.setAttribute('aria-pressed', on?'true':'false');
+  }
+
+  /* Wrap the toggle so state paints immediately and the banner says
+     something useful when nothing on the canvas will change. */
+  var tries=0;
+  var iv=setInterval(function(){
+    if(++tries>120){ clearInterval(iv); return; }
+    if(typeof window.toggleEngMode!=='function') return;
+    if(window.toggleEngMode.__omegaState){ clearInterval(iv); paint(); return; }
+    var orig=window.toggleEngMode;
+    var w=function(){
+      var r=orig.apply(this, arguments);
+      try{
+        paint();
+        var s=S_()||{};
+        var n=(s.conduits||[]).length;
+        if(!n && typeof showBanner==='function'){
+          showBanner('cal', (window.ENG_MODE?'Engineering Mode ON':'Engineering Mode OFF')
+            + ' \u2014 it styles conduit runs, and there are none drawn yet.');
+        }
+      }catch(e){}
+      return r;
+    };
+    w.__omegaState=true;
+    window.toggleEngMode=w;
+    clearInterval(iv);
+    paint();
+  }, 150);
+
+  /* Repaint when the flyout opens, since it may be rebuilt. */
+  setInterval(paint, 900);
+
+  window.OmegaEngMode={
+    state:function(){ return (typeof _engActive==='function')?_engActive():(window.ENG_MODE!==false); },
+    status:function(){
+      var s=S_()||{};
+      var o={ engMode:window.ENG_MODE,
+              effective:(typeof _engActive==='function')?_engActive():'n/a',
+              guideOverride:(typeof _guideRunning==='function')?_guideRunning():'n/a',
+              conduits:(s.conduits||[]).length,
+              menuShowsState: !!(item() && item().querySelector('.omega-state')) };
+      o.verdict = o.guideOverride ? 'A guide is running - it forces colour regardless of this setting.'
+        : !o.conduits ? 'Toggle works, but it only styles conduits and none are drawn.'
+        : 'Engineering Mode '+(o.effective?'ON':'OFF')+' across '+o.conduits+' conduit run(s).';
+      console.table?console.table(o):console.log(o);
+      console.info(o.verdict);
+      return o;
+    }
+  };
+})();
+</script>
+<!-- ================= SOLAR AS A HATCHED AREA =================
+     A custom-shape array was drawn as its individual panel tables. At
+     plan scale that is a lot of little rectangles that read as clutter
+     rather than as one array, and it is not how a solar field is shown on
+     a plan set - a hatched region with the capacity called out is.
+
+     So: fill the boundary with a diagonal hatch, keep one outline, and
+     drop the per-table rectangles. The tables stay in the MODEL - the
+     takeoff, the kW and the row counts are unchanged - this only changes
+     what is drawn.
+     ============================================================ -->
+<script>
+(function(){
+  function S_(){ try{ return (typeof S!=='undefined'&&S)?S:null; }catch(e){ return null; } }
+  var PID='omega-solar-hatch';
+
+  function ensurePattern(svg, color){
+    var defs=svg.querySelector('defs.omega-hatch-defs');
+    if(!defs){
+      defs=document.createElementNS('http://www.w3.org/2000/svg','defs');
+      defs.setAttribute('class','omega-hatch-defs');
+      svg.insertBefore(defs, svg.firstChild);
+    }
+    var pat=defs.querySelector('#'+PID);
+    if(!pat){
+      pat=document.createElementNS('http://www.w3.org/2000/svg','pattern');
+      pat.setAttribute('id',PID);
+      pat.setAttribute('patternUnits','userSpaceOnUse');
+      pat.setAttribute('width','9'); pat.setAttribute('height','9');
+      pat.setAttribute('patternTransform','rotate(45)');
+      var ln=document.createElementNS('http://www.w3.org/2000/svg','line');
+      ln.setAttribute('x1','0'); ln.setAttribute('y1','0');
+      ln.setAttribute('x2','0'); ln.setAttribute('y2','9');
+      ln.setAttribute('stroke-width','1.6');
+      ln.setAttribute('class','omega-hatch-line');
+      pat.appendChild(ln);
+      defs.appendChild(pat);
+    }
+    var ln2=pat.querySelector('.omega-hatch-line');
+    if(ln2) ln2.setAttribute('stroke', color||'#F5B301');
+    return PID;
+  }
+
+  function hatchOne(g, sh){
+    if(!sh.boundary || sh.boundary.length<3) return false;
+    if(g.querySelector('.omega-hatch-fill')) return false;     /* already done */
+    var svg=document.getElementById('csvg'); if(!svg) return false;
+    var color = sh.color || '#F5B301';
+    ensurePattern(svg, color);
+
+    /* Remove the per-table rectangles - the model keeps them. */
+    var killed=0;
+    Array.prototype.slice.call(g.querySelectorAll('rect')).forEach(function(r){
+      var w=parseFloat(r.getAttribute('width')||'0');
+      var hh=parseFloat(r.getAttribute('height')||'0');
+      /* the tables are small; do not remove a full-extent background rect */
+      if(w>0 && hh>0 && w<160 && hh<160){ r.parentNode.removeChild(r); killed++; }
+    });
+
+    var pts=sh.boundary.map(function(p){ return p.x+','+p.y; }).join(' ');
+    var fill=document.createElementNS('http://www.w3.org/2000/svg','polygon');
+    fill.setAttribute('class','omega-hatch-fill');
+    fill.setAttribute('points',pts);
+    fill.setAttribute('fill','url(#'+PID+')');
+    fill.setAttribute('stroke',color);
+    fill.setAttribute('stroke-width','2');
+    fill.setAttribute('stroke-linejoin','round');
+    fill.setAttribute('pointer-events','all');
+    g.insertBefore(fill, g.firstChild);
+    return true;
+  }
+
+  var on=true;
+  function pass(){
+    if(!on) return 0;
+    var s=S_(); if(!s) return 0;
+    var n=0;
+    (s.shapes||[]).forEach(function(sh){
+      if(sh.kind!=='dersolar' || !sh.boundary || sh.boundary.length<3) return;
+      var g=document.querySelector('[data-shid="'+sh.id+'"]');
+      if(g && hatchOne(g, sh)) n++;
+    });
+    return n;
+  }
+  setInterval(pass, 500);
+  try{
+    var svg=document.getElementById('csvg');
+    if(svg && window.MutationObserver) new MutationObserver(function(){ pass(); })
+      .observe(svg, {childList:true, subtree:true});
+  }catch(e){}
+
+  window.OmegaHatch={
+    on:function(){ on=true; pass(); return true; },
+    off:function(){
+      on=false;
+      Array.prototype.slice.call(document.querySelectorAll('.omega-hatch-fill'))
+        .forEach(function(n){ if(n.parentNode) n.parentNode.removeChild(n); });
+      var s=S_(); if(s) (s.shapes||[]).forEach(function(sh){
+        if(sh.kind==='dersolar' && typeof renderShape==='function'){ try{ renderShape(sh); }catch(e){} } });
+      return false;
+    },
+    status:function(){
+      var s=S_()||{};
+      var arrays=(s.shapes||[]).filter(function(x){ return x.kind==='dersolar' && x.boundary && x.boundary.length>=3; });
+      var done=document.querySelectorAll('.omega-hatch-fill').length;
+      var o={ enabled:on, customShapeArrays:arrays.length, hatched:done,
+              tablesInModel:arrays.reduce(function(a,x){ return a+((x.tables||[]).length); },0) };
+      o.verdict = !arrays.length ? 'No custom-shape arrays on the canvas.'
+        : done<arrays.length ? (arrays.length-done)+' array(s) not hatched yet.'
+        : 'All '+done+' array(s) hatched; '+o.tablesInModel+' tables still counted in the takeoff.';
       console.table?console.table(o):console.log(o);
       console.info(o.verdict);
       return o;
