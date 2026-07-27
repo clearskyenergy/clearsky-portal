@@ -47309,6 +47309,11 @@ window._crmToastModal=_crmToastModal;
   setInterval(function(){ stamp(); reproject(); }, 700);
 
   window.OmegaAssembly={
+    /* Exposed so placement can stamp in the same turn rather than waiting
+       for the 700ms sweep. OmegaAnchorAll only handles pts-based shapes;
+       assemblies are cx/cy and need this one. */
+    stamp:stamp,
+    reproject:reproject,
     status:function(){
       var s=S_()||{};
       var all=(s.shapes||[]).filter(centred);
@@ -47390,8 +47395,8 @@ window._crmToastModal=_crmToastModal;
    already been fixed in a build that was not the one loaded. This makes
    the running version checkable in one line. */
 (function(){
-  window.OMEGA_BUILD = { id:'59d8dee6', built:'2026-07-27 09:45 UTC' };
-  console.info('%cOMEGA build 59d8dee6  (2026-07-27 09:45 UTC)', 'color:#2FB54A;font-weight:bold');
+  window.OMEGA_BUILD = { id:'6b14b70e', built:'2026-07-27 09:45 UTC' };
+  console.info('%cOMEGA build 6b14b70e  (2026-07-27 09:45 UTC)', 'color:#2FB54A;font-weight:bold');
   window.OmegaVersion=function(){
     var have=[];
     [['OmegaFrozen','stale snapshot fix'],
@@ -47407,6 +47412,82 @@ window._crmToastModal=_crmToastModal;
     console.info('build '+window.OMEGA_BUILD.id+'  built '+window.OMEGA_BUILD.built);
     have.forEach(function(l){ console.info('  '+l); });
     return window.OMEGA_BUILD;
+  };
+})();
+</script>
+<!-- ================= PLACE-TIME POLISH =================
+     Two small things that only show up in real use.
+     ====================================================== -->
+<script>
+(function(){
+  function S_(){ try{ return (typeof S!=='undefined'&&S)?S:null; }catch(e){ return null; } }
+
+  /* 1. ANCHOR AN ASSEMBLY THE INSTANT IT IS PLACED.
+        The assembly stamp runs on a 700ms timer, so a pad created by
+        _padModalConfirm was unanchored until the next tick - measured
+        hasGeo:false immediately after placement. Pan inside that window
+        and it drifts. Stamp it in the same turn as the placement. */
+  function stampNow(){
+    try{
+      var s=S_(); if(!s) return;
+      /* Assemblies are cx/cy - OmegaAnchorAll only covers pts-based
+         shapes, which is why calling it here left hasGeo false. */
+      if(window.OmegaAssembly && OmegaAssembly.stamp) OmegaAssembly.stamp();
+      if(window.OmegaAnchorAll) OmegaAnchorAll();
+    }catch(e){}
+  }
+  function wrap(name){
+    var orig=window[name];
+    if(typeof orig!=='function' || orig.__omegaStamped) return;
+    var f=function(){
+      var r=orig.apply(this, arguments);
+      try{ stampNow(); setTimeout(stampNow, 0); }catch(e){}
+      return r;
+    };
+    f.__omegaStamped=true;
+    window[name]=f;
+  }
+  var tries=0;
+  var iv=setInterval(function(){
+    if(++tries>80){ clearInterval(iv); return; }
+    ['_padModalConfirm','_doPlaceBesPad'].forEach(wrap);
+    if(typeof window._padModalConfirm==='function' && window._padModalConfirm.__omegaStamped) clearInterval(iv);
+  }, 200);
+
+  /* 2. KEEP THE CROSSHAIR IN STEP WITH THE MODE.
+        _chUpdateVisibility() only runs when something calls it. When the
+        mode changes by a route that does not - opening the pad modal, for
+        instance - the crosshair stays drawn over the map for a mode that
+        is no longer active. Watch the mode and resync. */
+  var lastMode=null;
+  setInterval(function(){
+    try{
+      var s=S_(); if(!s) return;
+      if(s.mode===lastMode) return;
+      lastMode=s.mode;
+      if(typeof _chUpdateVisibility==='function') _chUpdateVisibility();
+    }catch(e){}
+  }, 250);
+
+  window.OmegaPlacePolish={
+    status:function(){
+      var s=S_()||{};
+      var asm=(s.shapes||[]).filter(function(x){ return x.cx!=null && x.cy!=null; });
+      var ch=document.getElementById('nn-crosshair');
+      var o={ mode:s.mode||'(none)',
+              assemblies:asm.length,
+              assembliesAnchored:asm.filter(function(x){ return !!x._geoPts; }).length,
+              crosshair: ch?getComputedStyle(ch).display:'absent',
+              confirmWrapped: !!(window._padModalConfirm && window._padModalConfirm.__omegaStamped) };
+      o.verdict = o.assemblies && o.assembliesAnchored<o.assemblies
+          ? (o.assemblies-o.assembliesAnchored)+' assembly(ies) still unanchored.'
+        : (o.crosshair==='block' && (!o.mode || o.mode==='select'))
+          ? 'Crosshair is showing in select mode - it should be hidden.'
+        : 'Placement state looks consistent.';
+      console.table?console.table(o):console.log(o);
+      console.info(o.verdict);
+      return o;
+    }
   };
 })();
 </script>
