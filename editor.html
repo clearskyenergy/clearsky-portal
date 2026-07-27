@@ -47094,6 +47094,22 @@ window._crmToastModal=_crmToastModal;
   body.omega-map-surface #csvg{ pointer-events:none !important; }
   /* #cov is governed by the mode, in script - see the restructure pass. */
 
+  /* ANYTHING THAT STACKS ABOVE THE DRAWING IS UI, NOT CANVAS.
+     Modals live inside #sc - #pad-modal's parent chain is
+     sc < cw < ws < body - so making #sc pointer-events:none made every
+     dialog inside it unclickable. The Place button measured
+     pointer-events:none with the click landing on #_gmapDiv underneath.
+
+     A whitelist of ids would need extending for every dialog ever added.
+     Stacking order already encodes the distinction: the drawing layers
+     sit at z-index 50 and below, UI sits above. Use that. */
+  body.omega-map-surface #sc [style*="z-index"],
+  body.omega-map-surface #sc .modal,
+  body.omega-map-surface #sc [role="dialog"],
+  body.omega-map-surface #sc [id$="-modal"],
+  body.omega-map-surface #sc [id$="-panel"],
+  body.omega-map-surface #sc [id$="-dlg"]{ pointer-events:auto; }
+
   /* Everything inside that genuinely needs input opts back in. */
   body.omega-map-surface #sc .cel,
   body.omega-map-surface #sc .h-nw, body.omega-map-surface #sc .h-ne,
@@ -47160,6 +47176,22 @@ window._crmToastModal=_crmToastModal;
           e.style.setProperty('pointer-events','none','important');
         }
       });
+
+      /* Re-assert interactivity for anything stacked above the drawing.
+         Computed z-index is the reliable signal and CSS cannot select on
+         it, so this pass does. Layer containers are excluded by name. */
+      var LAYERS={ els:1, csvg:1, cov:1, _gmapDiv:1 };
+      var kids=sc.children;
+      for(var ki=0; ki<kids.length; ki++){
+        var kid=kids[ki];
+        if(LAYERS[kid.id]) continue;
+        var cs=getComputedStyle(kid);
+        if(cs.display==='none' || cs.visibility==='hidden') continue;
+        var z=parseInt(cs.zIndex,10);
+        if(isFinite(z) && z>=100 && cs.pointerEvents==='none'){
+          kid.style.setProperty('pointer-events','auto','important');
+        }
+      }
 
       /* #cov FOLLOWS THE MODE, not the map.
          Shapes - rect, circle, polyline, parking, bespad - are drawn by
@@ -47395,8 +47427,8 @@ window._crmToastModal=_crmToastModal;
    already been fixed in a build that was not the one loaded. This makes
    the running version checkable in one line. */
 (function(){
-  window.OMEGA_BUILD = { id:'6b14b70e', built:'2026-07-27 09:45 UTC' };
-  console.info('%cOMEGA build 6b14b70e  (2026-07-27 09:45 UTC)', 'color:#2FB54A;font-weight:bold');
+  window.OMEGA_BUILD = { id:'42e766c2', built:'2026-07-27 09:45 UTC' };
+  console.info('%cOMEGA build 42e766c2  (2026-07-27 09:45 UTC)', 'color:#2FB54A;font-weight:bold');
   window.OmegaVersion=function(){
     var have=[];
     [['OmegaFrozen','stale snapshot fix'],
