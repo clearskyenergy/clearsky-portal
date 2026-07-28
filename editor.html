@@ -50505,7 +50505,7 @@ window._crmToastModal=_crmToastModal;
 
 <!-- ═════════════════════════════════════════════════════════════════════
      CLEARSKY OMEGA — SITE MAP DESIGNER PRO
-     PATCH BUNDLE  ·  2026-07-28  ·  rev 13
+     PATCH BUNDLE  ·  2026-07-28  ·  rev 14
 
      Paste this whole block into editor.html immediately before </body>.
 
@@ -50518,9 +50518,9 @@ window._crmToastModal=_crmToastModal;
        7. Guided-build assemblies can be dragged and stay put     [rev 5]
        8. Trench and conduit move together                       [rev 6]
           + stays out of the way during a guided build's
-            batched placement                                [rev 13]
+            batched placement                                [rev 14]
        9. Solar exclusions no longer make a project unsaveable   [rev 7]
-      10. Project lists query uid, not the absent owner field    [rev 13]
+      10. Project lists query uid, not the absent owner field    [rev 14]
 
      TRIAGE: OmegaPatch.off()  stops every timer-driven pass in this
              bundle, immediately, without a redeploy. OmegaPatch.installed()
@@ -52575,6 +52575,29 @@ window._crmToastModal=_crmToastModal;
     return c._groundTrue;
   }
 
+  /* _gmapAutoScale() strips every conduit node and calls renderConduit()
+     directly — no renderTrenchCorridors() first, no _refreshConduitStyle()
+     after. So the runs come back with no bank slot and no engineering
+     linetype: thin, plain, wrong. It is wired to BOTH zoom_changed and
+     center_changed, so it runs continuously through a pan.
+
+     Up to rev 10 this module called _refreshConduitStyle() on every pass,
+     which repaired that by accident — at the cost of 180 full repaints per
+     three-second pan. Rev 11 removed the storm and, with it, the repair.
+
+     A restyle is genuinely needed after the view settles; it is needed ONCE.
+     Trailing debounce: continuous motion collapses to a single repaint when
+     the map stops. */
+  var restyleTimer = null;
+  function scheduleRestyle() {
+    if (window.OMEGA_OFF) return;
+    if (restyleTimer) clearTimeout(restyleTimer);
+    restyleTimer = setTimeout(function () {
+      restyleTimer = null;
+      try { if (typeof _refreshConduitStyle === 'function') _refreshConduitStyle(); } catch (e) {}
+    }, 200);
+  }
+
   /* Called whenever the view moved. pxLen must follow the screen; ftLen is
      restored from the cached ground value, undoing the stale-pixel
      division _gmapAutoScale just performed. */
@@ -52680,6 +52703,7 @@ window._crmToastModal=_crmToastModal;
       var r;
       try { r = orig.apply(this, arguments); } catch (e) {}
       try { restoreAll(); } catch (e) {}
+      scheduleRestyle();          /* it just un-styled every run */
       return r;
     };
     wrapped.__omegaGround = true;
@@ -52696,6 +52720,7 @@ window._crmToastModal=_crmToastModal;
       var r;
       try { r = orig.apply(this, arguments); } catch (e) {}
       try { restoreAll(); } catch (e) {}
+      scheduleRestyle();          /* debounced: one repaint when motion stops */
       return r;
     };
     wrapped.__omegaGround = true;
@@ -52731,6 +52756,7 @@ window._crmToastModal=_crmToastModal;
     lengthFt: groundLengthFt,
     areaSf: groundAreaSf,
     refresh: recomputeAll,
+    restyle: function () { scheduleRestyle(); return true; },
 
     /* Side by side, on the real drawing. The px column is what the
        schedule printed before this patch. */
