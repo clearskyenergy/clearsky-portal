@@ -50503,9 +50503,10 @@ window._crmToastModal=_crmToastModal;
 })();
 </script>
 
+
 <!-- ═════════════════════════════════════════════════════════════════════
      CLEARSKY OMEGA — SITE MAP DESIGNER PRO
-     PATCH BUNDLE  ·  2026-07-28  ·  rev 16
+     PATCH BUNDLE  ·  2026-07-28  ·  rev 17
 
      Paste immediately before </body>. Exactly ONE copy per file.
 
@@ -50520,8 +50521,9 @@ window._crmToastModal=_crmToastModal;
        9. Solar exclusions no longer make a project unsaveable
       10. Project lists query uid, not the absent owner field
       11. Auto-Layout's Generate button is legible
-      13. BESS/solar guided-build trenches are classified by
-          conduit type, not by comparing colour strings
+      13. BESS/solar guided-build trenches: committed runs are
+          classified by conduit type, and the DRAFT's leg field
+          is normalised from the colour string it was given
 
      OPT-IN — these reach into the live render/anchor loop, which is where
      every regression in this bundle came from. They are OFF unless you set
@@ -50558,7 +50560,7 @@ window._crmToastModal=_crmToastModal;
       console.info('[omega] patch passes ON');
       return true;
     },
-    rev: 16,
+    rev: 17,
     installed: function () {
       var keys = ['OmegaMapExport', 'OmegaClose', 'OmegaSolar', 'OmegaAnchor', 'OmegaRecent',
                   'OmegaGround', 'OmegaMove', 'OmegaTrenchFix', 'OmegaSave', 'OmegaProjects'];
@@ -53127,8 +53129,32 @@ window._crmToastModal=_crmToastModal;
    Classify by conduit TYPE, which is what _bgbLegCond() already returns,
    instead of round-tripping through a colour string.
 
-   Scope: the trench record's leg field and a repaint of that one layer.
-   It cannot touch conduit creation, the anchor loop, or the map.
+   AND THE DRAFT IS WORSE — IT IS A TYPE ERROR
+
+   While you are still clicking points, the line you see is _dcfcDraw, and
+   the two flows populate its `leg` field with different KINDS of value:
+
+       DCFC  leg: _dcfcLegOf(_dcfcCurKind())    -> 'main' | 'feeder' | 'branch'
+       BGB   leg: _bgbLegColor(_bgbCurKind())   -> '#FF0000' | '#EF4444' | ...
+
+   _bgbLegColor returns a COLOUR. All five BGB assignment sites do this
+   (lines 38835, 38848, 38854, 38895, 38896). The renderer then asks:
+
+       function legColor(leg){ return leg==='main'   ? '#FF0000'
+                                    : leg==='feeder' ? '#FFFF00'
+                                    : leg==='branch' ? '#00FFFF'
+                                    : '#00FF00'; }
+
+   '#EF4444' is not 'main', 'feeder' or 'branch', so every BGB draft falls
+   to the final default. The line you are drawing is never the colour of
+   the service you are drawing — in any BGB mode, including the ones whose
+   committed runs classify correctly.
+
+   So the draft is normalised to a real leg name before that renderer runs.
+
+   Scope: the trench record's leg field, the draft's leg field, and a
+   repaint of that one layer. It cannot touch conduit creation, the anchor
+   loop, or the map.
    ═══════════════════════════════════════════════════════════════════════ */
 (function () {
   'use strict';
@@ -53155,6 +53181,40 @@ window._crmToastModal=_crmToastModal;
       var cond = _bgbLegCond(kind);
       return LEG_BY_TYPE[cond] || null;
     } catch (e) { return null; }
+  }
+
+  /* A leg field holding '#RRGGBB' came from _bgbLegColor and is a bug.
+     Prefer re-deriving from the current step; fall back to the colour. */
+  var COLOUR_TO_LEG = {
+    '#FF0000': 'main', '#EF4444': 'main',
+    '#FFFF00': 'feeder',
+    '#00FFFF': 'branch', '#2563EB': 'branch', '#00FF00': 'branch'
+  };
+
+  function normaliseDraft() {
+    try {
+      if (typeof _dcfcDraw === 'undefined' || !_dcfcDraw) return false;
+      var l = _dcfcDraw.leg;
+      if (typeof l !== 'string' || l.charAt(0) !== '#') return false;
+      var kind = null;
+      try { if (typeof _bgbCurKind === 'function') kind = _bgbCurKind(); } catch (e) {}
+      _dcfcDraw.leg = legFor(kind) || COLOUR_TO_LEG[l.toUpperCase()] || 'branch';
+      return true;
+    } catch (e) { return false; }
+  }
+
+  /* The draft is populated in five places; catch them all at the one point
+     they converge on — the renderer. */
+  function hookRender() {
+    var orig = window._dcfcRenderTrenches;
+    if (typeof orig !== 'function' || orig.__omegaLeg) return false;
+    var wrapped = function () {
+      normaliseDraft();
+      return orig.apply(this, arguments);
+    };
+    wrapped.__omegaLeg = true;
+    window._dcfcRenderTrenches = wrapped;
+    return true;
   }
 
   function trenches() {
@@ -53197,8 +53257,9 @@ window._crmToastModal=_crmToastModal;
 
   var n = 0;
   var iv = setInterval(function () {
-    if (hook()) {
-      if (window.console) console.info(TAG, 'armed — trenches classified by conduit type, not colour string');
+    var a = hook(), b = hookRender();
+    if (a || b) {
+      if (window.console) console.info(TAG, 'armed — committed runs classified by type; draft leg normalised');
     }
     if (++n > 200) clearInterval(iv);
   }, 300);
@@ -53237,7 +53298,12 @@ window._crmToastModal=_crmToastModal;
         trenchRuns: list.length,
         byLeg: JSON.stringify(byLeg),
         reclassified: list.filter(function (t) { return t && t._omegaLeg; }).length,
-        hooked: !!(window._bgbFinishRun && window._bgbFinishRun.__omegaLeg)
+        hooked: !!(window._bgbFinishRun && window._bgbFinishRun.__omegaLeg),
+        draftHooked: !!(window._dcfcRenderTrenches && window._dcfcRenderTrenches.__omegaLeg),
+        draftLeg: (function () {
+          try { return (typeof _dcfcDraw !== 'undefined' && _dcfcDraw) ? _dcfcDraw.leg : '(not drawing)'; }
+          catch (e) { return '(n/a)'; }
+        })()
       };
       o.verdict = !list.length ? 'No trench runs drawn yet.'
         : (byLeg.branch === list.length && list.length > 1)
