@@ -50506,13 +50506,17 @@ window._crmToastModal=_crmToastModal;
 
 <!-- ═════════════════════════════════════════════════════════════════════
      CLEARSKY OMEGA — SITE MAP DESIGNER PRO
-     PATCH BUNDLE  ·  2026-07-28  ·  rev 17
+     PATCH BUNDLE  ·  2026-07-28  ·  rev 18
 
-     Paste immediately before </body>. Exactly ONE copy per file.
+     Exactly ONE copy per file, immediately before </body>.
 
-     ON BY DEFAULT — these are the four you confirmed working, plus four
-     that never touch the render or anchor loop:
+     THE ONE THAT MATTERS
+      14. The native map layer hid #csvg and redrew every conduit as a flat
+          3px Polyline with a hardcoded #00D4FF fallback — no trench band,
+          no label, no colour. Defaulted OFF (one-time), canvas restored,
+          and the colour fallback filled from CTYPES.
 
+     ALSO ON
        1. Satellite background in every export
        2. Snap-to-close when tracing a custom solar area
        3. Correct setback maths + a per-array size / capacity editor
@@ -50521,26 +50525,21 @@ window._crmToastModal=_crmToastModal;
        9. Solar exclusions no longer make a project unsaveable
       10. Project lists query uid, not the absent owner field
       11. Auto-Layout's Generate button is legible
-      13. BESS/solar guided-build trenches: committed runs are
-          classified by conduit type, and the DRAFT's leg field
-          is normalised from the colour string it was given
+      13. Guided-build trench legs classified by conduit type, and the
+          draft's leg normalised from the colour string it was given
 
-     OPT-IN — these reach into the live render/anchor loop, which is where
-     every regression in this bundle came from. They are OFF unless you set
-     window.OMEGA_EXPERIMENTAL = true before this script runs:
-
-       6. Conduit length measured from coordinates, not pixels
-       7. Guided-build assemblies can be dragged and stay put
+     OPT-IN — these reach into the live render/anchor loop. OFF unless
+     window.OMEGA_EXPERIMENTAL = true is set before this script:
+       6. Conduit length from coordinates, not pixels
+       7. Guided-build assemblies draggable
        8. Trench and conduit move together
       12. renderEl replaces its node instead of stacking a ghost
 
-     Each fixes a real bug. Each also destabilised conduit rendering when
-     it was on by default. Enable one at a time if you want them.
-
      TRIAGE
-       OmegaPatch.installed()   which modules are live, and the rev
-       OmegaPatch.off()         stop every timer-driven pass immediately
-       OmegaSave.check()        why a save failed
+       OmegaPatch.installed()     which modules are live, and the rev
+       OmegaPatch.off()           stop every timer-driven pass
+       OmegaNativeOff.status()    is the drawing canvas visible?
+       OmegaNativeOff.restore()   force the SVG layer back on
      ═══════════════════════════════════════════════════════════════════ -->
 <script>
 /* A single flag that stops every timer-driven pass this bundle installs,
@@ -50560,13 +50559,180 @@ window._crmToastModal=_crmToastModal;
       console.info('[omega] patch passes ON');
       return true;
     },
-    rev: 17,
+    rev: 18,
     installed: function () {
       var keys = ['OmegaMapExport', 'OmegaClose', 'OmegaSolar', 'OmegaAnchor', 'OmegaRecent',
                   'OmegaGround', 'OmegaMove', 'OmegaTrenchFix', 'OmegaSave', 'OmegaProjects'];
       var have = keys.filter(function (k) { return !!window[k]; });
       console.info('[omega] rev ' + window.OmegaPatch.rev + ' — ' + have.length + '/' + keys.length + ' modules: ' + have.join(', '));
       return have;
+    }
+  };
+})();
+
+
+/* ═══════════════════════════════════════════════════════════════════════
+   OMEGA PATCH — 14 : THE NATIVE LAYER IS HIDING YOUR CONDUITS
+   -----------------------------------------------------------------------
+   When the native map layer is on it hides the SVG canvas outright:
+
+       function hideLegacy(hide){
+         var csvg = document.getElementById('csvg');
+         if(csvg) csvg.style.display = hide ? 'none' : '';
+       }
+
+   #csvg is where the real conduit rendering lives — the coloured run, the
+   halo, the trench corridor band, the "[3-4\" PVC UG, concrete-encased]"
+   label, the bank offsets. With it hidden, what remains is one flat
+   Polyline per run:
+
+       objs.push(line(pts, c.color || '#00D4FF', false));   // strokeWeight: 3
+
+   #00D4FF is the cyan on screen. It is the FALLBACK, used whenever
+   c.color is unset — which is why every run looked identical whatever its
+   service was.
+
+   Two things here.
+
+   1. TURN IT OFF, ONCE.
+      A migration at line 46759 already tried to default it off, but it is
+      keyed on 'omegaNativeMigrated', which is already '1' in any browser
+      that has run this build — so it never fires again. This runs the same
+      migration under a new key. It is one-time: turn the native layer back
+      on deliberately and it stays on.
+
+   2. FIX THE FALLBACK ANYWAY.
+      Any conduit reaching the native layer without a colour is drawn cyan.
+      Filling c.color from CTYPES by condType means that if the native
+      layer is ever switched on, the runs at least carry their real service
+      colours. It cannot draw bands or labels — that is not what it is for
+      — but it should not make an MV trench look like a data run.
+   ═══════════════════════════════════════════════════════════════════════ */
+(function () {
+  'use strict';
+
+  var TAG = '[omega/native]';
+  var KEY = 'omegaNativeOffV2';
+
+  function S_() { try { return (typeof S !== 'undefined' && S) ? S : null; } catch (e) { return null; } }
+
+  /* ── 1. one-time: default the native layer off ────────────────────── */
+  function migrate() {
+    try {
+      if (localStorage.getItem(KEY) === '1') return false;
+      localStorage.setItem('omegaNative', '0');
+      localStorage.setItem(KEY, '1');
+      if (window.console) {
+        console.info(TAG, 'native map layer defaulted OFF — the SVG layer draws '
+          + 'conduits with their trench bands and labels. OmegaNative.enable() to re-enable.');
+      }
+      return true;
+    } catch (e) { return false; }
+  }
+
+  /* If it is off but #csvg is still hidden, something switched it off
+     without restoring the canvas. Put it back. */
+  function ensureLegacyVisible() {
+    try {
+      if (window.OmegaNative && typeof OmegaNative.isOn === 'function' && OmegaNative.isOn()) return false;
+      var c = document.getElementById('csvg');
+      if (c && c.style.display === 'none') {
+        c.style.display = '';
+        if (window.console) console.info(TAG, 'restored #csvg — the drawing layer was hidden with the native layer off');
+        return true;
+      }
+    } catch (e) {}
+    return false;
+  }
+
+  function disableNative() {
+    try {
+      if (window.OmegaNative && typeof OmegaNative.isOn === 'function' && OmegaNative.isOn()) {
+        OmegaNative.disable();
+        return true;
+      }
+    } catch (e) {}
+    return false;
+  }
+
+  /* ── 2. never let a conduit reach the native layer colourless ─────── */
+  function ctypeFor(id) {
+    try {
+      if (typeof CTYPES === 'undefined') return null;
+      for (var i = 0; i < CTYPES.length; i++) if (CTYPES[i].id === id) return CTYPES[i];
+      return CTYPES[0] || null;
+    } catch (e) { return null; }
+  }
+
+  function fillColours() {
+    var s = S_(); if (!s) return 0;
+    var n = 0;
+    (s.conduits || []).forEach(function (c) {
+      if (!c || c.color) return;
+      var ct = ctypeFor(c.condType);
+      if (ct && ct.color) {
+        c.color = ct.color;
+        if (c.dash == null) c.dash = ct.dash || false;
+        n++;
+      }
+    });
+    return n;
+  }
+
+  function hookPushHist() {
+    var orig = window.pushHist;
+    if (typeof orig !== 'function' || orig.__omegaNative) return false;
+    var wrapped = function () {
+      try { fillColours(); } catch (e) {}
+      return orig.apply(this, arguments);
+    };
+    wrapped.__omegaNative = true;
+    window.pushHist = wrapped;
+    return true;
+  }
+
+  /* ── install ──────────────────────────────────────────────────────── */
+  migrate();
+
+  /* A short settling window rather than a permanent timer: the native
+     module reads its own preference on load, so this only needs to win
+     the first few seconds. */
+  var passes = 0;
+  var iv = setInterval(function () {
+    passes++;
+    try {
+      if (localStorage.getItem('omegaNative') !== '1') { disableNative(); ensureLegacyVisible(); }
+    } catch (e) {}
+    hookPushHist();
+    fillColours();
+    if (passes >= 12) clearInterval(iv);
+  }, 500);
+
+  window.OmegaNativeOff = {
+    fillColours: fillColours,
+    restore: function () {
+      var a = disableNative(), b = ensureLegacyVisible(), c = fillColours();
+      console.info(TAG + ' native off: ' + a + ' · canvas restored: ' + b + ' · colours filled: ' + c);
+      return { disabled: a, restored: b, coloured: c };
+    },
+    status: function () {
+      var s = S_() || {};
+      var csvg = document.getElementById('csvg');
+      var missing = (s.conduits || []).filter(function (c) { return c && !c.color; }).length;
+      var o = {
+        nativeLayerOn: (window.OmegaNative && OmegaNative.isOn) ? OmegaNative.isOn() : 'n/a',
+        storedPreference: (function () { try { return localStorage.getItem('omegaNative'); } catch (e) { return '?'; } })(),
+        csvgDisplay: csvg ? (csvg.style.display || '(visible)') : 'missing',
+        conduits: (s.conduits || []).length,
+        conduitsWithoutColour: missing
+      };
+      o.verdict = o.csvgDisplay === 'none'
+        ? 'The drawing canvas is hidden — conduits cannot show their bands or labels. Run OmegaNativeOff.restore().'
+        : missing ? missing + ' conduit(s) have no colour and would draw cyan if the native layer is switched on.'
+          : 'SVG layer visible, every conduit carries a colour.';
+      if (console.table) console.table(o); else console.log(o);
+      console.info(o.verdict);
+      return o;
     }
   };
 })();
