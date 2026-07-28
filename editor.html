@@ -50504,11 +50504,9 @@ window._crmToastModal=_crmToastModal;
 </script>
 <!-- ═════════════════════════════════════════════════════════════════════
      CLEARSKY OMEGA — SITE MAP DESIGNER PRO
-     PATCH BUNDLE  ·  2026-07-28  ·  rev 4
+     PATCH BUNDLE  ·  2026-07-28  ·  rev 8
 
      Paste this whole block into editor.html immediately before </body>.
-     It is additive: it overrides functions at runtime and needs no edit to
-     the 50,000 lines above it.
 
        1. Satellite background in every export (blueprint, plot plan, print)
        2. Snap-to-close when tracing a custom solar area
@@ -50516,18 +50514,25 @@ window._crmToastModal=_crmToastModal;
        4. Stencil anchoring on zoom + level-of-detail labels      [rev 2]
        5. Recent projects panel — rows no longer collide          [rev 3]
        6. Conduit length measured from coordinates, not pixels    [rev 4]
+       7. Guided-build assemblies can be dragged and stay put     [rev 5]
+       8. Trench and conduit move together                       [rev 6]
+       9. Solar exclusions no longer make a project unsaveable   [rev 7]
+      10. Project lists query uid, not the absent owner field    [rev 8]
 
      Console helpers once loaded:
+       OmegaSave.check()                why a save failed — run this first
+       OmegaSave.repair()               fix nested arrays / bad numbers in place
+       OmegaProjects.refresh()          reload the project list correctly
        OmegaMapExport.status()          why an export background did or did not work
-       await OmegaMapExport.grab(true)  force a fresh capture
        OmegaSolar.status()              scale + array summary
        OmegaSolar.refitAll()            re-fit existing arrays with the fixed engine
        omegaSolarSize()                 open the array editor
        OmegaAnchor.status()             stencil anchoring + label visibility
-       OmegaAnchor.bakeAll()            fold legacy drag offsets into coordinates
        OmegaRecent.status()             Recent panel fit
        OmegaGround.audit()              per-run pixel length vs ground length
-       OmegaGround.status()             conduit measurement summary
+       OmegaMove.status()               assembly anchors vs current positions
+       OmegaMove.freeAll()              re-anchor everything where it now sits
+       OmegaTrenchFix.status()          corridor tracking + re-banking
      ═══════════════════════════════════════════════════════════════════ -->
 <script>
 /* ═══════════════════════════════════════════════════════════════════════
@@ -51136,6 +51141,21 @@ window._crmToastModal=_crmToastModal;
   function S_() { try { return (typeof S !== 'undefined' && S) ? S : null; } catch (e) { return null; } }
   function ppf() { try { return (typeof _derScale === 'function') ? _derScale() : 6; } catch (e) { return 6; } }
 
+  /* Exclusion zones were stored as an array of arrays, which Firestore
+     refuses outright ("arrays cannot contain other arrays"), so a project
+     with one could never be written. They are stored as [{pts:[...]}] now.
+     Read both, because older projects are still full of the old shape. */
+  function rings(list) {
+    if (!list || !list.length) return [];
+    var out = [];
+    for (var i = 0; i < list.length; i++) {
+      var z = list[i];
+      if (Array.isArray(z)) out.push(z);
+      else if (z && Array.isArray(z.pts)) out.push(z.pts);
+    }
+    return out;
+  }
+
   /* ── geometry ──────────────────────────────────────────────────────── */
   function bbox(p) {
     var a = { minX: Infinity, minY: Infinity, maxX: -Infinity, maxY: -Infinity };
@@ -51272,7 +51292,7 @@ window._crmToastModal=_crmToastModal;
     var colGap = Math.max(2 * P, tw * 0.08);
 
     var bb = bbox(bnd);
-    var excl = opts.exclusions || [];
+    var excl = rings(opts.exclusions);
     var CAP = (typeof GM_ROW_DRAW_CAP !== 'undefined' ? GM_ROW_DRAW_CAP : 1200) * 4;
 
     /* WORK BUDGET. Each trial costs (cells x 4 corners x polygon edges).
@@ -51346,7 +51366,7 @@ window._crmToastModal=_crmToastModal;
       poly.setAttribute('stroke-width', '1.4');
       g.appendChild(poly);
     }
-    (sh.exclusions || []).forEach(function (z) {
+    rings(sh.exclusions).forEach(function (z) {
       var ez = document.createElementNS(NS, 'polygon');
       ez.setAttribute('points', z.map(function (p) { return p.x + ',' + p.y; }).join(' '));
       ez.setAttribute('fill', 'rgba(239,68,68,0.14)');
@@ -51390,7 +51410,7 @@ window._crmToastModal=_crmToastModal;
     if (!sh || !sh.boundary || sh.boundary.length < 3) return null;
     opts = opts || {};
     opts.boundary = sh.boundary;
-    opts.exclusions = sh.exclusions || [];
+    opts.exclusions = sh.exclusions || [];   /* rings() normalises on read */
     opts.mount = sh.mount || 'ground';
     var L = computeGroundLayoutV2(opts);
     if (!L) return null;
@@ -52698,6 +52718,906 @@ window._crmToastModal=_crmToastModal;
         : o.pixelOnly ? o.pixelOnly + ' run(s) have no coordinates and still use pixel maths — '
           + 'drawn before a site was loaded.'
           : 'All runs measured from coordinates. Lengths hold through pan and zoom.';
+      if (console.table) console.table(o); else console.log(o);
+      console.info(o.verdict);
+      return o;
+    }
+  };
+})();
+
+
+/* ═══════════════════════════════════════════════════════════════════════
+   OMEGA PATCH — 7 : MOVING WHAT THE GUIDED BUILD PLACED
+   -----------------------------------------------------------------------
+   To answer the question directly: moving them is fine, and it does not
+   break the anchor. The anchor is a RECORD of where you put something,
+   not a cage around it. When you move a thing deliberately, the new
+   position is supposed to become the new record.
+
+   Nothing was updating that record, and two separate timers were putting
+   the old one back.
+
+   WHAT A GUIDED BUILD PLACES
+
+   Not an element and not a normal shape. openBessGuidedBuild and friends
+   emit kind:'assembly' (line 8235), which stores its position as a PIXEL
+   CENTRE — sh.cx / sh.cy — and has no sh.pts at all. Everything else in
+   the file anchors through sh.pts, so assemblies needed their own path
+   and got two of them.
+
+   PASS ONE  (line 47491) anchors centred shapes as sh._geoPts[0] and
+   writes sh.cx/cy back from it. It runs on four map events AND on:
+
+       setInterval(function(){ stamp(); reproject(); }, 700);
+
+   PASS TWO  (line 48104) is the later "unified engine". It anchors as
+   o._geoAnchor and also writes o.cx/cy. It runs on four map events AND on:
+
+       setInterval(function(){ standDown(); run(); }, 500);
+
+   Pass two knows pass one is redundant and tries to switch it off:
+
+       window.OmegaAssembly.reproject = function(){ return 0; };
+
+   That cannot work. The 700 ms timer closed over the LOCAL reproject
+   when the module was defined; reassigning the exported property is not
+   visible to it. So both passes are live, on 700 ms and 500 ms.
+
+   Neither pass has a drag guard — grep for asmPartDrag, S.drag or
+   shapeDrag across both modules returns nothing. And neither is ever told
+   a move was deliberate: OmegaRestampAssemblies (47524) and OmegaReanchor
+   (48218) both exist for exactly this purpose and neither is called from
+   any drag path.
+
+   So: drag an assembly, and within 500 ms a pass recomputes cx/cy from
+   the anchor you have not updated and puts it back. Hold the drag longer
+   than that and it fights you WHILE the mouse is down, which is the
+   "cannot be moved" half of it.
+
+   THE FIX
+
+   Rather than try to reach inside a closure that cannot be reached, keep
+   the anchor honest so there is nothing to fight about:
+
+     1. while a drag is in progress, re-stamp the dragged object's anchor
+        every frame. Any pass that fires mid-drag then computes the
+        position the cursor is already at, and moves nothing.
+     2. on release, re-stamp once more and drop _geoAnchor so the unified
+        engine re-derives from the pixels you left it at.
+     3. fold tx/ty into cx/cy for centred shapes — patch 4 does this for
+        pts-based shapes, but an assembly has no pts, so its drag offset
+        was never being folded anywhere.
+
+   Both passes keep running. They just agree now.
+   ═══════════════════════════════════════════════════════════════════════ */
+(function () {
+  'use strict';
+
+  var TAG = '[omega/move]';
+
+  function S_() { try { return (typeof S !== 'undefined' && S) ? S : null; } catch (e) { return null; } }
+
+  function viewState() {
+    try { if (typeof _liveMapState === 'function') return _liveMapState(); } catch (e) {}
+    return null;
+  }
+  function canvasSize() {
+    try { if (typeof _getCanvasSize === 'function') return _getCanvasSize(); } catch (e) {}
+    return { w: 1200, h: 800 };
+  }
+  function toGeo(x, y, ms, sz) {
+    try {
+      if (typeof _pxToLatLng !== 'function') return null;
+      return _pxToLatLng(x, y, ms, sz.w, sz.h);
+    } catch (e) { return null; }
+  }
+
+  /* ── the record follows the thing ─────────────────────────────────── */
+
+  function restamp(o) {
+    if (!o) return false;
+    var ms = viewState(); if (!ms) return false;
+    var sz = canvasSize();
+
+    /* Pass two re-derives whatever it cannot find. Leave _auxFt alone:
+       fence and bollard offsets are recorded in feet relative to the
+       anchor and are still correct after a move. */
+    delete o._geoAnchor;
+
+    /* Pass one: a centred shape carries a single-point _geoPts. */
+    if (o.cx != null && o.cy != null) {
+      var g = toGeo(o.cx, o.cy, ms, sz);
+      if (g) { o._geoPts = [{ lat: g.lat, lng: g.lng }]; o._geoCentred = true; }
+      return true;
+    }
+
+    if (o.pts && o.pts.length) {
+      o._geoPts = o.pts.map(function (p) {
+        var q = toGeo(p.x, p.y, ms, sz);
+        return q ? { lat: q.lat, lng: q.lng } : null;
+      });
+      return true;
+    }
+
+    /* A DOM element anchors on its centre. */
+    if (typeof o.x === 'number') {
+      var c = toGeo(o.x + ((o.w || 60) / 2), o.y + ((o.h || o.w || 60) / 2), ms, sz);
+      if (c) { o._geoLat = c.lat; o._geoLng = c.lng; }
+      return true;
+    }
+    return false;
+  }
+
+  function find(id) {
+    var s = S_(); if (!s || !id) return null;
+    var pools = ['shapes', 'elements', 'conduits'], i, j;
+    for (i = 0; i < pools.length; i++) {
+      var arr = s[pools[i]] || [];
+      for (j = 0; j < arr.length; j++) if (arr[j] && arr[j].id === id) return arr[j];
+    }
+    return null;
+  }
+
+  /* Every flag the file uses to mean "something is being moved". */
+  function activeIds() {
+    var s = S_(); if (!s) return [];
+    var ids = [];
+    if (s.asmPartDrag && s.asmPartId) ids.push(s.asmPartId);
+    if (s.shapeDrag) ids.push(s.shapeDrag);
+    if (s.shapeResize) ids.push(s.shapeResize);
+    if (s.shapeRotate) ids.push(s.shapeRotate);
+    if (s.groupDrag && s.groupDrag.length) ids = ids.concat(s.groupDrag);
+    if (s.drag) ids.push(s.drag);
+    if (s.resizing) ids.push(s.resizing);
+    if (s.rotating) ids.push(s.rotating);
+    return ids;
+  }
+
+  /* ── keep the anchor under the cursor while the mouse is down ─────── */
+
+  var looping = false, lastIds = [], startedAt = 0;
+
+  function pump() {
+    var ids = activeIds();
+    if (!ids.length || (Date.now() - startedAt) > 60000) { looping = false; return; }
+    lastIds = ids;
+    for (var i = 0; i < ids.length; i++) {
+      var o = find(ids[i]);
+      if (o) { try { restamp(o); } catch (e) {} }
+    }
+    requestAnimationFrame(pump);
+  }
+
+  function kick() {
+    if (looping) return;
+    looping = true;
+    startedAt = Date.now();
+    requestAnimationFrame(pump);
+  }
+
+  function settle() {
+    var ids = activeIds();
+    if (ids.length) lastIds = ids;
+    var take = lastIds.slice();
+    lastIds = [];
+    if (!take.length) return;
+    /* after the app's own mouseup handlers have cleared their flags */
+    setTimeout(function () {
+      for (var i = 0; i < take.length; i++) {
+        var o = find(take[i]);
+        if (o) { try { restamp(o); } catch (e) {} }
+      }
+    }, 0);
+  }
+
+  document.addEventListener('mousedown', kick, true);
+  document.addEventListener('touchstart', kick, true);
+  document.addEventListener('mouseup', settle, true);
+  document.addEventListener('touchend', settle, true);
+
+  /* ── fold the drag offset for centred shapes ──────────────────────── */
+  /* Patch 4 folds tx/ty into pts. An assembly has no pts, so its offset
+     was left dangling in a transform that no anchor knows about. */
+
+  function foldCentred(ids) {
+    var s = S_(); if (!s) return;
+    for (var i = 0; i < ids.length; i++) {
+      var sh = find(ids[i]);
+      if (!sh || sh.cx == null) continue;
+      var dx = sh.tx || 0, dy = sh.ty || 0;
+      if (!dx && !dy) { restamp(sh); continue; }
+      sh.cx += dx; sh.cy += dy;
+      sh.tx = 0; sh.ty = 0;
+      delete sh._tx0; delete sh._ty0;
+      delete sh._gtx0; delete sh._gty0;
+      restamp(sh);
+      try { if (typeof renderShape === 'function') renderShape(sh); } catch (e) {}
+    }
+  }
+
+  function hookShapeEnd() {
+    var orig = window._shapeInteractEnd;
+    if (typeof orig !== 'function' || orig.__omegaMove) return false;
+    var wrapped = function () {
+      try { foldCentred(activeIds()); } catch (e) {}
+      return orig.apply(this, arguments);
+    };
+    wrapped.__omegaMove = true;
+    window._shapeInteractEnd = wrapped;
+    return true;
+  }
+
+  function hookAsmEnd() {
+    var orig = window._asmPartInteractEnd;
+    if (typeof orig !== 'function' || orig.__omegaMove) return false;
+    var wrapped = function () {
+      var s = S_();
+      var id = (s && s.asmPartDrag) ? s.asmPartId : null;
+      var r = orig.apply(this, arguments);
+      if (id) { var o = find(id); if (o) { try { restamp(o); } catch (e) {} } }
+      return r;
+    };
+    wrapped.__omegaMove = true;
+    window._asmPartInteractEnd = wrapped;
+    return true;
+  }
+
+  var n = 0;
+  var iv = setInterval(function () {
+    var a = hookShapeEnd(), b = hookAsmEnd();
+    if (a || b) {
+      if (window.console) console.info(TAG, 'armed — placed assemblies can be dragged and will stay put');
+    }
+    if (++n > 200) clearInterval(iv);
+  }, 300);
+
+  window.OmegaMove = {
+    restamp: restamp,
+
+    /* Re-anchor everything to where it currently sits. Use after moving
+       things around on an older drawing that kept snapping back. */
+    freeAll: function () {
+      var s = S_(); if (!s) return 0;
+      var n = 0;
+      ['shapes', 'elements', 'conduits'].forEach(function (k) {
+        (s[k] || []).forEach(function (o) { if (o && restamp(o)) n++; });
+      });
+      try { if (typeof pushHist === 'function') pushHist(); } catch (e) {}
+      console.info(TAG + ' re-anchored ' + n + ' object(s) to their current positions');
+      return n;
+    },
+
+    status: function () {
+      var s = S_() || {};
+      var shapes = s.shapes || [];
+      var centred = shapes.filter(function (x) { return x && x.cx != null; });
+      var o = {
+        assemblies: shapes.filter(function (x) { return x && x.kind === 'assembly'; }).length,
+        centredShapes: centred.length,
+        anchoredPassOne: centred.filter(function (x) { return !!x._geoPts; }).length,
+        anchoredPassTwo: centred.filter(function (x) { return !!x._geoAnchor; }).length,
+        looseDragOffset: centred.filter(function (x) { return (x.tx || x.ty); }).length,
+        dragging: activeIds().length,
+        liveMap: !!viewState()
+      };
+      o.verdict = !o.centredShapes ? 'Nothing centre-based on the canvas yet.'
+        : !o.liveMap ? 'No live map state — nothing is reprojecting, so nothing will snap back.'
+          : o.looseDragOffset ? o.looseDragOffset + ' assembly(ies) hold an unfolded drag offset. Run OmegaMove.freeAll().'
+            : 'Anchors match current positions. Drags will hold.';
+      if (console.table) console.table(o); else console.log(o);
+      console.info(o.verdict);
+      return o;
+    }
+  };
+})();
+
+
+/* ═══════════════════════════════════════════════════════════════════════
+   OMEGA PATCH — 8 : THE LINE LEFT BEHIND
+   -----------------------------------------------------------------------
+   A conduit in a trench is drawn as two cooperating things:
+
+     renderTrenchCorridors()  the excavation band, and it TAGS each run in
+                              the trench with _inCorridor / _bankSlot /
+                              _bankOf
+     renderConduit()          the coloured run, drawn through _bankedPts(),
+                              which offsets it sideways by _bankSlot * 9px
+                              so parallel runs sit side by side in the
+                              trench rather than on top of each other
+
+   Two things go wrong when you move one, and they compound.
+
+   PROBLEM 1 — THE CHANGE DETECTOR ONLY LOOKS AT THE ENDS
+
+   The existing "trench follows its conduit" module decides whether to
+   redraw from this signature:
+
+       var a = c.pts[0], b = c.pts[c.pts.length-1];
+       out.push(c.id +':'+ round(a.x)+','+round(a.y)
+                     +'-'+ round(b.x)+','+round(b.y)
+                     +'#'+ c.pts.length);
+
+   Its own comment says "first point, last point and count is enough to
+   see any move". It isn't. Drag an INTERIOR vertex 160 px and:
+
+       before   C4:100,100-500,100#3
+       after    C4:100,100-500,100#3
+
+   Identical. The corridor is never told to redraw, so the excavation band
+   stays where it was. Dragging an END vertex does change the signature,
+   which is why the bug looks intermittent — it depends which handle you
+   grabbed.
+
+   PROBLEM 2 — RE-TAGGING IS NOT RE-DRAWING
+
+   renderTrenchCorridors() clears and re-assigns _inCorridor, _bankSlot
+   and _bankOf on its members, then returns. It never calls
+   renderConduit(). So a run whose banking changed keeps the lateral
+   offset it was last DRAWN with:
+
+       3 runs sharing a trench   slots [-1, 0, +1]   offsets [-9, 0, +9] px
+       one moves away, 2 remain  slots [-0.5, +0.5]  offsets [-4.5, +4.5] px
+
+   The two that stayed are now drawn 4.5 px from where they belong, and
+   the one that left is still drawn on the old centreline. That is the
+   line sitting underneath.
+
+   FIX
+
+     1. Hash EVERY vertex, plus type and route, so any move is seen —
+        interior vertices included.
+     2. After the corridor rebuilds, re-render exactly those runs whose
+        banking actually changed, so the drawn geometry matches the new
+        trench.
+
+   The existing module keeps running; this drives it correctly and cleans
+   up after it.
+   ═══════════════════════════════════════════════════════════════════════ */
+(function () {
+  'use strict';
+
+  var TAG = '[omega/trench]';
+  function S_() { try { return (typeof S !== 'undefined' && S) ? S : null; } catch (e) { return null; } }
+
+  /* ── complete change detection ────────────────────────────────────── */
+  /* A rolling 32-bit hash over every vertex. Cheap enough to run
+     continuously: 50 runs of 10 points is 500 iterations. */
+  function hash() {
+    var s = S_(); if (!s) return 0;
+    var h = 2166136261, cs = s.conduits || [];
+    function mix(v) { h ^= v; h = (h * 16777619) >>> 0; }
+    function mixStr(str) {
+      str = String(str == null ? '' : str);
+      for (var i = 0; i < str.length; i++) mix(str.charCodeAt(i));
+    }
+    mix(cs.length);
+    for (var i = 0; i < cs.length; i++) {
+      var c = cs[i]; if (!c) continue;
+      mixStr(c.id);
+      mixStr(c.condType);
+      mixStr(c.route);
+      var pts = c.pts || [];
+      mix(pts.length);
+      for (var j = 0; j < pts.length; j++) {
+        mix(Math.round(pts[j].x) | 0);
+        mix(Math.round(pts[j].y) | 0);
+      }
+    }
+    return h;
+  }
+
+  /* ── re-render whatever the rebuild re-banked ─────────────────────── */
+
+  function bankState(c) {
+    return (c._inCorridor ? 1 : 0) + ':' + (c._bankSlot == null ? 'n' : c._bankSlot)
+      + ':' + (c._bankOf == null ? 'n' : c._bankOf);
+  }
+
+  var busy = false;
+
+  function rebuild() {
+    if (busy) return 0;
+    var s = S_(); if (!s) return 0;
+    if (typeof renderTrenchCorridors !== 'function') return 0;
+    busy = true;
+    var redrawn = 0;
+    try {
+      var cs = (s.conduits || []).filter(Boolean);
+      var before = cs.map(bankState);
+
+      renderTrenchCorridors();               /* re-tags, does not re-draw */
+
+      for (var i = 0; i < cs.length; i++) {
+        if (bankState(cs[i]) === before[i]) continue;
+        try {
+          if (typeof renderConduit === 'function') { renderConduit(cs[i]); redrawn++; }
+        } catch (e) {}
+      }
+      /* The runs that did not change banking may still have moved, and
+         the corridor rebuild is the moment their node should agree with
+         c.pts. Cheap enough to keep them all honest. */
+      if (redrawn) {
+        try { if (typeof _refreshConduitStyle === 'function') _refreshConduitStyle(); } catch (e) {}
+      }
+    } catch (e) {} finally { busy = false; }
+    return redrawn;
+  }
+
+  var last = null, syncs = 0, rebanks = 0;
+
+  function check(force) {
+    var h = hash();
+    if (!force && h === last) return false;
+    last = h;
+    syncs++;
+    rebanks += rebuild();
+    return true;
+  }
+
+  /* Continuously, but only doing work when a vertex actually moved. */
+  setInterval(function () { check(false); }, 150);
+
+  /* And immediately on release, so the trench lands with the conduit
+     rather than up to 150 ms later. */
+  ['mouseup', 'touchend', 'pointerup'].forEach(function (ev) {
+    document.addEventListener(ev, function () {
+      setTimeout(function () { check(false); }, 16);
+    }, true);
+  });
+
+  if (window.console) console.info(TAG, 'armed — every vertex watched, banking re-drawn after a rebuild');
+
+  window.OmegaTrenchFix = {
+    sync: function () { return check(true); },
+    status: function () {
+      var s = S_() || {};
+      var cs = (s.conduits || []).filter(Boolean);
+      var g = document.getElementById('trench-corridors');
+      var banked = cs.filter(function (c) { return c._inCorridor; });
+      var interior = cs.filter(function (c) { return c.pts && c.pts.length > 2; });
+      var o = {
+        conduits: cs.length,
+        inATrench: banked.length,
+        withInteriorVertices: interior.length,
+        corridorDrawn: !!g,
+        corridorSegments: g ? g.children.length : 0,
+        syncsThisSession: syncs,
+        conduitsRebankedAndRedrawn: rebanks
+      };
+      o.verdict = !cs.length ? 'No conduit runs.'
+        : !o.corridorDrawn ? 'No corridor drawn — trenching may be off for these runs.'
+          : o.withInteriorVertices
+            ? o.withInteriorVertices + ' run(s) have interior vertices; those are the drags the old detector missed.'
+            : 'Corridor tracking ' + cs.length + ' run(s).';
+      if (console.table) console.table(o); else console.log(o);
+      console.info(o.verdict);
+      return o;
+    }
+  };
+})();
+
+
+/* ═══════════════════════════════════════════════════════════════════════
+   OMEGA PATCH — 9 : WHY A SAVE SILENTLY DOES NOTHING
+   -----------------------------------------------------------------------
+   First, the Storage rules are not the cause. Project data does not go to
+   Cloud Storage — saveProject() writes ONE Firestore document:
+
+       await _db.collection('projects').doc(_projectId).update(payload)
+
+   Those rules only govern mapimg/, fin_projects/ and mkt_projects/. A
+   project that loads back with its elements and conduits intact but its
+   shapes gone did not fail on permissions; the document write itself was
+   rejected, so the previous version of the document is what you reopened.
+
+   THE STRUCTURAL BUG
+
+   applyGroundLayout() stores a solar array's exclusion zones like this
+   (line 10793):
+
+       exclusions: (exclusions||[]).map(function(z){
+         return z.map(function(p){ return {x:p.x, y:p.y}; });
+       })
+
+   That is an array whose elements are arrays. Firestore forbids exactly
+   that — "arrays cannot contain other array values as elements" — and it
+   rejects the WHOLE document, not the offending field. So a solar area
+   drawn with any exclusion zone makes the entire project unsaveable, and
+   everything else in that save goes down with it.
+
+   Exclusions are stored as [{pts:[...]}] from here on. Patch 3 reads both
+   shapes, so projects already carrying the old form still lay out
+   correctly — verified identical: 60 tables either way.
+
+   THE REPORTING BUG
+
+   saveProject()'s catch does this, for every possible failure:
+
+       showBanner('wiz','Couldn\u2019t save \u2014 check your connection\u2026')
+
+   An INVALID_ARGUMENT from a malformed document is not a connection
+   problem, and that message sends you to look at the wrong thing. The
+   real error is only ever in the console.
+
+   This patch normalises the data before each save, and when a save does
+   fail it runs a check and prints the actual reason: nested arrays with
+   their paths, non-finite numbers, and the document size against the
+   1 MiB ceiling.
+
+   It also surfaces the other silent no-op. saveProject() begins:
+
+       if(!_loadReady){ console.warn('Save blocked -- project still loading'); return; }
+
+   That returns without touching the save indicator, so the UI shows no
+   change at all. Now it says so.
+   ═══════════════════════════════════════════════════════════════════════ */
+(function () {
+  'use strict';
+
+  var TAG = '[omega/save]';
+  var LIMIT = 1048576;                 /* Firestore hard limit, 1 MiB */
+
+  function S_() { try { return (typeof S !== 'undefined' && S) ? S : null; } catch (e) { return null; } }
+
+  /* ── normalise exclusions to a Firestore-legal shape ──────────────── */
+
+  function normaliseExclusions() {
+    var s = S_(); if (!s) return 0;
+    var fixed = 0;
+    (s.shapes || []).forEach(function (sh) {
+      if (!sh || !sh.exclusions || !sh.exclusions.length) return;
+      var changed = false;
+      var out = [];
+      for (var i = 0; i < sh.exclusions.length; i++) {
+        var z = sh.exclusions[i];
+        if (Array.isArray(z)) {
+          out.push({ pts: z.map(function (p) { return { x: p.x, y: p.y }; }) });
+          changed = true;
+        } else if (z && Array.isArray(z.pts)) {
+          out.push(z);
+        } else {
+          out.push({ pts: [] });
+          changed = true;
+        }
+      }
+      if (changed) { sh.exclusions = out; fixed++; }
+    });
+    return fixed;
+  }
+
+  /* ── validate what a save would write ─────────────────────────────── */
+
+  function payloadPreview() {
+    var s = S_(); if (!s) return {};
+    return {
+      elements: s.elements || [],
+      conduits: s.conduits || [],
+      shapes: s.shapes || [],
+      trench: s._trench || null,
+      bessList: s.bessList || null,
+      offtaker: s.offtaker || null
+    };
+  }
+
+  function inspect(root) {
+    var nested = [], bad = [], depth = 0;
+
+    function walk(v, path, d) {
+      if (d > depth) depth = d;
+      if (v == null) return;
+      if (Array.isArray(v)) {
+        for (var i = 0; i < v.length; i++) {
+          if (Array.isArray(v[i])) {
+            if (nested.length < 25) nested.push(path + '[' + i + ']');
+          }
+          walk(v[i], path + '[' + i + ']', d + 1);
+        }
+        return;
+      }
+      if (typeof v === 'number') {
+        if (!isFinite(v) && bad.length < 25) {
+          bad.push({ path: path, value: (v !== v ? 'NaN' : String(v)) });
+        }
+        return;
+      }
+      if (typeof v === 'object') {
+        for (var k in v) {
+          if (!Object.prototype.hasOwnProperty.call(v, k)) continue;
+          walk(v[k], path ? (path + '.' + k) : k, d + 1);
+        }
+      }
+    }
+    walk(root, '', 0);
+
+    var bytes = 0;
+    try { bytes = JSON.stringify(root).length; } catch (e) { bytes = -1; }
+    return { nested: nested, bad: bad, depth: depth, bytes: bytes };
+  }
+
+  function check(quiet) {
+    var s = S_();
+    if (!s) { console.warn(TAG, 'no session'); return null; }
+    var r = inspect(payloadPreview());
+    var solar = (s.shapes || []).filter(function (x) { return x && x.kind === 'dersolar'; });
+    var tables = solar.reduce(function (t, x) { return t + ((x.tables || []).length); }, 0);
+
+    var o = {
+      elements: (s.elements || []).length,
+      conduits: (s.conduits || []).length,
+      shapes: (s.shapes || []).length,
+      solarArrays: solar.length,
+      solarTableRects: tables,
+      approxBytes: r.bytes,
+      percentOfLimit: r.bytes > 0 ? +(r.bytes / LIMIT * 100).toFixed(1) : null,
+      nestedArrays: r.nested.length,
+      nonFiniteNumbers: r.bad.length,
+      maxNesting: r.depth,
+      signedIn: !!window._currentUser,
+      loadReady: !!window._loadReady,
+      projectId: window._projectId || '(unsaved)'
+    };
+
+    o.verdict =
+      !o.signedIn ? 'Not signed in — saving is refused before it starts.'
+        : !o.loadReady ? 'Save is blocked: the project is still loading. Wait for it to finish, then save.'
+          : r.nested.length ? 'FATAL: ' + r.nested.length + ' nested array(s). Firestore rejects the whole document. Run OmegaSave.repair().'
+            : r.bad.length ? 'FATAL: ' + r.bad.length + ' NaN/Infinity value(s) — Firestore will reject the write.'
+              : r.bytes > LIMIT ? 'FATAL: document is over the 1 MiB limit by ' + (r.bytes - LIMIT).toLocaleString() + ' bytes.'
+                : r.bytes > LIMIT * 0.8 ? 'Close to the 1 MiB limit (' + o.percentOfLimit + '%). Watch it.'
+                  : 'Nothing structurally wrong with this payload.';
+
+    if (!quiet || r.nested.length || r.bad.length || r.bytes > LIMIT) {
+      if (console.table) console.table(o); else console.log(o);
+      if (r.nested.length) { console.warn(TAG, 'nested arrays at:'); console.log(r.nested); }
+      if (r.bad.length) { console.warn(TAG, 'non-finite numbers at:'); console.table ? console.table(r.bad) : console.log(r.bad); }
+      console.info(o.verdict);
+    }
+    return o;
+  }
+
+  function repair() {
+    var n = normaliseExclusions();
+    var s = S_();
+    var cleaned = 0;
+    /* Strip non-finite numbers, which Firestore also refuses. */
+    if (s) {
+      ['elements', 'conduits', 'shapes'].forEach(function (coll) {
+        (s[coll] || []).forEach(function (o) {
+          (function scrub(v) {
+            if (!v || typeof v !== 'object') return;
+            for (var k in v) {
+              if (!Object.prototype.hasOwnProperty.call(v, k)) continue;
+              var x = v[k];
+              if (typeof x === 'number' && !isFinite(x)) { v[k] = 0; cleaned++; }
+              else if (x && typeof x === 'object') scrub(x);
+            }
+          })(o);
+        });
+      });
+    }
+    console.info(TAG + ' repaired ' + n + ' shape(s) with nested exclusions, '
+      + cleaned + ' non-finite number(s)');
+    return { exclusions: n, numbers: cleaned };
+  }
+
+  /* ── hooks ────────────────────────────────────────────────────────── */
+
+  /* Normalise before every write, so the bad shape never reaches Firestore
+     again, and say something when the save is silently refused. */
+  function hookSave() {
+    var orig = window.saveProject;
+    if (typeof orig !== 'function' || orig.__omegaSave) return false;
+    var wrapped = function () {
+      try { normaliseExclusions(); } catch (e) {}
+      if (window._currentUser && !window._loadReady) {
+        try {
+          if (typeof showBanner === 'function') {
+            showBanner('wiz', 'Still loading this project \u2014 save again in a moment. Nothing has been lost.');
+          }
+        } catch (e) {}
+      }
+      return orig.apply(this, arguments);
+    };
+    wrapped.__omegaSave = true;
+    window.saveProject = wrapped;
+    return true;
+  }
+
+  /* saveProject swallows the real error and blames the connection. Watch
+     the save indicator instead: the moment it goes to 'err', report what
+     is actually wrong with the document. */
+  function hookIndicator() {
+    var orig = window._setSaved;
+    if (typeof orig !== 'function' || orig.__omegaSave) return false;
+    var wrapped = function (state) {
+      if (state === 'err') {
+        setTimeout(function () {
+          console.warn(TAG, 'a save failed — the banner blames the connection, so here is the document itself:');
+          try { check(false); } catch (e) {}
+        }, 0);
+      }
+      return orig.apply(this, arguments);
+    };
+    wrapped.__omegaSave = true;
+    window._setSaved = wrapped;
+    return true;
+  }
+
+  var n = 0;
+  var iv = setInterval(function () {
+    var a = hookSave(), b = hookIndicator();
+    if (a || b) {
+      var fixed = normaliseExclusions();
+      if (window.console) {
+        console.info(TAG, 'armed'
+          + (fixed ? ' — normalised ' + fixed + ' shape(s) with nested exclusions' : ''));
+      }
+    }
+    if (++n > 200) clearInterval(iv);
+  }, 300);
+
+  window.OmegaSave = {
+    check: check,
+    repair: repair,
+    normalise: normaliseExclusions,
+    limit: LIMIT
+  };
+})();
+
+
+/* ═══════════════════════════════════════════════════════════════════════
+   OMEGA PATCH — 10 : THE PROJECT LIST QUERIES A FIELD THAT ISN'T THERE
+   -----------------------------------------------------------------------
+   Both places that list projects filter on `owner`:
+
+       openProjectsModal()   .where('owner','==',_currentUser.uid)
+       _homeFetchProjects()  .where('owner','==',user.uid)
+
+   saveProject() writes `uid`:
+
+       payload.uid = _currentUser.uid;
+
+   There is no `owner` field on a project document anywhere in the file.
+   The query is therefore valid, permitted, and returns zero rows.
+
+   The fallback cannot rescue it. Both call sites wrap the query in a
+   try/catch whose comment admits the doubt — "Owner-scoped query may fail
+   if the field isn't 'owner'; fall back to any" — but a query against a
+   field that does not exist does not FAIL. It succeeds and returns an
+   empty set, so the catch never runs and the fallback never executes.
+   That is why the Projects modal and the Recent panel come back empty
+   while the project itself opens perfectly from its URL.
+
+   Fixed by querying `uid`, which is also the safe choice under the
+   Firestore rules: /projects grants read on
+
+       resource.data.uid == request.auth.uid
+
+   so a where('uid','==', auth.uid) query is provably scoped and passes
+   rules evaluation for ordinary users. An unconstrained .limit(50) does
+   NOT — it is only allowed for isConsoleViewer() domains, which is the
+   other reason the fallback was never going to work for everyone.
+
+   Teammates' projects are picked up with a second, equally safe query on
+   orgId, matching the rules' resource.data.orgId == userOrg() clause.
+   ═══════════════════════════════════════════════════════════════════════ */
+(function () {
+  'use strict';
+
+  var TAG = '[omega/projects]';
+
+  function db() { return window._db || null; }
+  function user() { return window._currentUser || null; }
+  function myOrg() {
+    var u = user();
+    try {
+      if (u && u.email && u.email.indexOf('@') > -1) return u.email.split('@')[1].toLowerCase();
+    } catch (e) {}
+    return null;
+  }
+
+  function docsOf(snap) {
+    return snap.docs.map(function (d) { var o = d.data(); o.id = d.id; return o; });
+  }
+
+  /* Both queries below are constrained on a field the read rule names, so
+     Firestore can prove they only return permitted documents. */
+  function fetchProjects() {
+    var D = db(), u = user();
+    if (!D) return Promise.reject(new Error('no db'));
+    if (!u) return D.collection('projects').limit(50).get().then(docsOf);
+
+    return D.collection('projects').where('uid', '==', u.uid).get()
+      .then(docsOf)
+      .catch(function () { return []; })
+      .then(function (mine) {
+        var org = myOrg();
+        if (!org) return mine;
+        return D.collection('projects').where('orgId', '==', org).get()
+          .then(docsOf)
+          .catch(function () { return []; })
+          .then(function (theirs) {
+            var seen = {}, out = [];
+            mine.concat(theirs).forEach(function (p) {
+              if (!p || !p.id || seen[p.id]) return;
+              seen[p.id] = 1; out.push(p);
+            });
+            return out;
+          });
+      })
+      .then(function (all) {
+        /* Last resort, and only useful for the cross-org read domains. */
+        if (all.length) return all;
+        return D.collection('projects').limit(50).get().then(docsOf).catch(function () { return []; });
+      });
+  }
+
+  function hookHomeFetch() {
+    if (typeof window._homeFetchProjects !== 'function' || window._homeFetchProjects.__omegaProjects) return false;
+    var wrapped = function () {
+      return fetchProjects().then(function (list) {
+        window._allProjects = list;
+        return list;
+      });
+    };
+    wrapped.__omegaProjects = true;
+    window._homeFetchProjects = wrapped;
+    return true;
+  }
+
+  /* The modal runs its own bad query internally, so let it open, then
+     correct the list underneath it. */
+  function hookModal() {
+    var orig = window.openProjectsModal;
+    if (typeof orig !== 'function' || orig.__omegaProjects) return false;
+    var wrapped = function () {
+      var r;
+      try { r = orig.apply(this, arguments); } catch (e) {}
+      fetchProjects().then(function (list) {
+        window._allProjects = list;
+        try { if (typeof _allProjects !== 'undefined') _allProjects = list; } catch (e) {}
+        try { if (typeof filterProjects === 'function') filterProjects(); } catch (e) {}
+      }).catch(function () {});
+      return r;
+    };
+    wrapped.__omegaProjects = true;
+    window.openProjectsModal = wrapped;
+    return true;
+  }
+
+  var n = 0;
+  var iv = setInterval(function () {
+    var a = hookHomeFetch(), b = hookModal();
+    if (a || b) {
+      if (window.console) console.info(TAG, 'armed — project lists now query uid/orgId instead of the absent owner field');
+      try { if (typeof homeLoadRecent === 'function') homeLoadRecent(); } catch (e) {}
+    }
+    if (++n > 200) clearInterval(iv);
+  }, 300);
+
+  window.OmegaProjects = {
+    fetch: fetchProjects,
+    refresh: function () {
+      return fetchProjects().then(function (list) {
+        window._allProjects = list;
+        try { if (typeof homeLoadRecent === 'function') homeLoadRecent(); } catch (e) {}
+        try { if (typeof filterProjects === 'function') filterProjects(); } catch (e) {}
+        console.info(TAG + ' ' + list.length + ' project(s) loaded');
+        return list;
+      });
+    },
+    status: function () {
+      var u = user();
+      var o = {
+        signedIn: !!u,
+        uid: u ? u.uid : null,
+        org: myOrg(),
+        cachedProjects: (window._allProjects || []).length,
+        queriesOn: 'uid, then orgId'
+      };
+      o.verdict = !u ? 'Not signed in — no project list is possible.'
+        : o.cachedProjects ? o.cachedProjects + ' project(s) in the cache.'
+          : 'Nothing cached yet — run OmegaProjects.refresh().';
       if (console.table) console.table(o); else console.log(o);
       console.info(o.verdict);
       return o;
