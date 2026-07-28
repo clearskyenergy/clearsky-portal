@@ -50505,7 +50505,7 @@ window._crmToastModal=_crmToastModal;
 
 <!-- ═════════════════════════════════════════════════════════════════════
      CLEARSKY OMEGA — SITE MAP DESIGNER PRO
-     PATCH BUNDLE  ·  2026-07-28  ·  rev 15
+     PATCH BUNDLE  ·  2026-07-28  ·  rev 16
 
      Paste immediately before </body>. Exactly ONE copy per file.
 
@@ -50520,6 +50520,8 @@ window._crmToastModal=_crmToastModal;
        9. Solar exclusions no longer make a project unsaveable
       10. Project lists query uid, not the absent owner field
       11. Auto-Layout's Generate button is legible
+      13. BESS/solar guided-build trenches are classified by
+          conduit type, not by comparing colour strings
 
      OPT-IN — these reach into the live render/anchor loop, which is where
      every regression in this bundle came from. They are OFF unless you set
@@ -50556,7 +50558,7 @@ window._crmToastModal=_crmToastModal;
       console.info('[omega] patch passes ON');
       return true;
     },
-    rev: 15,
+    rev: 16,
     installed: function () {
       var keys = ['OmegaMapExport', 'OmegaClose', 'OmegaSolar', 'OmegaAnchor', 'OmegaRecent',
                   'OmegaGround', 'OmegaMove', 'OmegaTrenchFix', 'OmegaSave', 'OmegaProjects'];
@@ -53075,6 +53077,172 @@ window._crmToastModal=_crmToastModal;
         : !go.disabled ? 'Generate is live — press it to place the array.'
           : s ? 'Nothing fits at these assumptions, but ' + s.how + ' gives ' + s.tables + ' table(s).'
             : 'Nothing fits this outline at any preset.';
+      if (console.table) console.table(o); else console.log(o);
+      console.info(o.verdict);
+      return o;
+    }
+  };
+})();
+
+
+/* ═══════════════════════════════════════════════════════════════════════
+   OMEGA PATCH — 13 : EVERY BESS TRENCH IS CLASSIFIED "BRANCH"
+   -----------------------------------------------------------------------
+   _bgbFinishRun() decides what kind of leg a trench is by comparing
+   COLOUR STRINGS:
+
+       leg: _bgbLegColor(kind)==='#FF0000' ? 'main'
+          : _bgbLegColor(kind)==='#FFFF00' ? 'feeder'
+          : 'branch'
+
+   _bgbLegColor maps a conduit type to a colour:
+
+       EV-MAIN  #FF0000   EV-FEEDER #FFFF00   EV-BRANCH #00FFFF
+       EMT-BMS  #2563EB   MV-UG     #EF4444   anything else #00FF00
+
+   and _dcfcRenderTrenches then colours the run BY LEG, at 1.2px wide:
+
+       main #FF0000 | feeder #FFFF00 | branch #00FFFF
+
+   So the type is turned into a colour, the colour is compared against two
+   literals, and the result is turned back into a colour. Any type whose
+   colour is not exactly #FF0000 or #FFFF00 falls through to 'branch':
+
+       type        colour     -> leg      -> drawn
+       EV-MAIN     #FF0000       main        #FF0000   ok
+       EV-FEEDER   #FFFF00       feeder      #FFFF00   ok
+       MV-UG       #EF4444       branch      #00FFFF   WRONG
+       RMC-AC      #00FF00       branch      #00FFFF   WRONG
+       PVC-UG      #00FF00       branch      #00FFFF   WRONG
+       EMT-BMS     #2563EB       branch      #00FFFF   WRONG
+
+   #EF4444 is MV red. #FF0000 is EV red. They are not equal, so the medium
+   voltage utility trench — the main run on the drawing — is never 'main'.
+
+   EV / DCFC builds use EV-MAIN and EV-FEEDER, so they classify correctly
+   and look right. BESS and SOLAR_BESS builds use MV-UG, RMC-AC, PVC-UG
+   and EMT-BMS, so EVERY leg becomes a 1.2 px cyan hairline. That is the
+   run that "isn't showing" — it is showing, as a thread.
+
+   Classify by conduit TYPE, which is what _bgbLegCond() already returns,
+   instead of round-tripping through a colour string.
+
+   Scope: the trench record's leg field and a repaint of that one layer.
+   It cannot touch conduit creation, the anchor loop, or the map.
+   ═══════════════════════════════════════════════════════════════════════ */
+(function () {
+  'use strict';
+
+  var TAG = '[omega/bgbleg]';
+
+  /* What each conduit type actually is on a drawing, not what colour it
+     happens to have been given. */
+  var LEG_BY_TYPE = {
+    'EV-MAIN': 'main',
+    'MV-UG': 'main',        /* medium-voltage utility trench IS the main run */
+    'RMC-AC': 'main',       /* BESS -> transformer AC power */
+    'EV-FEEDER': 'feeder',
+    'PVC-UG': 'feeder',
+    'EV-BRANCH': 'branch',
+    'EMT-BMS': 'branch',    /* control / data genuinely is a branch */
+    'RMC-DC': 'branch',
+    'EV-SPARE': 'branch'
+  };
+
+  function legFor(kind) {
+    try {
+      if (typeof _bgbLegCond !== 'function') return null;
+      var cond = _bgbLegCond(kind);
+      return LEG_BY_TYPE[cond] || null;
+    } catch (e) { return null; }
+  }
+
+  function trenches() {
+    try { return (typeof S !== 'undefined' && S && S._trenches) ? S._trenches : null; }
+    catch (e) { return null; }
+  }
+
+  function hook() {
+    var orig = window._bgbFinishRun;
+    if (typeof orig !== 'function' || orig.__omegaLeg) return false;
+
+    var wrapped = function () {
+      /* Capture the step BEFORE the original runs — it advances the phase
+         and the step index on its way out, so asking afterwards gives the
+         next leg, not the one just drawn. */
+      var kind = null;
+      try { if (typeof _bgbCurKind === 'function') kind = _bgbCurKind(); } catch (e) {}
+      var before = (trenches() || []).length;
+
+      var r = orig.apply(this, arguments);
+
+      try {
+        var list = trenches();
+        if (list && list.length > before) {
+          var run = list[list.length - 1];
+          var leg = legFor(kind);
+          if (run && leg && run.leg !== leg) {
+            run.leg = leg;
+            run._omegaLeg = true;
+            if (typeof _dcfcRenderTrenches === 'function') _dcfcRenderTrenches();
+          }
+        }
+      } catch (e) {}
+      return r;
+    };
+    wrapped.__omegaLeg = true;
+    window._bgbFinishRun = wrapped;
+    return true;
+  }
+
+  var n = 0;
+  var iv = setInterval(function () {
+    if (hook()) {
+      if (window.console) console.info(TAG, 'armed — trenches classified by conduit type, not colour string');
+    }
+    if (++n > 200) clearInterval(iv);
+  }, 300);
+
+  window.OmegaBgbLeg = {
+    map: LEG_BY_TYPE,
+
+    /* Reclassify runs already on the drawing. Safe to run repeatedly. */
+    fixExisting: function () {
+      var list = trenches();
+      if (!list || !list.length) { console.info(TAG + ' no trenches on the drawing'); return 0; }
+      var fixed = 0;
+      list.forEach(function (t) {
+        /* A run stored as 'branch' whose drawing is a BESS/solar build is
+           almost certainly a misclassified main or feeder. Without the
+           original step we cannot know which, so only correct the ones
+           this session can still identify. */
+        if (t && t.leg === 'branch' && !t._omegaLeg && t._kind) {
+          var leg = legFor(t._kind);
+          if (leg && leg !== 'branch') { t.leg = leg; t._omegaLeg = true; fixed++; }
+        }
+      });
+      if (fixed && typeof _dcfcRenderTrenches === 'function') _dcfcRenderTrenches();
+      console.info(TAG + ' reclassified ' + fixed + ' trench run(s)');
+      return fixed;
+    },
+
+    status: function () {
+      var list = trenches() || [];
+      var byLeg = {};
+      list.forEach(function (t) { if (t) byLeg[t.leg || '?'] = (byLeg[t.leg || '?'] || 0) + 1; });
+      var mode = null;
+      try { mode = (typeof BGB !== 'undefined' && BGB) ? BGB.mode : null; } catch (e) {}
+      var o = {
+        buildMode: mode || '(not in a guided build)',
+        trenchRuns: list.length,
+        byLeg: JSON.stringify(byLeg),
+        reclassified: list.filter(function (t) { return t && t._omegaLeg; }).length,
+        hooked: !!(window._bgbFinishRun && window._bgbFinishRun.__omegaLeg)
+      };
+      o.verdict = !list.length ? 'No trench runs drawn yet.'
+        : (byLeg.branch === list.length && list.length > 1)
+          ? 'Every run is "branch" — that is the colour-string bug, and these were drawn before the fix.'
+          : 'Legs look right: ' + o.byLeg;
       if (console.table) console.table(o); else console.log(o);
       console.info(o.verdict);
       return o;
