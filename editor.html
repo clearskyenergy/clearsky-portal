@@ -50504,7 +50504,7 @@ window._crmToastModal=_crmToastModal;
 </script>
 <!-- ═════════════════════════════════════════════════════════════════════
      CLEARSKY OMEGA — SITE MAP DESIGNER PRO
-     PATCH BUNDLE  ·  2026-07-28
+     PATCH BUNDLE  ·  2026-07-28  ·  rev 2
 
      Paste this whole block into editor.html immediately before </body>.
      It is additive: it overrides functions at runtime and needs no edit to
@@ -50513,6 +50513,7 @@ window._crmToastModal=_crmToastModal;
        1. Satellite background in every export (blueprint, plot plan, print)
        2. Snap-to-close when tracing a custom solar area
        3. Correct setback maths + a per-array size / capacity editor
+       4. Stencil anchoring on zoom + level-of-detail labels      [rev 2]
 
      Console helpers once loaded:
        OmegaMapExport.status()          why an export background did or did not work
@@ -50520,6 +50521,8 @@ window._crmToastModal=_crmToastModal;
        OmegaSolar.status()              scale + array summary
        OmegaSolar.refitAll()            re-fit existing arrays with the fixed engine
        omegaSolarSize()                 open the array editor
+       OmegaAnchor.status()             stencil anchoring + label visibility
+       OmegaAnchor.bakeAll()            fold legacy drag offsets into coordinates
      ═══════════════════════════════════════════════════════════════════ -->
 <script>
 /* ═══════════════════════════════════════════════════════════════════════
@@ -51820,6 +51823,348 @@ window._crmToastModal=_crmToastModal;
         ? 'Not calibrated \u2014 load the site address so px/ft is real, or every array will be sized wrong.'
         : (o.arrays ? 'Run OmegaSolar.refitAll() to re-fit existing arrays with the corrected engine.'
           : 'No arrays yet.');
+      if (console.table) console.table(o); else console.log(o);
+      console.info(o.verdict);
+      return o;
+    }
+  };
+})();
+
+
+/* ═══════════════════════════════════════════════════════════════════════
+   OMEGA PATCH — 4 : STENCIL ANCHORING + ZOOM LEVEL-OF-DETAIL
+   -----------------------------------------------------------------------
+   TWO SEPARATE BUGS, BOTH VISIBLE ONLY WHEN ZOOMED OUT.
+
+   (1) A DRAGGED STENCIL IS HALF-ANCHORED.
+
+       Shapes carry their position in two places:
+
+           sh.pts[]    canvas px, geo-anchored through sh._geoPts
+                       -> _geoReprojectAll() moves these with the ground
+           sh.tx, ty   a raw PIXEL offset written by _shapeInteractMove()
+                       -> never converted to a coordinate, never reprojected
+
+       _shapeTransform() emits translate(tx,ty) as the outermost transform,
+       so what you see is pts + (tx,ty). Only the first term tracks the map.
+       Nudge a stencil 60 px into the right stall at z20 and that 60 px is
+       21.9 ft of ground. Zoom out and the SAME 60 px becomes:
+
+           z19   43.8 ft    2x too far
+           z18   87.7 ft    4x
+           z17  175.4 ft    8x
+           z16  350.7 ft   16x
+           z15  701.5 ft   32x
+
+       Error is exactly zero at the zoom you placed it — which is why it
+       looks perfect the moment you zoom back in.
+
+       Fix: when a drag, resize or rotate ends, fold tx/ty into pts and
+       re-stamp _geoPts from the result. Position then lives in exactly one
+       place, and that place is anchored. translate() is outermost and
+       rotate() pivots on _shapeCenter(sh), which is derived from pts, so
+       folding is geometrically identical — the shape does not move.
+
+   (2) THE LABEL HAS A MINIMUM SIZE, THE STALL DOES NOT.
+
+       _renderEVStencil: font-size = Math.max(6, w*0.11), w = 9 ft stall.
+       The stall shrinks with zoom; the clamp holds the text at 6 px.
+
+           z21   49 px stall   label 0.7x stall width
+           z20   25 px         1.5x
+           z19   12 px         2.9x
+           z18    6 px         5.8x      <- the black blobs
+           z16    1.5 px      23.4x
+
+       Fix: drop the clamp and add level-of-detail, the way a map does it.
+       Full detail while it is readable, then the label goes, then the
+       glyph, leaving a clean stall outline. Nothing is ever drawn larger
+       than the thing it labels.
+
+   Also here: reprojection is frozen during the zoom animation and run once
+   on idle, and hatch spacing is expressed in feet rather than fixed px.
+   ═══════════════════════════════════════════════════════════════════════ */
+(function () {
+  'use strict';
+
+  var TAG = '[omega/anchor]';
+  function S_() { try { return (typeof S !== 'undefined' && S) ? S : null; } catch (e) { return null; } }
+  function ppf() { var s = S_(); return (s && s.pxPerFt > 0) ? s.pxPerFt : 6; }
+  function MAP() { try { if (typeof _gmap !== 'undefined' && _gmap) return _gmap; } catch (e) {} return window._gmap || null; }
+
+  /* ═══ 1. BAKE THE DRAG OFFSET INTO THE ANCHORED GEOMETRY ═══════════ */
+
+  function restamp(sh) {
+    if (!sh || !sh.pts || !sh.pts.length) return;
+    if (typeof _liveMapState !== 'function' || typeof _pxToLatLng !== 'function') return;
+    var ms = _liveMapState(); if (!ms) return;
+    var sz = (typeof _getCanvasSize === 'function') ? _getCanvasSize() : { w: 1200, h: 800 };
+    sh._geoPts = sh.pts.map(function (p) {
+      var g = _pxToLatLng(p.x, p.y, ms, sz.w, sz.h);
+      return g ? { lat: g.lat, lng: g.lng } : null;
+    });
+  }
+
+  /* Fold translate(tx,ty) into the points it was offsetting. The rendered
+     result is unchanged: translate is outermost, and rotate pivots on
+     _shapeCenter(sh), which moves by the same delta. */
+  function bake(sh) {
+    if (!sh) return;
+    var dx = sh.tx || 0, dy = sh.ty || 0;
+    if ((dx || dy) && sh.pts && sh.pts.length) {
+      for (var i = 0; i < sh.pts.length; i++) {
+        sh.pts[i].x += dx;
+        sh.pts[i].y += dy;
+      }
+      sh.tx = 0; sh.ty = 0;
+      delete sh._tx0; delete sh._ty0;
+      delete sh._gtx0; delete sh._gty0;
+      restamp(sh);
+      try { if (typeof renderShape === 'function') renderShape(sh); } catch (e) {}
+      return;
+    }
+    /* No offset to fold, but a resize or rotate still changed the shape —
+       re-stamp so the anchor matches what is on screen. */
+    restamp(sh);
+  }
+
+  function bakeById(id) {
+    var s = S_(); if (!s || !id) return;
+    for (var i = 0; i < (s.shapes || []).length; i++) {
+      if (s.shapes[i].id === id) { bake(s.shapes[i]); return; }
+    }
+  }
+
+  function hookInteractEnd() {
+    if (typeof window._shapeInteractEnd !== 'function' || window._shapeInteractEnd.__omegaAnchor) return false;
+    var orig = window._shapeInteractEnd;
+    var wrapped = function () {
+      var s = S_();
+      if (s) {
+        /* Collect ids BEFORE the original clears the drag state. */
+        var ids = [];
+        if (s.shapeDrag) ids.push(s.shapeDrag);
+        if (s.shapeResize) ids.push(s.shapeResize);
+        if (s.shapeRotate) ids.push(s.shapeRotate);
+        if (s.groupDrag && s.groupDrag.length) ids = ids.concat(s.groupDrag);
+        for (var i = 0; i < ids.length; i++) { try { bakeById(ids[i]); } catch (e) {} }
+      }
+      return orig.apply(this, arguments);   /* pushHist() now stores baked pts */
+    };
+    wrapped.__omegaAnchor = true;
+    window._shapeInteractEnd = wrapped;
+    return true;
+  }
+
+  /* ═══ 2. DO NOT REPROJECT MID-ZOOM ════════════════════════════════ */
+  /* getZoom() reports the TARGET zoom the instant zoom_changed fires, but
+     the tiles are still animating toward it. Reprojecting on every
+     bounds_changed during that window throws the drawing to its final
+     position against imagery that has not arrived — the jitter you see
+     while the zoom is in flight. Hold still, then settle once. */
+
+  var zooming = false, zoomTimer = null;
+
+  function settle() {
+    zooming = false;
+    if (zoomTimer) { clearTimeout(zoomTimer); zoomTimer = null; }
+    try { if (typeof window._geoReprojectAll === 'function') window._geoReprojectAll(); } catch (e) {}
+  }
+  function markZooming() {
+    zooming = true;
+    if (zoomTimer) clearTimeout(zoomTimer);
+    zoomTimer = setTimeout(settle, 1200);   /* never latch on a missed idle */
+  }
+
+  function hookReproject() {
+    var orig = window._geoReprojectAll;
+    if (typeof orig !== 'function' || orig.__omegaAnchor) return false;
+    var wrapped = function () {
+      if (zooming) return;
+      return orig.apply(this, arguments);
+    };
+    wrapped.__omegaAnchor = true;
+    window._geoReprojectAll = wrapped;
+    return true;
+  }
+
+  function hookMap() {
+    var m = MAP();
+    if (!m || m.__omegaAnchorZoom) return false;
+    try {
+      if (!(window.google && google.maps && google.maps.event)) return false;
+      google.maps.event.addListener(m, 'zoom_changed', markZooming);
+      google.maps.event.addListener(m, 'idle', settle);
+      m.__omegaAnchorZoom = true;
+      return true;
+    } catch (e) { return false; }
+  }
+
+  /* ═══ 3. LEVEL OF DETAIL FOR THE STENCILS ═════════════════════════ */
+
+  var LOD = {
+    text: 30,     /* rendered stall width (px) below which the label goes */
+    glyph: 10     /* ... and below which the symbol goes too */
+  };
+
+  function lodStencil(sh) {
+    var g = document.querySelector('[data-shid="' + sh.id + '"]');
+    if (!g) return;
+    var scale = sh.scale || 1;
+    var localW = (sh.wf || 9) * ppf();      /* pre-transform, as drawn */
+    var shownW = localW * scale;            /* what the eye actually sees */
+
+    var rect = g.querySelector('rect');
+    var texts = g.querySelectorAll('text');
+    var i;
+
+    /* Labels: scale honestly, or step out of the way. */
+    var showText = shownW >= LOD.text;
+    for (i = 0; i < texts.length; i++) {
+      if (showText) {
+        texts[i].removeAttribute('display');
+        texts[i].setAttribute('font-size', (localW * 0.11).toFixed(2));
+      } else {
+        texts[i].setAttribute('display', 'none');
+      }
+    }
+
+    /* Symbol: keep it while it still reads as a symbol. */
+    var showGlyph = shownW >= LOD.glyph;
+    var kids = g.childNodes;
+    for (i = 0; i < kids.length; i++) {
+      var n = kids[i];
+      if (n.nodeType !== 1) continue;
+      if (n === rect || n.tagName === 'text') continue;
+      if (showGlyph) n.removeAttribute('display');
+      else n.setAttribute('display', 'none');
+    }
+
+    /* Outline: a 1.4 px stroke on a 4 px box is a blob, not an outline. */
+    if (rect) {
+      var sw = Math.min(1.4, Math.max(0.3, shownW * 0.10)) / scale;
+      rect.setAttribute('stroke-width', sw.toFixed(2));
+      /* Once the symbol is gone the stall still has to be findable, so
+         give the box a solid tint instead of a near-empty wash. */
+      if (!showGlyph) {
+        rect.setAttribute('fill', sh.kind === 'adastencil'
+          ? 'rgba(46,111,230,0.85)' : 'rgba(120,200,140,0.85)');
+      }
+    }
+  }
+
+  /* Hatch pitch belongs in feet. A fixed 8 px step is a dense scribble
+     when zoomed in and two stray lines when zoomed out. */
+  function lodHatch(sh) {
+    var g = document.querySelector('[data-shid="' + sh.id + '"]');
+    if (!g) return;
+    var clipRect = g.querySelector('clipPath rect');
+    var band = null, kids = g.childNodes, i;
+    for (i = 0; i < kids.length; i++) {
+      if (kids[i].nodeType === 1 && kids[i].tagName === 'g' && kids[i].getAttribute('clip-path')) {
+        band = kids[i]; break;
+      }
+    }
+    if (!clipRect || !band) return;
+
+    var x = parseFloat(clipRect.getAttribute('x')) || 0;
+    var y = parseFloat(clipRect.getAttribute('y')) || 0;
+    var w = parseFloat(clipRect.getAttribute('width')) || 0;
+    var h = parseFloat(clipRect.getAttribute('height')) || 0;
+    if (w <= 0 || h <= 0) return;
+
+    var proto = band.querySelector('line');
+    var col = proto ? (proto.getAttribute('stroke') || '#000') : '#000';
+    var sw = proto ? (proto.getAttribute('stroke-width') || '0.9') : '0.9';
+
+    var step = Math.max(4, Math.min(20, 1.5 * ppf()));     /* ~1.5 ft */
+    if (Math.abs(step - 8) < 0.5) return;                  /* already right */
+
+    while (band.firstChild) band.removeChild(band.firstChild);
+    var NS = 'http://www.w3.org/2000/svg';
+    for (var off = -h; off < w; off += step) {
+      var l = document.createElementNS(NS, 'line');
+      l.setAttribute('x1', x + off); l.setAttribute('y1', y);
+      l.setAttribute('x2', x + off + h); l.setAttribute('y2', y + h);
+      l.setAttribute('stroke', col);
+      l.setAttribute('stroke-width', sw);
+      l.setAttribute('opacity', '0.7');
+      band.appendChild(l);
+    }
+  }
+
+  var STENCIL = { evstencil: 1, adastencil: 1 };
+  var HATCH = { adaaisle: 1, hatchbox: 1 };
+
+  function hookRender() {
+    if (typeof window.renderShape !== 'function' || window.renderShape.__omegaAnchor) return false;
+    var orig = window.renderShape;
+    var wrapped = function (sh) {
+      var r = orig.apply(this, arguments);
+      try {
+        if (sh && STENCIL[sh.kind]) lodStencil(sh);
+        else if (sh && HATCH[sh.kind]) lodHatch(sh);
+      } catch (e) {}
+      return r;
+    };
+    wrapped.__omegaAnchor = true;
+    window.renderShape = wrapped;
+    return true;
+  }
+
+  /* ═══ INSTALL ═════════════════════════════════════════════════════ */
+
+  var n = 0;
+  var iv = setInterval(function () {
+    var a = hookInteractEnd(), b = hookReproject(), c = hookRender(), d = hookMap();
+    if (a || b || c || d) {
+      if (window.console) console.info(TAG, 'armed'
+        + (a ? ' · drag-bake' : '') + (b ? ' · zoom-hold' : '')
+        + (c ? ' · stencil LOD' : '') + (d ? ' · map listeners' : ''));
+    }
+    if (++n > 200) clearInterval(iv);
+  }, 300);
+
+  window.OmegaAnchor = {
+    lod: LOD,
+    /* Fold every outstanding drag offset in one pass. Run this once on an
+       older drawing whose stencils were nudged before this patch. */
+    bakeAll: function () {
+      var s = S_(); if (!s) return 0;
+      var out = [];
+      (s.shapes || []).forEach(function (sh) {
+        if (sh.tx || sh.ty) {
+          out.push({ id: sh.id, kind: sh.kind, tx: Math.round(sh.tx || 0), ty: Math.round(sh.ty || 0) });
+          bake(sh);
+        }
+      });
+      if (out.length) {
+        if (console.table) console.table(out); else console.log(out);
+        try { if (typeof pushHist === 'function') pushHist(); } catch (e) {}
+      }
+      console.info(TAG + ' baked ' + out.length + ' drag offset(s) into anchored coordinates');
+      return out.length;
+    },
+    status: function () {
+      var s = S_() || {};
+      var shapes = s.shapes || [];
+      var loose = shapes.filter(function (x) { return (x.tx || x.ty); });
+      var unanchored = shapes.filter(function (x) { return x.pts && x.pts.length && !x._geoPts; });
+      var o = {
+        shapes: shapes.length,
+        stencils: shapes.filter(function (x) { return STENCIL[x.kind]; }).length,
+        withLooseDragOffset: loose.length,
+        unanchored: unanchored.length,
+        pxPerFt: +ppf().toFixed(3),
+        stallWidthPx: +(9 * ppf()).toFixed(1),
+        labelsVisible: (9 * ppf()) >= LOD.text,
+        zoomHoldActive: zooming,
+        liveMap: !!MAP()
+      };
+      o.verdict = !o.liveMap ? 'No live map — nothing anchors until a site is loaded.'
+        : loose.length ? loose.length + ' shape(s) still hold a raw pixel drag offset. Run OmegaAnchor.bakeAll().'
+          : unanchored.length ? unanchored.length + ' shape(s) have no coordinate yet; they anchor on the next history push.'
+            : 'All shapes anchored to ground coordinates.';
       if (console.table) console.table(o); else console.log(o);
       console.info(o.verdict);
       return o;
