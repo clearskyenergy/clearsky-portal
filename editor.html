@@ -50504,7 +50504,7 @@ window._crmToastModal=_crmToastModal;
 </script>
 <!-- ═════════════════════════════════════════════════════════════════════
      CLEARSKY OMEGA — SITE MAP DESIGNER PRO
-     PATCH BUNDLE  ·  2026-07-28  ·  rev 8
+     PATCH BUNDLE  ·  2026-07-28  ·  rev 10
 
      Paste this whole block into editor.html immediately before </body>.
 
@@ -50516,8 +50516,10 @@ window._crmToastModal=_crmToastModal;
        6. Conduit length measured from coordinates, not pixels    [rev 4]
        7. Guided-build assemblies can be dragged and stay put     [rev 5]
        8. Trench and conduit move together                       [rev 6]
+          + stays out of the way during a guided build's
+            batched placement                                [rev 10]
        9. Solar exclusions no longer make a project unsaveable   [rev 7]
-      10. Project lists query uid, not the absent owner field    [rev 8]
+      10. Project lists query uid, not the absent owner field    [rev 10]
 
      Console helpers once loaded:
        OmegaSave.check()                why a save failed — run this first
@@ -53143,11 +53145,29 @@ window._crmToastModal=_crmToastModal;
     return redrawn;
   }
 
-  var last = null, syncs = 0, rebanks = 0;
+  var last = null, syncs = 0, rebanks = 0, deferred = false, wasBatching = false;
+
+  /* A guided build places several runs inside one condBatch(). The file is
+     explicit that render paths must stay out of the way during that:
+
+         "True while a bulk operation is in flight - render paths check
+          this and skip their own repaint, deferring to the single flush
+          at the end."   (_condBatching, line 10007)
+
+     autoWireConduit() honours it. This module did not, so a 150 ms timer
+     was rebuilding corridors and re-banking every run in the middle of a
+     bulk placement, moving runs that the batch had not finished writing.
+     Stay out until the depth returns to zero, then sync once. */
+  function batching() {
+    try { return typeof _condBatching === 'function' && _condBatching(); } catch (e) { return false; }
+  }
 
   function check(force) {
+    if (batching()) { deferred = true; wasBatching = true; return false; }
+    if (wasBatching) { wasBatching = false; force = true; }   /* the batch just closed */
     var h = hash();
-    if (!force && h === last) return false;
+    if (!force && !deferred && h === last) return false;
+    deferred = false;
     last = h;
     syncs++;
     rebanks += rebuild();
@@ -53182,7 +53202,9 @@ window._crmToastModal=_crmToastModal;
         corridorDrawn: !!g,
         corridorSegments: g ? g.children.length : 0,
         syncsThisSession: syncs,
-        conduitsRebankedAndRedrawn: rebanks
+        conduitsRebankedAndRedrawn: rebanks,
+        bulkOperationInFlight: batching(),
+        syncDeferred: deferred
       };
       o.verdict = !cs.length ? 'No conduit runs.'
         : !o.corridorDrawn ? 'No corridor drawn — trenching may be off for these runs.'
@@ -53506,6 +53528,21 @@ window._crmToastModal=_crmToastModal;
 
   var TAG = '[omega/projects]';
 
+  /* homeLoadRecent() re-fetches whenever the list is EMPTY:
+
+         var list = (_allProjects && _allProjects.length) ? ... : null;
+         if(!list){ _homeFetchProjects().then(function(){ homeLoadRecent(); }) ... }
+
+     An empty array is falsy by .length, so a successful fetch that returns
+     nothing re-enters immediately and forever. Nothing throws, so the
+     .catch never runs and its "No recent projects yet" message is
+     unreachable — which is why the panel sits on "Loading recent
+     projects..." indefinitely while firing Firestore queries in a loop.
+     That is enough to saturate the main thread and make the whole page
+     feel stuck. Guard the re-entry: once a fetch has completed, an empty
+     result is an ANSWER, not a reason to ask again. */
+  var fetched = false, lastFetch = 0;
+
   function db() { return window._db || null; }
   function user() { return window._currentUser || null; }
   function myOrg() {
@@ -53549,12 +53586,17 @@ window._crmToastModal=_crmToastModal;
         /* Last resort, and only useful for the cross-org read domains. */
         if (all.length) return all;
         return D.collection('projects').limit(50).get().then(docsOf).catch(function () { return []; });
-      });
+      })
+      .then(function (all) { fetched = true; lastFetch = Date.now(); return all; });
   }
 
   function hookHomeFetch() {
     if (typeof window._homeFetchProjects !== 'function' || window._homeFetchProjects.__omegaProjects) return false;
     var wrapped = function () {
+      /* Never let a caller spin on this. */
+      if (fetched && Date.now() - lastFetch < 3000) {
+        return Promise.resolve(window._allProjects || []);
+      }
       return fetchProjects().then(function (list) {
         window._allProjects = list;
         return list;
@@ -53562,6 +53604,27 @@ window._crmToastModal=_crmToastModal;
     };
     wrapped.__omegaProjects = true;
     window._homeFetchProjects = wrapped;
+    return true;
+  }
+
+  /* Break the re-entry: an empty result after a completed fetch renders the
+     empty state instead of asking again. */
+  function hookRecent() {
+    var orig = window.homeLoadRecent;
+    if (typeof orig !== 'function' || orig.__omegaProjects) return false;
+    var wrapped = function () {
+      if (fetched && !(window._allProjects && window._allProjects.length)) {
+        var host = document.getElementById('home-recent');
+        if (host) {
+          host.innerHTML = '<div style="font-size:9.5px;color:var(--sub);padding:6px 4px">'
+            + 'No recent projects yet. Use <b style="color:var(--text)">New</b> to start one.</div>';
+        }
+        return;
+      }
+      return orig.apply(this, arguments);
+    };
+    wrapped.__omegaProjects = true;
+    window.homeLoadRecent = wrapped;
     return true;
   }
 
@@ -53587,8 +53650,8 @@ window._crmToastModal=_crmToastModal;
 
   var n = 0;
   var iv = setInterval(function () {
-    var a = hookHomeFetch(), b = hookModal();
-    if (a || b) {
+    var a = hookHomeFetch(), b = hookModal(), c = hookRecent();
+    if (a || b || c) {
       if (window.console) console.info(TAG, 'armed — project lists now query uid/orgId instead of the absent owner field');
       try { if (typeof homeLoadRecent === 'function') homeLoadRecent(); } catch (e) {}
     }
@@ -53613,6 +53676,7 @@ window._crmToastModal=_crmToastModal;
         uid: u ? u.uid : null,
         org: myOrg(),
         cachedProjects: (window._allProjects || []).length,
+        fetchCompleted: fetched,
         queriesOn: 'uid, then orgId'
       };
       o.verdict = !u ? 'Not signed in — no project list is possible.'
