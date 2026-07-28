@@ -1166,7 +1166,7 @@ window.onerror = function(msg, src, line, col, err) {
         <button class="rbtn" onclick="openBessModal(null)" title="BESS Config &mdash; size the battery, set chemistry, run the value stack"><span class="rb-ico" style="color:#00D4FF">&#9881;</span><span class="rb-lbl">BESS<br>Config</span></button>
         <button class="rbtn" onclick="openSolarBessSizer()" title="Solar &rarr; BESS Sizer &mdash; size storage from the solar drawn on the sitemap"><span class="rb-ico" style="color:#FBBF24">&#9788;</span><span class="rb-lbl">Solar &rarr;<br>BESS</span></button>
         <button class="rbtn" onclick="homeStartWizard('BTM')" title="Behind-the-meter guided flow &mdash; coming soon" style="position:relative;opacity:.72"><span class="rb-ico">&#9644;</span><span class="rb-lbl">BESS<br>BTM</span><span style="position:absolute;top:2px;right:3px;font-size:6.5px;font-weight:800;letter-spacing:.3px;background:rgba(245,158,11,.9);color:#1A1206;padding:1px 3px;border-radius:3px;line-height:1.2">SOON</span></button>
-        <button class="rbtn" onclick="homeStartWizard('FOM')" title="Solar + Storage single-pass flow &mdash; coming soon" style="position:relative;opacity:.72"><span class="rb-ico" style="color:#FBBF24">&#9638;</span><span class="rb-lbl">Solar +<br>Storage</span><span style="position:absolute;top:2px;right:3px;font-size:6.5px;font-weight:800;letter-spacing:.3px;background:rgba(245,158,11,.9);color:#1A1206;padding:1px 3px;border-radius:3px;line-height:1.2">SOON</span></button>
+        <button class="rbtn" onclick="homeStartWizard('FOM')" title="Solar + Storage single-pass flow — utility-first: POI to PV, branching at the 480V bus" style="position:relative;opacity:1"><span class="rb-ico" style="color:#FBBF24">&#9638;</span><span class="rb-lbl">Solar +<br>Storage</span><span style="position:absolute;top:2px;right:3px;font-size:6.5px;font-weight:800;letter-spacing:.3px;background:rgba(245,158,11,.9);color:#1A1206;padding:1px 3px;border-radius:3px;line-height:1.2">SOON</span></button>
       </div>
       <div class="rpanel-cap">3 &middot; Size &amp; Configure</div>
     </div>
@@ -4749,6 +4749,27 @@ const ICONS={
     <text x="28" y="52" font-size="4" fill="#8BA3C4" text-anchor="middle" font-family="monospace">CONCRETE PAD</text>
   </svg>`,
 
+  /* AC block: battery enclosure with the inverter inside - drawn as one
+     cabinet with a sine/square conversion glyph, because that is the point
+     of the product. */
+  acblock:(s=60)=>`<svg width="${s}" height="${s}" viewBox="0 0 56 56" xmlns="http://www.w3.org/2000/svg">
+    <rect x="5" y="12" width="46" height="32" rx="3" fill="none" stroke="currentColor" stroke-width="2.5"/>
+    <line x1="28" y1="12" x2="28" y2="44" stroke="currentColor" stroke-width="1.6" stroke-dasharray="3 2.5"/>
+    <rect x="9" y="17" width="6" height="22" rx="1" fill="currentColor" opacity=".55"/>
+    <rect x="17" y="17" width="6" height="22" rx="1" fill="currentColor" opacity=".55"/>
+    <path d="M33 33 q3.5 -9 7 0 q3.5 9 7 0" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+    <path d="M33 22 h4 v-4 h6 v4 h4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+  </svg>`,
+  /* Solar inverter with DC combining integrated: strings in on the left,
+     AC out on the right. */
+  inverter:(s=60)=>`<svg width="${s}" height="${s}" viewBox="0 0 56 56" xmlns="http://www.w3.org/2000/svg">
+    <rect x="12" y="10" width="32" height="36" rx="3" fill="none" stroke="currentColor" stroke-width="2.5"/>
+    <path d="M4 18 h8 M4 24 h8 M4 30 h8 M4 36 h8" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" opacity=".75"/>
+    <path d="M44 28 h8" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/>
+    <path d="M18 24 h6 M21 21 v6" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+    <path d="M18 34 h6" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+    <path d="M30 36 q2.5 -7 5 0 q2.5 7 5 0" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+  </svg>`,
   bollard:(s=60)=>`<svg width="${s}" height="${s}" viewBox="0 0 56 56" xmlns="http://www.w3.org/2000/svg">
     <circle cx="28" cy="28" r="28" fill="#3D2E00"/>
     <rect x="22" y="14" width="12" height="27" rx="4" fill="none" stroke="#F4A020" stroke-width="2"/>
@@ -8215,7 +8236,17 @@ function _doPlaceBesPad(p,spec,opts){
             model:spec.model, lf:spec.lf, wf:spec.wf, scaled:!!ppf,
             catalogKey:_elec.key, unitKwh:_elec.kwh, unitKw:_elec.kw, unitCost:_elec.cost,
             parts:parts, padMargin:padMargin, gearVGap:gearVGap, containerGap:containerGap,
-            hasAssembly:!!opts.assembly, hasFence:!!opts.fence, hasBollards:!!opts.bollards,
+            hasAssembly:!!opts.assembly, hasFence:!!opts.fence,
+            /* Guided builds do not add bollards - gating only the wizard
+               loop missed this path, which is what the pad placement uses. */
+            hasBollards: (function(){
+              try{
+                if(window.OMEGA_GUIDED_BOLLARDS===true) return !!opts.bollards;
+                if(typeof BGB!=='undefined' && BGB && BGB.active) return false;
+                if(typeof S!=='undefined' && S && S.wizActive) return false;
+              }catch(e){}
+              return !!opts.bollards;
+            })(),
             sides:{ n:_sideVal, e:_sideVal, s:_sideVal, w:_sideVal },
             fenceClear:10.5, bollardOffset:2.33, bollardSpacing:3.0, auxGap:3.0 };
   S.shapes.push(asm); renderShape(asm);
@@ -15036,6 +15067,11 @@ function autoAssembleBESS(b) {
     {x:(bx1+bx2)/2,   y:by2},
     {x:bx2,           y:by2},
   ].forEach((pos, i) => {
+    /* Bollards are off during guided builds - they are protection detail,
+       not topology, and eight of them round every pad buries the equipment
+       the build is meant to be showing. Insert > Bollard places them, and
+       the pad modal still offers them for a one-off placement. */
+    if(window.OMEGA_GUIDED_BOLLARDS !== true) return;
     const bEl = addEl({type:'eq', eqId:'bollard', label:`B${i+1}`,
       spec:'CFC  1207.11.7',
       x: pos.x - bSz/2, y: pos.y - bSz/2, w: bSz, rot:0,
@@ -37934,7 +37970,7 @@ function placeDcfcAt(p){
     DCFC.lastEl=el;
     if(key==='xfmr' && DCFC.placed.service){ _dcfcRun(DCFC.placed.service, el, 'EV-MAIN', 'Main \u2014 service\u2192xfmr'); }
     if(key==='panel' && DCFC.placed.xfmr){ _dcfcRun(DCFC.placed.xfmr, el, 'EV-FEEDER', 'Feeder \u2014 xfmr\u2192panel'); }
-    try{ _dcfcBollards(el); }catch(e){}
+    try{ if(window.OMEGA_GUIDED_BOLLARDS===true) _dcfcBollards(el); }catch(e){}
     if(typeof _reRenderEl==='function') _reRenderEl(el.id);
     DCFC.stepIx++;
     _dcfcGuideRender(); _dcfcPrompt();
@@ -37949,7 +37985,7 @@ function placeDcfcAt(p){
     cel.flip=(snap.side<0);
     DCFC.chargerEls.push(cel); DCFC.lastEl=cel;
     if(DCFC.placed.panel){ _dcfcRun(DCFC.placed.panel, cel, 'EV-BRANCH', 'Branch \u2014 panel\u2192DCFC '+idx); }
-    try{ _dcfcBollards(cel); }catch(e){}
+    try{ if(window.OMEGA_GUIDED_BOLLARDS===true) _dcfcBollards(cel); }catch(e){}
     if(typeof _reRenderEl==='function') _reRenderEl(cel.id);
     DCFC.chargersLeft--;
     if(DCFC.chargersLeft>0){ _dcfcGuideRender(); _dcfcPrompt(); }
@@ -38205,7 +38241,7 @@ placeDcfcAt=function(p){
       var el=_evAdd(kind, snap.x, snap.y, n.label, spec);
       DCFC.placed[kind]=el; DCFC.lastEl=el;
       _dcfcConduitAlongRun(el, run, snap, _DCFC_LEG_COND[kind], _DCFC_LEG_NAME[kind]);
-      try{ _dcfcBollards(el); }catch(e){}
+      try{ if(window.OMEGA_GUIDED_BOLLARDS===true) _dcfcBollards(el); }catch(e){}
       if(typeof _reRenderEl==='function') _reRenderEl(el.id);
       DCFC.stepIx++;
       DCFC.phase='drawtrench'; DCFC._activeRun=null;
@@ -38225,7 +38261,7 @@ placeDcfcAt=function(p){
       cel.mfr=mm.mfr||''; cel.ports=mm.ports||2; cel.connectors=mm.connectors||'CCS';
       DCFC.chargerEls.push(cel); DCFC.lastEl=cel;
       _dcfcConduitAlongRun(cel, run, snap, 'EV-BRANCH', 'Branch \u2014 panel\u2192DCFC '+idx);
-      try{ _dcfcBollards(cel); }catch(e){}
+      try{ if(window.OMEGA_GUIDED_BOLLARDS===true) _dcfcBollards(cel); }catch(e){}
       if(typeof _reRenderEl==='function') _reRenderEl(cel.id);
       DCFC.chargersLeft--;
       if(DCFC.chargersLeft>0){ _dcfcGuideRender(); _dcfcPrompt(); }
@@ -38395,6 +38431,37 @@ var BGB = {
    FOM: BESS -> [XFMR*] -> [AC Disco*] -> MV Switchgear -> Revenue Meter @ POI -> Utility
    (* dropped when integrated in the container.) */
 var BGB_PRESETS = {
+  /* Utility-first Solar + BESS. Unlike BTM/FOM this is a TREE: the common
+     480V bus branches to building loads, the BESS leg and the solar leg.
+     Conduit type is per-segment - MV on the utility side, 480V AC through
+     the bus, DC only between modules/combiners/inverters and PCS/battery -
+     because a DC home-run labelled 480V AC would be wrong on a permit set. */
+  /* SEVEN PIECES, NOT FOURTEEN.
+
+     The earlier version drew every electrical function as its own item.
+     That is how a one-line reads, but not how a site is built - most of
+     those functions ship inside one another:
+
+       AC block          battery + PCS in one enclosure, AC out at
+                         480-800V. Fewer components to wire on site.
+       PCS + MV skid     utility-scale layouts put the PCS and the medium
+                         voltage transformer on a single skid.
+       String inverter   DC combining is integrated; separate combiner
+                         boxes are a central-inverter pattern.
+       Utility metering  revenue meter, CTs/PTs and protection relay live
+                         in one utility cabinet at the POI.
+       Switchgear        the main disconnect and the distribution bus are
+                         one lineup, not two devices.
+
+     AC coupling is used because it is the common arrangement for
+     co-located solar and storage: separate inverters, sharing the POI,
+     each able to be sized or serviced without the other. */
+  SOLAR_BESS: { label:'Solar + BESS (utility-first)', color:'#FBBF24',
+    seq:['service','utilxfmr','mainswgr','acblock','pvinv','pv','loads'],
+    parents:{ utilxfmr:'service', mainswgr:'utilxfmr',
+              acblock:'mainswgr', pvinv:'mainswgr', pv:'pvinv', loads:'mainswgr' },
+    legs:{ service:'MV-UG', utilxfmr:'MV-UG', mainswgr:'EV-MAIN',
+           acblock:'EV-FEEDER', pvinv:'EV-FEEDER', pv:'RMC-DC', loads:'EV-FEEDER' } },
   BTM: { label:'Behind-the-Meter', color:'#60A5FA',
          seq:['bess','xfmr','disco','panel','meter','service'],
          legs:{ bess:'EV-MAIN', xfmr:'EV-MAIN', disco:'MV-UG', panel:'MV-UG', meter:'EMT-BMS', service:'EV-FEEDER' } },
@@ -38404,6 +38471,14 @@ var BGB_PRESETS = {
 };
 
 var BGB_NODES = {
+  /* Combined pieces. Each label names what arrives on a truck, and the
+     sub-line says what is inside it, so nothing is hidden. */
+  utilxfmr:{ evKind:'xfmr',  label:'Utility Service Transformer', color:'#F59E0B' },
+  mainswgr:{ evKind:'panel', label:'Main Switchgear',      color:'#EF4444' },
+  acblock: { evKind:'bess',  label:'BESS AC Block',        color:'#22C55E' },
+  pvinv:   { evKind:'inverter', label:'Solar Inverter',    color:'#FBBF24' },
+  pv:      { evKind:'solar', label:'PV Array',             color:'#FBBF24' },
+  loads:   { evKind:'panel', label:'Building Loads',       color:'#94A3B8' },
   bess:   { evKind:'bess',    label:'BESS Assembly',         color:'#22C55E' },
   xfmr:   { evKind:'xfmr',    label:'Step-Up Transformer',   color:'#F59E0B' },
   disco:  { evKind:'disco',   label:'AC Disconnect',         color:'#EF4444' },
@@ -38412,6 +38487,12 @@ var BGB_NODES = {
   service:{ evKind:'service', label:'Utility POI',           color:'#F59E0B' }
 };
 var BGB_LEGNAME = {
+  utilxfmr:'POI \u2192 service transformer (MV)',
+  mainswgr:'Transformer \u2192 switchgear (480V)',
+  acblock:'Switchgear \u2192 BESS AC block (480V)',
+  pvinv:'Switchgear \u2192 solar inverter (480V)',
+  pv:'Inverter \u2192 PV array (DC)',
+  loads:'Switchgear \u2192 building loads (480V)',
   bess:'BESS AC output', xfmr:'BESS\\u2192XFMR (AC)', disco:'XFMR\\u2192Disco',
   panel:'Disco\\u2192Switchgear (feeder)', meter:'Metering (data)', service:'Switchgear\\u2192POI (service)'
 };
@@ -38445,12 +38526,27 @@ window._bgbLoadConfig=_bgbLoadConfig;
 /* ---- MODAL (its own home) ---- */
 function openBessGuidedBuild(){
   if(typeof engGuideBegin==='function') try{ engGuideBegin(); }catch(e){}
+  /* Consume the flag: it is raised immediately before the call by
+     Build > Solar + Storage and must not leak into the next opening from
+     any of the other callers. */
+  var _solarEntry = !!window.__omegaSolarEntry;
+  window.__omegaSolarEntry = _solarEntry;   /* visible while this modal builds */
+  setTimeout(function(){ window.__omegaSolarEntry=false; }, 0);
+  if(!_solarEntry && BGB.mode==='SOLAR_BESS') BGB.mode='BTM';   /* do not strand it */
   BGB.active=true; BGB.stepIx=0; BGB.placed={};
   _bgbLoadConfig();   // pull any configured system + integration flags
   var modeCards=''
     +'<div data-bmode="BTM" onclick="_bgbPickMode(\'BTM\')" style="cursor:pointer;border:1.5px solid '+(BGB.mode==='BTM'?'#60A5FA':'#26364d')+';border-radius:8px;padding:10px;background:'+(BGB.mode==='BTM'?'rgba(96,165,250,.12)':'rgba(0,0,0,.15)')+'">'
       +'<div style="font-size:12px;font-weight:800;color:#E2EEF9">\u26a1 BTM \u2014 Behind the Meter</div>'
       +'<div style="font-size:9px;color:#8FA3B8;margin-top:3px;line-height:1.4">Non-export: demand-charge shaving + backup. BESS \u2192 (XFMR) \u2192 (Disco) \u2192 Switchgear/MDP \u2192 Revenue Meter \u2192 Building/POI.</div></div>'
+    /* Shown ONLY when the guided build was opened from Build > Solar +
+       Storage. The BESS Site guided build is about a BESS site, and
+       offering a whole solar topology there is noise - there are six
+       other callers of this modal and none of them mean solar. */
+    +(window.__omegaSolarEntry ? ('<div data-bmode="SOLAR_BESS" onclick="_bgbPickMode(\'SOLAR_BESS\')" style="cursor:pointer;border:1.5px solid '+(BGB.mode==='SOLAR_BESS'?'#FBBF24':'#26364d')+';border-radius:9px;padding:10px 12px;margin-bottom:8px;background:'+(BGB.mode==='SOLAR_BESS'?'rgba(251,191,36,.12)':'rgba(0,0,0,.18)')+'">'
+      +'<div style="font-size:12px;font-weight:800;color:#E2EEF9">\u2600\ufe0f SOLAR + BESS \u2014 Utility First</div>'
+      +'<div style="font-size:9px;color:#8FA3B8;margin-top:3px;line-height:1.4">Seven pieces, AC-coupled. POI (metering + protection) \u2192 service transformer \u2192 main switchgear, then the BESS AC block (battery + PCS in one enclosure) and the solar inverter (DC combining integrated) both tap the switchgear, sharing the interconnection. Conduit type follows each segment \u2014 MV, 480V AC, or DC.</div>'
+      +'</div>') : '')
     +'<div data-bmode="FOM" onclick="_bgbPickMode(\'FOM\')" style="cursor:pointer;border:1.5px solid '+(BGB.mode==='FOM'?'#F59E0B':'#26364d')+';border-radius:8px;padding:10px;background:'+(BGB.mode==='FOM'?'rgba(245,158,11,.12)':'rgba(0,0,0,.15)')+'">'
       +'<div style="font-size:12px;font-weight:800;color:#E2EEF9">\ud83d\udd0c FOM \u2014 Front of Meter</div>'
       +'<div style="font-size:9px;color:#8FA3B8;margin-top:3px;line-height:1.4">Wholesale / grid services. BESS \u2192 (XFMR) \u2192 (Disco) \u2192 MV Switchgear \u2192 Revenue Meter @ POI \u2192 Utility.</div></div>';
@@ -38680,12 +38776,38 @@ function placeBgbAt(p){
     if(BGB.incXfmr) _incl.push('step-up XFMR');
     if(BGB.incDisco) _incl.push('AC disconnect');
     var _spec=(BGB.kwh/1000).toFixed(2)+' MWh / '+(BGB.kw/1000).toFixed(2)+' MW \u00b7 '+BGB.mode+' \u00b7 incl. '+_incl.join(' + ');
+    /* THE FIRST STEP IS seq[0], WHICH IS NOT ALWAYS THE BESS.
+
+       BTM and FOM both start at the BESS and work outward, so this phase
+       placed one and jumped to stepIx=1. The utility-first Solar + BESS
+       topology starts at the Utility POI - with the hardcoded assumption
+       it dropped a BESS Assembly, skipped seq[0] entirely, and the run
+       from the utility down to the BESS was simply never drawn.
+
+       Place whatever seq[0] actually is. */
+    var _first = (BGB.seq && BGB.seq[0]) || 'bess';
+    if(_first !== 'bess'){
+      var _n = (typeof BGB_NODES!=='undefined' && BGB_NODES[_first]) || {evKind:_first, label:_first};
+      var _sp = (_first==='service') ? ('Utility POI \u00b7 '+BGB.mode+' interconnection')
+              : (_first==='meter')   ? 'Revenue meter \u00b7 CT/PT set'
+              : '';
+      var _el = _evAdd(_n.evKind||_first, p.x, p.y, _n.label||_first, _sp);
+      _el.bgbRole=_first; _el.evRole=_first;
+      BGB.placed[_first]=_el; BGB.lastEl=_el; BGB.stepIx=1;
+      if(window.OMEGA_GUIDED_BOLLARDS===true){ try{ _dcfcBollards(_el); }catch(e){} }
+      if(typeof _reRenderEl==='function') _reRenderEl(_el.id);
+      BGB.phase='drawtrench';
+      _dcfcDraw={ pts:[{x:p.x,y:p.y}], preview:null, leg:_bgbLegColor(_bgbCurKind()) };
+      _dcfcRenderTrenches(); _bgbGuideRender(); _bgbPrompt();
+      if(typeof updateSummaryPanel==='function') updateSummaryPanel();
+      return;
+    }
     var bess=_evAdd('bess', p.x, p.y, 'BESS Assembly', _spec);
     bess.bgbKw=BGB.kw; bess.bgbKwh=BGB.kwh; bess.bgbRole='bess';
     bess.bgbIncXfmr=BGB.incXfmr; bess.bgbIncDisco=BGB.incDisco; bess.bgbIncPcs=BGB.incPcs;
     if(BGB.cfg){ bess.bessCfgId=BGB.cfg.id||null; bess.bessModel=((BGB.cfg.mfr||'')+' '+(BGB.cfg.model||'')).trim(); }
-    BGB.placed.bess=bess; BGB.lastEl=bess; BGB.stepIx=1; // bess is seq[0]
-    try{ _dcfcBollards(bess); }catch(e){}
+    BGB.placed.bess=bess; BGB.lastEl=bess; BGB.stepIx=1; // bess is seq[0] for BTM/FOM
+    try{ if(window.OMEGA_GUIDED_BOLLARDS===true) _dcfcBollards(bess); }catch(e){}
     if(typeof _reRenderEl==='function') _reRenderEl(bess.id);
     BGB.phase='drawtrench';
     _dcfcDraw={ pts:[{x:p.x,y:p.y}], preview:null, leg:_bgbLegColor(_bgbCurKind()) };
@@ -38712,12 +38834,31 @@ function placeBgbAt(p){
     el.bgbRole=kind; el.evRole=kind;
     BGB.placed[kind]=el; BGB.lastEl=el;
     _dcfcConduitAlongRun(el, run, snap, _bgbLegCond(kind), (BGB_LEGNAME[kind]||n.label));
-    try{ if(kind!=='meter') _dcfcBollards(el); }catch(e){}
+    /* Bollards are protection detail, not topology - off unless asked for. */
+    try{ if(kind!=='meter' && window.OMEGA_GUIDED_BOLLARDS===true) _dcfcBollards(el); }catch(e){}
     if(typeof _reRenderEl==='function') _reRenderEl(el.id);
     BGB.stepIx++;
     if(BGB.stepIx>=sq.length){ _bgbFinish(); if(typeof updateSummaryPanel==='function') updateSummaryPanel(); return; }
     BGB.phase='drawtrench'; BGB._activeRun=null;
-    if(BGB._lastEnd){ _dcfcDraw={ pts:[{x:BGB._lastEnd.x,y:BGB._lastEnd.y}], preview:null, leg:_bgbLegColor(_bgbCurKind()) }; }
+    var _pk=(function(){
+      /* Start from the declared parent rather than the previous run's end.
+         A tree topology cannot be expressed by chaining, and chaining is
+         what put the BESS behind the building loads. */
+      try{
+        var pre=BGB_PRESETS[BGB.mode];
+        if(!pre || !pre.parents) return null;
+        var pkey=pre.parents[_bgbCurKind()];
+        if(!pkey) return null;
+        var el=BGB.placed && BGB.placed[pkey];
+        if(!el) return null;
+        var id=el.id||el;
+        var obj=(S.elements||[]).filter(function(e){ return e.id===id; })[0];
+        if(!obj) return null;
+        return { x:obj.x+((obj.w||60)/2), y:obj.y+((obj.h||obj.w||60)/2) };
+      }catch(e){ return null; }
+    })();
+    if(_pk){ _dcfcDraw={ pts:[{x:_pk.x,y:_pk.y}], preview:null, leg:_bgbLegColor(_bgbCurKind()) }; }
+    else if(BGB._lastEnd){ _dcfcDraw={ pts:[{x:BGB._lastEnd.x,y:BGB._lastEnd.y}], preview:null, leg:_bgbLegColor(_bgbCurKind()) }; }
     else { _dcfcDraw=null; }
     _dcfcRenderTrenches(); _bgbGuideRender(); _bgbPrompt();
     if(typeof updateSummaryPanel==='function') updateSummaryPanel();
@@ -41579,6 +41720,23 @@ function homeStartWizard(mode){
      message. The Guided Build group (Standard / Deluxe / DER) already
      covers the adjacent ground, so those are what we point at. */
   if(mode==='FOM'){
+    /* Solar + Storage is real now - it runs the utility-first topology.
+       Open the guided build already switched to that mode rather than
+       making the user find it in the mode list. */
+    try{
+      if(typeof openBessGuidedBuild==='function'){
+        window.__omegaSolarEntry=true;      /* this entry point only */
+        openBessGuidedBuild();
+        /* Select through the app's own picker AFTER opening:
+           openBessGuidedBuild calls _bgbLoadConfig(), which restores the
+           saved mode and would overwrite anything set beforehand.
+           _bgbPickMode also re-renders the cards so the choice shows. */
+        setTimeout(function(){
+          try{ if(typeof _bgbPickMode==='function') _bgbPickMode('SOLAR_BESS'); }catch(e){}
+        }, 0);
+        return;
+      }
+    }catch(e){}
     comingSoon('Solar + Storage Guided Build',
       'A step-by-step flow that sizes storage against a solar array in one pass '
       +'\u2014 array layout, inverter sizing, POI and interconnection \u2014 is still being built. '
@@ -47430,8 +47588,8 @@ window._crmToastModal=_crmToastModal;
    already been fixed in a build that was not the one loaded. This makes
    the running version checkable in one line. */
 (function(){
-  window.OMEGA_BUILD = { id:'1d16ab3a', built:'2026-07-27 09:45 UTC' };
-  console.info('%cOMEGA build 1d16ab3a  (2026-07-27 09:45 UTC)', 'color:#2FB54A;font-weight:bold');
+  window.OMEGA_BUILD = { id:'f4c73f29', built:'2026-07-27 09:45 UTC' };
+  console.info('%cOMEGA build f4c73f29  (2026-07-27 09:45 UTC)', 'color:#2FB54A;font-weight:bold');
   window.OmegaVersion=function(){
     var have=[];
     [['OmegaFrozen','stale snapshot fix'],
@@ -48930,14 +49088,89 @@ window._crmToastModal=_crmToastModal;
 (function(){
   function MAP(){ try{ if(typeof _gmap!=='undefined'&&_gmap) return _gmap; }catch(e){} return window._gmap||null; }
 
+  /* IS THIS CAPTURE ACTUALLY BLACK?
+
+     _freezeLiveView guards with `b64.length < 2000`, but a solid black
+     PNG compresses small and still clears 2000 characters, so a black
+     capture passes as valid - which is exactly what an export with a
+     black background is. Size cannot detect blankness; pixels can. */
+  function looksBlank(cvs){
+    try{
+      var g=cvs.getContext('2d'); if(!g) return false;
+      var w=cvs.width, hgt=cvs.height;
+      if(!w || !hgt) return true;
+      var N=240, lit=0;
+      for(var i=0;i<N;i++){
+        var x=Math.floor(Math.random()*w), y=Math.floor(Math.random()*hgt);
+        var d=g.getImageData(x,y,1,1).data;
+        if(d[3]>8 && (d[0]>14 || d[1]>14 || d[2]>14)) lit++;
+      }
+      return lit < N*0.02;              /* under 2% non-black = blank */
+    }catch(e){ return false; }          /* tainted canvas - assume usable */
+  }
+
+  /* STATIC MAPS FIRST.
+
+     Reading Google's WebGL tiles back through html2canvas is unreliable
+     and is what produces the black sheet. Static Maps returns a plain
+     raster for the same centre and zoom - no readback, no taint. */
+  function staticUrl(){
+    var m=MAP(); if(!m || !m.getCenter) return null;
+    var key=null;
+    try{ if(typeof _CFG!=='undefined' && _CFG.googleMapsKey) key=_CFG.googleMapsKey; }catch(e){}
+    if(!key) return null;
+    var c=m.getCenter(); var z=m.getZoom();
+    if(!c || z==null) return null;
+    var sc=document.getElementById('sc');
+    var w=Math.min((sc&&sc.clientWidth)||900, 640);
+    var hh=Math.min((sc&&sc.clientHeight)||600, 640);
+    return 'https://maps.googleapis.com/maps/api/staticmap'
+      + '?center='+c.lat()+','+c.lng()
+      + '&zoom='+z + '&size='+Math.round(w)+'x'+Math.round(hh)
+      + '&scale=2&maptype=satellite&key='+key;
+  }
+  function toDataUrl(blob){
+    return new Promise(function(res,rej){
+      var r=new FileReader();
+      r.onload=function(){ res(r.result); };
+      r.onerror=rej;
+      r.readAsDataURL(blob);
+    });
+  }
+
   window.OmegaCaptureMap=async function(){
     var md=document.getElementById('_gmapDiv');
     if(!md || !MAP()){
       if(window.console) console.warn('[capture] no live map to capture');
       return null;
     }
+
+    /* 1. Static Maps - reliable, never black. */
+    try{
+      var su=staticUrl();
+      if(su){
+        var resp=await fetch(su);
+        if(resp.ok){
+          var blob=await resp.blob();
+          if(blob.size>1200){
+            var durl=await toDataUrl(blob);
+            if(durl && durl.indexOf('data:')===0){
+              window._ppTempMapImg=durl;
+              window._frozenMapImg=durl;   /* the blueprint export reads this */
+              if(window.console) console.info('[capture] Static Maps raster ('
+                +Math.round(durl.length/1024)+'KB)');
+              return durl;
+            }
+          }
+        }
+      }
+    }catch(e){
+      if(window.console) console.warn('[capture] Static Maps unavailable:', e && e.message);
+    }
+
+    /* 2. html2canvas fallback, with a real blankness check. */
     if(typeof html2canvas!=='function'){
-      if(window.console) console.warn('[capture] html2canvas not loaded');
+      if(window.console) console.warn('[capture] html2canvas not loaded and Static Maps unavailable');
       return null;
     }
     try{
@@ -48946,8 +49179,13 @@ window._crmToastModal=_crmToastModal;
         logging:false, scale:1,
         width:md.clientWidth, height:md.clientHeight
       });
+      if(looksBlank(cvs)){
+        if(window.console) console.warn('[capture] html2canvas returned a blank/black frame - '
+          + 'not using it. Enable the Static Maps API on this key for a reliable export background.');
+        return null;
+      }
       var url=cvs.toDataURL('image/png');
-      if(!url || url.length<2000){                  /* a blank capture */
+      if(!url || url.length<2000){
         if(window.console) console.warn('[capture] map capture came back empty');
         return null;
       }
@@ -48965,8 +49203,11 @@ window._crmToastModal=_crmToastModal;
 
          The app's own routine is better: Static Maps first, html2canvas
          only as fallback, stored export-only in _ppTempMapImg so the live
-         editor is left untouched. Write only to that slot. */
+         editor is left untouched. The blueprint export reads
+         _frozenMapImg, so fill that too - but only ever with an image we
+         have verified is not blank. */
       window._ppTempMapImg=url;
+      window._frozenMapImg=url;
       if(window.console) console.info('[capture] map captured for export ('+Math.round(url.length/1024)+'KB)');
       return url;
     }catch(e){
@@ -49361,6 +49602,255 @@ window._crmToastModal=_crmToastModal;
       o.verdict = !arrays.length ? 'No custom-shape arrays on the canvas.'
         : done<arrays.length ? (arrays.length-done)+' array(s) not hatched yet.'
         : 'All '+done+' array(s) hatched; '+o.tablesInModel+' tables still counted in the takeoff.';
+      console.table?console.table(o):console.log(o);
+      console.info(o.verdict);
+      return o;
+    }
+  };
+})();
+</script>
+<!-- ================= UTILITY-FIRST SOLAR + BESS TOPOLOGY =================
+     The guided build ran BESS-first in a straight line with no solar leg.
+     This describes the system as it is actually built: from the utility
+     down, branching at the common AC bus.
+     ======================================================================= -->
+<script>
+(function(){
+  function S_(){ try{ return (typeof S!=='undefined'&&S)?S:null; }catch(e){ return null; } }
+
+  /* ---- the tree ---- */
+  var T = {
+    service:  { label:'Utility Point of Interconnection', sub:'Utility distribution',
+                eqId:'service', color:'#F59E0B', parent:null,      group:'utility' },
+    meter:    { label:'Utility Metering / Protection',    sub:'Revenue meter, relay, CTs/PTs',
+                eqId:'meter',   color:'#2563EB', parent:'service', group:'utility' },
+    utilxfmr: { label:'Utility Service Transformer',      sub:'12.47 kV \u2192 480/277 V',
+                eqId:'xfmr',    color:'#F59E0B', parent:'meter',   group:'utility' },
+    mainswgr: { label:'Main Service Disconnect / Switchgear', sub:'Service entrance, main breaker',
+                eqId:'panel',   color:'#EF4444', parent:'utilxfmr' },
+    acbus:    { label:'Common 480 V AC Bus',              sub:'Distribution point',
+                eqId:'panel',   color:'#EF4444', parent:'mainswgr' },
+
+    loads:    { label:'Building Loads',                   sub:'Existing facility load',
+                eqId:'panel',   color:'#94A3B8', parent:'acbus' },
+
+    bessbrk:  { label:'BESS Breaker / Disconnect',        sub:'AC disconnect',
+                eqId:'disco',   color:'#22C55E', parent:'acbus' },
+    bessxfmr: { label:'BESS Transformer',                 sub:'Optional \u2014 omit if PCS is at bus voltage',
+                eqId:'xfmr',    color:'#22C55E', parent:'bessbrk', optional:true, group:'bess' },
+    pcs:      { label:'Bidirectional PCS',                sub:'Inverter / charger',
+                eqId:'pcs',     color:'#22C55E', parent:'bessxfmr', group:'bess' },
+    batt:     { label:'Battery Cabinets',                 sub:'Energy storage',
+                eqId:'bess',    color:'#22C55E', parent:'pcs',      group:'bess' },
+
+    solarbrk: { label:'Solar Breaker / Disconnect',       sub:'AC disconnect',
+                eqId:'disco',   color:'#FBBF24', parent:'acbus' },
+    inverter: { label:'Solar Inverters',                  sub:'DC \u2192 AC',
+                eqId:'inverter',color:'#FBBF24', parent:'solarbrk', group:'solar' },
+    combiner: { label:'DC Combiner Boxes',                sub:'String combining',
+                eqId:'jbox',    color:'#FBBF24', parent:'inverter', group:'solar' },
+    pv:       { label:'PV Modules',                       sub:'Array',
+                eqId:'solar',   color:'#FBBF24', parent:'combiner', group:'solar' }
+  };
+
+  /* ---- conduit type per segment ----
+     What the run actually carries. A DC home-run labelled 480V AC would
+     be wrong on a permit set, so this is per-segment. */
+  var LEG = {
+    meter:    { type:'MV-UG',   service:'Utility service (MV)' },
+    utilxfmr: { type:'MV-UG',   service:'MV to service transformer' },
+    mainswgr: { type:'EV-MAIN', service:'Transformer \u2192 switchgear (480V)' },
+    acbus:    { type:'EV-MAIN', service:'Switchgear \u2192 AC bus (480V)' },
+    loads:    { type:'EV-FEEDER', service:'Bus \u2192 building loads (480V)' },
+    bessbrk:  { type:'EV-FEEDER', service:'Bus \u2192 BESS breaker (480V)' },
+    bessxfmr: { type:'EV-FEEDER', service:'Breaker \u2192 BESS transformer' },
+    pcs:      { type:'EV-FEEDER', service:'Transformer \u2192 PCS (AC)' },
+    batt:     { type:'RMC-DC',  service:'PCS \u2192 battery cabinets (DC)' },
+    solarbrk: { type:'EV-FEEDER', service:'Bus \u2192 solar breaker (480V)' },
+    inverter: { type:'EV-FEEDER', service:'Breaker \u2192 inverters (AC)' },
+    combiner: { type:'RMC-DC',  service:'Inverters \u2192 combiners (DC)' },
+    pv:       { type:'RMC-DC',  service:'Combiners \u2192 PV modules (DC)' }
+  };
+
+  /* Order derived from the tree, parents always before children. */
+  function order(opts){
+    opts=opts||{};
+    var out=[], seen={};
+    function visit(k){
+      if(seen[k]) return;
+      var n=T[k]; if(!n) return;
+      if(n.optional && opts.skipOptional) {
+        seen[k]=1;                       /* skip, children reparent below */
+        return;
+      }
+      if(n.parent) visit(n.parent);
+      seen[k]=1; out.push(k);
+    }
+    Object.keys(T).forEach(visit);
+    return out;
+  }
+
+  /* If an optional node is skipped its child connects to the grandparent,
+     so the run stays continuous. */
+  function parentOf(k, opts){
+    var n=T[k]; if(!n) return null;
+    var p=n.parent;
+    while(p && T[p] && T[p].optional && opts && opts.skipOptional) p=T[p].parent;
+    return p;
+  }
+
+  function topology(opts){
+    opts=opts||{};
+    return order(opts).map(function(k){
+      var n=T[k], leg=LEG[k]||{};
+      return { key:k, label:n.label, sub:n.sub, eqId:n.eqId, color:n.color,
+               parent:parentOf(k,opts), group:n.group||null,
+               optional:!!n.optional,
+               conduit:n.parent?{type:leg.type||'EV-FEEDER', service:leg.service||''}:null };
+    });
+  }
+
+  /* Co-located sets, so a layout does not scatter what is built together. */
+  function groups(){
+    var g={};
+    Object.keys(T).forEach(function(k){
+      var n=T[k]; if(!n.group) return;
+      (g[n.group]=g[n.group]||[]).push(k);
+    });
+    return g;
+  }
+
+  /* Register as a preset so the existing guided-build machinery can run it. */
+  function register(){
+    try{
+      if(typeof BGB_PRESETS==='undefined') return false;
+      if(BGB_PRESETS.SOLAR_BESS) return true;
+      var t=topology({});
+      var legs={};
+      t.forEach(function(n){ if(n.conduit) legs[n.key]=n.conduit.type; });
+      BGB_PRESETS.SOLAR_BESS = {
+        label:'Solar + BESS (utility-first)',
+        color:'#FBBF24',
+        seq:t.map(function(n){ return n.key; }),
+        legs:legs
+      };
+      if(typeof BGB_NODES!=='undefined'){
+        t.forEach(function(n){
+          if(!BGB_NODES[n.key]) BGB_NODES[n.key]={ evKind:n.eqId, label:n.label, color:n.color };
+        });
+      }
+      if(typeof BGB_LEGNAME!=='undefined'){
+        t.forEach(function(n){ if(n.conduit) BGB_LEGNAME[n.key]=n.conduit.service; });
+      }
+      return true;
+    }catch(e){ return false; }
+  }
+  var tries=0;
+  var iv=setInterval(function(){
+    if(++tries>120 || register()) clearInterval(iv);
+  }, 200);
+
+  window.OmegaTopology={
+    tree:function(opts){ return topology(opts||{}); },
+    groups:groups,
+    register:register,
+    print:function(opts){
+      var t=topology(opts||{});
+      var byParent={};
+      t.forEach(function(n){ (byParent[n.parent||'__root']=byParent[n.parent||'__root']||[]).push(n); });
+      var lines=[];
+      (function walk(key, depth){
+        (byParent[key]||[]).forEach(function(n){
+          var pad=new Array(depth+1).join('   ');
+          lines.push(pad + (depth?'\u2514\u2500 ':'') + n.label
+            + (n.optional?' *':'')
+            + (n.conduit? '   [' + n.conduit.type + ' \u2014 ' + n.conduit.service + ']' : ''));
+          walk(n.key, depth+1);
+        });
+      })('__root', 0);
+      console.log(lines.join('\n'));
+      return t;
+    },
+    status:function(){
+      var t=topology({});
+      var g=groups();
+      var o={ nodes:t.length,
+              branchesOffBus:t.filter(function(n){ return n.parent==='acbus'; }).length,
+              dcSegments:t.filter(function(n){ return n.conduit && n.conduit.type==='RMC-DC'; }).length,
+              mvSegments:t.filter(function(n){ return n.conduit && n.conduit.type==='MV-UG'; }).length,
+              coLocatedGroups:Object.keys(g).length,
+              registered: (typeof BGB_PRESETS!=='undefined' && !!BGB_PRESETS.SOLAR_BESS) };
+      o.verdict = !o.registered ? 'Preset not registered yet - the guided build may not have loaded.'
+        : o.nodes+' nodes, '+o.branchesOffBus+' branches off the AC bus, '
+          +o.coLocatedGroups+' co-located groups. OmegaTopology.print() to see the tree.';
+      console.table?console.table(o):console.log(o);
+      console.info(o.verdict);
+      return o;
+    }
+  };
+})();
+</script>
+<!-- ================= BOLLARDS OFF DURING GUIDED BUILDS =================
+     A guided build is showing the system: what connects to what, and how
+     the conduit runs. Eight bollards round every pad is protection detail
+     that buries exactly that.
+
+     They are not removed from the product - Insert > Bollard places them,
+     and the BESS pad modal still offers them when you place a pad
+     yourself. They are simply not auto-added while a guide is running.
+     ===================================================================== -->
+<script>
+(function(){
+  function S_(){ try{ return (typeof S!=='undefined'&&S)?S:null; }catch(e){ return null; } }
+  function guided(){
+    try{
+      if(typeof BGB!=='undefined' && BGB && BGB.active) return true;
+      var s=S_(); if(s && s.wizActive) return true;
+      if(window.ENG_FORCE_COLOR===true) return true;
+    }catch(e){}
+    return false;
+  }
+
+  window.OMEGA_GUIDED_BOLLARDS = false;   /* opt-in, not opt-out */
+
+  /* While a guide is running, the pad modal defaults bollards off. Left
+     alone otherwise, so a deliberate pad placement is unchanged. */
+  setInterval(function(){
+    try{
+      if(!guided()) return;
+      var cb=document.getElementById('pad-bollards');
+      if(cb && cb.checked && !cb.__omegaTouched){
+        cb.checked=false;
+        cb.__omegaTouched=true;         /* only once - respect a re-tick */
+      }
+    }catch(e){}
+  }, 300);
+
+  window.OmegaBollards={
+    enable:function(){ window.OMEGA_GUIDED_BOLLARDS=true;  return true; },
+    disable:function(){ window.OMEGA_GUIDED_BOLLARDS=false; return false; },
+    removeAll:function(){
+      var s=S_(); if(!s) return 0;
+      var before=(s.elements||[]).length;
+      s.elements=(s.elements||[]).filter(function(e){
+        if(e.eqId!=='bollard') return true;
+        var n=document.querySelector('.cel[data-elid="'+e.id+'"]');
+        if(n && n.parentNode) n.parentNode.removeChild(n);
+        return false;
+      });
+      try{ if(typeof updCount==='function') updCount();
+           if(typeof renderLegend==='function') renderLegend();
+           if(typeof pushHist==='function') pushHist(); }catch(e){}
+      return before-(s.elements||[]).length;
+    },
+    status:function(){
+      var s=S_()||{};
+      var n=(s.elements||[]).filter(function(e){ return e.eqId==='bollard'; }).length;
+      var o={ autoPlaceInGuides:window.OMEGA_GUIDED_BOLLARDS===true,
+              guideRunning:guided(), bollardsOnCanvas:n };
+      o.verdict = o.autoPlaceInGuides ? 'Guided builds WILL auto-place bollards.'
+        : n ? n+' bollard(s) on the canvas from earlier - OmegaBollards.removeAll() clears them.'
+        : 'Guided builds will not auto-place bollards. Insert > Bollard still works.';
       console.table?console.table(o):console.log(o);
       console.info(o.verdict);
       return o;
