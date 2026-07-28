@@ -50504,7 +50504,7 @@ window._crmToastModal=_crmToastModal;
 </script>
 <!-- ═════════════════════════════════════════════════════════════════════
      CLEARSKY OMEGA — SITE MAP DESIGNER PRO
-     PATCH BUNDLE  ·  2026-07-28  ·  rev 3
+     PATCH BUNDLE  ·  2026-07-28  ·  rev 4
 
      Paste this whole block into editor.html immediately before </body>.
      It is additive: it overrides functions at runtime and needs no edit to
@@ -50515,6 +50515,7 @@ window._crmToastModal=_crmToastModal;
        3. Correct setback maths + a per-array size / capacity editor
        4. Stencil anchoring on zoom + level-of-detail labels      [rev 2]
        5. Recent projects panel — rows no longer collide          [rev 3]
+       6. Conduit length measured from coordinates, not pixels    [rev 4]
 
      Console helpers once loaded:
        OmegaMapExport.status()          why an export background did or did not work
@@ -50525,7 +50526,8 @@ window._crmToastModal=_crmToastModal;
        OmegaAnchor.status()             stencil anchoring + label visibility
        OmegaAnchor.bakeAll()            fold legacy drag offsets into coordinates
        OmegaRecent.status()             Recent panel fit
-       OmegaRecent.showSubtitles(true)  put the address line back on each row
+       OmegaGround.audit()              per-run pixel length vs ground length
+       OmegaGround.status()             conduit measurement summary
      ═══════════════════════════════════════════════════════════════════ -->
 <script>
 /* ═══════════════════════════════════════════════════════════════════════
@@ -52355,6 +52357,347 @@ window._crmToastModal=_crmToastModal;
           ? 'Content still exceeds the strip and it is not scrolling — the CSS did not apply.'
           : o.scrolls ? o.rows + ' rows, ' + o.rowsVisible + ' visible, the rest by scroll.'
             : 'All ' + o.rows + ' rows fit.';
+      if (console.table) console.table(o); else console.log(o);
+      console.info(o.verdict);
+      return o;
+    }
+  };
+})();
+
+
+/* ═══════════════════════════════════════════════════════════════════════
+   OMEGA PATCH — 6 : GROUND-TRUE MEASUREMENT
+   -----------------------------------------------------------------------
+   This is the native-prototype idea applied where it pays best. The
+   prototype's whole argument is that a length taken from lat/lng needs no
+   scale factor:
+
+       lengthFt(path) -> spherical.computeLength(path) * 3.28084
+
+   The editor instead stores a conduit's length in PIXELS and divides by
+   the current scale. Those two numbers are refreshed by different
+   listeners, and one of them never gets refreshed at all:
+
+       _gmapAutoScale()      on zoom_changed
+           S.pxPerFt = <new value for this zoom>
+           c.ftLen   = c.pxLen / S.pxPerFt     <- c.pxLen is from the
+                                                  zoom it was DRAWN at
+
+       _geoReprojectAll()    on idle / bounds_changed
+           c.pts[j] = reproject(c._geoPts[j])  <- points updated
+           ...and nothing recomputes c.pxLen
+
+   Grep confirms it: c.pxLen is assigned in 17 places, every one of them
+   an explicit draw or edit path. Never on pan, never on zoom. So the
+   numerator is frozen at draw time while the denominator tracks the
+   zoom, and the reported length moves with the view:
+
+       run drawn at z20 = 182.7 ft
+         z22      45.7 ft    0.25x
+         z21      91.3 ft    0.50x
+         z20     182.7 ft    1.00x   <- correct only here
+         z19     365.4 ft    2.00x
+         z18     730.8 ft    4.00x
+         z17    1461.6 ft    8.00x
+         z16    2923.2 ft   16.00x
+
+   Every zoom level doubles or halves it. That number is what the CONDUIT
+   SCHEDULE prints and what the electrical estimate prices.
+
+   The fix is the prototype's: take the length from the coordinates. It is
+   invariant under pan and zoom because the view was never an input, so it
+   also stops needing recomputation on every map event — it is computed
+   when the geometry actually changes and left alone otherwise.
+
+   libraries=places,geometry is already on the loader URL (line 19835), so
+   spherical.computeLength is available. A haversine fallback is included
+   for the case where it is not.
+
+   Conduits with no coordinates — drawn before a site was loaded — keep the
+   existing pixel maths exactly as before. Nothing regresses.
+   ═══════════════════════════════════════════════════════════════════════ */
+(function () {
+  'use strict';
+
+  var TAG = '[omega/ground]';
+  var FT_PER_M = 3.280839895;
+
+  function S_() { try { return (typeof S !== 'undefined' && S) ? S : null; } catch (e) { return null; } }
+  function ppf() { var s = S_(); return (s && s.pxPerFt > 0) ? s.pxPerFt : 0; }
+
+  /* ── measurement from coordinates ─────────────────────────────────── */
+
+  function haversineFt(a, b) {
+    var R = 6378137, r = Math.PI / 180;
+    var dLat = (b.lat - a.lat) * r, dLng = (b.lng - a.lng) * r;
+    var s = Math.sin(dLat / 2) * Math.sin(dLat / 2)
+      + Math.cos(a.lat * r) * Math.cos(b.lat * r) * Math.sin(dLng / 2) * Math.sin(dLng / 2);
+    return 2 * R * Math.asin(Math.min(1, Math.sqrt(s))) * FT_PER_M;
+  }
+
+  function sphericalReady() {
+    try {
+      return !!(window.google && google.maps && google.maps.geometry
+        && google.maps.geometry.spherical);
+    } catch (e) { return false; }
+  }
+
+  function groundLengthFt(geoPts) {
+    if (!geoPts) return 0;
+    var pts = [];
+    for (var i = 0; i < geoPts.length; i++) {
+      var g = geoPts[i];
+      if (g && isFinite(g.lat) && isFinite(g.lng)) pts.push(g);
+    }
+    if (pts.length < 2) return 0;
+    if (sphericalReady()) {
+      try {
+        var ll = pts.map(function (p) { return new google.maps.LatLng(p.lat, p.lng); });
+        var m = google.maps.geometry.spherical.computeLength(ll);
+        if (isFinite(m) && m >= 0) return m * FT_PER_M;
+      } catch (e) { /* fall through */ }
+    }
+    var d = 0;
+    for (var j = 1; j < pts.length; j++) d += haversineFt(pts[j - 1], pts[j]);
+    return d;
+  }
+
+  function groundAreaSf(geoPts) {
+    if (!geoPts || geoPts.length < 3) return 0;
+    if (!sphericalReady()) return 0;
+    try {
+      var ll = geoPts.filter(Boolean).map(function (p) {
+        return new google.maps.LatLng(p.lat, p.lng);
+      });
+      if (ll.length < 3) return 0;
+      return google.maps.geometry.spherical.computeArea(ll) * 10.7639104;
+    } catch (e) { return 0; }
+  }
+
+  /* ── state kept per run ───────────────────────────────────────────
+     A run's ground length is invariant under pan and zoom, so it is
+     measured when the GEOMETRY changes and cached in _groundFt. Anything
+     the VIEW does then costs one assignment instead of a trig call per
+     animation frame. */
+
+  function pxLen(pts) {
+    var d = 0;
+    for (var i = 1; i < pts.length; i++) {
+      var a = pts[i - 1], b = pts[i];
+      d += Math.sqrt((b.x - a.x) * (b.x - a.x) + (b.y - a.y) * (b.y - a.y));
+    }
+    return d;
+  }
+
+  function sig(pts) {
+    var out = [];
+    for (var i = 0; i < pts.length; i++) out.push(Math.round(pts[i].x) + ',' + Math.round(pts[i].y));
+    return out.join('|');
+  }
+
+  /* Seed the signature at install, not on the first edit — otherwise the
+     first vertex drag is mistaken for "first sight" and swallowed. */
+  function ensureSig(c) {
+    if (c && c.pts && c._sig == null) c._sig = sig(c.pts);
+  }
+
+  /* _groundFt is the cache and the sentinel:
+        null  not measured yet (or invalidated by an edit) -> try again
+        0     tried against real coordinates and got nothing -> stop trying
+        >0    the answer
+
+     A run drawn just now has no _geoPts until _geoStampAll runs inside the
+     original pushHist, which is AFTER this patch's hook. Leaving _groundFt
+     null in that case is what lets the next map event pick it up, instead
+     of stranding the run on pixel maths until someone edits it. */
+  function computeGround(c) {
+    if (!c) return false;
+    if (!c._geoPts || c._geoPts.length < 2) { c._groundTrue = false; return false; }
+    var ft = groundLengthFt(c._geoPts);
+    c._groundFt = (ft > 0) ? ft : 0;
+    c._groundTrue = ft > 0;
+    return c._groundTrue;
+  }
+
+  /* Called whenever the view moved. pxLen must follow the screen; ftLen is
+     restored from the cached ground value, undoing the stale-pixel
+     division _gmapAutoScale just performed. */
+  function applyLengths(c) {
+    if (!c) return false;
+    if (c.pts && c.pts.length > 1) c.pxLen = pxLen(c.pts);
+    if (c._groundFt == null) computeGround(c);      /* lazy, at most once */
+    if (c._groundTrue && c._groundFt > 0) {
+      c.ftLen = +c._groundFt.toFixed(1);
+      return true;
+    }
+    var p = ppf();
+    if (p > 0 && c.pxLen != null) c.ftLen = +(c.pxLen / p).toFixed(1);
+    return false;
+  }
+
+  function eachConduit(fn) {
+    var s = S_(); if (!s) return { total: 0, ground: 0 };
+    var total = 0, ground = 0;
+    (s.conduits || []).forEach(function (c) {
+      if (!c) return;
+      total++;
+      if (fn(c)) ground++;
+    });
+    try { if (typeof updCondStat === 'function') updCondStat(); } catch (e) {}
+    try { if (typeof renderLegend === 'function') renderLegend(); } catch (e) {}
+    try { if (typeof _refreshConduitStyle === 'function') _refreshConduitStyle(); } catch (e) {}
+    return { total: total, ground: ground };
+  }
+
+  /* Geometry changed, or first run: re-measure from coordinates. */
+  function recomputeAll() {
+    return eachConduit(function (c) {
+      ensureSig(c);
+      computeGround(c);
+      return applyLengths(c);
+    });
+  }
+
+  /* View changed: no trigonometry, just put the right numbers back. */
+  function restoreAll() { return eachConduit(applyLengths); }
+
+  /* ── re-anchor after a real edit ──────────────────────────────────
+     A dragged vertex changes c.pts but leaves c._geoPts describing where
+     the run used to be. Re-stamping needs a moment when pts are known
+     good, and pan/zoom is not it: during a zoom, pts sit at the old scale
+     until reprojection catches up on idle, so stamping then would write
+     the wrong coordinates.
+
+     pushHist() is exactly that moment. It is called from edit paths and
+     never from _gmapAutoScale or _geoReprojectAll. */
+
+  function stampConduit(c) {
+    if (typeof _liveMapState !== 'function' || typeof _pxToLatLng !== 'function') return;
+    var ms = _liveMapState(); if (!ms || !c.pts) return;
+    var sz = (typeof _getCanvasSize === 'function') ? _getCanvasSize() : { w: 1200, h: 800 };
+    c._geoPts = c.pts.map(function (p) {
+      var g = _pxToLatLng(p.x, p.y, ms, sz.w, sz.h);
+      return g ? { lat: g.lat, lng: g.lng } : null;
+    });
+    c._sig = sig(c.pts);
+    c._groundFt = null;                              /* geometry moved — re-measure */
+  }
+
+  function syncEdits() {
+    var s = S_(); if (!s) return;
+    (s.conduits || []).forEach(function (c) {
+      if (!c || !c.pts || !c.pts.length) return;
+      if (c._sig == null) { c._sig = sig(c.pts); return; }
+      if (!c._geoPts) return;                 /* let _geoStampAll anchor it first */
+      if (sig(c.pts) !== c._sig) stampConduit(c);
+    });
+  }
+
+  /* ── hooks ────────────────────────────────────────────────────────── */
+
+  /* _gmapAutoScale is the one that clobbers ftLen with stale pixels.
+     Let it run, then put the ground-true numbers back. */
+  function hookAutoScale() {
+    var orig = window._gmapAutoScale;
+    if (typeof orig !== 'function' || orig.__omegaGround) return false;
+    var wrapped = function () {
+      var r;
+      try { r = orig.apply(this, arguments); } catch (e) {}
+      try { restoreAll(); } catch (e) {}
+      return r;
+    };
+    wrapped.__omegaGround = true;
+    window._gmapAutoScale = wrapped;
+    return true;
+  }
+
+  /* Reprojection moves pts, so pxLen must be refreshed to match the
+     screen. ftLen does not change here at all — the ground did not move. */
+  function hookReproject() {
+    var orig = window._geoReprojectAll;
+    if (typeof orig !== 'function' || orig.__omegaGround) return false;
+    var wrapped = function () {
+      var r;
+      try { r = orig.apply(this, arguments); } catch (e) {}
+      try { restoreAll(); } catch (e) {}
+      return r;
+    };
+    wrapped.__omegaGround = true;
+    window._geoReprojectAll = wrapped;
+    return true;
+  }
+
+  function hookPushHist() {
+    var orig = window.pushHist;
+    if (typeof orig !== 'function' || orig.__omegaGround) return false;
+    var wrapped = function () {
+      try { syncEdits(); recomputeAll(); } catch (e) {}
+      return orig.apply(this, arguments);
+    };
+    wrapped.__omegaGround = true;
+    window.pushHist = wrapped;
+    return true;
+  }
+
+  var n = 0;
+  var iv = setInterval(function () {
+    var a = hookAutoScale(), b = hookReproject(), c = hookPushHist();
+    if (a || b || c) {
+      if (window.console) console.info(TAG, 'armed'
+        + (a ? ' · autoscale' : '') + (b ? ' · reproject' : '') + (c ? ' · edits' : '')
+        + (sphericalReady() ? ' · spherical' : ' · haversine fallback'));
+      try { recomputeAll(); } catch (e) {}
+    }
+    if (++n > 200) clearInterval(iv);
+  }, 300);
+
+  window.OmegaGround = {
+    lengthFt: groundLengthFt,
+    areaSf: groundAreaSf,
+    refresh: recomputeAll,
+
+    /* Side by side, on the real drawing. The px column is what the
+       schedule printed before this patch. */
+    audit: function () {
+      var s = S_(); if (!s) { console.warn(TAG, 'no session'); return []; }
+      var p = ppf();
+      var rows = (s.conduits || []).filter(Boolean).map(function (c) {
+        var px = (c.pts && c.pts.length > 1) ? pxLen(c.pts) : 0;
+        var fromPx = p > 0 ? px / p : null;
+        var fromGeo = (c._geoPts && c._geoPts.length > 1) ? groundLengthFt(c._geoPts) : null;
+        return {
+          tag: c.tag || c.id,
+          type: c.condType || '',
+          px_derived_ft: fromPx == null ? null : +fromPx.toFixed(1),
+          ground_ft: fromGeo == null ? null : +fromGeo.toFixed(1),
+          ratio: (fromGeo && fromPx) ? +(fromPx / fromGeo).toFixed(2) : null,
+          anchored: !!c._geoPts
+        };
+      });
+      if (console.table) console.table(rows); else console.log(rows);
+      var off = rows.filter(function (r) { return r.ratio != null && Math.abs(r.ratio - 1) > 0.02; });
+      console.info(off.length
+        ? TAG + ' ' + off.length + ' of ' + rows.length + ' run(s) disagree with their pixel-derived length.'
+        : TAG + ' pixel and ground lengths agree — you are at the zoom these were drawn at.');
+      return rows;
+    },
+
+    status: function () {
+      var s = S_() || {};
+      var cs = (s.conduits || []).filter(Boolean);
+      var anchored = cs.filter(function (c) { return !!c._geoPts; }).length;
+      var o = {
+        conduits: cs.length,
+        anchored: anchored,
+        pixelOnly: cs.length - anchored,
+        measurement: sphericalReady() ? 'spherical (geometry library)' : 'haversine fallback',
+        pxPerFt: +ppf().toFixed(3),
+        totalFt: +cs.reduce(function (t, c) { return t + (c.ftLen || 0); }, 0).toFixed(1)
+      };
+      o.verdict = !cs.length ? 'No conduit runs yet.'
+        : o.pixelOnly ? o.pixelOnly + ' run(s) have no coordinates and still use pixel maths — '
+          + 'drawn before a site was loaded.'
+          : 'All runs measured from coordinates. Lengths hold through pan and zoom.';
       if (console.table) console.table(o); else console.log(o);
       console.info(o.verdict);
       return o;
