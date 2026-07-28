@@ -1381,6 +1381,7 @@ window.onerror = function(msg, src, line, col, err) {
             <div class="rb-fly-head">Solar</div>
             <button class="rb-fly-item" onclick="rbFlyDo('fly-der',function(){derSetSolar('ground')})"><span class="fi-ico">☀</span> Solar Ground</button>
             <button class="rb-fly-item" onclick="rbFlyDo('fly-der',function(){derSetSolar('roof')})"><span class="fi-ico">☀</span> Solar Roof</button>
+            <button class="rb-fly-item" onclick="rbFlyDo('fly-der',function(){openArrayProps()})" title="Tilt, ground clearance and the row pitch they imply"><span class="fi-ico">≡</span> Array Geometry — Tilt / Height</button>
             <button class="rb-fly-item" onclick="rbFlyDo('fly-der',omegaCanopyCustom)" title="Trace the canopy outline - panels fit that exact shape, no rotating"><span class="fi-ico">⬡</span> Canopy — Custom Shape</button>
             <button class="rb-fly-item" onclick="rbFlyDo('fly-der',omegaSolarCustomArea)" title="Trace any shape - the panels fill it at any angle, no rotating"><span class="fi-ico">▱</span> Solar — Custom Area</button>
             <button class="rb-fly-item" onclick="rbFlyDo('fly-der',function(){derSetSolar('adjacent')})"><span class="fi-ico">☀</span> Solar Canopy</button>
@@ -23681,15 +23682,31 @@ function _ppMapLayer(W, H, xform){
        reproduce the SAME cover crop -- use preserveAspectRatio "slice" (=cover)
        and clip the image to the canvas rect so it doesn't bleed past it.
        (The previous "none" stretched the whole static map, shifting everything.) */
+    /* THREE LAYERS: map, white scrim, then the drawing on top.
+
+       Dimming the satellite by dropping the image's own opacity lets the
+       sheet colour show through unevenly and muddies dark ground. A full
+       strength image with a flat white scrim over it washes the imagery
+       back evenly, which is how a plan set reads: the site is context,
+       the drawing is the subject.
+
+       The drawing is emitted after this layer, so it lands on top of the
+       scrim rather than under it. */
+    var scrim = (typeof window.OMEGA_MAP_SCRIM==='number')
+                  ? Math.max(0, Math.min(1, window.OMEGA_MAP_SCRIM)) : 0.35;
     var clipId = 'ppmapclip_'+Math.floor(Math.random()*1e9);
     return '<defs><clipPath id="'+clipId+'"><rect x="'+sx+'" y="'+sy+'" width="'+sw+'" height="'+sh+'"/></clipPath></defs>'
          + '<g clip-path="url(#'+clipId+')">'
          + '<image href="'+src+'" x="'+sx+'" y="'+sy+'" width="'+sw+'" height="'+sh+'" preserveAspectRatio="none" opacity="'+op.toFixed(2)+'"/>'
+         + '<rect class="omega-map-scrim" x="'+sx+'" y="'+sy+'" width="'+sw+'" height="'+sh+'" fill="#FFFFFF" opacity="'+scrim.toFixed(2)+'"/>'
          + '</g>';
   }
   /* fallback: stretch to sheet (legacy behavior) */
   var m=20;
-  return '<image href="'+src+'" x="'+m+'" y="'+m+'" width="'+(W-2*m)+'" height="'+(H-2*m)+'" preserveAspectRatio="xMidYMid slice" opacity="'+op.toFixed(2)+'"/>';
+  var scrim2 = (typeof window.OMEGA_MAP_SCRIM==='number')
+                 ? Math.max(0, Math.min(1, window.OMEGA_MAP_SCRIM)) : 0.35;
+  return '<image href="'+src+'" x="'+m+'" y="'+m+'" width="'+(W-2*m)+'" height="'+(H-2*m)+'" preserveAspectRatio="xMidYMid slice" opacity="'+op.toFixed(2)+'"/>'
+       + '<rect class="omega-map-scrim" x="'+m+'" y="'+m+'" width="'+(W-2*m)+'" height="'+(H-2*m)+'" fill="#FFFFFF" opacity="'+scrim2.toFixed(2)+'"/>';
 }
 /* Current canvas viewport size in px (the frozen map covers this). */
 function _ppCanvasSize(){
@@ -38722,7 +38739,15 @@ window._bgbGuideRender=_bgbGuideRender;
 
 function _bgbPrompt(){
   var kind=_bgbCurKind();
-  if(BGB.phase==='poi'){ _evBanner('\u2b1c Click the map to place the BESS Assembly.'); }
+  if(BGB.phase==='poi'){
+    /* Name the FIRST NODE OF THE ACTIVE SEQUENCE, not a fixed string.
+       This was hardcoded to "BESS Assembly", so a Solar + Storage build
+       opened by telling you to place a BESS - indistinguishable from the
+       BTM flow even when the right sequence was queued underneath. */
+    var first = (BGB.seq && BGB.seq.length) ? BGB.seq[0] : kind;
+    var lbl = (BGB_NODES[first] && BGB_NODES[first].label) || 'the first item';
+    _evBanner('\u2b1c Click the map to place the '+lbl+'.');
+  }
   else if(BGB.phase==='drawtrench'){ _evBanner('\u270f\ufe0f Draw the trench to the '+(BGB_NODES[kind]?BGB_NODES[kind].label:'next node')+': click points, then Enter.'); }
   else if(BGB.phase==='placeon'){ _evBanner('\u2b1c Click on the trench to place '+(BGB_NODES[kind]?BGB_NODES[kind].label:kind)+' \u2014 snaps to the line. F=flip, R=rotate.'); }
 }
@@ -38730,6 +38755,16 @@ function _bgbPrompt(){
 /* ---- start / draw / place ---- */
 function _bgbStartPlacing(){
   _bgbLoadConfig();   // ensure we place exactly the configured system
+  /* _bgbLoadConfig restores the SAVED mode, so a mode chosen immediately
+     before this call is overwritten - which is why Solar + Storage ran
+     the BTM sequence. A caller that has deliberately picked a mode sets
+     __omegaForceMode, and it is re-applied here, after the load. */
+  try{
+    if(window.__omegaForceMode && BGB_PRESETS[window.__omegaForceMode]){
+      BGB.mode = window.__omegaForceMode;
+    }
+    window.__omegaForceMode = null;
+  }catch(e){}
   _bgbSync();
   var m=document.getElementById('bgb-modal'); if(m) m.remove();
   BGB.active=true; BGB.phase='poi'; BGB.stepIx=0; BGB.placed={}; BGB.lastEl=null;
@@ -41723,6 +41758,11 @@ function homeStartWizard(mode){
     /* Solar + Storage is real now - it runs the utility-first topology.
        Open the guided build already switched to that mode rather than
        making the user find it in the mode list. */
+    /* Solar + Storage has its own panel: pick the battery system and go.
+       BTM vs FOM is a BESS-siting question and is not asked here. */
+    try{
+      if(typeof window.openSolarStorage==='function'){ window.openSolarStorage(); return; }
+    }catch(e){}
     try{
       if(typeof openBessGuidedBuild==='function'){
         window.__omegaSolarEntry=true;      /* this entry point only */
@@ -47588,8 +47628,8 @@ window._crmToastModal=_crmToastModal;
    already been fixed in a build that was not the one loaded. This makes
    the running version checkable in one line. */
 (function(){
-  window.OMEGA_BUILD = { id:'f4c73f29', built:'2026-07-27 09:45 UTC' };
-  console.info('%cOMEGA build f4c73f29  (2026-07-27 09:45 UTC)', 'color:#2FB54A;font-weight:bold');
+  window.OMEGA_BUILD = { id:'97af1850', built:'2026-07-27 09:45 UTC' };
+  console.info('%cOMEGA build 97af1850  (2026-07-27 09:45 UTC)', 'color:#2FB54A;font-weight:bold');
   window.OmegaVersion=function(){
     var have=[];
     [['OmegaFrozen','stale snapshot fix'],
@@ -47895,7 +47935,32 @@ window._crmToastModal=_crmToastModal;
        GeoJSON export and the diagnostics all read _geoPts; switching the
        engine to _geoAnchor without this silently made every one of them
        think nothing was anchored. */
-    if(!o._geoPts) o._geoPts=[{lat:g.lat, lng:g.lng}];
+    /* STAMP EVERY VERTEX, NOT JUST THE ANCHOR.
+
+       A freshly drawn conduit arrives as pixels only. Stamping one point
+       left _geoPts with a single entry, and the per-vertex projection
+       requires one geo point per pixel point - so it fell through to
+       rigid translation. The run then moved with the map but kept the
+       pixel length it was drawn at, which is the wrong ground length at
+       any other zoom.
+
+       Multi-vertex geometry gets a ground position for each vertex, so it
+       scales as well as moves. */
+    if(o.pts && o.pts.length>1){
+      var need = !o._geoPts || o._geoPts.length!==o.pts.length
+                 || !o._geoPts.every(function(q){ return q && q.lat!=null; });
+      if(need){
+        var all=[], ok=true;
+        for(var vi=0; vi<o.pts.length; vi++){
+          var pv=o.pts[vi];
+          var gv=(pv && typeof pv.x==='number') ? _pxToLatLng(pv.x, pv.y, ms, sz.w, sz.h) : null;
+          if(!gv){ ok=false; break; }
+          all.push({lat:gv.lat, lng:gv.lng});
+        }
+        if(ok) o._geoPts=all;
+      }
+    }
+    else if(!o._geoPts) o._geoPts=[{lat:g.lat, lng:g.lng}];
     else if(o._geoPts.length===1) o._geoPts[0]={lat:g.lat, lng:g.lng};
     if(o._geoLat==null && typeof o.x==='number' && !(o.pts&&o.pts.length)){
       o._geoLat=g.lat; o._geoLng=g.lng;
@@ -48064,6 +48129,38 @@ window._crmToastModal=_crmToastModal;
   window.OmegaDupeCount=function(){ return _dupTotal; };
   window.OmegaDedupe=dedupeElements;
 
+  /* Is a properties panel open against this shape, or is it selected?
+     Either way, recreating its node pulls the rug from under the user. */
+  function isBeingEdited(o){
+    try{
+      if(!o) return false;
+      var s=S_();
+      if(s){
+        if(s.selId===o.id || s.selectedId===o.id) return true;
+        if(s.sel && (s.sel.id===o.id || s.sel===o.id)) return true;
+        if(Array.isArray(s.selIds) && s.selIds.indexOf(o.id)>=0) return true;
+      }
+      /* any open panel that names this shape */
+      var panels=['ev-zone-props','shape-props','sh-props'];
+      for(var i=0;i<panels.length;i++){
+        var p=document.getElementById(panels[i]);
+        if(p && (p.dataset && (p.dataset.shid===o.id || p.dataset.id===o.id))) return true;
+        if(p && p.getAttribute && p.getAttribute('data-shid')===o.id) return true;
+      }
+      /* the zone panel does not tag itself - if it is open at all, and this
+         is a zonebox, leave it alone */
+      if(o.kind==='zonebox' && document.getElementById('ev-zone-props')) return true;
+      /* a focused input inside any open panel means an edit in progress */
+      var a=document.activeElement;
+      if(a && (a.tagName==='INPUT'||a.tagName==='SELECT'||a.tagName==='TEXTAREA')){
+        var host=a.closest && a.closest('#ev-zone-props,[data-shid]');
+        if(host) return true;
+      }
+    }catch(e){}
+    return false;
+  }
+  window.OmegaIsEditing=isBeingEdited;
+
   var busy=false;
   function run(){
     if(busy) return 0;
@@ -48077,6 +48174,19 @@ window._crmToastModal=_crmToastModal;
           if(stampOne(o, ms, sz)) stamped++;
           if(applyOne(o, ms, sz)){
             changed++;
+            /* DO NOT RE-RENDER WHAT THE USER IS EDITING.
+
+               renderShape removes and recreates the shape's node. If a
+               properties panel is open against that shape - the zone box
+               panel, for instance - the node it was opened for vanishes
+               underneath it and the panel closes. This pass runs every
+               500ms plus on every map event, so the panel reappears and
+               closes repeatedly: it reads as flashing.
+
+               Anchoring still moves the geometry; only the repaint is
+               deferred until the edit is finished. */
+            if(coll==='shapes' && isBeingEdited(o)) { /* geometry updated, repaint deferred */ }
+            else
             try{
               /* renderShape and renderConduit both REMOVE their previous
                  node first (by data-shid / data-cid) so calling them
@@ -48088,7 +48198,11 @@ window._crmToastModal=_crmToastModal;
                  11 elements became hundreds of stacked renders. Move the
                  existing node instead of re-rendering it. */
               if(coll==='shapes'   && typeof renderShape==='function')   renderShape(o);
-              if(coll==='conduits' && typeof renderConduit==='function') renderConduit(o);
+              if(coll==='conduits' && typeof renderConduit==='function'){
+                renderConduit(o);
+                /* the trench is the same physical thing - move it too */
+                if(window.OmegaSyncTrench) window.OmegaSyncTrench();
+              }
               if(coll==='elements') moveElNode(o);
             }catch(e){}
           }
@@ -49138,6 +49252,54 @@ window._crmToastModal=_crmToastModal;
     });
   }
 
+  /* Draw every loaded tile onto one canvas at its on-screen position. */
+  async function compositeTiles(md){
+    if(!md) return null;
+    var host=md.getBoundingClientRect();
+    var W=Math.round(host.width), H=Math.round(host.height);
+    if(!W || !H) return null;
+
+    var imgs=Array.prototype.slice.call(md.querySelectorAll('img'))
+      .filter(function(im){
+        if(!im.src) return false;
+        if(!/googleapis|ggpht|gstatic/.test(im.src)) return false;
+        var r=im.getBoundingClientRect();
+        /* only tiles that are actually on screen */
+        return r.width>1 && r.height>1 &&
+               r.right>host.left && r.left<host.right &&
+               r.bottom>host.top && r.top<host.bottom;
+      });
+    if(imgs.length<2) return null;      /* vector map, or nothing loaded */
+
+    var cvs=document.createElement('canvas');
+    cvs.width=W; cvs.height=H;
+    var g=cvs.getContext('2d');
+    g.fillStyle='#0b1626'; g.fillRect(0,0,W,H);
+
+    var drawn=0;
+    for(var i=0;i<imgs.length;i++){
+      var im=imgs[i];
+      try{
+        if(!im.complete || !im.naturalWidth) continue;
+        var r=im.getBoundingClientRect();
+        g.drawImage(im, Math.round(r.left-host.left), Math.round(r.top-host.top),
+                        Math.round(r.width), Math.round(r.height));
+        drawn++;
+      }catch(e){ /* a tainted tile - skip it rather than lose the sheet */ }
+    }
+    if(drawn<2) return null;
+
+    var out;
+    try{ out=cvs.toDataURL('image/jpeg', 0.86); }
+    catch(e){ return null; }             /* tainted canvas */
+    if(!out || out.length<3000) return null;
+    if(looksBlank(cvs)) return null;
+    return out;
+  }
+  window.OmegaCompositeTiles=function(){
+    return compositeTiles(document.getElementById('_gmapDiv'));
+  };
+
   window.OmegaCaptureMap=async function(){
     var md=document.getElementById('_gmapDiv');
     if(!md || !MAP()){
@@ -49155,7 +49317,8 @@ window._crmToastModal=_crmToastModal;
           if(blob.size>1200){
             var durl=await toDataUrl(blob);
             if(durl && durl.indexOf('data:')===0){
-              window._ppTempMapImg=durl;
+              window.__omegaCapturePath='static-maps';
+      window._ppTempMapImg=durl;
               window._frozenMapImg=durl;   /* the blueprint export reads this */
               if(window.console) console.info('[capture] Static Maps raster ('
                 +Math.round(durl.length/1024)+'KB)');
@@ -49168,7 +49331,29 @@ window._crmToastModal=_crmToastModal;
       if(window.console) console.warn('[capture] Static Maps unavailable:', e && e.message);
     }
 
-    /* 2. html2canvas fallback, with a real blankness check. */
+    /* 2. COMPOSITE THE TILES DIRECTLY.
+
+       Google renders satellite into a WebGL canvas, which html2canvas
+       cannot read back - that is the black sheet. But in raster mode the
+       tiles are plain <img> elements served with CORS headers, and those
+       can be drawn onto a canvas by hand. This is literally a screenshot
+       of what is on the map: each tile drawn at the position it occupies
+       on screen. No API beyond the one already loading the tiles. */
+    try{
+      var url2=await compositeTiles(md);
+      if(url2){
+        window.__omegaCapturePath='tile-composite';
+      window._ppTempMapImg=url2;
+        window._frozenMapImg=url2;
+        if(window.console) console.info('[capture] composited map tiles ('
+          +Math.round(url2.length/1024)+'KB)');
+        return url2;
+      }
+    }catch(e){
+      if(window.console) console.warn('[capture] tile composite failed:', e && e.message);
+    }
+
+    /* 3. html2canvas fallback, with a real blankness check. */
     if(typeof html2canvas!=='function'){
       if(window.console) console.warn('[capture] html2canvas not loaded and Static Maps unavailable');
       return null;
@@ -49206,6 +49391,7 @@ window._crmToastModal=_crmToastModal;
          editor is left untouched. The blueprint export reads
          _frozenMapImg, so fill that too - but only ever with an image we
          have verified is not blank. */
+      window.__omegaCapturePath='html2canvas';
       window._ppTempMapImg=url;
       window._frozenMapImg=url;
       if(window.console) console.info('[capture] map captured for export ('+Math.round(url.length/1024)+'KB)');
@@ -49305,14 +49491,23 @@ window._crmToastModal=_crmToastModal;
       var bd=document.getElementById('backdrop');
       var tmp=window._ppTempMapImg||'';
       var cbx=document.getElementById('pp-map');
+      var md=document.getElementById('_gmapDiv');
+      var tiles=md?md.querySelectorAll('img[src*="googleapis"],img[src*="ggpht"]').length:0;
+      var hasKey=(function(){ try{ return !!(typeof _CFG!=='undefined' && _CFG.googleMapsKey); }catch(e){ return false; } })();
       var o={ liveMap:!!MAP(),
-              usesStaticMaps: typeof _ppSnapshotMap==='function',
+              rasterTilesOnScreen: tiles,
+              staticMapsKey: hasKey,
               exportSnapshotKB: tmp ? Math.round(tmp.length/1024) : 0,
-              backdropKB: bd && bd.src ? Math.round(bd.src.length/1024) : 0,
+              lastPath: window.__omegaCapturePath||'(none yet)',
               includeMapChecked: cbx ? !!cbx.checked : '(dialog closed)' };
       o.verdict = !o.liveMap ? 'No live map - exports will have no satellite background.'
         : o.includeMapChecked===false ? 'The "Include map" box is unchecked in the export dialog.'
-        : o.exportSnapshotKB>2 ? 'Export snapshot ready ('+o.exportSnapshotKB+'KB) - the plot plan set will include it.'
+        : o.exportSnapshotKB>2 ? 'Snapshot ready ('+o.exportSnapshotKB+'KB via '+o.lastPath+') - exports will include it.'
+        : (!o.rasterTilesOnScreen && !o.staticMapsKey)
+            ? 'The map is drawing in vector/WebGL mode (no image tiles) AND there is no Static Maps key. '
+              + 'Neither capture path can work - enable the Maps Static API on the key.'
+        : !o.rasterTilesOnScreen
+            ? 'Vector/WebGL map - no tiles to composite, so Static Maps will be used.'
         : 'No snapshot yet - taken when the map settles or when you export.';
       console.table?console.table(o):console.log(o);
       console.info(o.verdict);
@@ -49851,6 +50046,455 @@ window._crmToastModal=_crmToastModal;
       o.verdict = o.autoPlaceInGuides ? 'Guided builds WILL auto-place bollards.'
         : n ? n+' bollard(s) on the canvas from earlier - OmegaBollards.removeAll() clears them.'
         : 'Guided builds will not auto-place bollards. Insert > Bollard still works.';
+      console.table?console.table(o):console.log(o);
+      console.info(o.verdict);
+      return o;
+    }
+  };
+})();
+</script>
+<!-- ================= SOLAR + STORAGE: ITS OWN PANEL =================
+     Solar + Storage was borrowing the BESS Site guided build, so it asked
+     BTM or FOM first. Those are BESS-siting questions and they are not
+     what this flow is about: here you pick the battery system and go.
+     ================================================================== -->
+<style>
+  #sos-modal{ position:fixed; inset:0; background:rgba(6,12,22,.82); z-index:100002;
+    display:flex; align-items:center; justify-content:center; padding:20px; }
+  #sos-modal .sos-card{ background:#0F1D30; border:1px solid #FBBF24; border-radius:14px;
+    max-width:540px; width:100%; max-height:90vh; overflow:auto;
+    font-family:var(--font-sans,system-ui,sans-serif); color:#E2EEF9; }
+  #sos-modal .sos-hd{ padding:16px 20px; border-bottom:1px solid #26364d;
+    display:flex; align-items:center; justify-content:space-between; }
+  #sos-modal .sos-hd h3{ margin:0; font-size:16px; font-weight:800; color:#FBBF24; }
+  #sos-modal .sos-hd button{ background:none; border:none; color:#64748B;
+    font-size:22px; line-height:1; cursor:pointer; }
+  #sos-modal .sos-bd{ padding:16px 20px; }
+  #sos-modal label{ display:block; font-size:10px; font-weight:700; letter-spacing:.09em;
+    text-transform:uppercase; color:#8FA3B8; margin:14px 0 5px; }
+  #sos-modal label:first-child{ margin-top:0; }
+  #sos-modal select, #sos-modal input{ width:100%; padding:9px 10px; border-radius:7px;
+    background:#0B1626; border:1px solid #26364d; color:#E2EEF9; font-size:13px; }
+  #sos-modal .sos-two{ display:flex; gap:10px; }
+  #sos-modal .sos-two > div{ flex:1; min-width:0; }
+  #sos-spec{ margin-top:12px; padding:10px 12px; border:1px solid #26364d; border-radius:8px;
+    background:rgba(0,0,0,.2); font:400 11px/1.7 var(--font-mono,ui-monospace,monospace); color:#8FA3B8; }
+  #sos-spec b{ color:#E2EEF9; font-weight:600; }
+  #sos-modal .sos-note{ font-size:10px; line-height:1.5; color:#8FA3B8; margin-top:12px; }
+  #sos-modal .sos-ft{ padding:12px 20px 16px; display:flex; gap:9px; justify-content:flex-end; }
+  #sos-modal .sos-ft button{ padding:9px 16px; border-radius:8px; font-size:13px;
+    font-weight:700; cursor:pointer; border:1px solid #26364d; background:transparent; color:#8FA3B8; }
+  #sos-modal .sos-ft button.go{ background:#FBBF24; border-color:#FBBF24; color:#0B1626; }
+</style>
+<script>
+(function(){
+  function S_(){ try{ return (typeof S!=='undefined'&&S)?S:null; }catch(e){ return null; } }
+  function cat(){ try{ return (typeof BESS_CATALOG!=='undefined')?BESS_CATALOG:null; }catch(e){ return null; } }
+  function esc(t){ return String(t==null?'':t).replace(/[<>&"]/g,function(c){
+    return c==='<'?'&lt;':c==='>'?'&gt;':c==='&'?'&amp;':'&quot;'; }); }
+  function num(v){ var x=parseFloat(v); return isFinite(x)?x:0; }
+
+  function options(){
+    var C=cat(); if(!C) return '<option value="">(catalog unavailable)</option>';
+    /* Entries with no capacity are quote-required placeholders. Sorting
+       purely by kWh floated them to the top, so the panel opened with
+       "CATL - 0 kWh" preselected - a default that cannot be built. Real
+       systems first, placeholders last and labelled. */
+    var keys=Object.keys(C);
+    var real=keys.filter(function(k){ return num(C[k].kwh)>0; })
+                 .sort(function(a,c){ return num(C[a].kwh)-num(C[c].kwh); });
+    var tbd =keys.filter(function(k){ return num(C[k].kwh)<=0; })
+                 .sort(function(a,c){ return String(C[a].mfr||a).localeCompare(String(C[c].mfr||c)); });
+    function opt(k){
+      var m=C[k];
+      var size = num(m.kwh)>=1000 ? (num(m.kwh)/1000).toFixed(2)+' MWh' : Math.round(num(m.kwh))+' kWh';
+      return '<option value="'+esc(k)+'">'+esc(m.mfr||'')+' \u2014 '+size
+           + (m.kw? ' / '+(num(m.kw)>=1000?(num(m.kw)/1000).toFixed(2)+' MW':Math.round(num(m.kw))+' kW'):'')
+           + '</option>';
+    }
+    var out=real.map(opt).join('');
+    if(tbd.length){
+      out += '<optgroup label="Quote required \u2014 size not published">'
+           + tbd.map(function(k){ return '<option value="'+esc(k)+'">'+esc(C[k].mfr||k)+'</option>'; }).join('')
+           + '</optgroup>';
+    }
+    return out;
+  }
+
+  function spec(){
+    var C=cat(); if(!C) return;
+    var k=(document.getElementById('sos-bat')||{}).value;
+    var m=C[k]; var el=document.getElementById('sos-spec'); if(!el) return;
+    if(!m){ el.innerHTML='Select a battery system.'; return; }
+    if(num(m.kwh)<=0){
+      el.innerHTML='<div>'+esc(m.model||k)+'</div>'
+        +'<div>Capacity not published \u2014 quote required. The build will place the '
+        +'equipment, but totals will read zero until a size is known.</div>';
+      return;
+    }
+    var units=Math.max(1, parseInt((document.getElementById('sos-units')||{}).value,10)||1);
+    var kwh=num(m.kwh)*units, kw=num(m.kw)*units;
+    var pv=num((document.getElementById('sos-pv')||{}).value);
+    el.innerHTML =
+        '<div>'+esc(m.model||k)+'</div>'
+      + '<div>Storage <b>'+(kwh>=1000?(kwh/1000).toFixed(2)+' MWh':Math.round(kwh)+' kWh')+'</b>'
+      + '  \u00b7  Power <b>'+(kw>=1000?(kw/1000).toFixed(2)+' MW':Math.round(kw)+' kW')+'</b>'
+      + (m.dur?('  \u00b7  '+m.dur+' hr'):'')+'</div>'
+      + (m.chem?('<div>Chemistry <b>'+esc(m.chem)+'</b>'+(m.dcv?('  \u00b7  DC '+esc(m.dcv)):'')+'</div>'):'')
+      + (pv?('<div>Solar <b>'+pv+' kW-DC</b>  \u00b7  DC/AC ratio <b>'
+             + (kw? (pv/ (kw||1)).toFixed(2) : '\u2014')+'</b></div>'):'')
+      + (units>1?('<div>Units <b>'+units+'</b></div>'):'');
+  }
+  window._sosSpec=spec;
+
+  window.closeSolarStorage=function(){
+    var m=document.getElementById('sos-modal'); if(m) m.remove();
+  };
+
+  window.openSolarStorage=function(){
+    closeSolarStorage();
+    var d=document.createElement('div');
+    d.id='sos-modal';
+    d.innerHTML =
+      '<div class="sos-card">'
+      + '<div class="sos-hd"><h3>\u2600\ufe0f Solar + Storage</h3>'
+      +   '<button onclick="closeSolarStorage()" title="Close">\u00d7</button></div>'
+      + '<div class="sos-bd">'
+      +   '<label for="sos-bat">Battery system</label>'
+      +   '<select id="sos-bat" onchange="_sosSpec()">'+options()+'</select>'
+      +   '<div class="sos-two">'
+      +     '<div><label for="sos-units">Units</label>'
+      +       '<input id="sos-units" type="number" min="1" step="1" value="1" oninput="_sosSpec()"></div>'
+      +     '<div><label for="sos-pv">Solar (kW-DC)</label>'
+      +       '<input id="sos-pv" type="number" min="0" step="10" value="0" oninput="_sosSpec()"></div>'
+      +   '</div>'
+      +   '<div id="sos-spec">Select a battery system.</div>'
+      +   '<div class="sos-note">Builds AC-coupled: the BESS AC block and the solar inverter '
+      +     'each tap the main switchgear and share the interconnection. Seven pieces, '
+      +     'starting at the utility POI. Leave solar at 0 for storage only.</div>'
+      + '</div>'
+      + '<div class="sos-ft">'
+      +   '<button onclick="closeSolarStorage()">Cancel</button>'
+      +   '<button class="go" onclick="startSolarStorage()">Start build \u2192</button>'
+      + '</div></div>';
+    document.body.appendChild(d);
+    spec();
+    return true;
+  };
+
+  window.startSolarStorage=function(){
+    var C=cat();
+    var k=(document.getElementById('sos-bat')||{}).value;
+    var units=Math.max(1, parseInt((document.getElementById('sos-units')||{}).value,10)||1);
+    var pv=num((document.getElementById('sos-pv')||{}).value);
+    var m=C?C[k]:null;
+
+    /* Hand the choice to the guided build the same way its own config
+       does, so the placed equipment matches what was picked here. */
+    try{
+      var s=S_();
+      if(s){
+        s._sosChoice={ key:k, units:units, pvKw:pv,
+                       kwh:num(m&&m.kwh)*units, kw:num(m&&m.kw)*units };
+      }
+      /* survives _bgbLoadConfig(), which runs inside _bgbStartPlacing */
+      window.__omegaForceMode='SOLAR_BESS';
+      if(typeof BGB!=='undefined'){
+        BGB.mode='SOLAR_BESS';
+        BGB.model=k; BGB.units=units; BGB.pvKw=pv;
+        if(m){ BGB.kwh=num(m.kwh)*units; BGB.kw=num(m.kw)*units; }
+      }
+    }catch(e){}
+
+    closeSolarStorage();
+    try{
+      if(typeof _bgbStartPlacing==='function'){ _bgbStartPlacing(); return true; }
+      /* fall back to the modal if the direct start is out of reach */
+      window.__omegaSolarEntry=true;
+      if(typeof openBessGuidedBuild==='function'){
+        openBessGuidedBuild();
+        setTimeout(function(){ try{ _bgbPickMode('SOLAR_BESS'); }catch(e){} }, 0);
+      }
+    }catch(e){}
+    return true;
+  };
+
+  window.OmegaSolarStorage={
+    open:window.openSolarStorage,
+    status:function(){
+      var s=S_()||{};
+      var C=cat();
+      var o={ catalogSize:C?Object.keys(C).length:0,
+              choice:s._sosChoice||null,
+              panelOpen: !!document.getElementById('sos-modal') };
+      o.verdict = !o.catalogSize ? 'Battery catalog unavailable.'
+        : o.choice ? 'Last build: '+o.choice.key+' \u00d7'+o.choice.units
+                     +(o.choice.pvKw?(' with '+o.choice.pvKw+' kW solar'):' (storage only)')
+        : o.catalogSize+' battery systems available.';
+      console.table?console.table(o):console.log(o);
+      console.info(o.verdict);
+      return o;
+    }
+  };
+})();
+</script>
+<!-- ================= TRENCH FOLLOWS ITS CONDUIT =================
+     renderTrenchCorridors() derives the corridor from the conduit runs,
+     but its comment says it plainly: "Called once per full render". Drag
+     a conduit and the run moves while the corridor stays where it was -
+     the ghost underneath.
+
+     They are the same thing physically, so they move together: any change
+     to conduit geometry, from a drag or from anchoring, redraws the
+     corridors in the same turn.
+     ============================================================== -->
+<script>
+(function(){
+  function S_(){ try{ return (typeof S!=='undefined'&&S)?S:null; }catch(e){ return null; } }
+
+  function sig(){
+    var s=S_(); if(!s) return '';
+    var out=[];
+    (s.conduits||[]).forEach(function(c){
+      if(!c.pts || !c.pts.length) { out.push(c.id+':0'); return; }
+      var a=c.pts[0], b=c.pts[c.pts.length-1];
+      /* first point, last point and count is enough to see any move,
+         and cheap enough to run continuously */
+      out.push(c.id+':'+Math.round(a.x)+','+Math.round(a.y)
+                   +'-'+Math.round(b.x)+','+Math.round(b.y)
+                   +'#'+c.pts.length);
+    });
+    return out.join('|');
+  }
+
+  var last=null, redraws=0;
+  function sync(force){
+    var s=sig();
+    if(!force && s===last) return false;
+    last=s;
+    try{
+      if(typeof renderTrenchCorridors==='function'){ renderTrenchCorridors(); redraws++; return true; }
+    }catch(e){}
+    return false;
+  }
+  window.OmegaSyncTrench=function(){ return sync(true); };
+
+  /* Continuously, but only doing work when something actually moved. */
+  setInterval(function(){ sync(false); }, 200);
+
+  /* And immediately on pointer release, so the corridor lands with the
+     conduit rather than up to 200ms later. */
+  ['mouseup','touchend','pointerup'].forEach(function(ev){
+    document.addEventListener(ev, function(){ setTimeout(function(){ sync(false); }, 16); }, true);
+  });
+
+  window.OmegaTrench={
+    sync:window.OmegaSyncTrench,
+    status:function(){
+      var s=S_()||{};
+      var g=document.getElementById('trench-corridors');
+      var o={ conduits:(s.conduits||[]).length,
+              corridorDrawn:!!g,
+              corridorSegments:g?g.children.length:0,
+              redrawsThisSession:redraws };
+      o.verdict = !o.conduits ? 'No conduit runs.'
+        : !o.corridorDrawn ? 'No corridor drawn - trenching may be off for these runs.'
+        : 'Corridor tracking '+o.conduits+' run(s); redrawn '+redraws+' time(s).';
+      console.table?console.table(o):console.log(o);
+      console.info(o.verdict);
+      return o;
+    }
+  };
+})();
+</script>
+<!-- ================= ARRAY GEOMETRY: TILT AND HEIGHT =================
+     A drawn array needs two numbers before it means anything on a plan
+     set: the module tilt, and how high the low edge sits above grade.
+     Between them they set the row shadow, so the row pitch needed to
+     avoid inter-row shading falls out of them rather than being guessed.
+
+     Ground clearance is a code and constructability input too - it drives
+     the pier schedule and whether the array can be mowed under.
+     ==================================================================== -->
+<style>
+  #arr-modal{ position:fixed; inset:0; background:rgba(6,12,22,.82); z-index:100002;
+    display:flex; align-items:center; justify-content:center; padding:20px; }
+  #arr-modal .arr-card{ background:#0F1D30; border:1px solid #FBBF24; border-radius:14px;
+    max-width:470px; width:100%; font-family:var(--font-sans,system-ui,sans-serif); color:#E2EEF9; }
+  #arr-modal .arr-hd{ padding:15px 19px; border-bottom:1px solid #26364d;
+    display:flex; align-items:center; justify-content:space-between; }
+  #arr-modal .arr-hd h3{ margin:0; font-size:15px; font-weight:800; color:#FBBF24; }
+  #arr-modal .arr-hd button{ background:none;border:none;color:#64748B;font-size:22px;cursor:pointer; }
+  #arr-modal .arr-bd{ padding:15px 19px; }
+  #arr-modal label{ display:block; font-size:10px; font-weight:700; letter-spacing:.09em;
+    text-transform:uppercase; color:#8FA3B8; margin:13px 0 5px; }
+  #arr-modal label:first-child{ margin-top:0; }
+  #arr-modal input,#arr-modal select{ width:100%; padding:8px 10px; border-radius:7px;
+    background:#0B1626; border:1px solid #26364d; color:#E2EEF9; font-size:13px; }
+  #arr-modal .arr-two{ display:flex; gap:10px; } #arr-modal .arr-two>div{ flex:1; min-width:0; }
+  #arr-calc{ margin-top:13px; padding:10px 12px; border:1px solid #26364d; border-radius:8px;
+    background:rgba(0,0,0,.2); font:400 11px/1.75 var(--font-mono,ui-monospace,monospace); color:#8FA3B8; }
+  #arr-calc b{ color:#E2EEF9; font-weight:600; }
+  #arr-modal .arr-ft{ padding:11px 19px 15px; display:flex; gap:9px; justify-content:flex-end; }
+  #arr-modal .arr-ft button{ padding:8px 15px; border-radius:8px; font-size:13px; font-weight:700;
+    cursor:pointer; border:1px solid #26364d; background:transparent; color:#8FA3B8; }
+  #arr-modal .arr-ft button.go{ background:#FBBF24; border-color:#FBBF24; color:#0B1626; }
+</style>
+<script>
+(function(){
+  function S_(){ try{ return (typeof S!=='undefined'&&S)?S:null; }catch(e){ return null; } }
+  function num(v,d){ var x=parseFloat(v); return isFinite(x)?x:(d||0); }
+
+  function arrays(){
+    var s=S_(); if(!s) return [];
+    return (s.shapes||[]).filter(function(x){ return x.kind==='dersolar'; });
+  }
+  function target(id){
+    var a=arrays();
+    if(id) return a.filter(function(x){ return x.id===id; })[0]||null;
+    var s=S_();
+    if(s && s.selId){ var sel=a.filter(function(x){ return x.id===s.selId; })[0]; if(sel) return sel; }
+    return a[a.length-1]||null;
+  }
+
+  /* Row pitch to clear inter-row shading at the design hour.
+     shadow = collector width * cos(tilt) + (collector rise) / tan(sun alt) */
+  function calc(sh){
+    var tilt=num(sh.tiltDeg,20), clr=num(sh.clearFt,3), tw=num(sh.tableWft,13.1);
+    var alt=num(sh.sunAltDeg,22);                 /* winter design altitude */
+    var rad=Math.PI/180;
+    var rise=tw*Math.sin(tilt*rad);               /* vertical rise of the module */
+    var base=tw*Math.cos(tilt*rad);               /* its plan footprint */
+    var shadow=(alt>0.5)? (rise/Math.tan(alt*rad)) : 0;
+    var pitch=base+shadow;
+    var topFt=clr+rise;
+    var gcr=pitch>0 ? (base/pitch) : 0;
+    return { tilt:tilt, clearFt:clr, tableWft:tw, sunAltDeg:alt,
+             riseFt:rise, planFt:base, shadowFt:shadow,
+             pitchFt:pitch, topHeightFt:topFt, gcr:gcr };
+  }
+
+  function paint(){
+    var sh=window.__arrTarget; if(!sh) return;
+    ['tiltDeg','clearFt','tableWft','sunAltDeg'].forEach(function(k){
+      var el=document.getElementById('arr-'+k);
+      if(el) sh[k]=num(el.value, sh[k]);
+    });
+    var c=calc(sh), el=document.getElementById('arr-calc'); if(!el) return;
+    el.innerHTML =
+        '<div>Module rise <b>'+c.riseFt.toFixed(1)+' ft</b>'
+      + '  \u00b7  plan depth <b>'+c.planFt.toFixed(1)+' ft</b></div>'
+      + '<div>Shadow at '+c.sunAltDeg+'\u00b0 sun <b>'+c.shadowFt.toFixed(1)+' ft</b></div>'
+      + '<div>Row pitch to clear it <b>'+c.pitchFt.toFixed(1)+' ft</b>'
+      + '  \u00b7  GCR <b>'+c.gcr.toFixed(2)+'</b></div>'
+      + '<div>High edge above grade <b>'+c.topHeightFt.toFixed(1)+' ft</b></div>';
+  }
+  window._arrPaint=paint;
+
+  window.closeArrayProps=function(){ var m=document.getElementById('arr-modal'); if(m) m.remove(); };
+
+  window.openArrayProps=function(id){
+    var sh=target(id);
+    if(!sh){
+      if(typeof showBanner==='function'){
+        try{ showBanner('shape','No PV array on the canvas yet \u2014 draw one first.'); }catch(e){}
+      }
+      return false;
+    }
+    window.__arrTarget=sh;
+    if(sh.tiltDeg==null)   sh.tiltDeg=20;
+    if(sh.clearFt==null)   sh.clearFt=3;
+    if(sh.tableWft==null)  sh.tableWft=13.1;
+    if(sh.sunAltDeg==null) sh.sunAltDeg=22;
+    closeArrayProps();
+    var d=document.createElement('div');
+    d.id='arr-modal';
+    d.innerHTML =
+      '<div class="arr-card">'
+      + '<div class="arr-hd"><h3>\u2600\ufe0f Array Geometry</h3>'
+      +   '<button onclick="closeArrayProps()">\u00d7</button></div>'
+      + '<div class="arr-bd">'
+      +   '<div class="arr-two">'
+      +     '<div><label for="arr-tiltDeg">Module tilt (\u00b0)</label>'
+      +       '<input id="arr-tiltDeg" type="number" min="0" max="60" step="1" value="'+num(sh.tiltDeg,20)+'" oninput="_arrPaint()"></div>'
+      +     '<div><label for="arr-clearFt">Ground clearance (ft)</label>'
+      +       '<input id="arr-clearFt" type="number" min="0" step="0.5" value="'+num(sh.clearFt,3)+'" oninput="_arrPaint()"></div>'
+      +   '</div>'
+      +   '<div class="arr-two">'
+      +     '<div><label for="arr-tableWft">Collector width (ft)</label>'
+      +       '<input id="arr-tableWft" type="number" min="1" step="0.1" value="'+num(sh.tableWft,13.1)+'" oninput="_arrPaint()"></div>'
+      +     '<div><label for="arr-sunAltDeg">Design sun altitude (\u00b0)</label>'
+      +       '<input id="arr-sunAltDeg" type="number" min="5" max="80" step="1" value="'+num(sh.sunAltDeg,22)+'" oninput="_arrPaint()"></div>'
+      +   '</div>'
+      +   '<div id="arr-calc"></div>'
+      + '</div>'
+      + '<div class="arr-ft">'
+      +   '<button onclick="closeArrayProps()">Cancel</button>'
+      +   '<button class="go" onclick="applyArrayProps()">Apply</button>'
+      + '</div></div>';
+    document.body.appendChild(d);
+    paint();
+    return true;
+  };
+
+  window.applyArrayProps=function(){
+    var sh=window.__arrTarget; if(!sh){ closeArrayProps(); return false; }
+    paint();
+    var c=calc(sh);
+    sh.pitchFt=c.pitchFt;
+    sh.gcr=c.gcr;
+    sh.topHeightFt=c.topHeightFt;
+    closeArrayProps();
+    try{ if(typeof renderShape==='function') renderShape(sh); }catch(e){}
+    try{ if(typeof pushHist==='function') pushHist(); }catch(e){}
+    if(typeof showBanner==='function'){
+      try{ showBanner('shape','Array set: '+c.tilt+'\u00b0 tilt, '+c.clearFt
+        +' ft clearance \u2014 row pitch '+c.pitchFt.toFixed(1)+' ft, GCR '+c.gcr.toFixed(2)+'.'); }catch(e){}
+    }
+    return true;
+  };
+
+  window.OmegaArray={
+    open:window.openArrayProps,
+    calc:function(id){ var sh=target(id); return sh?calc(sh):null; },
+    status:function(){
+      var a=arrays();
+      var o={ arrays:a.length,
+              withGeometry:a.filter(function(x){ return x.tiltDeg!=null; }).length };
+      o.verdict = !a.length ? 'No PV array drawn yet.'
+        : o.withGeometry<a.length ? (a.length-o.withGeometry)+' array(s) have no tilt or clearance set.'
+        : 'All '+a.length+' array(s) have tilt and clearance set.';
+      console.table?console.table(o):console.log(o);
+      console.info(o.verdict);
+      return o;
+    }
+  };
+})();
+</script>
+<!-- ================= EXPORT SHEET LAYERING =================
+     bottom   satellite at full strength
+     middle   flat white scrim, 35% by default
+     top      the drawing - emitted after this layer, so it sits above
+     ========================================================== -->
+<script>
+(function(){
+  if(typeof window.OMEGA_MAP_SCRIM!=='number') window.OMEGA_MAP_SCRIM=0.35;
+  window.OmegaScrim={
+    set:function(v){
+      var n=parseFloat(v);
+      if(!isFinite(n)) { console.warn('[scrim] give a number between 0 and 1'); return null; }
+      window.OMEGA_MAP_SCRIM=Math.max(0, Math.min(1, n));
+      console.info('[scrim] white overlay set to '+(window.OMEGA_MAP_SCRIM*100).toFixed(0)
+        +'% - applies to the next export.');
+      return window.OMEGA_MAP_SCRIM;
+    },
+    status:function(){
+      var o={ scrimOpacity:window.OMEGA_MAP_SCRIM,
+              scrimPercent:(window.OMEGA_MAP_SCRIM*100).toFixed(0)+'%',
+              snapshotReady: !!(window._ppTempMapImg && window._ppTempMapImg.length>2000) };
+      o.verdict = !o.snapshotReady
+        ? 'No map snapshot yet - the scrim has nothing to sit over.'
+        : 'Sheet order: satellite, then a '+o.scrimPercent+' white overlay, then the drawing.';
       console.table?console.table(o):console.log(o);
       console.info(o.verdict);
       return o;
