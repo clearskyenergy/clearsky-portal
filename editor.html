@@ -50506,7 +50506,7 @@ window._crmToastModal=_crmToastModal;
 
 <!-- ═════════════════════════════════════════════════════════════════════
      CLEARSKY OMEGA — SITE MAP DESIGNER PRO
-     PATCH BUNDLE  ·  2026-07-28  ·  rev 18
+     PATCH BUNDLE  ·  2026-07-28  ·  rev 19
 
      Exactly ONE copy per file, immediately before </body>.
 
@@ -50527,6 +50527,8 @@ window._crmToastModal=_crmToastModal;
       11. Auto-Layout's Generate button is legible
       13. Guided-build trench legs classified by conduit type, and the
           draft's leg normalised from the colour string it was given
+      15. Conduit callout tags rebuild when a run is added, so a second
+          build no longer renders every run as C?
 
      OPT-IN — these reach into the live render/anchor loop. OFF unless
      window.OMEGA_EXPERIMENTAL = true is set before this script:
@@ -50559,13 +50561,22 @@ window._crmToastModal=_crmToastModal;
       console.info('[omega] patch passes ON');
       return true;
     },
-    rev: 18,
+    rev: 19,
     installed: function () {
-      var keys = ['OmegaMapExport', 'OmegaClose', 'OmegaSolar', 'OmegaAnchor', 'OmegaRecent',
-                  'OmegaGround', 'OmegaMove', 'OmegaTrenchFix', 'OmegaSave', 'OmegaProjects'];
-      var have = keys.filter(function (k) { return !!window[k]; });
-      console.info('[omega] rev ' + window.OmegaPatch.rev + ' — ' + have.length + '/' + keys.length + ' modules: ' + have.join(', '));
-      return have;
+      var active = ['OmegaMapExport', 'OmegaClose', 'OmegaSolar', 'OmegaAnchor', 'OmegaRecent',
+                    'OmegaSave', 'OmegaProjects', 'OmegaAutoLayout', 'OmegaBgbLeg',
+                    'OmegaNativeOff', 'OmegaEngTag'];
+      var optIn  = ['OmegaGround', 'OmegaMove', 'OmegaTrenchFix', 'OmegaRenderEl'];
+      var on  = active.filter(function (k) { return !!window[k]; });
+      var off = optIn.filter(function (k) { return !window[k]; });
+      var missing = active.filter(function (k) { return !window[k]; });
+      console.info('[omega] rev ' + window.OmegaPatch.rev
+        + ' \u2014 ' + on.length + '/' + active.length + ' active modules loaded'
+        + (missing.length ? '  MISSING: ' + missing.join(', ') : '')
+        + '  \u00b7  ' + off.length + '/' + optIn.length + ' opt-in modules correctly off'
+        + (off.length < optIn.length ? '  (OMEGA_EXPERIMENTAL is set)' : ''));
+      return { rev: window.OmegaPatch.rev, active: on, missing: missing,
+               optInOff: off, healthy: missing.length === 0 };
     }
   };
 })();
@@ -53475,6 +53486,104 @@ window._crmToastModal=_crmToastModal;
         : (byLeg.branch === list.length && list.length > 1)
           ? 'Every run is "branch" — that is the colour-string bug, and these were drawn before the fix.'
           : 'Legs look right: ' + o.byLeg;
+      if (console.table) console.table(o); else console.log(o);
+      console.info(o.verdict);
+      return o;
+    }
+  };
+})();
+
+
+/* ═══════════════════════════════════════════════════════════════════════
+   OMEGA PATCH — 15 : THE "C?" CALLOUTS
+   -----------------------------------------------------------------------
+   Second build on the same drawing and its runs render as C? instead of
+   C7, C8, C9... while the conduit schedule below shows the right tags.
+
+   _engTagMap() numbers every run in draw order — C1, C2, C3 ... — and the
+   result is cached on window._ENG_TAGS. The lookup is:
+
+       function _engTagFor(cid){
+         if(!window._ENG_TAGS) window._ENG_TAGS = _engTagMap();
+         return window._ENG_TAGS[cid] || 'C?';
+       }
+
+   It rebuilds the map only when there ISN'T one. Once built it is frozen,
+   so any run created afterwards is simply absent from it and falls
+   through to the 'C?' default. The comment above _engTagMap says it is
+   "recomputed on each render pass so tags stay dense and sequential after
+   deletions" — that is the intent, but the guard prevents it.
+
+   The schedule looks right because it rebuilds the map itself before
+   drawing (line 9471). The canvas callouts do not.
+
+   Rebuilding is O(conduits) over a list of tens, so the fix is to notice
+   an unknown id and recompute rather than returning a question mark. It
+   self-heals on the next render — no new timer, no render hook.
+
+   NOTE ALSO: _refreshConduitStyle() rebuilds the map, and it now runs
+   debounced after the map settles (patch 6, rev 14). So tags used to
+   correct themselves if you happened to pan. Add a run without touching
+   the map and they stayed as C?.
+   ═══════════════════════════════════════════════════════════════════════ */
+(function () {
+  'use strict';
+
+  var TAG = '[omega/engtag]';
+
+  function hook() {
+    var orig = window._engTagFor;
+    if (typeof orig !== 'function' || orig.__omegaTag) return false;
+    if (typeof window._engTagMap !== 'function') return false;
+
+    var wrapped = function (cid) {
+      try {
+        if (!window._ENG_TAGS) window._ENG_TAGS = _engTagMap();
+        /* An id we have never seen means a run was added since the map was
+           built. Rebuild rather than label it C?. */
+        if (cid && !window._ENG_TAGS[cid]) window._ENG_TAGS = _engTagMap();
+      } catch (e) {}
+      return orig.apply(this, arguments);
+    };
+    wrapped.__omegaTag = true;
+    window._engTagFor = wrapped;
+    return true;
+  }
+
+  var n = 0;
+  var iv = setInterval(function () {
+    if (hook()) {
+      if (window.console) console.info(TAG, 'armed — callout tags rebuild when a new run appears');
+      /* Fix whatever is already on screen. */
+      try {
+        window._ENG_TAGS = _engTagMap();
+        if (typeof _refreshConduitStyle === 'function') _refreshConduitStyle();
+      } catch (e) {}
+    }
+    if (++n > 200) clearInterval(iv);
+  }, 300);
+
+  window.OmegaEngTag = {
+    rebuild: function () {
+      try {
+        window._ENG_TAGS = _engTagMap();
+        if (typeof _refreshConduitStyle === 'function') _refreshConduitStyle();
+        console.info(TAG + ' rebuilt ' + Object.keys(window._ENG_TAGS || {}).length + ' tag(s)');
+        return true;
+      } catch (e) { console.warn(TAG, e && e.message); return false; }
+    },
+    status: function () {
+      var s = null; try { s = (typeof S !== 'undefined') ? S : null; } catch (e) {}
+      var runs = (s && s.conduits) ? s.conduits.length : 0;
+      var tags = window._ENG_TAGS ? Object.keys(window._ENG_TAGS).length : 0;
+      var untagged = 0;
+      try {
+        (s.conduits || []).forEach(function (c) { if (c && !(window._ENG_TAGS || {})[c.id]) untagged++; });
+      } catch (e) {}
+      var o = { conduitRuns: runs, tagsCached: tags, runsWithoutATag: untagged,
+                hooked: !!(window._engTagFor && window._engTagFor.__omegaTag) };
+      o.verdict = untagged ? untagged + ' run(s) would render as C? — run OmegaEngTag.rebuild().'
+        : (runs ? 'Every run has a callout tag.' : 'No conduit runs yet.');
       if (console.table) console.table(o); else console.log(o);
       console.info(o.verdict);
       return o;
