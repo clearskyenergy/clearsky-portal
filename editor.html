@@ -50504,7 +50504,7 @@ window._crmToastModal=_crmToastModal;
 </script>
 <!-- ═════════════════════════════════════════════════════════════════════
      CLEARSKY OMEGA — SITE MAP DESIGNER PRO
-     PATCH BUNDLE  ·  2026-07-28  ·  rev 2
+     PATCH BUNDLE  ·  2026-07-28  ·  rev 3
 
      Paste this whole block into editor.html immediately before </body>.
      It is additive: it overrides functions at runtime and needs no edit to
@@ -50514,6 +50514,7 @@ window._crmToastModal=_crmToastModal;
        2. Snap-to-close when tracing a custom solar area
        3. Correct setback maths + a per-array size / capacity editor
        4. Stencil anchoring on zoom + level-of-detail labels      [rev 2]
+       5. Recent projects panel — rows no longer collide          [rev 3]
 
      Console helpers once loaded:
        OmegaMapExport.status()          why an export background did or did not work
@@ -50523,6 +50524,8 @@ window._crmToastModal=_crmToastModal;
        omegaSolarSize()                 open the array editor
        OmegaAnchor.status()             stencil anchoring + label visibility
        OmegaAnchor.bakeAll()            fold legacy drag offsets into coordinates
+       OmegaRecent.status()             Recent panel fit
+       OmegaRecent.showSubtitles(true)  put the address line back on each row
      ═══════════════════════════════════════════════════════════════════ -->
 <script>
 /* ═══════════════════════════════════════════════════════════════════════
@@ -52165,6 +52168,193 @@ window._crmToastModal=_crmToastModal;
         : loose.length ? loose.length + ' shape(s) still hold a raw pixel drag offset. Run OmegaAnchor.bakeAll().'
           : unanchored.length ? unanchored.length + ' shape(s) have no coordinate yet; they anchor on the next history push.'
             : 'All shapes anchored to ground coordinates.';
+      if (console.table) console.table(o); else console.log(o);
+      console.info(o.verdict);
+      return o;
+    }
+  };
+})();
+
+
+/* ═══════════════════════════════════════════════════════════════════════
+   OMEGA PATCH — 5 : RECENT PROJECTS PANEL
+   -----------------------------------------------------------------------
+   THE ROWS DO NOT FIT, SO THEY COLLIDE.
+
+   The ribbon is a fixed 68 px strip. After .rpanel's 5 px top padding and
+   the ~15.6 px .rpanel-cap caption beneath it, #home-recent gets 47.4 px
+   of usable height.
+
+   homeLoadRecent() renders list.slice(0,4) — four rows, each carrying two
+   text lines (10.5 px project name + 8.5 px customer/address) inside
+   5 px vertical padding:
+
+       one row          32.8 px
+       4 rows + gaps   137.2 px      <- into 47.4 px
+       rows that fit     1.36
+
+   #home-recent is a flex COLUMN, and flex items shrink by default, so the
+   four buttons are squeezed to ~11.8 px each while the text inside each
+   one still needs 22.8 px. The text has nowhere to go and laps over the
+   row above and below. That is the overlap — not a font or z-index
+   problem, just 2.9x too much content for the box.
+
+   Fix, in the order that matters:
+
+     1. flex:0 0 auto so a row can never be compressed below its text
+     2. one line per row — the project name, which is what you scan for.
+        The customer/address moves to the tooltip, where it already was:
+        homeLoadRecent() sets title="name — sub" on every row already, so
+        nothing is lost.
+     3. the strip scrolls, so the 3rd and 4th projects stay reachable
+        instead of being clipped away
+     4. a little more panel width so a name like "North Bay Produce -
+        Doral" reads in full before the ellipsis
+
+   Purely presentational. homeLoadRecent() is left alone — this restyles
+   whatever it renders, and re-applies on every refresh.
+   ═══════════════════════════════════════════════════════════════════════ */
+(function () {
+  'use strict';
+
+  var TAG = '[omega/recent]';
+  var PANEL_MIN_W = 244;     /* px — was 210 */
+
+  /* ── layout rules ────────────────────────────────────────────────── */
+  var css = document.createElement('style');
+  css.id = 'omega-recent-css';
+  css.textContent = [
+    /* the strip itself: scroll rather than clip, and stop squeezing rows */
+    '#home-recent{',
+    '  overflow-y:auto !important;',
+    '  overflow-x:hidden !important;',
+    '  gap:1px !important;',
+    '  scrollbar-width:thin;',
+    '  scrollbar-color:var(--border) transparent;',
+    '}',
+    '#home-recent::-webkit-scrollbar{ width:6px; }',
+    '#home-recent::-webkit-scrollbar-thumb{ background:var(--border);border-radius:3px; }',
+    '#home-recent::-webkit-scrollbar-track{ background:transparent; }',
+
+    /* a row is exactly as tall as its one line of text, and never less */
+    '#home-recent .home-recent-item{',
+    '  flex:0 0 auto !important;',
+    '  min-height:0 !important;',
+    '  padding:3px 6px !important;',
+    '  gap:6px !important;',
+    '  line-height:1.25 !important;',
+    '}',
+
+    /* the second line lives in the tooltip now */
+    '#home-recent .omega-hri-sub{ display:none !important; }',
+
+    /* trim the ornaments so the name gets the width */
+    '#home-recent .omega-hri-pin{ font-size:11px !important; opacity:.75; }',
+    '#home-recent .omega-hri-badge{',
+    '  font-size:7.5px !important;',
+    '  padding:0 4px !important;',
+    '  line-height:1.5 !important;',
+    '  opacity:.8;',
+    '}',
+    '#home-recent .omega-hri-name{ font-size:10.5px !important; }'
+  ].join('\n');
+  document.head.appendChild(css);
+
+  /* ── tag the parts so the rules above can reach them ─────────────── */
+  function addClass(el, c) {
+    var cur = el.className || '';
+    if ((' ' + cur + ' ').indexOf(' ' + c + ' ') >= 0) return;
+    el.className = cur ? (cur + ' ' + c) : c;
+  }
+
+  function tidy() {
+    var host = document.getElementById('home-recent');
+    if (!host) return;
+
+    /* Give the panel room for a real project name. */
+    var panel = host.parentElement;
+    if (panel && !panel.__omegaRecentW) {
+      panel.style.minWidth = PANEL_MIN_W + 'px';
+      panel.__omegaRecentW = 1;
+    }
+
+    var items = host.querySelectorAll('.home-recent-item');
+    for (var i = 0; i < items.length; i++) {
+      var row = items[i];
+      if (row.__omegaRecent) continue;
+      row.__omegaRecent = 1;
+
+      var kids = row.children;
+      if (!kids.length) continue;
+
+      /* The generated row is: pin span, wrapper span, optional badge span.
+         Identify the wrapper by the fact that it is the one holding other
+         spans, rather than trusting a fixed index. */
+      var wrap = null, w;
+      for (w = 0; w < kids.length; w++) {
+        if (kids[w].children && kids[w].children.length) { wrap = kids[w]; break; }
+      }
+
+      if (kids[0] && kids[0] !== wrap) addClass(kids[0], 'omega-hri-pin');
+      if (wrap) {
+        if (wrap.children[0]) addClass(wrap.children[0], 'omega-hri-name');
+        if (wrap.children[1]) addClass(wrap.children[1], 'omega-hri-sub');
+        var last = kids[kids.length - 1];
+        if (last !== wrap && last !== kids[0]) addClass(last, 'omega-hri-badge');
+      }
+    }
+  }
+
+  /* homeLoadRecent() rewrites innerHTML whenever the Build tab opens or the
+     project list refreshes, so re-tag on every mutation. */
+  function watch() {
+    var host = document.getElementById('home-recent');
+    if (!host || host.__omegaRecentObs) return false;
+    host.__omegaRecentObs = 1;
+    try {
+      new MutationObserver(function () { tidy(); }).observe(host, { childList: true });
+    } catch (e) { /* no MutationObserver — the interval below still covers it */ }
+    tidy();
+    if (window.console) console.info(TAG, 'panel tidied — one line per row, scrolls, address on hover');
+    return true;
+  }
+
+  var n = 0;
+  var iv = setInterval(function () {
+    watch();
+    tidy();                       /* cheap; skips rows it has already done */
+    if (++n > 200) clearInterval(iv);
+  }, 400);
+
+  window.OmegaRecent = {
+    tidy: tidy,
+    /* Put the customer/address line back and let the strip scroll for it. */
+    showSubtitles: function (on) {
+      var s = document.getElementById('omega-recent-css');
+      if (!s) return false;
+      s.textContent = (on === false)
+        ? s.textContent.replace('.omega-hri-sub{ display:block', '.omega-hri-sub{ display:none')
+        : s.textContent.replace('.omega-hri-sub{ display:none', '.omega-hri-sub{ display:block');
+      return true;
+    },
+    status: function () {
+      var host = document.getElementById('home-recent');
+      if (!host) { console.info(TAG, 'panel not on screen — open the Build tab'); return null; }
+      var rows = host.querySelectorAll('.home-recent-item');
+      var o = {
+        rows: rows.length,
+        stripHeightPx: Math.round(host.clientHeight),
+        contentHeightPx: Math.round(host.scrollHeight),
+        rowHeightPx: rows.length ? Math.round(rows[0].getBoundingClientRect().height) : 0,
+        scrolls: host.scrollHeight > host.clientHeight + 1,
+        panelWidthPx: host.parentElement ? Math.round(host.parentElement.getBoundingClientRect().width) : null
+      };
+      o.rowsVisible = o.rowHeightPx ? +(o.stripHeightPx / (o.rowHeightPx + 1)).toFixed(2) : 0;
+      o.verdict = !o.rows ? 'No projects listed yet.'
+        : o.rowHeightPx * o.rows > o.stripHeightPx && !o.scrolls
+          ? 'Content still exceeds the strip and it is not scrolling — the CSS did not apply.'
+          : o.scrolls ? o.rows + ' rows, ' + o.rowsVisible + ' visible, the rest by scroll.'
+            : 'All ' + o.rows + ' rows fit.';
       if (console.table) console.table(o); else console.log(o);
       console.info(o.verdict);
       return o;
