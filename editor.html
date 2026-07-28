@@ -50505,7 +50505,7 @@ window._crmToastModal=_crmToastModal;
 
 <!-- ═════════════════════════════════════════════════════════════════════
      CLEARSKY OMEGA — SITE MAP DESIGNER PRO
-     PATCH BUNDLE  ·  2026-07-28  ·  rev 11
+     PATCH BUNDLE  ·  2026-07-28  ·  rev 13
 
      Paste this whole block into editor.html immediately before </body>.
 
@@ -50518,9 +50518,9 @@ window._crmToastModal=_crmToastModal;
        7. Guided-build assemblies can be dragged and stay put     [rev 5]
        8. Trench and conduit move together                       [rev 6]
           + stays out of the way during a guided build's
-            batched placement                                [rev 11]
+            batched placement                                [rev 13]
        9. Solar exclusions no longer make a project unsaveable   [rev 7]
-      10. Project lists query uid, not the absent owner field    [rev 11]
+      10. Project lists query uid, not the absent owner field    [rev 13]
 
      TRIAGE: OmegaPatch.off()  stops every timer-driven pass in this
              bundle, immediately, without a redeploy. OmegaPatch.installed()
@@ -53739,6 +53739,310 @@ window._crmToastModal=_crmToastModal;
       o.verdict = !u ? 'Not signed in — no project list is possible.'
         : o.cachedProjects ? o.cachedProjects + ' project(s) in the cache.'
           : 'Nothing cached yet — run OmegaProjects.refresh().';
+      if (console.table) console.table(o); else console.log(o);
+      console.info(o.verdict);
+      return o;
+    }
+  };
+})();
+
+
+/* ═══════════════════════════════════════════════════════════════════════
+   OMEGA PATCH — 11 : THE INVISIBLE "GENERATE" BUTTON
+   -----------------------------------------------------------------------
+   The control next to Preview is there. It is #al-go, labelled "Generate",
+   and it ships disabled at 40% opacity (line 10911):
+
+       <button id="al-go" onclick="alGenerate()" disabled
+               style="...;opacity:.4">Generate</button>
+
+   40% of a gold-to-green gradient on a #0F1D30 modal is close enough to
+   the background that it reads as empty space, so the modal looks like it
+   only offers Cancel and Preview. alPreview() then leaves it that way
+   whenever no tables fit:
+
+       if(!layout.tableCount){ ... go0.disabled=true; go0.style.opacity='.4'; return; }
+
+   AND THE ZERO IS CORRECT
+
+   0.031 acres is about 37 x 37 ft. The fixed-ground preset takes a 10 ft
+   perimeter setback, leaving 17 x 17 ft of usable ground, and a table is
+   20 ft wide. Nothing fits, and nothing should.
+
+   But "Draw a larger area" is not the only way out, and it is the only one
+   offered. Same boundary, measured with the real engine:
+
+       fixed-ground  10 ft setback   17x17 usable    0 tables
+       fixed-ground   5 ft setback   27x27 usable    1 table
+       rooftop        3 ft setback   31x31 usable    2 tables
+
+   So this makes the button legible in both states, and when nothing fits
+   it probes the presets and setbacks and names one that does — computed
+   against the actual boundary, not guessed.
+
+   UI only. No timers, no render hooks, nothing that runs unless the
+   Auto-Layout modal is open.
+   ═══════════════════════════════════════════════════════════════════════ */
+(function () {
+  'use strict';
+
+  var TAG = '[omega/autolayout]';
+
+  function el(id) { return document.getElementById(id); }
+
+  /* Disabled should read as "not yet", not as "not there". */
+  function restyleButton() {
+    var go = el('al-go');
+    if (!go) return;
+    go.style.opacity = '';
+    if (go.disabled) {
+      go.style.background = 'rgba(255,255,255,.05)';
+      go.style.color = '#7D95B4';
+      go.style.border = '1px solid rgba(255,255,255,.16)';
+      go.style.cursor = 'not-allowed';
+      go.title = 'Nothing fits this boundary yet — see the note above.';
+    } else {
+      go.style.background = 'linear-gradient(135deg,#FBBF24,#22C55E)';
+      go.style.color = '#0A1628';
+      go.style.border = 'none';
+      go.style.cursor = 'pointer';
+      go.title = 'Place the array on the drawing';
+    }
+  }
+
+  /* Ask the engine what would actually fit, cheapest change first. */
+  function whatWouldFit() {
+    var b = window._alBoundary;
+    if (!b || !window.OmegaSolar || typeof OmegaSolar.compute !== 'function') return null;
+    var excl = window._alExclusions || [];
+    var cur = (window._alLayout && window._alLayout.presetKey) || null;
+
+    var tries = [];
+    [5, 3, 0].forEach(function (sb) {
+      tries.push({ presetKey: cur, setbackFt: sb, how: 'drop the setback to ' + sb + ' ft' });
+    });
+    try {
+      for (var k in DER_SOLAR_PRESETS) {
+        if (!Object.prototype.hasOwnProperty.call(DER_SOLAR_PRESETS, k)) continue;
+        if (k === cur) continue;
+        tries.push({ presetKey: k, how: 'switch the preset to ' + (DER_SOLAR_PRESETS[k].label || k) });
+      }
+    } catch (e) {}
+
+    for (var i = 0; i < tries.length; i++) {
+      var t = tries[i], L = null;
+      try {
+        L = OmegaSolar.compute({
+          boundary: b, exclusions: excl,
+          presetKey: t.presetKey || undefined,
+          setbackFt: t.setbackFt
+        });
+      } catch (e) {}
+      if (L && L.tableCount > 0) {
+        return { how: t.how, tables: L.tableCount, kw: L.kw, setbackFt: L.setbackFt, preset: L.presetKey };
+      }
+    }
+    return null;
+  }
+
+  function addSuggestion() {
+    var out = el('al-preview');
+    var L = window._alLayout;
+    if (!out || !L || L.tableCount) return;
+    if (out.querySelector('.omega-al-fit')) return;
+
+    var s = whatWouldFit();
+    var html;
+    if (s) {
+      html = '<div class="omega-al-fit" style="margin-top:9px;padding:8px 10px;border-radius:6px;'
+        + 'background:rgba(34,197,94,.10);border:1px solid rgba(34,197,94,.30);'
+        + 'font-size:9.5px;line-height:1.6;color:#86EFAC">'
+        + '<strong>This boundary is not too small \u2014 the setback is too big for it.</strong><br>'
+        + 'It holds <strong>' + s.tables + ' table' + (s.tables === 1 ? '' : 's')
+        + ' (' + s.kw + ' kW-DC)</strong> if you ' + s.how + '.<br>'
+        + '<span style="color:#7D95B4">Racking presets live in Solar Assumptions '
+        + '(Solar \u2192 BESS sizer). Or place it and adjust with '
+        + '<strong>Solar \u25be \u2192 Array \u2014 Edit Size / Capacity</strong>.</span></div>';
+    } else {
+      html = '<div class="omega-al-fit" style="margin-top:9px;padding:8px 10px;border-radius:6px;'
+        + 'background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.12);'
+        + 'font-size:9.5px;line-height:1.6;color:#8FA3B8">'
+        + 'Checked every preset down to a zero setback \u2014 nothing fits this outline. '
+        + 'A single table needs about ' + ((window._alLayout && window._alLayout.tableWft) || 20)
+        + ' \u00d7 ' + ((window._alLayout && window._alLayout.tableHft) || 12)
+        + ' ft of clear ground.</div>';
+    }
+    out.insertAdjacentHTML('beforeend', html);
+  }
+
+  function decorate() {
+    try { restyleButton(); } catch (e) {}
+    try { addSuggestion(); } catch (e) {}
+  }
+
+  function hookPreview() {
+    var orig = window.alPreview;
+    if (typeof orig !== 'function' || orig.__omegaAL) return false;
+    var wrapped = function () {
+      var r = orig.apply(this, arguments);
+      decorate();
+      return r;
+    };
+    wrapped.__omegaAL = true;
+    window.alPreview = wrapped;
+    return true;
+  }
+
+  /* The modal opens with the button already disabled and dim, before
+     Preview is ever pressed — so style it as soon as it exists. */
+  function hookOpen() {
+    var orig = window.openAutoLayout;
+    if (typeof orig !== 'function' || orig.__omegaAL) return false;
+    var wrapped = function () {
+      var r = orig.apply(this, arguments);
+      setTimeout(function () { try { restyleButton(); } catch (e) {} }, 0);
+      return r;
+    };
+    wrapped.__omegaAL = true;
+    window.openAutoLayout = wrapped;
+    return true;
+  }
+
+  var n = 0;
+  var iv = setInterval(function () {
+    var a = hookPreview(), b = hookOpen();
+    if (a || b) {
+      if (window.console) console.info(TAG, 'armed — Generate button legible, zero-fit explained');
+    }
+    if (++n > 200) clearInterval(iv);
+  }, 300);
+
+  window.OmegaAutoLayout = {
+    wouldFit: whatWouldFit,
+    status: function () {
+      var go = el('al-go'), L = window._alLayout;
+      var o = {
+        modalOpen: !!el('autolayout-modal'),
+        generateButton: go ? (go.disabled ? 'present, disabled' : 'present, enabled') : 'not on screen',
+        boundaryAcres: L ? L.acres : null,
+        tables: L ? L.tableCount : null,
+        setbackFt: L ? L.setbackFt : null
+      };
+      var s = whatWouldFit();
+      o.verdict = !go ? 'Open Draw > Auto Layout with a boundary drawn.'
+        : !go.disabled ? 'Generate is live — press it to place the array.'
+          : s ? 'Nothing fits at these assumptions, but ' + s.how + ' gives ' + s.tables + ' table(s).'
+            : 'Nothing fits this outline at any preset.';
+      if (console.table) console.table(o); else console.log(o);
+      console.info(o.verdict);
+      return o;
+    }
+  };
+})();
+
+
+/* ═══════════════════════════════════════════════════════════════════════
+   OMEGA PATCH — 12 : renderEl LEAVES ITS OLD NODE BEHIND
+   -----------------------------------------------------------------------
+   Three renderers, two contracts.
+
+       renderShape(sh)    svg.querySelector('[data-shid=...]') -> removeChild
+                          then draws.  Idempotent.
+       renderConduit(c)   same shape.  Idempotent.
+       renderEl(el)       const wrap = document.createElement('div');
+                          wrap.dataset.elid = el.id;
+                          ... container.appendChild(wrap)
+
+   renderEl never removes the node it is replacing. Call it twice for the
+   same element and there are now two .cel divs carrying that id — the new
+   one at the current position, the old one still sitting at the
+   coordinates it was rendered with.
+
+   That is the ghost. The stale copy keeps its label, so a guided-build
+   element's name ends up detached from the equipment it belongs to,
+   stranded where the element used to be before the zoom.
+
+   Your own anchoring engine already found this and works around it:
+
+       "renderEl does NOT - it creates a fresh div.cel and appends.
+        Calling it on every pass of this engine appended a copy each time;
+        during a map drag that fires continuously, so 11 elements became
+        hundreds of stacked renders. Move the existing node instead."
+
+   ...and it added dedupeElements() to sweep the leftovers, plus
+   OmegaDupeCount() to count them. But the sweep runs on a 2000 ms timer,
+   so between sweeps the duplicates are on screen — which is exactly the
+   window a zoom lands in.
+
+   Sweeping duplicates is treating the symptom. This gives renderEl the
+   same contract the other two renderers already honour: remove the node
+   for this id, then draw. Nothing can stack, so there is nothing to
+   sweep, and dedupeElements() becomes a no-op instead of a repair.
+
+   One wrapper. No timers, no observers.
+   ═══════════════════════════════════════════════════════════════════════ */
+(function () {
+  'use strict';
+
+  var TAG = '[omega/renderel]';
+  var removed = 0, calls = 0;
+
+  function hook() {
+    var orig = window.renderEl;
+    if (typeof orig !== 'function' || orig.__omegaIdem) return false;
+
+    var wrapped = function (el) {
+      calls++;
+      try {
+        if (el && el.id) {
+          /* Every node claiming this id, not just the first — a drawing
+             already damaged by the old behaviour heals on next render. */
+          var nodes = document.querySelectorAll('[data-elid="' + el.id + '"]');
+          for (var i = 0; i < nodes.length; i++) {
+            if (nodes[i].parentNode) { nodes[i].parentNode.removeChild(nodes[i]); removed++; }
+          }
+        }
+      } catch (e) {}
+      return orig.apply(this, arguments);
+    };
+    wrapped.__omegaIdem = true;
+    window.renderEl = wrapped;
+    return true;
+  }
+
+  var n = 0;
+  var iv = setInterval(function () {
+    if (hook()) {
+      if (window.console) console.info(TAG, 'armed — renderEl now replaces instead of stacking');
+    }
+    if (++n > 200) clearInterval(iv);
+  }, 300);
+
+  window.OmegaRenderEl = {
+    /* How many stale nodes are on screen right now. Should stay at 0. */
+    ghosts: function () {
+      var seen = {}, dupes = [];
+      try {
+        var nodes = document.querySelectorAll('[data-elid]');
+        for (var i = 0; i < nodes.length; i++) {
+          var id = nodes[i].getAttribute('data-elid');
+          if (seen[id]) dupes.push(id); else seen[id] = 1;
+        }
+      } catch (e) {}
+      return dupes;
+    },
+    status: function () {
+      var g = this.ghosts();
+      var o = {
+        renderElCalls: calls,
+        staleNodesRemoved: removed,
+        ghostsOnScreenNow: g.length,
+        appsOwnDupeCount: (typeof OmegaDupeCount === 'function') ? OmegaDupeCount() : 'n/a'
+      };
+      o.verdict = g.length
+        ? g.length + ' duplicate element node(s) still on screen: ' + g.slice(0, 5).join(', ')
+        : (removed ? 'Clean. ' + removed + ' stale node(s) replaced rather than stacked.'
+          : 'Clean — nothing has re-rendered yet.');
       if (console.table) console.table(o); else console.log(o);
       console.info(o.verdict);
       return o;
