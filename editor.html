@@ -50502,5 +50502,1332 @@ window._crmToastModal=_crmToastModal;
   };
 })();
 </script>
+<!-- ═════════════════════════════════════════════════════════════════════
+     CLEARSKY OMEGA — SITE MAP DESIGNER PRO
+     PATCH BUNDLE  ·  2026-07-28
+
+     Paste this whole block into editor.html immediately before </body>.
+     It is additive: it overrides functions at runtime and needs no edit to
+     the 50,000 lines above it.
+
+       1. Satellite background in every export (blueprint, plot plan, print)
+       2. Snap-to-close when tracing a custom solar area
+       3. Correct setback maths + a per-array size / capacity editor
+
+     Console helpers once loaded:
+       OmegaMapExport.status()          why an export background did or did not work
+       await OmegaMapExport.grab(true)  force a fresh capture
+       OmegaSolar.status()              scale + array summary
+       OmegaSolar.refitAll()            re-fit existing arrays with the fixed engine
+       omegaSolarSize()                 open the array editor
+     ═══════════════════════════════════════════════════════════════════ -->
+<script>
+/* ═══════════════════════════════════════════════════════════════════════
+   OMEGA PATCH — 1 of 3 : SATELLITE BACKGROUND IN EVERY EXPORT
+   -----------------------------------------------------------------------
+   WHY THE SHEETS CAME OUT BLANK / DARK
+
+   The live map is the Google Maps JS API rendering into #_gmapDiv. Two
+   things stop html2canvas from ever seeing it:
+
+     - raster satellite tiles are <img> elements served WITHOUT CORS
+       headers, so drawing them onto a canvas TAINTS it and toDataURL()
+       throws. The existing compositeTiles() catches that and returns
+       null, which is the blank sheet.
+     - vector/WebGL satellite renders into a <canvas> html2canvas will
+       not read back reliably.
+
+   Static Maps was already the intended fallback, but both call sites ask
+   for a size that cannot line up with the drawing:
+
+     staticUrl()          clamps to 640x640 regardless of the real
+                          viewport, so the raster covers a DIFFERENT patch
+                          of ground than the screen at the same zoom
+     _ppEnsureMapImage()  asks for up to 1280x1280, which the standard
+                          Static Maps tier rejects outright (max side 640)
+
+   This block replaces both with one georeferenced grab: it drops the
+   requested ZOOM by exactly log2(viewport/640) so a <=640px image covers
+   the SAME ground as the viewport, then re-fetches tiles through fetch()
+   (CORS-clean) and finally reads the WebGL canvas back, in that order.
+   Whatever succeeds is installed as a real <img> inside #sc, and the live
+   map is excluded from the capture so it cannot paint black over it.
+   ═══════════════════════════════════════════════════════════════════════ */
+(function () {
+  'use strict';
+
+  var MAXSIDE = 640;                 /* Static Maps hard limit per side */
+  var TAG = '[omega/map]';
+  function log() { if (window.console && console.info) console.info.apply(console, arguments); }
+  function warn() { if (window.console && console.warn) console.warn.apply(console, arguments); }
+
+  function SC() { return document.getElementById('sc'); }
+  function MAP() { try { if (typeof _gmap !== 'undefined' && _gmap) return _gmap; } catch (e) {} return window._gmap || null; }
+  function KEY() {
+    try { if (typeof _CFG !== 'undefined' && _CFG && _CFG.googleMapsKey) return _CFG.googleMapsKey; } catch (e) {}
+    return window.GOOGLE_MAPS_KEY || null;
+  }
+  function viewport() {
+    var sc = SC();
+    return { w: Math.round((sc && sc.clientWidth) || 900), h: Math.round((sc && sc.clientHeight) || 600) };
+  }
+
+  /* Is this raster actually black / empty? Size cannot tell you — a solid
+     black JPEG still runs to tens of KB. Pixels can. */
+  function looksBlank(cvs) {
+    try {
+      var g = cvs.getContext('2d'); if (!g) return false;
+      var w = cvs.width, h = cvs.height; if (!w || !h) return true;
+      var N = 300, lit = 0;
+      for (var i = 0; i < N; i++) {
+        var d = g.getImageData(Math.floor(Math.random() * w), Math.floor(Math.random() * h), 1, 1).data;
+        if (d[3] > 8 && (d[0] > 14 || d[1] > 14 || d[2] > 14)) lit++;
+      }
+      return lit < N * 0.02;
+    } catch (e) { return false; }   /* tainted — assume usable, caller re-checks */
+  }
+
+  function blobToDataUrl(blob) {
+    return new Promise(function (res, rej) {
+      var r = new FileReader();
+      r.onload = function () { res(r.result); };
+      r.onerror = rej;
+      r.readAsDataURL(blob);
+    });
+  }
+
+  /* ── PATH 1 ── STATIC MAPS, GEOREFERENCED TO THE VIEWPORT ──────────────
+     A Static Maps image of w x h px at zoom Z covers the same ground as
+     w x h screen px at zoom Z. The viewport is usually wider than the 640
+     px cap, so drop the zoom by log2(scaleDown) and shrink the request by
+     the same factor — the extent is preserved, only the resolution falls,
+     and scale=2 buys most of that back. */
+  function staticRequest() {
+    var m = MAP(), key = KEY();
+    if (!m || !m.getCenter) return { err: 'no live map' };
+    if (!key) return { err: 'no Google Maps key in _CFG.googleMapsKey' };
+    var c = m.getCenter(), z = m.getZoom();
+    if (!c || z == null) return { err: 'map has no centre/zoom yet' };
+
+    var vp = viewport();
+    var shrink = Math.min(1, MAXSIDE / Math.max(vp.w, vp.h));
+    var zExact = z + Math.log(shrink) / Math.LN2;
+    var zi = Math.floor(zExact);                       /* never above zExact */
+    if (zi < 1) zi = 1; if (zi > 21) zi = 21;
+
+    var f = Math.pow(2, zi - z);                       /* ground-px ratio */
+    var w = Math.max(1, Math.round(vp.w * f));
+    var h = Math.max(1, Math.round(vp.h * f));
+    if (w > MAXSIDE) { h = Math.round(h * MAXSIDE / w); w = MAXSIDE; }
+    if (h > MAXSIDE) { w = Math.round(w * MAXSIDE / h); h = MAXSIDE; }
+
+    return {
+      url: 'https://maps.googleapis.com/maps/api/staticmap'
+        + '?center=' + c.lat() + ',' + c.lng()
+        + '&zoom=' + zi
+        + '&size=' + w + 'x' + h
+        + '&scale=2&maptype=satellite&format=jpg&key=' + key,
+      w: w, h: h, zoom: zi, srcZoom: z, vp: vp
+    };
+  }
+
+  async function viaStaticMaps() {
+    var req = staticRequest();
+    if (req.err) { log(TAG, 'Static Maps skipped —', req.err); return null; }
+    var r;
+    try { r = await fetch(req.url); }
+    catch (e) { warn(TAG, 'Static Maps fetch failed:', e && e.message); return null; }
+    if (!r.ok) {
+      warn(TAG, 'Static Maps returned HTTP ' + r.status
+        + ' — enable "Maps Static API" on this key and confirm billing is active.');
+      return null;
+    }
+    var b = await r.blob();
+    if (b.size < 2000 || !/^image\//.test(b.type || '')) {
+      warn(TAG, 'Static Maps returned a non-image / error placeholder.');
+      return null;
+    }
+    var d = await blobToDataUrl(b);
+    return (d && d.indexOf('data:image') === 0) ? d : null;
+  }
+
+  /* ── PATH 2 ── COMPOSITE THE TILES, RE-FETCHED CORS-CLEAN ──────────────
+     Draw every on-screen tile at the position it occupies. Try the fast
+     path first (drawImage straight off the live <img>); if the canvas is
+     tainted, re-request the identical URLs through fetch(), which gives
+     back CORS-clean bitmaps we are allowed to read. */
+  async function viaTiles() {
+    var md = document.getElementById('_gmapDiv');
+    if (!md) return null;
+    var host = md.getBoundingClientRect();
+    var W = Math.round(host.width), H = Math.round(host.height);
+    if (!W || !H) return null;
+
+    var tiles = Array.prototype.slice.call(md.querySelectorAll('img')).filter(function (im) {
+      if (!im.src || !im.complete || !im.naturalWidth) return false;
+      if (!/googleapis|ggpht|gstatic|google\.com\/maps/.test(im.src)) return false;
+      var r = im.getBoundingClientRect();
+      return r.width > 1 && r.height > 1 &&
+        r.right > host.left && r.left < host.right &&
+        r.bottom > host.top && r.top < host.bottom;
+    });
+    if (tiles.length < 2) return null;
+
+    var placed = tiles.map(function (im) {
+      var r = im.getBoundingClientRect();
+      return {
+        el: im, src: im.src,
+        x: Math.round(r.left - host.left), y: Math.round(r.top - host.top),
+        w: Math.round(r.width), h: Math.round(r.height)
+      };
+    });
+
+    function freshCanvas() {
+      var c = document.createElement('canvas');
+      c.width = W; c.height = H;
+      var g = c.getContext('2d');
+      g.fillStyle = '#0b1626'; g.fillRect(0, 0, W, H);
+      return { c: c, g: g };
+    }
+
+    /* fast path — works when the tiles happen to be CORS-clean already */
+    var a = freshCanvas(), drawn = 0;
+    placed.forEach(function (p) {
+      try { a.g.drawImage(p.el, p.x, p.y, p.w, p.h); drawn++; } catch (e) {}
+    });
+    if (drawn >= 2) {
+      try {
+        var d = a.c.toDataURL('image/jpeg', 0.86);
+        if (d && d.length > 3000 && !looksBlank(a.c)) { log(TAG, 'tiles composited directly'); return d; }
+      } catch (e) { /* tainted — fall through to the re-fetch */ }
+    }
+
+    /* CORS re-fetch path */
+    var b = freshCanvas(), ok = 0;
+    for (var i = 0; i < placed.length; i++) {
+      var p = placed[i];
+      try {
+        var resp = await fetch(p.src, { mode: 'cors', credentials: 'omit' });
+        if (!resp.ok) continue;
+        var blob = await resp.blob();
+        var bmp;
+        if (typeof createImageBitmap === 'function') {
+          bmp = await createImageBitmap(blob);
+        } else {
+          var ou = URL.createObjectURL(blob);
+          bmp = await new Promise(function (res, rej) {
+            var im = new Image(); im.onload = function () { res(im); }; im.onerror = rej; im.src = ou;
+          });
+        }
+        b.g.drawImage(bmp, p.x, p.y, p.w, p.h);
+        ok++;
+      } catch (e) { /* one lost tile must not lose the sheet */ }
+    }
+    if (ok < 2) return null;
+    try {
+      var d2 = b.c.toDataURL('image/jpeg', 0.86);
+      if (d2 && d2.length > 3000 && !looksBlank(b.c)) { log(TAG, 'tiles re-fetched CORS-clean (' + ok + ')'); return d2; }
+    } catch (e) {}
+    return null;
+  }
+
+  /* ── PATH 3 ── READ THE WEBGL CANVAS BACK ─────────────────────────────
+     preserveDrawingBuffer is already patched on at the top of the file,
+     so the vector renderer's own canvas can be copied straight across. */
+  function viaCanvasReadback() {
+    var md = document.getElementById('_gmapDiv');
+    if (!md) return null;
+    var host = md.getBoundingClientRect();
+    var W = Math.round(host.width), H = Math.round(host.height);
+    if (!W || !H) return null;
+    var cans = Array.prototype.slice.call(md.querySelectorAll('canvas'));
+    if (!cans.length) return null;
+
+    var out = document.createElement('canvas');
+    out.width = W; out.height = H;
+    var g = out.getContext('2d');
+    g.fillStyle = '#0b1626'; g.fillRect(0, 0, W, H);
+    var n = 0;
+    cans.forEach(function (cn) {
+      try {
+        var r = cn.getBoundingClientRect();
+        if (r.width < 2 || r.height < 2) return;
+        g.drawImage(cn, r.left - host.left, r.top - host.top, r.width, r.height);
+        n++;
+      } catch (e) {}
+    });
+    if (!n || looksBlank(out)) return null;
+    try {
+      var d = out.toDataURL('image/jpeg', 0.88);
+      if (d && d.length > 3000) { log(TAG, 'WebGL canvas read back'); return d; }
+    } catch (e) {}
+    return null;
+  }
+
+  /* ── INSTALL ──────────────────────────────────────────────────────────
+     One dedicated layer inside #sc at z-index 0, object-fit:fill so it
+     maps 1:1 onto the viewport the drawing was placed against. Also feed
+     the three variables the existing exporters read. */
+  function install(url) {
+    if (!url) return;
+    window._ppTempMapImg = url;
+    if (!window._isUploadedPhoto) {
+      window._frozenMapImg = url;
+      var bd = document.getElementById('backdrop');
+      if (bd) { bd.src = url; bd.style.objectFit = 'fill'; }
+    }
+    var sc = SC(); if (!sc) return;
+    var lay = document.getElementById('omega-export-map');
+    if (!lay) {
+      lay = document.createElement('img');
+      lay.id = 'omega-export-map';
+      lay.setAttribute('alt', '');
+      lay.style.cssText = 'position:absolute;top:0;left:0;width:100%;height:100%;'
+        + 'object-fit:fill;z-index:0;pointer-events:none;display:none';
+      sc.insertBefore(lay, sc.firstChild);
+    }
+    lay.src = url;
+  }
+  function showLayer(on) {
+    var l = document.getElementById('omega-export-map');
+    if (l) l.style.display = on ? 'block' : 'none';
+  }
+
+  var cache = { url: null, at: 0, path: null, err: null };
+
+  async function grab(force) {
+    if (!force && cache.url && Date.now() - cache.at < 2500) return cache.url;
+    var url = null, path = null;
+
+    try { url = await viaStaticMaps(); if (url) path = 'static-maps'; } catch (e) {}
+    if (!url) { try { url = await viaTiles(); if (url) path = 'tile-composite'; } catch (e) {} }
+    if (!url) { try { url = viaCanvasReadback(); if (url) path = 'canvas-readback'; } catch (e) {} }
+
+    if (!url) {
+      cache.err = 'no satellite raster could be produced';
+      warn(TAG, cache.err + ' — run OmegaMapExport.status() for the reason.');
+      return null;
+    }
+    cache = { url: url, at: Date.now(), path: path, err: null };
+    install(url);
+    log(TAG, 'export background ready via ' + path + ' (' + Math.round(url.length / 1024) + ' KB)');
+    return url;
+  }
+
+  /* ── HOOK THE ONE FUNCTION EVERY EXPORT GOES THROUGH ──────────────────
+     generateBlueprint(), _ppExport() and the proposal all rasterise #sc
+     through _captureCanvasWithSVG(). Patch there rather than at each
+     entry point, and exclude the live map from the capture so it cannot
+     paint a black rectangle over the raster we just installed. */
+  function hookCapture() {
+    var orig = window._captureCanvasWithSVG;
+    if (typeof orig !== 'function' || orig.__omegaMap) return false;
+    var wrapped = async function (el, opts) {
+      var url = null;
+      try { url = await grab(true); } catch (e) {}
+      opts = opts || {};
+      var prev = opts.ignoreElements;
+      opts.ignoreElements = function (e) {
+        if (e && (e.id === '_gmapDiv' || e.id === 'gmap-wrap' || e.id === 'gmap-frame'
+          || e.id === 'gmap-block' || e.tagName === 'IFRAME')) return true;
+        return prev ? prev(e) : false;
+      };
+      if (url) showLayer(true);
+      try { return await orig.call(this, el, opts); }
+      finally { showLayer(false); }
+    };
+    wrapped.__omegaMap = true;
+    window._captureCanvasWithSVG = wrapped;
+    return true;
+  }
+
+  /* The plot-plan vector path asks _ppEnsureMapImage() for a raster. Give
+     it the georeferenced one instead of the 1280px request the API
+     rejects. */
+  function hookPlotPlan() {
+    var orig = window._ppEnsureMapImage;
+    if (typeof orig !== 'function' || orig.__omegaMap) return false;
+    var wrapped = async function () {
+      var cb = document.getElementById('pp-map');
+      if (cb && !cb.checked) return false;
+      try { if (await grab(true)) return true; } catch (e) {}
+      try { return await orig.apply(this, arguments); } catch (e) { return false; }
+    };
+    wrapped.__omegaMap = true;
+    window._ppEnsureMapImage = wrapped;
+    return true;
+  }
+
+  var tries = 0;
+  var iv = setInterval(function () {
+    var done = hookCapture(), done2 = hookPlotPlan();
+    if ((done || done2)) log(TAG, 'export capture hooked');
+    if (++tries > 200) clearInterval(iv);
+  }, 300);
+
+  /* Keep a warm raster so the browser Print / Save-as-PDF path — which is
+     synchronous and cannot await a fetch — always has one to install. */
+  function warm() { grab(false).catch(function () {}); }
+  var t = 0;
+  var iv2 = setInterval(function () {
+    if (++t > 200) { clearInterval(iv2); return; }
+    var m = MAP(); if (!m) return;
+    clearInterval(iv2);
+    try {
+      if (window.google && google.maps && google.maps.event) {
+        google.maps.event.addListener(m, 'idle', function () { warm(); });
+      }
+    } catch (e) {}
+    warm();
+  }, 300);
+  setInterval(warm, 20000);
+
+  window.addEventListener('beforeprint', function () {
+    if (cache.url) { install(cache.url); showLayer(true); }
+  });
+  window.addEventListener('afterprint', function () { showLayer(false); });
+
+  /* Print rules: show our raster, hide the live map (browsers do not
+     print WebGL/iframe content reliably). */
+  var st = document.createElement('style');
+  st.textContent = '@media print{'
+    + '#omega-export-map{display:block!important;position:absolute!important;inset:0!important;'
+    + 'width:100%!important;height:100%!important;object-fit:fill!important;z-index:0!important}'
+    + '#_gmapDiv,#gmap-wrap,#gmap-frame{display:none!important}'
+    + '}';
+  document.head.appendChild(st);
+
+  window.OmegaMapExport = {
+    grab: grab,
+    install: install,
+    showLayer: showLayer,
+    lastPath: function () { return cache.path; },
+    status: function () {
+      var req = staticRequest();
+      var md = document.getElementById('_gmapDiv');
+      var o = {
+        liveMap: !!MAP(),
+        mapsKeyPresent: !!KEY(),
+        viewport: viewport().w + 'x' + viewport().h,
+        staticRequest: req.err ? ('BLOCKED: ' + req.err) : (req.w + 'x' + req.h + ' @ z' + req.zoom + ' (screen z' + req.srcZoom + ')'),
+        rasterTilesOnScreen: md ? md.querySelectorAll('img[src*="googleapis"],img[src*="ggpht"]').length : 0,
+        webglCanvases: md ? md.querySelectorAll('canvas').length : 0,
+        cachedPath: cache.path || '(none yet)',
+        cachedKB: cache.url ? Math.round(cache.url.length / 1024) : 0
+      };
+      o.verdict = !o.liveMap ? 'No live map — load a site address first.'
+        : cache.url ? ('Background ready via ' + cache.path + '. Exports will show the satellite.')
+          : (!o.mapsKeyPresent ? 'No Maps key: only the tile/WebGL fallbacks can run.'
+            : 'Nothing captured yet — call await OmegaMapExport.grab(true) and read the console.');
+      if (console.table) console.table(o); else console.log(o);
+      console.info(o.verdict);
+      return o;
+    }
+  };
+})();
+
+
+/* ═══════════════════════════════════════════════════════════════════════
+   OMEGA PATCH — 2 of 3 : CLOSING A TRACED OUTLINE
+   -----------------------------------------------------------------------
+   Custom Solar Area drops you into polyline mode, and the only way to
+   finish was a double-click that landed wherever the cursor happened to
+   be — so the last corner never met the first and the polygon closed on
+   a diagonal.
+
+   This gives the first vertex a real snap target: once three corners are
+   down, a ring appears on the start point, the rubber band jumps to it
+   inside the tolerance, and a single click there closes the loop exactly.
+   Enter closes it too. The finished shape gets the start point repeated
+   as its last point, so it reads as closed and the area maths is exact.
+   ═══════════════════════════════════════════════════════════════════════ */
+(function () {
+  'use strict';
+
+  var SNAP_PX = 18;                  /* grab radius around the first corner */
+  var NS = 'http://www.w3.org/2000/svg';
+
+  function S_() { try { return (typeof S !== 'undefined' && S) ? S : null; } catch (e) { return null; } }
+  function drawing() {
+    var s = S_();
+    return !!(s && s.shapeDrawing && s.mode === 'polyline' && s.shapePts && s.shapePts.length);
+  }
+  function firstPt() { var s = S_(); return drawing() ? s.shapePts[0] : null; }
+  function canClose() { var s = S_(); return drawing() && s.shapePts.length >= 3; }
+
+  function nearStart(p) {
+    if (!canClose() || !p) return false;
+    var f = firstPt();
+    var dx = p.x - f.x, dy = p.y - f.y;
+    return (dx * dx + dy * dy) <= SNAP_PX * SNAP_PX;
+  }
+
+  /* ── the ring on the first corner ─────────────────────────────────── */
+  function ring(on, hot) {
+    var svg = document.getElementById('csvg');
+    if (!svg) return;
+    var g = document.getElementById('omega-close-ring');
+    if (!on || !canClose()) { if (g && g.parentNode) g.parentNode.removeChild(g); return; }
+    var f = firstPt(); if (!f) return;
+    if (!g) {
+      g = document.createElementNS(NS, 'g');
+      g.setAttribute('id', 'omega-close-ring');
+      g.setAttribute('pointer-events', 'none');
+      var outer = document.createElementNS(NS, 'circle'); outer.setAttribute('class', 'ocr-o');
+      var inner = document.createElementNS(NS, 'circle'); inner.setAttribute('class', 'ocr-i');
+      g.appendChild(outer); g.appendChild(inner);
+      svg.appendChild(g);
+    }
+    if (g.parentNode !== svg) svg.appendChild(g);   /* keep it on top */
+    var o = g.querySelector('.ocr-o'), i = g.querySelector('.ocr-i');
+    o.setAttribute('cx', f.x); o.setAttribute('cy', f.y);
+    o.setAttribute('r', SNAP_PX);
+    o.setAttribute('fill', hot ? 'rgba(52,211,153,0.28)' : 'rgba(255,255,255,0.06)');
+    o.setAttribute('stroke', hot ? '#34D399' : 'rgba(255,255,255,0.55)');
+    o.setAttribute('stroke-width', hot ? 2.2 : 1.2);
+    o.setAttribute('stroke-dasharray', hot ? '' : '3,3');
+    i.setAttribute('cx', f.x); i.setAttribute('cy', f.y);
+    i.setAttribute('r', hot ? 4.5 : 3);
+    i.setAttribute('fill', hot ? '#34D399' : 'rgba(255,255,255,0.8)');
+  }
+
+  /* Close the loop and hand the finished polygon to the normal path. */
+  function closeLoop() {
+    var s = S_(); if (!canClose()) return false;
+    var f = s.shapePts[0];
+    var last = s.shapePts[s.shapePts.length - 1];
+    if (Math.abs(last.x - f.x) > 0.01 || Math.abs(last.y - f.y) > 0.01) {
+      s.shapePts.push({ x: f.x, y: f.y });          /* explicit closure */
+    }
+    ring(false);
+    try { if (typeof finishPolyline === 'function') finishPolyline(); } catch (e) {}
+    var made = (s.shapes || [])[s.shapes.length - 1];
+    if (made && made.kind === 'polyline') made.closed = true;
+    try { if (typeof showBanner === 'function') showBanner('wiz', 'Outline closed \u2014 ' + ((made && made.pts) ? made.pts.length - 1 : '?') + ' corners.'); } catch (e) {}
+    return true;
+  }
+
+  /* ── wrap the two entry points the canvas already calls ───────────── */
+  function hook() {
+    if (typeof window.shapeCovClick !== 'function' || window.shapeCovClick.__omegaClose) return false;
+
+    var origClick = window.shapeCovClick;
+    var origMove = window.shapeCovMove;
+
+    var clickW = function (e) {
+      var s = S_();
+      if (s && s.mode === 'polyline' && s.shapeDrawing) {
+        var p = (typeof _scPt === 'function') ? _scPt(e) : null;
+        if (p && nearStart(p)) {
+          if (e && e.stopPropagation) e.stopPropagation();
+          closeLoop();
+          return;
+        }
+      }
+      return origClick.apply(this, arguments);
+    };
+    clickW.__omegaClose = true;
+    window.shapeCovClick = clickW;
+
+    if (typeof origMove === 'function') {
+      var moveW = function (e) {
+        var s = S_();
+        if (s && s.mode === 'polyline' && s.shapeDrawing) {
+          var p = (typeof _scPt === 'function') ? _scPt(e) : null;
+          if (canClose()) {
+            var hot = nearStart(p);
+            ring(true, hot);
+            if (hot) {
+              /* rubber-band snaps to the start so what you see is what closes */
+              try {
+                var f = firstPt();
+                if (typeof _drawTmpShape === 'function') {
+                  _drawTmpShape('polyline', s.shapePts.concat([{ x: f.x, y: f.y }]));
+                }
+              } catch (err) {}
+              return;
+            }
+          } else { ring(false); }
+        } else { ring(false); }
+        return origMove.apply(this, arguments);
+      };
+      moveW.__omegaClose = true;
+      window.shapeCovMove = moveW;
+    }
+
+    /* Enter closes, Escape clears the ring with the shape. */
+    document.addEventListener('keydown', function (e) {
+      var s = S_(); if (!s) return;
+      if (s.mode !== 'polyline' || !s.shapeDrawing) return;
+      var t = e.target;
+      if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return;
+      if (e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); closeLoop(); }
+      else if (e.key === 'Escape') { ring(false); }
+    }, true);
+
+    /* Right-click finishes as well — muscle memory from CAD. */
+    var cov = document.getElementById('cov');
+    if (cov) {
+      cov.addEventListener('contextmenu', function (e) {
+        var s = S_(); if (!s || s.mode !== 'polyline' || !s.shapeDrawing) return;
+        e.preventDefault();
+        if (canClose()) closeLoop();
+      });
+    }
+
+    if (window.console) console.info('[omega/close] polyline snap-to-close armed');
+    return true;
+  }
+
+  var n = 0;
+  var iv = setInterval(function () { if (hook() || ++n > 200) clearInterval(iv); }, 300);
+
+  window.OmegaClose = {
+    snapPx: function (v) { if (v > 0) SNAP_PX = +v; return SNAP_PX; },
+    close: closeLoop
+  };
+})();
+
+
+/* ═══════════════════════════════════════════════════════════════════════
+   OMEGA PATCH — 3 of 3 : SOLAR ARRAY SIZE — CORRECT, THEN EDITABLE
+   -----------------------------------------------------------------------
+   WHY A TRACED AREA COMES BACK LOOKING EMPTY
+
+   Trace ~115 x 84 ft of car park (0.22 ac) and the shipped engine returns
+   8-9 tables and ~29 kW-DC, with panels covering about a TENTH of the
+   outline. That is not an arithmetic bug — it is the default assumption
+   set. "Solar — Custom Area" runs as mount 'ground', which resolves to
+   the 'fixed-ground' preset:
+
+       gcr 0.40   ->  row pitch = tableDepth / 0.40 = 30 ft for a 12 ft
+                      table, i.e. an 18 ft gap between every row
+       setbackFt 10   on a 0.22 ac parcel that is most of the perimeter
+
+   Correct for a utility field in open country. Wrong for a canopy over
+   parking, where the deck is near-continuous ('carport', gcr 0.85,
+   5 ft setback) and the same outline holds ~21 tables and ~70 kW.
+
+   Nothing in the UI exposed that, and nothing let you change it after
+   the array was placed. So this block does three things:
+
+     1. adds a per-array editor — preset, GCR, W/ft2, setback, table
+        size, row pitch, plus resize and a "size it to N kW" solver
+     2. applies the perimeter setback as a true perpendicular distance
+        to the polygon edges. The old code took it off the BOUNDING BOX,
+        so an angled site got a double setback on two sides and none at
+        all on the other two
+     3. tiles in a rotated frame and sweeps row azimuth and grid phase,
+        so rows run along the site rather than across it and a half-pitch
+        offset is not left on the table
+   ═══════════════════════════════════════════════════════════════════════ */
+(function () {
+  'use strict';
+
+  var TAG = '[omega/solar]';
+  function S_() { try { return (typeof S !== 'undefined' && S) ? S : null; } catch (e) { return null; } }
+  function ppf() { try { return (typeof _derScale === 'function') ? _derScale() : 6; } catch (e) { return 6; } }
+
+  /* ── geometry ──────────────────────────────────────────────────────── */
+  function bbox(p) {
+    var a = { minX: Infinity, minY: Infinity, maxX: -Infinity, maxY: -Infinity };
+    for (var i = 0; i < p.length; i++) {
+      if (p[i].x < a.minX) a.minX = p[i].x; if (p[i].y < a.minY) a.minY = p[i].y;
+      if (p[i].x > a.maxX) a.maxX = p[i].x; if (p[i].y > a.maxY) a.maxY = p[i].y;
+    }
+    a.w = a.maxX - a.minX; a.h = a.maxY - a.minY;
+    return a;
+  }
+  function areaPx(p) {
+    var a = 0;
+    for (var i = 0, j = p.length - 1; i < p.length; j = i++) a += (p[j].x + p[i].x) * (p[j].y - p[i].y);
+    return Math.abs(a / 2);
+  }
+  function centroid(p) {
+    var b = bbox(p);
+    return { x: b.minX + b.w / 2, y: b.minY + b.h / 2 };
+  }
+  function inPoly(x, y, poly) {
+    var inside = false, n = poly.length;
+    for (var i = 0, j = n - 1; i < n; j = i++) {
+      var xi = poly[i].x, yi = poly[i].y, xj = poly[j].x, yj = poly[j].y;
+      if (((yi > y) !== (yj > y)) && (x < (xj - xi) * (y - yi) / ((yj - yi) || 1e-9) + xi)) inside = !inside;
+    }
+    return inside;
+  }
+  function distToSeg(px, py, ax, ay, bx, by) {
+    var dx = bx - ax, dy = by - ay;
+    var L = dx * dx + dy * dy;
+    var t = L ? ((px - ax) * dx + (py - ay) * dy) / L : 0;
+    t = t < 0 ? 0 : (t > 1 ? 1 : t);
+    var cx = ax + t * dx, cy = ay + t * dy;
+    return Math.hypot(px - cx, py - cy);
+  }
+  function minEdgeDist(x, y, poly) {
+    var m = Infinity;
+    for (var i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+      var d = distToSeg(x, y, poly[j].x, poly[j].y, poly[i].x, poly[i].y);
+      if (d < m) m = d;
+    }
+    return m;
+  }
+
+  /* ── the rotated fill ──────────────────────────────────────────────── */
+  function fitAtAngle(bnd, ang, tw, th, pitch, colGap, sb, excl, hardCap, oy, ox) {
+    oy = oy || 0; ox = ox || 0;
+    var c = Math.cos(ang), s = Math.sin(ang);
+    var rb = new Array(bnd.length);
+    for (var i = 0; i < bnd.length; i++) rb[i] = { x: bnd[i].x * c + bnd[i].y * s, y: -bnd[i].x * s + bnd[i].y * c };
+    var bb = bbox(rb);
+    var hw = tw / 2, hh = th / 2;
+    var out = [], rows = 0, capped = false;
+
+    for (var y = bb.minY + hh + oy; y <= bb.maxY - hh + 1e-6; y += pitch) {
+      rows++;
+      for (var x = bb.minX + hw + ox; x <= bb.maxX - hw + 1e-6; x += tw + colGap) {
+        var ok = true;
+        for (var k = 0; k < 4 && ok; k++) {
+          var fx = x + ((k === 0 || k === 3) ? -hw : hw);
+          var fy = y + ((k < 2) ? -hh : hh);
+          var wx = fx * c - fy * s, wy = fx * s + fy * c;
+          if (!inPoly(wx, wy, bnd)) { ok = false; break; }
+          if (sb > 0 && minEdgeDist(wx, wy, bnd) < sb) { ok = false; break; }
+          if (excl && excl.length) {
+            for (var e = 0; e < excl.length; e++) if (inPoly(wx, wy, excl[e])) { ok = false; break; }
+          }
+        }
+        if (ok) {
+          var cxw = x * c - y * s, cyw = x * s + y * c;
+          out.push({ x: cxw - hw, y: cyw - hh, w: tw, h: th, a: ang });
+          if (out.length >= hardCap) { capped = true; return { tables: out, rows: rows, capped: capped }; }
+        }
+      }
+    }
+    return { tables: out, rows: rows, capped: capped };
+  }
+
+  /* Candidate azimuths: every polygon edge (longest first) plus a coarse
+     sweep. Rows almost always want to follow a site edge, and when they
+     do not the sweep catches it. */
+  function candidateAngles(bnd) {
+    var edges = [];
+    for (var i = 0, j = bnd.length - 1; i < bnd.length; j = i++) {
+      var dx = bnd[i].x - bnd[j].x, dy = bnd[i].y - bnd[j].y;
+      var len = Math.hypot(dx, dy);
+      if (len < 1e-6) continue;
+      var a = Math.atan2(dy, dx);
+      while (a < 0) a += Math.PI;
+      while (a >= Math.PI) a -= Math.PI;
+      edges.push({ a: a, len: len });
+    }
+    edges.sort(function (p, q) { return q.len - p.len; });
+    var list = [], seen = {};
+    function push(a) {
+      var k = Math.round(a * 180 / Math.PI) % 180;
+      if (seen[k]) return;
+      seen[k] = 1; list.push(a);
+    }
+    edges.slice(0, 6).forEach(function (e) { push(e.a); push((e.a + Math.PI / 2) % Math.PI); });
+    for (var d = 0; d < 180; d += 15) push(d * Math.PI / 180);
+    return list;
+  }
+
+  /* ── the replacement layout engine ─────────────────────────────────── */
+  function computeGroundLayoutV2(opts) {
+    opts = opts || {};
+    var bnd = opts.boundary;
+    if (!bnd || bnd.length < 3) return null;
+
+    var P = ppf();
+    var A = (typeof _solarAssume === 'function') ? _solarAssume(opts.mount || 'ground')
+      : { gcr: 0.4, wpsf: 15, setbackFt: 10, presetKey: 'fixed-ground' };
+
+    /* An explicit preset on the call wins over the project-wide default,
+       so one array can be a canopy while another stays a field. */
+    if (opts.presetKey && typeof DER_SOLAR_PRESETS !== 'undefined' && DER_SOLAR_PRESETS[opts.presetKey]) {
+      var Pr = DER_SOLAR_PRESETS[opts.presetKey];
+      A = { presetKey: opts.presetKey, gcr: Pr.gcr, wpsf: Pr.wpsf, setbackFt: Pr.setbackFt, cf: Pr.cf };
+    }
+    if (opts.gcr > 0) A.gcr = +opts.gcr;
+    if (opts.wpsf > 0) A.wpsf = +opts.wpsf;
+    if (opts.setbackFt != null && +opts.setbackFt >= 0) A.setbackFt = +opts.setbackFt;
+
+    var base = (typeof _gmTable === 'function') ? _gmTable(A.presetKey) : { tableW: 20, tableH: 12 };
+    var tableWft = (opts.tableWft > 0) ? +opts.tableWft : base.tableW;
+    var tableHft = (opts.tableHft > 0) ? +opts.tableHft : base.tableH;
+
+    var tw = tableWft * P, th = tableHft * P;
+    var sb = (A.setbackFt || 0) * P;
+    var gcr = (A.gcr > 0) ? A.gcr : 0.4;
+    var pitch = (opts.pitchFt > 0) ? (+opts.pitchFt * P) : (th / gcr);
+    if (pitch < th) pitch = th;                       /* rows cannot overlap */
+    var colGap = Math.max(2 * P, tw * 0.08);
+
+    var bb = bbox(bnd);
+    var excl = opts.exclusions || [];
+    var CAP = (typeof GM_ROW_DRAW_CAP !== 'undefined' ? GM_ROW_DRAW_CAP : 1200) * 4;
+
+    /* WORK BUDGET. Each trial costs (cells x 4 corners x polygon edges).
+       Spend it on azimuths first, then on grid phase. A 100-acre site
+       gets one trial; a car park gets the full sweep. */
+    var cells = Math.max(1, (bb.w / (tw + colGap)) * (bb.h / pitch));
+    var perTrial = cells * 4 * bnd.length;
+    var trials = Math.floor(3.0e6 / Math.max(1, perTrial));
+    trials = Math.max(1, Math.min(64, trials));
+
+    var angles = candidateAngles(bnd);
+    if (opts.angleDeg != null && isFinite(opts.angleDeg)) angles = [(+opts.angleDeg) * Math.PI / 180];
+
+    var nAng = Math.max(1, Math.min(angles.length, trials));
+    var nPh = Math.max(1, Math.min(4, Math.floor(trials / nAng)));
+
+    var combos = [];
+    for (var ai = 0; ai < nAng; ai++) {
+      for (var pi = 0; pi < nPh; pi++) {
+        combos.push({ a: angles[ai], oy: pitch * pi / nPh, ox: (pi % 2) * (tw + colGap) / 2 });
+      }
+    }
+
+    var best = null, bestAng = angles[0] || 0;
+    for (var ci = 0; ci < combos.length; ci++) {
+      var f = fitAtAngle(bnd, combos[ci].a, tw, th, pitch, colGap, sb, excl, CAP,
+        combos[ci].oy, combos[ci].ox);
+      if (!best || f.tables.length > best.tables.length) { best = f; bestAng = combos[ci].a; }
+      if (best.tables.length >= CAP) break;
+    }
+    if (!best) best = { tables: [], rows: 0, capped: false };
+
+    var tableSqft = tableWft * tableHft;
+    var moduleFill = 0.92;
+    var kw = Math.round(best.tables.length * tableSqft * moduleFill * (A.wpsf || 15) / 1000 * 10) / 10;
+
+    var landSqft = areaPx(bnd) / (P * P);
+    var polyAcres = landSqft / 43560;
+    var blockKwTarget = (opts.blockKwDc || 2000);
+    var kwPerTable = best.tables.length ? (kw / best.tables.length) : 0;
+    var tablesPerBlock = kwPerTable > 0 ? Math.max(1, Math.round(blockKwTarget / kwPerTable)) : best.tables.length;
+    var blockCount = best.tables.length ? Math.ceil(best.tables.length / tablesPerBlock) : 0;
+
+    return {
+      tables: best.tables, tableCount: best.tables.length, rowCount: best.rows,
+      kw: kw, presetKey: A.presetKey, gcr: gcr, setbackFt: A.setbackFt, wpsf: A.wpsf,
+      tableWft: tableWft, tableHft: tableHft,
+      angleDeg: ((Math.round(bestAng * 180 / Math.PI) % 180) + 180) % 180,
+      pitchFt: +(pitch / P).toFixed(1),
+      rowGapFt: +((pitch - th) / P).toFixed(1),
+      acres: +polyAcres.toFixed(3),
+      bboxAcres: ((bb.w / P) * (bb.h / P)) / 43560,
+      coverPct: landSqft > 0 ? Math.round(best.tables.length * tableSqft / landSqft * 100) : 0,
+      kwPerAcre: polyAcres > 0 ? Math.round(kw / polyAcres) : 0,
+      trials: combos.length,
+      capped: best.capped,
+      tooMany: (best.tables.length > (typeof GM_ROW_DRAW_CAP !== 'undefined' ? GM_ROW_DRAW_CAP : 1200)),
+      blockCount: blockCount, tablesPerBlock: tablesPerBlock, blockKwTarget: blockKwTarget,
+      dcAcRatio: 1.25, kwAc: Math.round(kw / 1.25)
+    };
+  }
+
+  /* ── rotated tables need a rotated renderer ────────────────────────── */
+  function renderAutoLayoutV2(g, sh) {
+    var NS = 'http://www.w3.org/2000/svg';
+    if (sh.boundary && sh.boundary.length) {
+      var poly = document.createElementNS(NS, 'polygon');
+      poly.setAttribute('points', sh.boundary.map(function (p) { return p.x + ',' + p.y; }).join(' '));
+      poly.setAttribute('fill', 'rgba(37,99,235,0.06)');
+      poly.setAttribute('stroke', '#2563EB');
+      poly.setAttribute('stroke-width', '1.4');
+      g.appendChild(poly);
+    }
+    (sh.exclusions || []).forEach(function (z) {
+      var ez = document.createElementNS(NS, 'polygon');
+      ez.setAttribute('points', z.map(function (p) { return p.x + ',' + p.y; }).join(' '));
+      ez.setAttribute('fill', 'rgba(239,68,68,0.14)');
+      ez.setAttribute('stroke', '#EF4444');
+      ez.setAttribute('stroke-width', '1');
+      ez.setAttribute('stroke-dasharray', '4,3');
+      g.appendChild(ez);
+    });
+
+    var bb = bbox(sh.boundary && sh.boundary.length ? sh.boundary
+      : [{ x: sh.pts[0].x, y: sh.pts[0].y }, { x: sh.pts[0].x + (sh.wPx || 1), y: sh.pts[0].y + (sh.hPx || 1) }]);
+
+    if (sh.densityOnly) {
+      _derText(g, bb.minX + bb.w / 2, bb.minY + bb.h / 2 - 6,
+        '\u2600 ' + (sh.kw || 0).toLocaleString() + ' kW-DC', 12, '#1D4ED8', 'middle', '800');
+      _derText(g, bb.minX + bb.w / 2, bb.minY + bb.h / 2 + 9,
+        (sh.tableCount || 0).toLocaleString() + ' tables \u00b7 ' + (sh.rowCount || 0) + ' rows (density view)',
+        8, '#3B82F6', 'middle', '600');
+    } else {
+      (sh.tables || []).forEach(function (t) {
+        var r = document.createElementNS(NS, 'rect');
+        r.setAttribute('x', t.x); r.setAttribute('y', t.y);
+        r.setAttribute('width', t.w); r.setAttribute('height', t.h);
+        r.setAttribute('fill', 'rgba(37,99,235,0.55)');
+        r.setAttribute('stroke', '#1D4ED8');
+        r.setAttribute('stroke-width', '0.4');
+        if (t.a) {
+          r.setAttribute('transform', 'rotate(' + (t.a * 180 / Math.PI).toFixed(3)
+            + ',' + (t.x + t.w / 2).toFixed(2) + ',' + (t.y + t.h / 2).toFixed(2) + ')');
+        }
+        g.appendChild(r);
+      });
+      _derText(g, bb.minX + bb.w / 2, bb.minY - 6,
+        '\u2600 ' + (sh.kw || 0).toLocaleString() + ' kW-DC \u00b7 '
+        + (sh.tableCount || 0).toLocaleString() + ' tables', 9, '#1D4ED8', 'middle', '700');
+    }
+  }
+
+  /* ── recompute an existing array in place ──────────────────────────── */
+  function relayout(sh, opts) {
+    if (!sh || !sh.boundary || sh.boundary.length < 3) return null;
+    opts = opts || {};
+    opts.boundary = sh.boundary;
+    opts.exclusions = sh.exclusions || [];
+    opts.mount = sh.mount || 'ground';
+    var L = computeGroundLayoutV2(opts);
+    if (!L) return null;
+    var b = bbox(sh.boundary), P = ppf();
+    sh.pts = [{ x: b.minX, y: b.minY }];
+    sh.wPx = b.w; sh.hPx = b.h;
+    sh.tables = L.tooMany ? [] : L.tables;
+    sh.densityOnly = L.tooMany;
+    sh.tableCount = L.tableCount; sh.rowCount = L.rowCount;
+    sh.pitchFt = L.pitchFt; sh.tableWft = L.tableWft; sh.tableHft = L.tableHft;
+    sh.angleDeg = L.angleDeg;
+    sh.kw = L.kw; sh.gcr = L.gcr; sh.setbackFt = L.setbackFt; sh.wpsf = L.wpsf;
+    sh.presetKey = L.presetKey; sh.rowGapFt = L.rowGapFt; sh.kwPerAcre = L.kwPerAcre;
+    sh.sqft = Math.round(areaPx(sh.boundary) / (P * P));
+    sh.acres = L.acres; sh.coverPct = L.coverPct;
+    try { if (typeof renderShape === 'function') renderShape(sh); } catch (e) {}
+    try { if (typeof updateSummaryPanel === 'function') updateSummaryPanel(); } catch (e) {}
+    try { if (typeof ceThruSizerCalc === 'function') ceThruSizerCalc(); } catch (e) {}
+    return L;
+  }
+
+  function scaleBoundary(pts, kx, ky, about) {
+    var c = about || centroid(pts);
+    return pts.map(function (p) {
+      return { x: c.x + (p.x - c.x) * kx, y: c.y + (p.y - c.y) * ky };
+    });
+  }
+
+  /* ── the editor ────────────────────────────────────────────────────── */
+  function arrays() {
+    var s = S_(); if (!s) return [];
+    return (s.shapes || []).filter(function (x) { return x.kind === 'dersolar'; });
+  }
+  function currentId() {
+    var el = document.getElementById('osz-which');
+    return el ? el.value : null;
+  }
+  function byId(id) {
+    var a = arrays();
+    for (var i = 0; i < a.length; i++) if (a[i].id === id) return a[i];
+    return a[a.length - 1] || null;
+  }
+
+  var CSS = 'background:#0F1B2E;border:1px solid rgba(255,255,255,.14);color:#E8F0FE;'
+    + 'border-radius:5px;padding:5px 7px;font:600 11px/1.2 "IBM Plex Mono",monospace;width:100%';
+  var LBL = 'display:block;font:600 9px/1.4 "IBM Plex Sans",sans-serif;letter-spacing:.06em;'
+    + 'text-transform:uppercase;color:#8BA3C4;margin-bottom:3px';
+
+  function field(label, id, val, step) {
+    return '<div><label style="' + LBL + '">' + label + '</label>'
+      + '<input id="' + id + '" type="number" step="' + (step || 'any') + '" value="' + val + '" style="' + CSS + '"></div>';
+  }
+
+  function presetOptions(sel) {
+    var out = '<option value="">\u2014 keep current numbers \u2014</option>';
+    try {
+      if (typeof DER_SOLAR_PRESETS === 'undefined') return out;
+      for (var k in DER_SOLAR_PRESETS) {
+        if (!DER_SOLAR_PRESETS.hasOwnProperty(k)) continue;
+        var P = DER_SOLAR_PRESETS[k];
+        out += '<option value="' + k + '"' + (sel.presetKey === k ? ' selected' : '') + '>'
+          + P.label + ' \u2014 GCR ' + P.gcr + ', ' + P.setbackFt + ' ft setback</option>';
+      }
+    } catch (e) {}
+    return out;
+  }
+
+  function build() {
+    var host = document.getElementById('omega-solar-size');
+    if (host) return host;
+    host = document.createElement('div');
+    host.id = 'omega-solar-size';
+    host.style.cssText = 'position:fixed;inset:0;background:rgba(4,10,20,.72);z-index:100005;'
+      + 'display:flex;align-items:center;justify-content:center;padding:16px';
+    host.onclick = function (e) { if (e.target === host) host.style.display = 'none'; };
+    document.body.appendChild(host);
+    return host;
+  }
+
+  /* "Sparse" is relative to the GCR that was asked for. GCR 0.40 should
+     put ~40% of the land under module before setbacks; landing well under
+     that means the perimeter and edge losses ate the parcel. */
+  function sparse(sh) {
+    if (sh.coverPct == null) return false;
+    var want = (sh.gcr != null ? sh.gcr : 0.4) * 100;
+    return sh.coverPct < want * 0.6;
+  }
+
+  function readout(sh) {
+    var P = ppf(), b = bbox(sh.boundary || [{ x: 0, y: 0 }]);
+    return '<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;'
+      + 'background:rgba(37,99,235,.10);border:1px solid rgba(37,99,235,.3);border-radius:6px;padding:9px 11px;margin-bottom:10px">'
+      + stat('kW-DC', (sh.kw || 0).toLocaleString(), '#60A5FA')
+      + stat('Tables', (sh.tableCount || 0).toLocaleString())
+      + stat('Rows', (sh.rowCount || 0))
+      + stat('Row azimuth', (sh.angleDeg != null ? sh.angleDeg + '\u00b0' : '\u2014'))
+      + stat('Traced area', (sh.acres != null ? sh.acres : (areaPx(sh.boundary || []) / (P * P) / 43560).toFixed(2)) + ' ac')
+      + stat('Panel coverage', (sh.coverPct != null ? sh.coverPct + '%' : '\u2014'),
+        sparse(sh) ? '#FBBF24' : '#E8F0FE')
+      + stat('Row pitch', (sh.pitchFt != null ? sh.pitchFt + ' ft' : '\u2014'))
+      + stat('Extent', Math.round(b.w / P) + ' \u00d7 ' + Math.round(b.h / P) + ' ft')
+      + '</div>'
+      + (sparse(sh)
+        ? '<div style="background:rgba(251,191,36,.10);border:1px solid rgba(251,191,36,.32);border-radius:6px;'
+        + 'padding:8px 10px;margin-bottom:12px;font-size:11px;line-height:1.55;color:#FBBF24">'
+        + 'Panels cover only ' + sh.coverPct + '% of what you traced. That is the <strong>fixed-tilt ground mount</strong> '
+        + 'preset doing its job \u2014 GCR ' + Number(sh.gcr || 0.4).toFixed(2) + ' leaves a '
+        + (sh.rowGapFt != null ? sh.rowGapFt : '\u2014') + ' ft gap between rows, and the '
+        + (sh.setbackFt || 0) + ' ft setback takes most of a small parcel. '
+        + 'Over parking, switch the preset to <strong>Carport / canopy</strong>.</div>'
+        : '');
+  }
+  function stat(k, v, c) {
+    return '<div><div style="font:600 8.5px/1.3 \'IBM Plex Sans\',sans-serif;letter-spacing:.06em;'
+      + 'text-transform:uppercase;color:#8BA3C4">' + k + '</div>'
+      + '<div style="font:700 13px/1.3 \'IBM Plex Mono\',monospace;color:' + (c || '#E8F0FE') + '">' + v + '</div></div>';
+  }
+
+  function paint() {
+    var host = build();
+    var list = arrays();
+    if (!list.length) {
+      host.innerHTML = '<div style="background:#0B1E35;border:1px solid rgba(255,255,255,.12);border-radius:10px;'
+        + 'padding:22px 26px;max-width:420px;color:#E8F0FE;font-family:\'IBM Plex Sans\',sans-serif">'
+        + '<div style="font-weight:700;margin-bottom:8px">No solar array on the canvas</div>'
+        + '<div style="font-size:12px;color:#8BA3C4;line-height:1.6">Draw one first: '
+        + '<strong>Solar \u25be \u2192 Solar \u2014 Custom Area</strong>, trace the outline, '
+        + 'and click the green ring on your first corner to close it.</div>'
+        + '<div style="text-align:right;margin-top:16px"><button onclick="document.getElementById(\'omega-solar-size\').style.display=\'none\'" '
+        + 'style="background:#1E3A5F;border:none;color:#E8F0FE;border-radius:6px;padding:7px 18px;font:700 12px inherit;cursor:pointer">Close</button></div></div>';
+      host.style.display = 'flex';
+      return;
+    }
+    var sel = byId(currentId()) || list[list.length - 1];
+    var P = ppf(), b = bbox(sel.boundary || [{ x: 0, y: 0 }, { x: sel.wPx || 1, y: sel.hPx || 1 }]);
+    var auto = !!sel.autoLayout;
+
+    host.innerHTML =
+      '<div style="background:#0B1E35;border:1px solid rgba(255,255,255,.12);border-radius:10px;'
+      + 'padding:18px 20px;width:min(560px,96vw);max-height:92vh;overflow:auto;'
+      + 'color:#E8F0FE;font-family:\'IBM Plex Sans\',sans-serif;box-shadow:0 20px 60px rgba(0,0,0,.6)">'
+      + '<div style="display:flex;align-items:center;gap:10px;margin-bottom:14px">'
+      + '<span style="font-size:17px">\u2600</span>'
+      + '<div style="font-weight:700;font-size:15px;flex:1">Array Size &amp; Capacity</div>'
+      + '<button onclick="document.getElementById(\'omega-solar-size\').style.display=\'none\'" '
+      + 'style="background:none;border:none;color:#8BA3C4;font-size:20px;cursor:pointer;line-height:1">\u00d7</button></div>'
+
+      + (list.length > 1
+        ? '<div style="margin-bottom:12px"><label style="' + LBL + '">Array</label>'
+        + '<select id="osz-which" style="' + CSS + '">'
+        + list.map(function (a, i) {
+          return '<option value="' + a.id + '"' + (a.id === sel.id ? ' selected' : '') + '>#'
+            + (i + 1) + ' \u2014 ' + (a.kw || 0) + ' kW-DC</option>';
+        }).join('') + '</select></div>'
+        : '<input type="hidden" id="osz-which" value="' + sel.id + '">')
+
+      + readout(sel)
+
+      + (auto
+        ? '<div style="font:700 10px/1.4 \'IBM Plex Sans\';letter-spacing:.08em;text-transform:uppercase;color:#8BA3C4;margin:4px 0 7px">Resize the array</div>'
+        + '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:9px;margin-bottom:12px">'
+        + field('Width (ft)', 'osz-w', Math.round(b.w / P), 1)
+        + field('Depth (ft)', 'osz-h', Math.round(b.h / P), 1)
+        + field('Scale (%)', 'osz-k', 100, 1)
+        + '</div>'
+        + '<div style="display:grid;grid-template-columns:2fr 1fr;gap:9px;margin-bottom:14px;align-items:end">'
+        + field('Target capacity (kW-DC) \u2014 optional', 'osz-kw', '', 1)
+        + '<button id="osz-solve" style="background:#1D4ED8;border:none;color:#fff;border-radius:6px;'
+        + 'padding:8px 10px;font:700 11px inherit;cursor:pointer">Size to kW</button>'
+        + '</div>'
+
+        + '<div style="font:700 10px/1.4 \'IBM Plex Sans\';letter-spacing:.08em;text-transform:uppercase;color:#8BA3C4;margin:4px 0 7px">Racking assumptions</div>'
+        + '<div style="margin-bottom:9px"><label style="' + LBL + '">Preset \u2014 changing this refills the outline</label>'
+        + '<select id="osz-preset" style="' + CSS + '">' + presetOptions(sel) + '</select></div>'
+        + '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:9px;margin-bottom:9px">'
+        + field('GCR', 'osz-gcr', (sel.gcr != null ? sel.gcr : 0.4), 0.01)
+        + field('W per ft\u00b2', 'osz-wpsf', (sel.wpsf != null ? sel.wpsf : 15), 0.5)
+        + field('Setback (ft)', 'osz-sb', (sel.setbackFt != null ? sel.setbackFt : 10), 1)
+        + '</div>'
+        + '<div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:9px;margin-bottom:6px">'
+        + field('Table W (ft)', 'osz-tw', (sel.tableWft || 20), 0.5)
+        + field('Table D (ft)', 'osz-th', (sel.tableHft || 12), 0.5)
+        + field('Row pitch (ft)', 'osz-pitch', (sel.pitchFt || ''), 0.5)
+        + '<div><label style="' + LBL + '">Azimuth</label>'
+        + '<select id="osz-ang" style="' + CSS + '"><option value="">Auto</option>'
+        + [0, 15, 30, 45, 60, 75, 90, 105, 120, 135, 150, 165].map(function (d) {
+          return '<option value="' + d + '"' + (sel.angleDeg === d ? ' selected' : '') + '>' + d + '\u00b0</option>';
+        }).join('') + '</select></div>'
+        + '</div>'
+        : '<div style="font-size:12px;color:#8BA3C4;line-height:1.6;margin-bottom:12px">'
+        + 'This array was placed as a plain rectangle, so only its footprint is editable. '
+        + 'For a fitted layout, trace the area with <strong>Solar \u2014 Custom Area</strong>.</div>'
+        + '<div style="display:grid;grid-template-columns:1fr 1fr;gap:9px;margin-bottom:14px">'
+        + field('Width (ft)', 'osz-w', Math.round((sel.wPx || 0) / P), 1)
+        + field('Depth (ft)', 'osz-h', Math.round((sel.hPx || 0) / P), 1)
+        + '</div>')
+
+      + '<div id="osz-msg" style="font-size:11px;color:#FBBF24;min-height:15px;margin:8px 0 2px"></div>'
+      + '<div style="display:flex;gap:8px;justify-content:flex-end;margin-top:10px">'
+      + '<button id="osz-close" style="background:none;border:1px solid rgba(255,255,255,.18);color:#8BA3C4;'
+      + 'border-radius:6px;padding:8px 16px;font:600 12px inherit;cursor:pointer">Close</button>'
+      + '<button id="osz-apply" style="background:#2563EB;border:none;color:#fff;border-radius:6px;'
+      + 'padding:8px 22px;font:700 12px inherit;cursor:pointer">Apply</button>'
+      + '</div></div>';
+
+    host.style.display = 'flex';
+
+    var w = document.getElementById('osz-which');
+    if (w && w.tagName === 'SELECT') w.onchange = paint;
+    document.getElementById('osz-close').onclick = function () { host.style.display = 'none'; };
+    document.getElementById('osz-apply').onclick = apply;
+    var solve = document.getElementById('osz-solve');
+    if (solve) solve.onclick = sizeToKw;
+    var pk = document.getElementById('osz-preset');
+    if (pk) pk.onchange = function () {
+      try {
+        var P = DER_SOLAR_PRESETS[pk.value]; if (!P) return;
+        document.getElementById('osz-gcr').value = P.gcr;
+        document.getElementById('osz-wpsf').value = P.wpsf;
+        document.getElementById('osz-sb').value = P.setbackFt;
+        var T = (typeof _gmTable === 'function') ? _gmTable(pk.value) : null;
+        if (T) {
+          document.getElementById('osz-tw').value = T.tableW;
+          document.getElementById('osz-th').value = T.tableH;
+        }
+        document.getElementById('osz-pitch').value = '';
+        msg('Preset loaded \u2014 press Apply to refill the outline.', '#60A5FA');
+      } catch (e) {}
+    };
+  }
+
+  function num(id, dflt) {
+    var el = document.getElementById(id);
+    if (!el || el.value === '') return dflt;
+    var v = parseFloat(el.value);
+    return isFinite(v) ? v : dflt;
+  }
+  function msg(t, colour) {
+    var el = document.getElementById('osz-msg');
+    if (el) { el.textContent = t || ''; el.style.color = colour || '#FBBF24'; }
+  }
+
+  function optsFromForm() {
+    var a = document.getElementById('osz-ang');
+    var pk = document.getElementById('osz-preset');
+    return {
+      presetKey: (pk && pk.value) ? pk.value : null,
+      pitchFt: num('osz-pitch', undefined),
+      gcr: num('osz-gcr', undefined),
+      wpsf: num('osz-wpsf', undefined),
+      setbackFt: num('osz-sb', undefined),
+      tableWft: num('osz-tw', undefined),
+      tableHft: num('osz-th', undefined),
+      angleDeg: (a && a.value !== '') ? parseFloat(a.value) : null
+    };
+  }
+
+  function apply() {
+    var sh = byId(currentId()); if (!sh) return;
+    var P = ppf();
+    if (!sh.autoLayout) {
+      var wf = num('osz-w', 0), hf = num('osz-h', 0);
+      if (wf > 0) sh.wPx = wf * P;
+      if (hf > 0) sh.hPx = hf * P;
+      try { if (typeof _solarRecalcAll === 'function') _solarRecalcAll(); else renderShape(sh); } catch (e) {}
+      try { if (typeof pushHist === 'function') pushHist(); } catch (e) {}
+      msg('Footprint updated \u2014 ' + (sh.kw || 0) + ' kW-DC.', '#4ADE80');
+      paint();
+      return;
+    }
+    var b = bbox(sh.boundary);
+    var wf2 = num('osz-w', b.w / P), hf2 = num('osz-h', b.h / P), k = num('osz-k', 100) / 100;
+    var kx = (b.w > 0 ? (wf2 * P) / b.w : 1) * k;
+    var ky = (b.h > 0 ? (hf2 * P) / b.h : 1) * k;
+    if (!(kx > 0.01) || !(ky > 0.01)) { msg('Width and depth must be positive.'); return; }
+    if (Math.abs(kx - 1) > 1e-4 || Math.abs(ky - 1) > 1e-4) {
+      sh.boundary = scaleBoundary(sh.boundary, kx, ky);
+      if (sh.exclusions && sh.exclusions.length) {
+        var c = centroid(sh.boundary);
+        sh.exclusions = sh.exclusions.map(function (z) { return scaleBoundary(z, kx, ky, c); });
+      }
+    }
+    var L = relayout(sh, optsFromForm());
+    try { if (typeof pushHist === 'function') pushHist(); } catch (e) {}
+    if (!L) { msg('Could not recompute that layout.'); return; }
+    if (!L.tableCount) msg('No tables fit \u2014 the area is smaller than the setbacks, or the drawing is not calibrated.');
+    else msg('Updated: ' + L.tableCount + ' tables, ' + L.kw + ' kW-DC at ' + L.angleDeg + '\u00b0.', '#4ADE80');
+    paint();
+  }
+
+  /* Capacity is a step function of table count, so bisect the scale
+     factor rather than trying to invert it. */
+  function sizeToKw() {
+    var sh = byId(currentId()); if (!sh || !sh.autoLayout) return;
+    var target = num('osz-kw', 0);
+    if (!(target > 0)) { msg('Enter a target kW-DC first.'); return; }
+    var opts = optsFromForm();
+    var base = sh.boundary.map(function (p) { return { x: p.x, y: p.y }; });
+    var lo = 0.05, hi = 8, bestK = 1, bestErr = Infinity;
+    for (var i = 0; i < 16; i++) {
+      var mid = (lo + hi) / 2;
+      var test = scaleBoundary(base, mid, mid);
+      var L = computeGroundLayoutV2({
+        boundary: test, exclusions: sh.exclusions || [], mount: sh.mount,
+        presetKey: opts.presetKey, pitchFt: opts.pitchFt,
+        gcr: opts.gcr, wpsf: opts.wpsf, setbackFt: opts.setbackFt,
+        tableWft: opts.tableWft, tableHft: opts.tableHft, angleDeg: opts.angleDeg
+      });
+      var kw = L ? L.kw : 0;
+      var err = Math.abs(kw - target);
+      if (err < bestErr) { bestErr = err; bestK = mid; }
+      if (kw < target) lo = mid; else hi = mid;
+      if (err / target < 0.01) break;
+    }
+    sh.boundary = scaleBoundary(base, bestK, bestK);
+    if (sh.exclusions && sh.exclusions.length) {
+      var c = centroid(sh.boundary);
+      sh.exclusions = sh.exclusions.map(function (z) { return scaleBoundary(z, bestK, bestK, c); });
+    }
+    var F = relayout(sh, opts);
+    try { if (typeof pushHist === 'function') pushHist(); } catch (e) {}
+    msg('Scaled to ' + Math.round(bestK * 100) + '% \u2014 ' + (F ? F.kw : 0) + ' kW-DC (target ' + target + ').', '#4ADE80');
+    paint();
+  }
+
+  window.omegaSolarSize = function (id) {
+    if (id) {
+      var host = build();
+      host.innerHTML = '';
+      var hidden = document.createElement('input');
+      hidden.type = 'hidden'; hidden.id = 'osz-which'; hidden.value = id;
+      host.appendChild(hidden);
+    }
+    paint();
+  };
+
+  /* ── install ───────────────────────────────────────────────────────── */
+  var installed = false;
+  function install() {
+    if (installed) return true;
+    if (typeof window.computeGroundLayout !== 'function') return false;
+
+    window.computeGroundLayout = computeGroundLayoutV2;
+    window._derRenderAutoLayout = renderAutoLayoutV2;
+
+    /* applyGroundLayout() copies a fixed field list onto the new shape, so
+       the extra numbers this engine reports (azimuth, coverage, preset,
+       row gap) would be dropped and the editor would open on a freshly
+       drawn array showing blanks. Carry them across. */
+    var origApply = window.applyGroundLayout;
+    if (typeof origApply === 'function' && !origApply.__omegaSolar) {
+      var applyW = function (boundary, layout, exclusions) {
+        var sh = origApply.call(this, boundary, layout, exclusions);
+        if (sh && layout) {
+          sh.angleDeg = layout.angleDeg;
+          sh.coverPct = layout.coverPct;
+          sh.rowGapFt = layout.rowGapFt;
+          sh.kwPerAcre = layout.kwPerAcre;
+          sh.presetKey = layout.presetKey;
+          sh.wpsf = layout.wpsf;
+          sh.acres = layout.acres;
+          try { if (typeof renderShape === 'function') renderShape(sh); } catch (e) {}
+        }
+        return sh;
+      };
+      applyW.__omegaSolar = true;
+      window.applyGroundLayout = applyW;
+    }
+
+    installed = true;
+
+    /* menu entry next to the other solar actions */
+    try {
+      var fly = document.getElementById('fly-der');
+      if (fly && !document.getElementById('omega-size-btn')) {
+        var b = document.createElement('button');
+        b.className = 'rb-fly-item';
+        b.id = 'omega-size-btn';
+        b.title = 'Resize a drawn array, or size it to a target kW-DC';
+        b.innerHTML = '<span class="fi-ico">\u25a3</span> Array \u2014 Edit Size / Capacity';
+        b.onclick = function () {
+          try { if (typeof rbFlyDo === 'function') { rbFlyDo('fly-der', function () { omegaSolarSize(); }); return; } } catch (e) {}
+          omegaSolarSize();
+        };
+        var anchor = fly.querySelector('[onclick*="omegaSolarCustomArea"]');
+        if (anchor && anchor.nextSibling) fly.insertBefore(b, anchor.nextSibling); else fly.appendChild(b);
+      }
+    } catch (e) {}
+
+    /* double-click an array to open the editor on it */
+    document.addEventListener('dblclick', function (e) {
+      var g = e.target && e.target.closest ? e.target.closest('[data-shid]') : null;
+      if (!g) return;
+      var id = g.getAttribute('data-shid');
+      var a = arrays();
+      for (var i = 0; i < a.length; i++) {
+        if (a[i].id === id) { e.preventDefault(); e.stopPropagation(); omegaSolarSize(id); return; }
+      }
+    }, true);
+
+    if (window.console) console.info(TAG, 'rotated fill + array editor installed \u2014 omegaSolarSize() or double-click an array');
+    return true;
+  }
+
+  var n = 0;
+  var iv = setInterval(function () { if (install() || ++n > 200) clearInterval(iv); }, 300);
+
+  window.OmegaSolar = {
+    compute: computeGroundLayoutV2,
+    relayout: relayout,
+    edit: function (id) { omegaSolarSize(id); },
+    /* Re-fit every array already on the canvas with the corrected engine. */
+    refitAll: function () {
+      var a = arrays().filter(function (x) { return x.autoLayout; });
+      var out = [];
+      a.forEach(function (sh) {
+        var before = sh.kw || 0;
+        var L = relayout(sh, {});
+        out.push({ id: sh.id, before: before, after: L ? L.kw : 0, tables: L ? L.tableCount : 0, azimuth: L ? L.angleDeg : null });
+      });
+      if (console.table) console.table(out); else console.log(out);
+      try { if (typeof pushHist === 'function') pushHist(); } catch (e) {}
+      return out;
+    },
+    status: function () {
+      var a = arrays();
+      var o = {
+        arrays: a.length,
+        autoLayout: a.filter(function (x) { return x.autoLayout; }).length,
+        pxPerFt: ppf(),
+        calibrated: (typeof _derScaled === 'function') ? _derScaled() : null,
+        totalKw: a.reduce(function (t, x) { return t + (x.kw || 0); }, 0)
+      };
+      o.verdict = !o.calibrated
+        ? 'Not calibrated \u2014 load the site address so px/ft is real, or every array will be sized wrong.'
+        : (o.arrays ? 'Run OmegaSolar.refitAll() to re-fit existing arrays with the corrected engine.'
+          : 'No arrays yet.');
+      if (console.table) console.table(o); else console.log(o);
+      console.info(o.verdict);
+      return o;
+    }
+  };
+})();
+
+</script>
+
 </body>
 </html>
