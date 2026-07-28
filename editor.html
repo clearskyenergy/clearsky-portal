@@ -50502,9 +50502,10 @@ window._crmToastModal=_crmToastModal;
   };
 })();
 </script>
+
 <!-- ═════════════════════════════════════════════════════════════════════
      CLEARSKY OMEGA — SITE MAP DESIGNER PRO
-     PATCH BUNDLE  ·  2026-07-28  ·  rev 10
+     PATCH BUNDLE  ·  2026-07-28  ·  rev 11
 
      Paste this whole block into editor.html immediately before </body>.
 
@@ -50517,9 +50518,13 @@ window._crmToastModal=_crmToastModal;
        7. Guided-build assemblies can be dragged and stay put     [rev 5]
        8. Trench and conduit move together                       [rev 6]
           + stays out of the way during a guided build's
-            batched placement                                [rev 10]
+            batched placement                                [rev 11]
        9. Solar exclusions no longer make a project unsaveable   [rev 7]
-      10. Project lists query uid, not the absent owner field    [rev 10]
+      10. Project lists query uid, not the absent owner field    [rev 11]
+
+     TRIAGE: OmegaPatch.off()  stops every timer-driven pass in this
+             bundle, immediately, without a redeploy. OmegaPatch.installed()
+             reports which modules are live.
 
      Console helpers once loaded:
        OmegaSave.check()                why a save failed — run this first
@@ -50537,6 +50542,35 @@ window._crmToastModal=_crmToastModal;
        OmegaTrenchFix.status()          corridor tracking + re-banking
      ═══════════════════════════════════════════════════════════════════ -->
 <script>
+/* A single flag that stops every timer-driven pass this bundle installs,
+   so a suspect patch can be ruled in or out in one line instead of a
+   redeploy. Off means: correct nothing, repaint nothing, observe nothing. */
+(function () {
+  'use strict';
+  window.OMEGA_OFF = window.OMEGA_OFF || false;
+  window.OmegaPatch = {
+    off: function () {
+      window.OMEGA_OFF = true;
+      console.info('[omega] all patch passes OFF — reload to clear, or OmegaPatch.on()');
+      return true;
+    },
+    on: function () {
+      window.OMEGA_OFF = false;
+      console.info('[omega] patch passes ON');
+      return true;
+    },
+    rev: 11,
+    installed: function () {
+      var keys = ['OmegaMapExport', 'OmegaClose', 'OmegaSolar', 'OmegaAnchor', 'OmegaRecent',
+                  'OmegaGround', 'OmegaMove', 'OmegaTrenchFix', 'OmegaSave', 'OmegaProjects'];
+      var have = keys.filter(function (k) { return !!window[k]; });
+      console.info('[omega] rev ' + window.OmegaPatch.rev + ' — ' + have.length + '/' + keys.length + ' modules: ' + have.join(', '));
+      return have;
+    }
+  };
+})();
+
+
 /* ═══════════════════════════════════════════════════════════════════════
    OMEGA PATCH — 1 of 3 : SATELLITE BACKGROUND IN EVERY EXPORT
    -----------------------------------------------------------------------
@@ -52557,18 +52591,35 @@ window._crmToastModal=_crmToastModal;
     return false;
   }
 
+  /* REPAINTING IS NOT THIS MODULE'S JOB.
+
+     This used to call _refreshConduitStyle() on every pass. That function
+     is not a style tweak — it rebuilds the corridors, then REMOVES AND
+     RECREATES every conduit node, then repaints both legends. Called from
+     restoreAll(), which is wired to _geoReprojectAll (every bounds_changed
+     animation frame), a three-second pan over six runs meant 180 corridor
+     rebuilds and 1,080 conduit nodes destroyed and rebuilt — to refresh a
+     number that cannot change when the map moves, which was the entire
+     point of measuring from coordinates.
+
+     It also tore the canvas out from under the guided build while it was
+     drawing into it. Correct the numbers here; leave painting to the code
+     that owns it, and only touch the UI when a printed value moved. */
   function eachConduit(fn) {
-    var s = S_(); if (!s) return { total: 0, ground: 0 };
-    var total = 0, ground = 0;
+    var s = S_(); if (!s) return { total: 0, ground: 0, changed: 0 };
+    var total = 0, ground = 0, changed = 0;
     (s.conduits || []).forEach(function (c) {
       if (!c) return;
       total++;
+      var before = c.ftLen;
       if (fn(c)) ground++;
+      if (c.ftLen !== before) changed++;
     });
-    try { if (typeof updCondStat === 'function') updCondStat(); } catch (e) {}
-    try { if (typeof renderLegend === 'function') renderLegend(); } catch (e) {}
-    try { if (typeof _refreshConduitStyle === 'function') _refreshConduitStyle(); } catch (e) {}
-    return { total: total, ground: ground };
+    if (changed) {
+      try { if (typeof updCondStat === 'function') updCondStat(); } catch (e) {}
+      try { if (typeof renderLegend === 'function') renderLegend(); } catch (e) {}
+    }
+    return { total: total, ground: ground, changed: changed };
   }
 
   /* Geometry changed, or first run: re-measure from coordinates. */
@@ -52581,7 +52632,10 @@ window._crmToastModal=_crmToastModal;
   }
 
   /* View changed: no trigonometry, just put the right numbers back. */
-  function restoreAll() { return eachConduit(applyLengths); }
+  function restoreAll() {
+    if (window.OMEGA_OFF) return { total: 0, ground: 0, changed: 0 };
+    return eachConduit(applyLengths);
+  }
 
   /* ── re-anchor after a real edit ──────────────────────────────────
      A dragged vertex changes c.pts but leaves c._geoPts describing where
@@ -52880,6 +52934,7 @@ window._crmToastModal=_crmToastModal;
   var looping = false, lastIds = [], startedAt = 0;
 
   function pump() {
+    if (window.OMEGA_OFF) { looping = false; return; }
     var ids = activeIds();
     if (!ids.length || (Date.now() - startedAt) > 60000) { looping = false; return; }
     lastIds = ids;
@@ -53138,9 +53193,10 @@ window._crmToastModal=_crmToastModal;
       /* The runs that did not change banking may still have moved, and
          the corridor rebuild is the moment their node should agree with
          c.pts. Cheap enough to keep them all honest. */
-      if (redrawn) {
-        try { if (typeof _refreshConduitStyle === 'function') _refreshConduitStyle(); } catch (e) {}
-      }
+      /* Deliberately NOT calling _refreshConduitStyle() here: it rebuilds
+         the corridors and repaints every run, which is exactly the work
+         this function just did surgically. Calling it would undo the point
+         of only touching what changed. */
     } catch (e) {} finally { busy = false; }
     return redrawn;
   }
@@ -53163,6 +53219,7 @@ window._crmToastModal=_crmToastModal;
   }
 
   function check(force) {
+    if (window.OMEGA_OFF) return false;
     if (batching()) { deferred = true; wasBatching = true; return false; }
     if (wasBatching) { wasBatching = false; force = true; }   /* the batch just closed */
     var h = hash();
