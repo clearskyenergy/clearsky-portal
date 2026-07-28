@@ -50505,41 +50505,38 @@ window._crmToastModal=_crmToastModal;
 
 <!-- ═════════════════════════════════════════════════════════════════════
      CLEARSKY OMEGA — SITE MAP DESIGNER PRO
-     PATCH BUNDLE  ·  2026-07-28  ·  rev 14
+     PATCH BUNDLE  ·  2026-07-28  ·  rev 15
 
-     Paste this whole block into editor.html immediately before </body>.
+     Paste immediately before </body>. Exactly ONE copy per file.
 
-       1. Satellite background in every export (blueprint, plot plan, print)
+     ON BY DEFAULT — these are the four you confirmed working, plus four
+     that never touch the render or anchor loop:
+
+       1. Satellite background in every export
        2. Snap-to-close when tracing a custom solar area
        3. Correct setback maths + a per-array size / capacity editor
-       4. Stencil anchoring on zoom + level-of-detail labels      [rev 2]
-       5. Recent projects panel — rows no longer collide          [rev 3]
-       6. Conduit length measured from coordinates, not pixels    [rev 4]
-       7. Guided-build assemblies can be dragged and stay put     [rev 5]
-       8. Trench and conduit move together                       [rev 6]
-          + stays out of the way during a guided build's
-            batched placement                                [rev 14]
-       9. Solar exclusions no longer make a project unsaveable   [rev 7]
-      10. Project lists query uid, not the absent owner field    [rev 14]
+       4. Stencil anchoring on zoom + level-of-detail labels
+       5. Recent projects panel — rows no longer collide
+       9. Solar exclusions no longer make a project unsaveable
+      10. Project lists query uid, not the absent owner field
+      11. Auto-Layout's Generate button is legible
 
-     TRIAGE: OmegaPatch.off()  stops every timer-driven pass in this
-             bundle, immediately, without a redeploy. OmegaPatch.installed()
-             reports which modules are live.
+     OPT-IN — these reach into the live render/anchor loop, which is where
+     every regression in this bundle came from. They are OFF unless you set
+     window.OMEGA_EXPERIMENTAL = true before this script runs:
 
-     Console helpers once loaded:
-       OmegaSave.check()                why a save failed — run this first
-       OmegaSave.repair()               fix nested arrays / bad numbers in place
-       OmegaProjects.refresh()          reload the project list correctly
-       OmegaMapExport.status()          why an export background did or did not work
-       OmegaSolar.status()              scale + array summary
-       OmegaSolar.refitAll()            re-fit existing arrays with the fixed engine
-       omegaSolarSize()                 open the array editor
-       OmegaAnchor.status()             stencil anchoring + label visibility
-       OmegaRecent.status()             Recent panel fit
-       OmegaGround.audit()              per-run pixel length vs ground length
-       OmegaMove.status()               assembly anchors vs current positions
-       OmegaMove.freeAll()              re-anchor everything where it now sits
-       OmegaTrenchFix.status()          corridor tracking + re-banking
+       6. Conduit length measured from coordinates, not pixels
+       7. Guided-build assemblies can be dragged and stay put
+       8. Trench and conduit move together
+      12. renderEl replaces its node instead of stacking a ghost
+
+     Each fixes a real bug. Each also destabilised conduit rendering when
+     it was on by default. Enable one at a time if you want them.
+
+     TRIAGE
+       OmegaPatch.installed()   which modules are live, and the rev
+       OmegaPatch.off()         stop every timer-driven pass immediately
+       OmegaSave.check()        why a save failed
      ═══════════════════════════════════════════════════════════════════ -->
 <script>
 /* A single flag that stops every timer-driven pass this bundle installs,
@@ -50559,7 +50556,7 @@ window._crmToastModal=_crmToastModal;
       console.info('[omega] patch passes ON');
       return true;
     },
-    rev: 11,
+    rev: 15,
     installed: function () {
       var keys = ['OmegaMapExport', 'OmegaClose', 'OmegaSolar', 'OmegaAnchor', 'OmegaRecent',
                   'OmegaGround', 'OmegaMove', 'OmegaTrenchFix', 'OmegaSave', 'OmegaProjects'];
@@ -52422,887 +52419,6 @@ window._crmToastModal=_crmToastModal;
 
 
 /* ═══════════════════════════════════════════════════════════════════════
-   OMEGA PATCH — 6 : GROUND-TRUE MEASUREMENT
-   -----------------------------------------------------------------------
-   This is the native-prototype idea applied where it pays best. The
-   prototype's whole argument is that a length taken from lat/lng needs no
-   scale factor:
-
-       lengthFt(path) -> spherical.computeLength(path) * 3.28084
-
-   The editor instead stores a conduit's length in PIXELS and divides by
-   the current scale. Those two numbers are refreshed by different
-   listeners, and one of them never gets refreshed at all:
-
-       _gmapAutoScale()      on zoom_changed
-           S.pxPerFt = <new value for this zoom>
-           c.ftLen   = c.pxLen / S.pxPerFt     <- c.pxLen is from the
-                                                  zoom it was DRAWN at
-
-       _geoReprojectAll()    on idle / bounds_changed
-           c.pts[j] = reproject(c._geoPts[j])  <- points updated
-           ...and nothing recomputes c.pxLen
-
-   Grep confirms it: c.pxLen is assigned in 17 places, every one of them
-   an explicit draw or edit path. Never on pan, never on zoom. So the
-   numerator is frozen at draw time while the denominator tracks the
-   zoom, and the reported length moves with the view:
-
-       run drawn at z20 = 182.7 ft
-         z22      45.7 ft    0.25x
-         z21      91.3 ft    0.50x
-         z20     182.7 ft    1.00x   <- correct only here
-         z19     365.4 ft    2.00x
-         z18     730.8 ft    4.00x
-         z17    1461.6 ft    8.00x
-         z16    2923.2 ft   16.00x
-
-   Every zoom level doubles or halves it. That number is what the CONDUIT
-   SCHEDULE prints and what the electrical estimate prices.
-
-   The fix is the prototype's: take the length from the coordinates. It is
-   invariant under pan and zoom because the view was never an input, so it
-   also stops needing recomputation on every map event — it is computed
-   when the geometry actually changes and left alone otherwise.
-
-   libraries=places,geometry is already on the loader URL (line 19835), so
-   spherical.computeLength is available. A haversine fallback is included
-   for the case where it is not.
-
-   Conduits with no coordinates — drawn before a site was loaded — keep the
-   existing pixel maths exactly as before. Nothing regresses.
-   ═══════════════════════════════════════════════════════════════════════ */
-(function () {
-  'use strict';
-
-  var TAG = '[omega/ground]';
-  var FT_PER_M = 3.280839895;
-
-  function S_() { try { return (typeof S !== 'undefined' && S) ? S : null; } catch (e) { return null; } }
-  function ppf() { var s = S_(); return (s && s.pxPerFt > 0) ? s.pxPerFt : 0; }
-
-  /* ── measurement from coordinates ─────────────────────────────────── */
-
-  function haversineFt(a, b) {
-    var R = 6378137, r = Math.PI / 180;
-    var dLat = (b.lat - a.lat) * r, dLng = (b.lng - a.lng) * r;
-    var s = Math.sin(dLat / 2) * Math.sin(dLat / 2)
-      + Math.cos(a.lat * r) * Math.cos(b.lat * r) * Math.sin(dLng / 2) * Math.sin(dLng / 2);
-    return 2 * R * Math.asin(Math.min(1, Math.sqrt(s))) * FT_PER_M;
-  }
-
-  function sphericalReady() {
-    try {
-      return !!(window.google && google.maps && google.maps.geometry
-        && google.maps.geometry.spherical);
-    } catch (e) { return false; }
-  }
-
-  function groundLengthFt(geoPts) {
-    if (!geoPts) return 0;
-    var pts = [];
-    for (var i = 0; i < geoPts.length; i++) {
-      var g = geoPts[i];
-      if (g && isFinite(g.lat) && isFinite(g.lng)) pts.push(g);
-    }
-    if (pts.length < 2) return 0;
-    if (sphericalReady()) {
-      try {
-        var ll = pts.map(function (p) { return new google.maps.LatLng(p.lat, p.lng); });
-        var m = google.maps.geometry.spherical.computeLength(ll);
-        if (isFinite(m) && m >= 0) return m * FT_PER_M;
-      } catch (e) { /* fall through */ }
-    }
-    var d = 0;
-    for (var j = 1; j < pts.length; j++) d += haversineFt(pts[j - 1], pts[j]);
-    return d;
-  }
-
-  function groundAreaSf(geoPts) {
-    if (!geoPts || geoPts.length < 3) return 0;
-    if (!sphericalReady()) return 0;
-    try {
-      var ll = geoPts.filter(Boolean).map(function (p) {
-        return new google.maps.LatLng(p.lat, p.lng);
-      });
-      if (ll.length < 3) return 0;
-      return google.maps.geometry.spherical.computeArea(ll) * 10.7639104;
-    } catch (e) { return 0; }
-  }
-
-  /* ── state kept per run ───────────────────────────────────────────
-     A run's ground length is invariant under pan and zoom, so it is
-     measured when the GEOMETRY changes and cached in _groundFt. Anything
-     the VIEW does then costs one assignment instead of a trig call per
-     animation frame. */
-
-  function pxLen(pts) {
-    var d = 0;
-    for (var i = 1; i < pts.length; i++) {
-      var a = pts[i - 1], b = pts[i];
-      d += Math.sqrt((b.x - a.x) * (b.x - a.x) + (b.y - a.y) * (b.y - a.y));
-    }
-    return d;
-  }
-
-  function sig(pts) {
-    var out = [];
-    for (var i = 0; i < pts.length; i++) out.push(Math.round(pts[i].x) + ',' + Math.round(pts[i].y));
-    return out.join('|');
-  }
-
-  /* Seed the signature at install, not on the first edit — otherwise the
-     first vertex drag is mistaken for "first sight" and swallowed. */
-  function ensureSig(c) {
-    if (c && c.pts && c._sig == null) c._sig = sig(c.pts);
-  }
-
-  /* _groundFt is the cache and the sentinel:
-        null  not measured yet (or invalidated by an edit) -> try again
-        0     tried against real coordinates and got nothing -> stop trying
-        >0    the answer
-
-     A run drawn just now has no _geoPts until _geoStampAll runs inside the
-     original pushHist, which is AFTER this patch's hook. Leaving _groundFt
-     null in that case is what lets the next map event pick it up, instead
-     of stranding the run on pixel maths until someone edits it. */
-  function computeGround(c) {
-    if (!c) return false;
-    if (!c._geoPts || c._geoPts.length < 2) { c._groundTrue = false; return false; }
-    var ft = groundLengthFt(c._geoPts);
-    c._groundFt = (ft > 0) ? ft : 0;
-    c._groundTrue = ft > 0;
-    return c._groundTrue;
-  }
-
-  /* _gmapAutoScale() strips every conduit node and calls renderConduit()
-     directly — no renderTrenchCorridors() first, no _refreshConduitStyle()
-     after. So the runs come back with no bank slot and no engineering
-     linetype: thin, plain, wrong. It is wired to BOTH zoom_changed and
-     center_changed, so it runs continuously through a pan.
-
-     Up to rev 10 this module called _refreshConduitStyle() on every pass,
-     which repaired that by accident — at the cost of 180 full repaints per
-     three-second pan. Rev 11 removed the storm and, with it, the repair.
-
-     A restyle is genuinely needed after the view settles; it is needed ONCE.
-     Trailing debounce: continuous motion collapses to a single repaint when
-     the map stops. */
-  var restyleTimer = null;
-  function scheduleRestyle() {
-    if (window.OMEGA_OFF) return;
-    if (restyleTimer) clearTimeout(restyleTimer);
-    restyleTimer = setTimeout(function () {
-      restyleTimer = null;
-      try { if (typeof _refreshConduitStyle === 'function') _refreshConduitStyle(); } catch (e) {}
-    }, 200);
-  }
-
-  /* Called whenever the view moved. pxLen must follow the screen; ftLen is
-     restored from the cached ground value, undoing the stale-pixel
-     division _gmapAutoScale just performed. */
-  function applyLengths(c) {
-    if (!c) return false;
-    if (c.pts && c.pts.length > 1) c.pxLen = pxLen(c.pts);
-    if (c._groundFt == null) computeGround(c);      /* lazy, at most once */
-    if (c._groundTrue && c._groundFt > 0) {
-      c.ftLen = +c._groundFt.toFixed(1);
-      return true;
-    }
-    var p = ppf();
-    if (p > 0 && c.pxLen != null) c.ftLen = +(c.pxLen / p).toFixed(1);
-    return false;
-  }
-
-  /* REPAINTING IS NOT THIS MODULE'S JOB.
-
-     This used to call _refreshConduitStyle() on every pass. That function
-     is not a style tweak — it rebuilds the corridors, then REMOVES AND
-     RECREATES every conduit node, then repaints both legends. Called from
-     restoreAll(), which is wired to _geoReprojectAll (every bounds_changed
-     animation frame), a three-second pan over six runs meant 180 corridor
-     rebuilds and 1,080 conduit nodes destroyed and rebuilt — to refresh a
-     number that cannot change when the map moves, which was the entire
-     point of measuring from coordinates.
-
-     It also tore the canvas out from under the guided build while it was
-     drawing into it. Correct the numbers here; leave painting to the code
-     that owns it, and only touch the UI when a printed value moved. */
-  function eachConduit(fn) {
-    var s = S_(); if (!s) return { total: 0, ground: 0, changed: 0 };
-    var total = 0, ground = 0, changed = 0;
-    (s.conduits || []).forEach(function (c) {
-      if (!c) return;
-      total++;
-      var before = c.ftLen;
-      if (fn(c)) ground++;
-      if (c.ftLen !== before) changed++;
-    });
-    if (changed) {
-      try { if (typeof updCondStat === 'function') updCondStat(); } catch (e) {}
-      try { if (typeof renderLegend === 'function') renderLegend(); } catch (e) {}
-    }
-    return { total: total, ground: ground, changed: changed };
-  }
-
-  /* Geometry changed, or first run: re-measure from coordinates. */
-  function recomputeAll() {
-    return eachConduit(function (c) {
-      ensureSig(c);
-      computeGround(c);
-      return applyLengths(c);
-    });
-  }
-
-  /* View changed: no trigonometry, just put the right numbers back. */
-  function restoreAll() {
-    if (window.OMEGA_OFF) return { total: 0, ground: 0, changed: 0 };
-    return eachConduit(applyLengths);
-  }
-
-  /* ── re-anchor after a real edit ──────────────────────────────────
-     A dragged vertex changes c.pts but leaves c._geoPts describing where
-     the run used to be. Re-stamping needs a moment when pts are known
-     good, and pan/zoom is not it: during a zoom, pts sit at the old scale
-     until reprojection catches up on idle, so stamping then would write
-     the wrong coordinates.
-
-     pushHist() is exactly that moment. It is called from edit paths and
-     never from _gmapAutoScale or _geoReprojectAll. */
-
-  function stampConduit(c) {
-    if (typeof _liveMapState !== 'function' || typeof _pxToLatLng !== 'function') return;
-    var ms = _liveMapState(); if (!ms || !c.pts) return;
-    var sz = (typeof _getCanvasSize === 'function') ? _getCanvasSize() : { w: 1200, h: 800 };
-    c._geoPts = c.pts.map(function (p) {
-      var g = _pxToLatLng(p.x, p.y, ms, sz.w, sz.h);
-      return g ? { lat: g.lat, lng: g.lng } : null;
-    });
-    c._sig = sig(c.pts);
-    c._groundFt = null;                              /* geometry moved — re-measure */
-  }
-
-  function syncEdits() {
-    var s = S_(); if (!s) return;
-    (s.conduits || []).forEach(function (c) {
-      if (!c || !c.pts || !c.pts.length) return;
-      if (c._sig == null) { c._sig = sig(c.pts); return; }
-      if (!c._geoPts) return;                 /* let _geoStampAll anchor it first */
-      if (sig(c.pts) !== c._sig) stampConduit(c);
-    });
-  }
-
-  /* ── hooks ────────────────────────────────────────────────────────── */
-
-  /* _gmapAutoScale is the one that clobbers ftLen with stale pixels.
-     Let it run, then put the ground-true numbers back. */
-  function hookAutoScale() {
-    var orig = window._gmapAutoScale;
-    if (typeof orig !== 'function' || orig.__omegaGround) return false;
-    var wrapped = function () {
-      var r;
-      try { r = orig.apply(this, arguments); } catch (e) {}
-      try { restoreAll(); } catch (e) {}
-      scheduleRestyle();          /* it just un-styled every run */
-      return r;
-    };
-    wrapped.__omegaGround = true;
-    window._gmapAutoScale = wrapped;
-    return true;
-  }
-
-  /* Reprojection moves pts, so pxLen must be refreshed to match the
-     screen. ftLen does not change here at all — the ground did not move. */
-  function hookReproject() {
-    var orig = window._geoReprojectAll;
-    if (typeof orig !== 'function' || orig.__omegaGround) return false;
-    var wrapped = function () {
-      var r;
-      try { r = orig.apply(this, arguments); } catch (e) {}
-      try { restoreAll(); } catch (e) {}
-      scheduleRestyle();          /* debounced: one repaint when motion stops */
-      return r;
-    };
-    wrapped.__omegaGround = true;
-    window._geoReprojectAll = wrapped;
-    return true;
-  }
-
-  function hookPushHist() {
-    var orig = window.pushHist;
-    if (typeof orig !== 'function' || orig.__omegaGround) return false;
-    var wrapped = function () {
-      try { syncEdits(); recomputeAll(); } catch (e) {}
-      return orig.apply(this, arguments);
-    };
-    wrapped.__omegaGround = true;
-    window.pushHist = wrapped;
-    return true;
-  }
-
-  var n = 0;
-  var iv = setInterval(function () {
-    var a = hookAutoScale(), b = hookReproject(), c = hookPushHist();
-    if (a || b || c) {
-      if (window.console) console.info(TAG, 'armed'
-        + (a ? ' · autoscale' : '') + (b ? ' · reproject' : '') + (c ? ' · edits' : '')
-        + (sphericalReady() ? ' · spherical' : ' · haversine fallback'));
-      try { recomputeAll(); } catch (e) {}
-    }
-    if (++n > 200) clearInterval(iv);
-  }, 300);
-
-  window.OmegaGround = {
-    lengthFt: groundLengthFt,
-    areaSf: groundAreaSf,
-    refresh: recomputeAll,
-    restyle: function () { scheduleRestyle(); return true; },
-
-    /* Side by side, on the real drawing. The px column is what the
-       schedule printed before this patch. */
-    audit: function () {
-      var s = S_(); if (!s) { console.warn(TAG, 'no session'); return []; }
-      var p = ppf();
-      var rows = (s.conduits || []).filter(Boolean).map(function (c) {
-        var px = (c.pts && c.pts.length > 1) ? pxLen(c.pts) : 0;
-        var fromPx = p > 0 ? px / p : null;
-        var fromGeo = (c._geoPts && c._geoPts.length > 1) ? groundLengthFt(c._geoPts) : null;
-        return {
-          tag: c.tag || c.id,
-          type: c.condType || '',
-          px_derived_ft: fromPx == null ? null : +fromPx.toFixed(1),
-          ground_ft: fromGeo == null ? null : +fromGeo.toFixed(1),
-          ratio: (fromGeo && fromPx) ? +(fromPx / fromGeo).toFixed(2) : null,
-          anchored: !!c._geoPts
-        };
-      });
-      if (console.table) console.table(rows); else console.log(rows);
-      var off = rows.filter(function (r) { return r.ratio != null && Math.abs(r.ratio - 1) > 0.02; });
-      console.info(off.length
-        ? TAG + ' ' + off.length + ' of ' + rows.length + ' run(s) disagree with their pixel-derived length.'
-        : TAG + ' pixel and ground lengths agree — you are at the zoom these were drawn at.');
-      return rows;
-    },
-
-    status: function () {
-      var s = S_() || {};
-      var cs = (s.conduits || []).filter(Boolean);
-      var anchored = cs.filter(function (c) { return !!c._geoPts; }).length;
-      var o = {
-        conduits: cs.length,
-        anchored: anchored,
-        pixelOnly: cs.length - anchored,
-        measurement: sphericalReady() ? 'spherical (geometry library)' : 'haversine fallback',
-        pxPerFt: +ppf().toFixed(3),
-        totalFt: +cs.reduce(function (t, c) { return t + (c.ftLen || 0); }, 0).toFixed(1)
-      };
-      o.verdict = !cs.length ? 'No conduit runs yet.'
-        : o.pixelOnly ? o.pixelOnly + ' run(s) have no coordinates and still use pixel maths — '
-          + 'drawn before a site was loaded.'
-          : 'All runs measured from coordinates. Lengths hold through pan and zoom.';
-      if (console.table) console.table(o); else console.log(o);
-      console.info(o.verdict);
-      return o;
-    }
-  };
-})();
-
-
-/* ═══════════════════════════════════════════════════════════════════════
-   OMEGA PATCH — 7 : MOVING WHAT THE GUIDED BUILD PLACED
-   -----------------------------------------------------------------------
-   To answer the question directly: moving them is fine, and it does not
-   break the anchor. The anchor is a RECORD of where you put something,
-   not a cage around it. When you move a thing deliberately, the new
-   position is supposed to become the new record.
-
-   Nothing was updating that record, and two separate timers were putting
-   the old one back.
-
-   WHAT A GUIDED BUILD PLACES
-
-   Not an element and not a normal shape. openBessGuidedBuild and friends
-   emit kind:'assembly' (line 8235), which stores its position as a PIXEL
-   CENTRE — sh.cx / sh.cy — and has no sh.pts at all. Everything else in
-   the file anchors through sh.pts, so assemblies needed their own path
-   and got two of them.
-
-   PASS ONE  (line 47491) anchors centred shapes as sh._geoPts[0] and
-   writes sh.cx/cy back from it. It runs on four map events AND on:
-
-       setInterval(function(){ stamp(); reproject(); }, 700);
-
-   PASS TWO  (line 48104) is the later "unified engine". It anchors as
-   o._geoAnchor and also writes o.cx/cy. It runs on four map events AND on:
-
-       setInterval(function(){ standDown(); run(); }, 500);
-
-   Pass two knows pass one is redundant and tries to switch it off:
-
-       window.OmegaAssembly.reproject = function(){ return 0; };
-
-   That cannot work. The 700 ms timer closed over the LOCAL reproject
-   when the module was defined; reassigning the exported property is not
-   visible to it. So both passes are live, on 700 ms and 500 ms.
-
-   Neither pass has a drag guard — grep for asmPartDrag, S.drag or
-   shapeDrag across both modules returns nothing. And neither is ever told
-   a move was deliberate: OmegaRestampAssemblies (47524) and OmegaReanchor
-   (48218) both exist for exactly this purpose and neither is called from
-   any drag path.
-
-   So: drag an assembly, and within 500 ms a pass recomputes cx/cy from
-   the anchor you have not updated and puts it back. Hold the drag longer
-   than that and it fights you WHILE the mouse is down, which is the
-   "cannot be moved" half of it.
-
-   THE FIX
-
-   Rather than try to reach inside a closure that cannot be reached, keep
-   the anchor honest so there is nothing to fight about:
-
-     1. while a drag is in progress, re-stamp the dragged object's anchor
-        every frame. Any pass that fires mid-drag then computes the
-        position the cursor is already at, and moves nothing.
-     2. on release, re-stamp once more and drop _geoAnchor so the unified
-        engine re-derives from the pixels you left it at.
-     3. fold tx/ty into cx/cy for centred shapes — patch 4 does this for
-        pts-based shapes, but an assembly has no pts, so its drag offset
-        was never being folded anywhere.
-
-   Both passes keep running. They just agree now.
-   ═══════════════════════════════════════════════════════════════════════ */
-(function () {
-  'use strict';
-
-  var TAG = '[omega/move]';
-
-  function S_() { try { return (typeof S !== 'undefined' && S) ? S : null; } catch (e) { return null; } }
-
-  function viewState() {
-    try { if (typeof _liveMapState === 'function') return _liveMapState(); } catch (e) {}
-    return null;
-  }
-  function canvasSize() {
-    try { if (typeof _getCanvasSize === 'function') return _getCanvasSize(); } catch (e) {}
-    return { w: 1200, h: 800 };
-  }
-  function toGeo(x, y, ms, sz) {
-    try {
-      if (typeof _pxToLatLng !== 'function') return null;
-      return _pxToLatLng(x, y, ms, sz.w, sz.h);
-    } catch (e) { return null; }
-  }
-
-  /* ── the record follows the thing ─────────────────────────────────── */
-
-  function restamp(o) {
-    if (!o) return false;
-    var ms = viewState(); if (!ms) return false;
-    var sz = canvasSize();
-
-    /* Pass two re-derives whatever it cannot find. Leave _auxFt alone:
-       fence and bollard offsets are recorded in feet relative to the
-       anchor and are still correct after a move. */
-    delete o._geoAnchor;
-
-    /* Pass one: a centred shape carries a single-point _geoPts. */
-    if (o.cx != null && o.cy != null) {
-      var g = toGeo(o.cx, o.cy, ms, sz);
-      if (g) { o._geoPts = [{ lat: g.lat, lng: g.lng }]; o._geoCentred = true; }
-      return true;
-    }
-
-    if (o.pts && o.pts.length) {
-      o._geoPts = o.pts.map(function (p) {
-        var q = toGeo(p.x, p.y, ms, sz);
-        return q ? { lat: q.lat, lng: q.lng } : null;
-      });
-      return true;
-    }
-
-    /* A DOM element anchors on its centre. */
-    if (typeof o.x === 'number') {
-      var c = toGeo(o.x + ((o.w || 60) / 2), o.y + ((o.h || o.w || 60) / 2), ms, sz);
-      if (c) { o._geoLat = c.lat; o._geoLng = c.lng; }
-      return true;
-    }
-    return false;
-  }
-
-  function find(id) {
-    var s = S_(); if (!s || !id) return null;
-    var pools = ['shapes', 'elements', 'conduits'], i, j;
-    for (i = 0; i < pools.length; i++) {
-      var arr = s[pools[i]] || [];
-      for (j = 0; j < arr.length; j++) if (arr[j] && arr[j].id === id) return arr[j];
-    }
-    return null;
-  }
-
-  /* Every flag the file uses to mean "something is being moved". */
-  function activeIds() {
-    var s = S_(); if (!s) return [];
-    var ids = [];
-    if (s.asmPartDrag && s.asmPartId) ids.push(s.asmPartId);
-    if (s.shapeDrag) ids.push(s.shapeDrag);
-    if (s.shapeResize) ids.push(s.shapeResize);
-    if (s.shapeRotate) ids.push(s.shapeRotate);
-    if (s.groupDrag && s.groupDrag.length) ids = ids.concat(s.groupDrag);
-    if (s.drag) ids.push(s.drag);
-    if (s.resizing) ids.push(s.resizing);
-    if (s.rotating) ids.push(s.rotating);
-    return ids;
-  }
-
-  /* ── keep the anchor under the cursor while the mouse is down ─────── */
-
-  var looping = false, lastIds = [], startedAt = 0;
-
-  function pump() {
-    if (window.OMEGA_OFF) { looping = false; return; }
-    var ids = activeIds();
-    if (!ids.length || (Date.now() - startedAt) > 60000) { looping = false; return; }
-    lastIds = ids;
-    for (var i = 0; i < ids.length; i++) {
-      var o = find(ids[i]);
-      if (o) { try { restamp(o); } catch (e) {} }
-    }
-    requestAnimationFrame(pump);
-  }
-
-  function kick() {
-    if (looping) return;
-    looping = true;
-    startedAt = Date.now();
-    requestAnimationFrame(pump);
-  }
-
-  function settle() {
-    var ids = activeIds();
-    if (ids.length) lastIds = ids;
-    var take = lastIds.slice();
-    lastIds = [];
-    if (!take.length) return;
-    /* after the app's own mouseup handlers have cleared their flags */
-    setTimeout(function () {
-      for (var i = 0; i < take.length; i++) {
-        var o = find(take[i]);
-        if (o) { try { restamp(o); } catch (e) {} }
-      }
-    }, 0);
-  }
-
-  document.addEventListener('mousedown', kick, true);
-  document.addEventListener('touchstart', kick, true);
-  document.addEventListener('mouseup', settle, true);
-  document.addEventListener('touchend', settle, true);
-
-  /* ── fold the drag offset for centred shapes ──────────────────────── */
-  /* Patch 4 folds tx/ty into pts. An assembly has no pts, so its offset
-     was left dangling in a transform that no anchor knows about. */
-
-  function foldCentred(ids) {
-    var s = S_(); if (!s) return;
-    for (var i = 0; i < ids.length; i++) {
-      var sh = find(ids[i]);
-      if (!sh || sh.cx == null) continue;
-      var dx = sh.tx || 0, dy = sh.ty || 0;
-      if (!dx && !dy) { restamp(sh); continue; }
-      sh.cx += dx; sh.cy += dy;
-      sh.tx = 0; sh.ty = 0;
-      delete sh._tx0; delete sh._ty0;
-      delete sh._gtx0; delete sh._gty0;
-      restamp(sh);
-      try { if (typeof renderShape === 'function') renderShape(sh); } catch (e) {}
-    }
-  }
-
-  function hookShapeEnd() {
-    var orig = window._shapeInteractEnd;
-    if (typeof orig !== 'function' || orig.__omegaMove) return false;
-    var wrapped = function () {
-      try { foldCentred(activeIds()); } catch (e) {}
-      return orig.apply(this, arguments);
-    };
-    wrapped.__omegaMove = true;
-    window._shapeInteractEnd = wrapped;
-    return true;
-  }
-
-  function hookAsmEnd() {
-    var orig = window._asmPartInteractEnd;
-    if (typeof orig !== 'function' || orig.__omegaMove) return false;
-    var wrapped = function () {
-      var s = S_();
-      var id = (s && s.asmPartDrag) ? s.asmPartId : null;
-      var r = orig.apply(this, arguments);
-      if (id) { var o = find(id); if (o) { try { restamp(o); } catch (e) {} } }
-      return r;
-    };
-    wrapped.__omegaMove = true;
-    window._asmPartInteractEnd = wrapped;
-    return true;
-  }
-
-  var n = 0;
-  var iv = setInterval(function () {
-    var a = hookShapeEnd(), b = hookAsmEnd();
-    if (a || b) {
-      if (window.console) console.info(TAG, 'armed — placed assemblies can be dragged and will stay put');
-    }
-    if (++n > 200) clearInterval(iv);
-  }, 300);
-
-  window.OmegaMove = {
-    restamp: restamp,
-
-    /* Re-anchor everything to where it currently sits. Use after moving
-       things around on an older drawing that kept snapping back. */
-    freeAll: function () {
-      var s = S_(); if (!s) return 0;
-      var n = 0;
-      ['shapes', 'elements', 'conduits'].forEach(function (k) {
-        (s[k] || []).forEach(function (o) { if (o && restamp(o)) n++; });
-      });
-      try { if (typeof pushHist === 'function') pushHist(); } catch (e) {}
-      console.info(TAG + ' re-anchored ' + n + ' object(s) to their current positions');
-      return n;
-    },
-
-    status: function () {
-      var s = S_() || {};
-      var shapes = s.shapes || [];
-      var centred = shapes.filter(function (x) { return x && x.cx != null; });
-      var o = {
-        assemblies: shapes.filter(function (x) { return x && x.kind === 'assembly'; }).length,
-        centredShapes: centred.length,
-        anchoredPassOne: centred.filter(function (x) { return !!x._geoPts; }).length,
-        anchoredPassTwo: centred.filter(function (x) { return !!x._geoAnchor; }).length,
-        looseDragOffset: centred.filter(function (x) { return (x.tx || x.ty); }).length,
-        dragging: activeIds().length,
-        liveMap: !!viewState()
-      };
-      o.verdict = !o.centredShapes ? 'Nothing centre-based on the canvas yet.'
-        : !o.liveMap ? 'No live map state — nothing is reprojecting, so nothing will snap back.'
-          : o.looseDragOffset ? o.looseDragOffset + ' assembly(ies) hold an unfolded drag offset. Run OmegaMove.freeAll().'
-            : 'Anchors match current positions. Drags will hold.';
-      if (console.table) console.table(o); else console.log(o);
-      console.info(o.verdict);
-      return o;
-    }
-  };
-})();
-
-
-/* ═══════════════════════════════════════════════════════════════════════
-   OMEGA PATCH — 8 : THE LINE LEFT BEHIND
-   -----------------------------------------------------------------------
-   A conduit in a trench is drawn as two cooperating things:
-
-     renderTrenchCorridors()  the excavation band, and it TAGS each run in
-                              the trench with _inCorridor / _bankSlot /
-                              _bankOf
-     renderConduit()          the coloured run, drawn through _bankedPts(),
-                              which offsets it sideways by _bankSlot * 9px
-                              so parallel runs sit side by side in the
-                              trench rather than on top of each other
-
-   Two things go wrong when you move one, and they compound.
-
-   PROBLEM 1 — THE CHANGE DETECTOR ONLY LOOKS AT THE ENDS
-
-   The existing "trench follows its conduit" module decides whether to
-   redraw from this signature:
-
-       var a = c.pts[0], b = c.pts[c.pts.length-1];
-       out.push(c.id +':'+ round(a.x)+','+round(a.y)
-                     +'-'+ round(b.x)+','+round(b.y)
-                     +'#'+ c.pts.length);
-
-   Its own comment says "first point, last point and count is enough to
-   see any move". It isn't. Drag an INTERIOR vertex 160 px and:
-
-       before   C4:100,100-500,100#3
-       after    C4:100,100-500,100#3
-
-   Identical. The corridor is never told to redraw, so the excavation band
-   stays where it was. Dragging an END vertex does change the signature,
-   which is why the bug looks intermittent — it depends which handle you
-   grabbed.
-
-   PROBLEM 2 — RE-TAGGING IS NOT RE-DRAWING
-
-   renderTrenchCorridors() clears and re-assigns _inCorridor, _bankSlot
-   and _bankOf on its members, then returns. It never calls
-   renderConduit(). So a run whose banking changed keeps the lateral
-   offset it was last DRAWN with:
-
-       3 runs sharing a trench   slots [-1, 0, +1]   offsets [-9, 0, +9] px
-       one moves away, 2 remain  slots [-0.5, +0.5]  offsets [-4.5, +4.5] px
-
-   The two that stayed are now drawn 4.5 px from where they belong, and
-   the one that left is still drawn on the old centreline. That is the
-   line sitting underneath.
-
-   FIX
-
-     1. Hash EVERY vertex, plus type and route, so any move is seen —
-        interior vertices included.
-     2. After the corridor rebuilds, re-render exactly those runs whose
-        banking actually changed, so the drawn geometry matches the new
-        trench.
-
-   The existing module keeps running; this drives it correctly and cleans
-   up after it.
-   ═══════════════════════════════════════════════════════════════════════ */
-(function () {
-  'use strict';
-
-  var TAG = '[omega/trench]';
-  function S_() { try { return (typeof S !== 'undefined' && S) ? S : null; } catch (e) { return null; } }
-
-  /* ── complete change detection ────────────────────────────────────── */
-  /* A rolling 32-bit hash over every vertex. Cheap enough to run
-     continuously: 50 runs of 10 points is 500 iterations. */
-  function hash() {
-    var s = S_(); if (!s) return 0;
-    var h = 2166136261, cs = s.conduits || [];
-    function mix(v) { h ^= v; h = (h * 16777619) >>> 0; }
-    function mixStr(str) {
-      str = String(str == null ? '' : str);
-      for (var i = 0; i < str.length; i++) mix(str.charCodeAt(i));
-    }
-    mix(cs.length);
-    for (var i = 0; i < cs.length; i++) {
-      var c = cs[i]; if (!c) continue;
-      mixStr(c.id);
-      mixStr(c.condType);
-      mixStr(c.route);
-      var pts = c.pts || [];
-      mix(pts.length);
-      for (var j = 0; j < pts.length; j++) {
-        mix(Math.round(pts[j].x) | 0);
-        mix(Math.round(pts[j].y) | 0);
-      }
-    }
-    return h;
-  }
-
-  /* ── re-render whatever the rebuild re-banked ─────────────────────── */
-
-  function bankState(c) {
-    return (c._inCorridor ? 1 : 0) + ':' + (c._bankSlot == null ? 'n' : c._bankSlot)
-      + ':' + (c._bankOf == null ? 'n' : c._bankOf);
-  }
-
-  var busy = false;
-
-  function rebuild() {
-    if (busy) return 0;
-    var s = S_(); if (!s) return 0;
-    if (typeof renderTrenchCorridors !== 'function') return 0;
-    busy = true;
-    var redrawn = 0;
-    try {
-      var cs = (s.conduits || []).filter(Boolean);
-      var before = cs.map(bankState);
-
-      renderTrenchCorridors();               /* re-tags, does not re-draw */
-
-      for (var i = 0; i < cs.length; i++) {
-        if (bankState(cs[i]) === before[i]) continue;
-        try {
-          if (typeof renderConduit === 'function') { renderConduit(cs[i]); redrawn++; }
-        } catch (e) {}
-      }
-      /* The runs that did not change banking may still have moved, and
-         the corridor rebuild is the moment their node should agree with
-         c.pts. Cheap enough to keep them all honest. */
-      /* Deliberately NOT calling _refreshConduitStyle() here: it rebuilds
-         the corridors and repaints every run, which is exactly the work
-         this function just did surgically. Calling it would undo the point
-         of only touching what changed. */
-    } catch (e) {} finally { busy = false; }
-    return redrawn;
-  }
-
-  var last = null, syncs = 0, rebanks = 0, deferred = false, wasBatching = false;
-
-  /* A guided build places several runs inside one condBatch(). The file is
-     explicit that render paths must stay out of the way during that:
-
-         "True while a bulk operation is in flight - render paths check
-          this and skip their own repaint, deferring to the single flush
-          at the end."   (_condBatching, line 10007)
-
-     autoWireConduit() honours it. This module did not, so a 150 ms timer
-     was rebuilding corridors and re-banking every run in the middle of a
-     bulk placement, moving runs that the batch had not finished writing.
-     Stay out until the depth returns to zero, then sync once. */
-  function batching() {
-    try { return typeof _condBatching === 'function' && _condBatching(); } catch (e) { return false; }
-  }
-
-  function check(force) {
-    if (window.OMEGA_OFF) return false;
-    if (batching()) { deferred = true; wasBatching = true; return false; }
-    if (wasBatching) { wasBatching = false; force = true; }   /* the batch just closed */
-    var h = hash();
-    if (!force && !deferred && h === last) return false;
-    deferred = false;
-    last = h;
-    syncs++;
-    rebanks += rebuild();
-    return true;
-  }
-
-  /* Continuously, but only doing work when a vertex actually moved. */
-  setInterval(function () { check(false); }, 150);
-
-  /* And immediately on release, so the trench lands with the conduit
-     rather than up to 150 ms later. */
-  ['mouseup', 'touchend', 'pointerup'].forEach(function (ev) {
-    document.addEventListener(ev, function () {
-      setTimeout(function () { check(false); }, 16);
-    }, true);
-  });
-
-  if (window.console) console.info(TAG, 'armed — every vertex watched, banking re-drawn after a rebuild');
-
-  window.OmegaTrenchFix = {
-    sync: function () { return check(true); },
-    status: function () {
-      var s = S_() || {};
-      var cs = (s.conduits || []).filter(Boolean);
-      var g = document.getElementById('trench-corridors');
-      var banked = cs.filter(function (c) { return c._inCorridor; });
-      var interior = cs.filter(function (c) { return c.pts && c.pts.length > 2; });
-      var o = {
-        conduits: cs.length,
-        inATrench: banked.length,
-        withInteriorVertices: interior.length,
-        corridorDrawn: !!g,
-        corridorSegments: g ? g.children.length : 0,
-        syncsThisSession: syncs,
-        conduitsRebankedAndRedrawn: rebanks,
-        bulkOperationInFlight: batching(),
-        syncDeferred: deferred
-      };
-      o.verdict = !cs.length ? 'No conduit runs.'
-        : !o.corridorDrawn ? 'No corridor drawn — trenching may be off for these runs.'
-          : o.withInteriorVertices
-            ? o.withInteriorVertices + ' run(s) have interior vertices; those are the drags the old detector missed.'
-            : 'Corridor tracking ' + cs.length + ' run(s).';
-      if (console.table) console.table(o); else console.log(o);
-      console.info(o.verdict);
-      return o;
-    }
-  };
-})();
-
-
-/* ═══════════════════════════════════════════════════════════════════════
    OMEGA PATCH — 9 : WHY A SAVE SILENTLY DOES NOTHING
    -----------------------------------------------------------------------
    First, the Storage rules are not the cause. Project data does not go to
@@ -53968,6 +53084,902 @@ window._crmToastModal=_crmToastModal;
 
 
 /* ═══════════════════════════════════════════════════════════════════════
+   OMEGA PATCH — 6 : GROUND-TRUE MEASUREMENT
+   -----------------------------------------------------------------------
+   This is the native-prototype idea applied where it pays best. The
+   prototype's whole argument is that a length taken from lat/lng needs no
+   scale factor:
+
+       lengthFt(path) -> spherical.computeLength(path) * 3.28084
+
+   The editor instead stores a conduit's length in PIXELS and divides by
+   the current scale. Those two numbers are refreshed by different
+   listeners, and one of them never gets refreshed at all:
+
+       _gmapAutoScale()      on zoom_changed
+           S.pxPerFt = <new value for this zoom>
+           c.ftLen   = c.pxLen / S.pxPerFt     <- c.pxLen is from the
+                                                  zoom it was DRAWN at
+
+       _geoReprojectAll()    on idle / bounds_changed
+           c.pts[j] = reproject(c._geoPts[j])  <- points updated
+           ...and nothing recomputes c.pxLen
+
+   Grep confirms it: c.pxLen is assigned in 17 places, every one of them
+   an explicit draw or edit path. Never on pan, never on zoom. So the
+   numerator is frozen at draw time while the denominator tracks the
+   zoom, and the reported length moves with the view:
+
+       run drawn at z20 = 182.7 ft
+         z22      45.7 ft    0.25x
+         z21      91.3 ft    0.50x
+         z20     182.7 ft    1.00x   <- correct only here
+         z19     365.4 ft    2.00x
+         z18     730.8 ft    4.00x
+         z17    1461.6 ft    8.00x
+         z16    2923.2 ft   16.00x
+
+   Every zoom level doubles or halves it. That number is what the CONDUIT
+   SCHEDULE prints and what the electrical estimate prices.
+
+   The fix is the prototype's: take the length from the coordinates. It is
+   invariant under pan and zoom because the view was never an input, so it
+   also stops needing recomputation on every map event — it is computed
+   when the geometry actually changes and left alone otherwise.
+
+   libraries=places,geometry is already on the loader URL (line 19835), so
+   spherical.computeLength is available. A haversine fallback is included
+   for the case where it is not.
+
+   Conduits with no coordinates — drawn before a site was loaded — keep the
+   existing pixel maths exactly as before. Nothing regresses.
+   ═══════════════════════════════════════════════════════════════════════ */
+(function () {
+  'use strict';
+  /* OPT-IN. This module reaches into the live render/anchor loop, which is
+     where every regression in this bundle came from. It stays off unless
+     window.OMEGA_EXPERIMENTAL === true is set BEFORE this script runs. */
+  if (window.OMEGA_EXPERIMENTAL !== true) return;
+
+
+  var TAG = '[omega/ground]';
+  var FT_PER_M = 3.280839895;
+
+  function S_() { try { return (typeof S !== 'undefined' && S) ? S : null; } catch (e) { return null; } }
+  function ppf() { var s = S_(); return (s && s.pxPerFt > 0) ? s.pxPerFt : 0; }
+
+  /* ── measurement from coordinates ─────────────────────────────────── */
+
+  function haversineFt(a, b) {
+    var R = 6378137, r = Math.PI / 180;
+    var dLat = (b.lat - a.lat) * r, dLng = (b.lng - a.lng) * r;
+    var s = Math.sin(dLat / 2) * Math.sin(dLat / 2)
+      + Math.cos(a.lat * r) * Math.cos(b.lat * r) * Math.sin(dLng / 2) * Math.sin(dLng / 2);
+    return 2 * R * Math.asin(Math.min(1, Math.sqrt(s))) * FT_PER_M;
+  }
+
+  function sphericalReady() {
+    try {
+      return !!(window.google && google.maps && google.maps.geometry
+        && google.maps.geometry.spherical);
+    } catch (e) { return false; }
+  }
+
+  function groundLengthFt(geoPts) {
+    if (!geoPts) return 0;
+    var pts = [];
+    for (var i = 0; i < geoPts.length; i++) {
+      var g = geoPts[i];
+      if (g && isFinite(g.lat) && isFinite(g.lng)) pts.push(g);
+    }
+    if (pts.length < 2) return 0;
+    if (sphericalReady()) {
+      try {
+        var ll = pts.map(function (p) { return new google.maps.LatLng(p.lat, p.lng); });
+        var m = google.maps.geometry.spherical.computeLength(ll);
+        if (isFinite(m) && m >= 0) return m * FT_PER_M;
+      } catch (e) { /* fall through */ }
+    }
+    var d = 0;
+    for (var j = 1; j < pts.length; j++) d += haversineFt(pts[j - 1], pts[j]);
+    return d;
+  }
+
+  function groundAreaSf(geoPts) {
+    if (!geoPts || geoPts.length < 3) return 0;
+    if (!sphericalReady()) return 0;
+    try {
+      var ll = geoPts.filter(Boolean).map(function (p) {
+        return new google.maps.LatLng(p.lat, p.lng);
+      });
+      if (ll.length < 3) return 0;
+      return google.maps.geometry.spherical.computeArea(ll) * 10.7639104;
+    } catch (e) { return 0; }
+  }
+
+  /* ── state kept per run ───────────────────────────────────────────
+     A run's ground length is invariant under pan and zoom, so it is
+     measured when the GEOMETRY changes and cached in _groundFt. Anything
+     the VIEW does then costs one assignment instead of a trig call per
+     animation frame. */
+
+  function pxLen(pts) {
+    var d = 0;
+    for (var i = 1; i < pts.length; i++) {
+      var a = pts[i - 1], b = pts[i];
+      d += Math.sqrt((b.x - a.x) * (b.x - a.x) + (b.y - a.y) * (b.y - a.y));
+    }
+    return d;
+  }
+
+  function sig(pts) {
+    var out = [];
+    for (var i = 0; i < pts.length; i++) out.push(Math.round(pts[i].x) + ',' + Math.round(pts[i].y));
+    return out.join('|');
+  }
+
+  /* Seed the signature at install, not on the first edit — otherwise the
+     first vertex drag is mistaken for "first sight" and swallowed. */
+  function ensureSig(c) {
+    if (c && c.pts && c._sig == null) c._sig = sig(c.pts);
+  }
+
+  /* _groundFt is the cache and the sentinel:
+        null  not measured yet (or invalidated by an edit) -> try again
+        0     tried against real coordinates and got nothing -> stop trying
+        >0    the answer
+
+     A run drawn just now has no _geoPts until _geoStampAll runs inside the
+     original pushHist, which is AFTER this patch's hook. Leaving _groundFt
+     null in that case is what lets the next map event pick it up, instead
+     of stranding the run on pixel maths until someone edits it. */
+  function computeGround(c) {
+    if (!c) return false;
+    if (!c._geoPts || c._geoPts.length < 2) { c._groundTrue = false; return false; }
+    var ft = groundLengthFt(c._geoPts);
+    c._groundFt = (ft > 0) ? ft : 0;
+    c._groundTrue = ft > 0;
+    return c._groundTrue;
+  }
+
+  /* _gmapAutoScale() strips every conduit node and calls renderConduit()
+     directly — no renderTrenchCorridors() first, no _refreshConduitStyle()
+     after. So the runs come back with no bank slot and no engineering
+     linetype: thin, plain, wrong. It is wired to BOTH zoom_changed and
+     center_changed, so it runs continuously through a pan.
+
+     Up to rev 10 this module called _refreshConduitStyle() on every pass,
+     which repaired that by accident — at the cost of 180 full repaints per
+     three-second pan. Rev 11 removed the storm and, with it, the repair.
+
+     A restyle is genuinely needed after the view settles; it is needed ONCE.
+     Trailing debounce: continuous motion collapses to a single repaint when
+     the map stops. */
+  var restyleTimer = null;
+  function scheduleRestyle() {
+    if (window.OMEGA_OFF) return;
+    if (restyleTimer) clearTimeout(restyleTimer);
+    restyleTimer = setTimeout(function () {
+      restyleTimer = null;
+      try { if (typeof _refreshConduitStyle === 'function') _refreshConduitStyle(); } catch (e) {}
+    }, 200);
+  }
+
+  /* Called whenever the view moved. pxLen must follow the screen; ftLen is
+     restored from the cached ground value, undoing the stale-pixel
+     division _gmapAutoScale just performed. */
+  function applyLengths(c) {
+    if (!c) return false;
+    if (c.pts && c.pts.length > 1) c.pxLen = pxLen(c.pts);
+    if (c._groundFt == null) computeGround(c);      /* lazy, at most once */
+    if (c._groundTrue && c._groundFt > 0) {
+      c.ftLen = +c._groundFt.toFixed(1);
+      return true;
+    }
+    var p = ppf();
+    if (p > 0 && c.pxLen != null) c.ftLen = +(c.pxLen / p).toFixed(1);
+    return false;
+  }
+
+  /* REPAINTING IS NOT THIS MODULE'S JOB.
+
+     This used to call _refreshConduitStyle() on every pass. That function
+     is not a style tweak — it rebuilds the corridors, then REMOVES AND
+     RECREATES every conduit node, then repaints both legends. Called from
+     restoreAll(), which is wired to _geoReprojectAll (every bounds_changed
+     animation frame), a three-second pan over six runs meant 180 corridor
+     rebuilds and 1,080 conduit nodes destroyed and rebuilt — to refresh a
+     number that cannot change when the map moves, which was the entire
+     point of measuring from coordinates.
+
+     It also tore the canvas out from under the guided build while it was
+     drawing into it. Correct the numbers here; leave painting to the code
+     that owns it, and only touch the UI when a printed value moved. */
+  function eachConduit(fn) {
+    var s = S_(); if (!s) return { total: 0, ground: 0, changed: 0 };
+    var total = 0, ground = 0, changed = 0;
+    (s.conduits || []).forEach(function (c) {
+      if (!c) return;
+      total++;
+      var before = c.ftLen;
+      if (fn(c)) ground++;
+      if (c.ftLen !== before) changed++;
+    });
+    if (changed) {
+      try { if (typeof updCondStat === 'function') updCondStat(); } catch (e) {}
+      try { if (typeof renderLegend === 'function') renderLegend(); } catch (e) {}
+    }
+    return { total: total, ground: ground, changed: changed };
+  }
+
+  /* Geometry changed, or first run: re-measure from coordinates. */
+  function recomputeAll() {
+    return eachConduit(function (c) {
+      ensureSig(c);
+      computeGround(c);
+      return applyLengths(c);
+    });
+  }
+
+  /* View changed: no trigonometry, just put the right numbers back. */
+  function restoreAll() {
+    if (window.OMEGA_OFF) return { total: 0, ground: 0, changed: 0 };
+    return eachConduit(applyLengths);
+  }
+
+  /* ── re-anchor after a real edit ──────────────────────────────────
+     A dragged vertex changes c.pts but leaves c._geoPts describing where
+     the run used to be. Re-stamping needs a moment when pts are known
+     good, and pan/zoom is not it: during a zoom, pts sit at the old scale
+     until reprojection catches up on idle, so stamping then would write
+     the wrong coordinates.
+
+     pushHist() is exactly that moment. It is called from edit paths and
+     never from _gmapAutoScale or _geoReprojectAll. */
+
+  function stampConduit(c) {
+    if (typeof _liveMapState !== 'function' || typeof _pxToLatLng !== 'function') return;
+    var ms = _liveMapState(); if (!ms || !c.pts) return;
+    var sz = (typeof _getCanvasSize === 'function') ? _getCanvasSize() : { w: 1200, h: 800 };
+    c._geoPts = c.pts.map(function (p) {
+      var g = _pxToLatLng(p.x, p.y, ms, sz.w, sz.h);
+      return g ? { lat: g.lat, lng: g.lng } : null;
+    });
+    c._sig = sig(c.pts);
+    c._groundFt = null;                              /* geometry moved — re-measure */
+  }
+
+  function syncEdits() {
+    var s = S_(); if (!s) return;
+    (s.conduits || []).forEach(function (c) {
+      if (!c || !c.pts || !c.pts.length) return;
+      if (c._sig == null) { c._sig = sig(c.pts); return; }
+      if (!c._geoPts) return;                 /* let _geoStampAll anchor it first */
+      if (sig(c.pts) !== c._sig) stampConduit(c);
+    });
+  }
+
+  /* ── hooks ────────────────────────────────────────────────────────── */
+
+  /* _gmapAutoScale is the one that clobbers ftLen with stale pixels.
+     Let it run, then put the ground-true numbers back. */
+  function hookAutoScale() {
+    var orig = window._gmapAutoScale;
+    if (typeof orig !== 'function' || orig.__omegaGround) return false;
+    var wrapped = function () {
+      var r;
+      try { r = orig.apply(this, arguments); } catch (e) {}
+      try { restoreAll(); } catch (e) {}
+      scheduleRestyle();          /* it just un-styled every run */
+      return r;
+    };
+    wrapped.__omegaGround = true;
+    window._gmapAutoScale = wrapped;
+    return true;
+  }
+
+  /* Reprojection moves pts, so pxLen must be refreshed to match the
+     screen. ftLen does not change here at all — the ground did not move. */
+  function hookReproject() {
+    var orig = window._geoReprojectAll;
+    if (typeof orig !== 'function' || orig.__omegaGround) return false;
+    var wrapped = function () {
+      var r;
+      try { r = orig.apply(this, arguments); } catch (e) {}
+      try { restoreAll(); } catch (e) {}
+      scheduleRestyle();          /* debounced: one repaint when motion stops */
+      return r;
+    };
+    wrapped.__omegaGround = true;
+    window._geoReprojectAll = wrapped;
+    return true;
+  }
+
+  function hookPushHist() {
+    var orig = window.pushHist;
+    if (typeof orig !== 'function' || orig.__omegaGround) return false;
+    var wrapped = function () {
+      try { syncEdits(); recomputeAll(); } catch (e) {}
+      return orig.apply(this, arguments);
+    };
+    wrapped.__omegaGround = true;
+    window.pushHist = wrapped;
+    return true;
+  }
+
+  var n = 0;
+  var iv = setInterval(function () {
+    var a = hookAutoScale(), b = hookReproject(), c = hookPushHist();
+    if (a || b || c) {
+      if (window.console) console.info(TAG, 'armed'
+        + (a ? ' · autoscale' : '') + (b ? ' · reproject' : '') + (c ? ' · edits' : '')
+        + (sphericalReady() ? ' · spherical' : ' · haversine fallback'));
+      try { recomputeAll(); } catch (e) {}
+    }
+    if (++n > 200) clearInterval(iv);
+  }, 300);
+
+  window.OmegaGround = {
+    lengthFt: groundLengthFt,
+    areaSf: groundAreaSf,
+    refresh: recomputeAll,
+    restyle: function () { scheduleRestyle(); return true; },
+
+    /* Side by side, on the real drawing. The px column is what the
+       schedule printed before this patch. */
+    audit: function () {
+      var s = S_(); if (!s) { console.warn(TAG, 'no session'); return []; }
+      var p = ppf();
+      var rows = (s.conduits || []).filter(Boolean).map(function (c) {
+        var px = (c.pts && c.pts.length > 1) ? pxLen(c.pts) : 0;
+        var fromPx = p > 0 ? px / p : null;
+        var fromGeo = (c._geoPts && c._geoPts.length > 1) ? groundLengthFt(c._geoPts) : null;
+        return {
+          tag: c.tag || c.id,
+          type: c.condType || '',
+          px_derived_ft: fromPx == null ? null : +fromPx.toFixed(1),
+          ground_ft: fromGeo == null ? null : +fromGeo.toFixed(1),
+          ratio: (fromGeo && fromPx) ? +(fromPx / fromGeo).toFixed(2) : null,
+          anchored: !!c._geoPts
+        };
+      });
+      if (console.table) console.table(rows); else console.log(rows);
+      var off = rows.filter(function (r) { return r.ratio != null && Math.abs(r.ratio - 1) > 0.02; });
+      console.info(off.length
+        ? TAG + ' ' + off.length + ' of ' + rows.length + ' run(s) disagree with their pixel-derived length.'
+        : TAG + ' pixel and ground lengths agree — you are at the zoom these were drawn at.');
+      return rows;
+    },
+
+    status: function () {
+      var s = S_() || {};
+      var cs = (s.conduits || []).filter(Boolean);
+      var anchored = cs.filter(function (c) { return !!c._geoPts; }).length;
+      var o = {
+        conduits: cs.length,
+        anchored: anchored,
+        pixelOnly: cs.length - anchored,
+        measurement: sphericalReady() ? 'spherical (geometry library)' : 'haversine fallback',
+        pxPerFt: +ppf().toFixed(3),
+        totalFt: +cs.reduce(function (t, c) { return t + (c.ftLen || 0); }, 0).toFixed(1)
+      };
+      o.verdict = !cs.length ? 'No conduit runs yet.'
+        : o.pixelOnly ? o.pixelOnly + ' run(s) have no coordinates and still use pixel maths — '
+          + 'drawn before a site was loaded.'
+          : 'All runs measured from coordinates. Lengths hold through pan and zoom.';
+      if (console.table) console.table(o); else console.log(o);
+      console.info(o.verdict);
+      return o;
+    }
+  };
+})();
+
+
+/* ═══════════════════════════════════════════════════════════════════════
+   OMEGA PATCH — 7 : MOVING WHAT THE GUIDED BUILD PLACED
+   -----------------------------------------------------------------------
+   To answer the question directly: moving them is fine, and it does not
+   break the anchor. The anchor is a RECORD of where you put something,
+   not a cage around it. When you move a thing deliberately, the new
+   position is supposed to become the new record.
+
+   Nothing was updating that record, and two separate timers were putting
+   the old one back.
+
+   WHAT A GUIDED BUILD PLACES
+
+   Not an element and not a normal shape. openBessGuidedBuild and friends
+   emit kind:'assembly' (line 8235), which stores its position as a PIXEL
+   CENTRE — sh.cx / sh.cy — and has no sh.pts at all. Everything else in
+   the file anchors through sh.pts, so assemblies needed their own path
+   and got two of them.
+
+   PASS ONE  (line 47491) anchors centred shapes as sh._geoPts[0] and
+   writes sh.cx/cy back from it. It runs on four map events AND on:
+
+       setInterval(function(){ stamp(); reproject(); }, 700);
+
+   PASS TWO  (line 48104) is the later "unified engine". It anchors as
+   o._geoAnchor and also writes o.cx/cy. It runs on four map events AND on:
+
+       setInterval(function(){ standDown(); run(); }, 500);
+
+   Pass two knows pass one is redundant and tries to switch it off:
+
+       window.OmegaAssembly.reproject = function(){ return 0; };
+
+   That cannot work. The 700 ms timer closed over the LOCAL reproject
+   when the module was defined; reassigning the exported property is not
+   visible to it. So both passes are live, on 700 ms and 500 ms.
+
+   Neither pass has a drag guard — grep for asmPartDrag, S.drag or
+   shapeDrag across both modules returns nothing. And neither is ever told
+   a move was deliberate: OmegaRestampAssemblies (47524) and OmegaReanchor
+   (48218) both exist for exactly this purpose and neither is called from
+   any drag path.
+
+   So: drag an assembly, and within 500 ms a pass recomputes cx/cy from
+   the anchor you have not updated and puts it back. Hold the drag longer
+   than that and it fights you WHILE the mouse is down, which is the
+   "cannot be moved" half of it.
+
+   THE FIX
+
+   Rather than try to reach inside a closure that cannot be reached, keep
+   the anchor honest so there is nothing to fight about:
+
+     1. while a drag is in progress, re-stamp the dragged object's anchor
+        every frame. Any pass that fires mid-drag then computes the
+        position the cursor is already at, and moves nothing.
+     2. on release, re-stamp once more and drop _geoAnchor so the unified
+        engine re-derives from the pixels you left it at.
+     3. fold tx/ty into cx/cy for centred shapes — patch 4 does this for
+        pts-based shapes, but an assembly has no pts, so its drag offset
+        was never being folded anywhere.
+
+   Both passes keep running. They just agree now.
+   ═══════════════════════════════════════════════════════════════════════ */
+(function () {
+  'use strict';
+  /* OPT-IN. This module reaches into the live render/anchor loop, which is
+     where every regression in this bundle came from. It stays off unless
+     window.OMEGA_EXPERIMENTAL === true is set BEFORE this script runs. */
+  if (window.OMEGA_EXPERIMENTAL !== true) return;
+
+
+  var TAG = '[omega/move]';
+
+  function S_() { try { return (typeof S !== 'undefined' && S) ? S : null; } catch (e) { return null; } }
+
+  function viewState() {
+    try { if (typeof _liveMapState === 'function') return _liveMapState(); } catch (e) {}
+    return null;
+  }
+  function canvasSize() {
+    try { if (typeof _getCanvasSize === 'function') return _getCanvasSize(); } catch (e) {}
+    return { w: 1200, h: 800 };
+  }
+  function toGeo(x, y, ms, sz) {
+    try {
+      if (typeof _pxToLatLng !== 'function') return null;
+      return _pxToLatLng(x, y, ms, sz.w, sz.h);
+    } catch (e) { return null; }
+  }
+
+  /* ── the record follows the thing ─────────────────────────────────── */
+
+  function restamp(o) {
+    if (!o) return false;
+    var ms = viewState(); if (!ms) return false;
+    var sz = canvasSize();
+
+    /* Pass two re-derives whatever it cannot find. Leave _auxFt alone:
+       fence and bollard offsets are recorded in feet relative to the
+       anchor and are still correct after a move. */
+    delete o._geoAnchor;
+
+    /* Pass one: a centred shape carries a single-point _geoPts. */
+    if (o.cx != null && o.cy != null) {
+      var g = toGeo(o.cx, o.cy, ms, sz);
+      if (g) { o._geoPts = [{ lat: g.lat, lng: g.lng }]; o._geoCentred = true; }
+      return true;
+    }
+
+    if (o.pts && o.pts.length) {
+      o._geoPts = o.pts.map(function (p) {
+        var q = toGeo(p.x, p.y, ms, sz);
+        return q ? { lat: q.lat, lng: q.lng } : null;
+      });
+      return true;
+    }
+
+    /* A DOM element anchors on its centre. */
+    if (typeof o.x === 'number') {
+      var c = toGeo(o.x + ((o.w || 60) / 2), o.y + ((o.h || o.w || 60) / 2), ms, sz);
+      if (c) { o._geoLat = c.lat; o._geoLng = c.lng; }
+      return true;
+    }
+    return false;
+  }
+
+  function find(id) {
+    var s = S_(); if (!s || !id) return null;
+    var pools = ['shapes', 'elements', 'conduits'], i, j;
+    for (i = 0; i < pools.length; i++) {
+      var arr = s[pools[i]] || [];
+      for (j = 0; j < arr.length; j++) if (arr[j] && arr[j].id === id) return arr[j];
+    }
+    return null;
+  }
+
+  /* Every flag the file uses to mean "something is being moved". */
+  function activeIds() {
+    var s = S_(); if (!s) return [];
+    var ids = [];
+    if (s.asmPartDrag && s.asmPartId) ids.push(s.asmPartId);
+    if (s.shapeDrag) ids.push(s.shapeDrag);
+    if (s.shapeResize) ids.push(s.shapeResize);
+    if (s.shapeRotate) ids.push(s.shapeRotate);
+    if (s.groupDrag && s.groupDrag.length) ids = ids.concat(s.groupDrag);
+    if (s.drag) ids.push(s.drag);
+    if (s.resizing) ids.push(s.resizing);
+    if (s.rotating) ids.push(s.rotating);
+    return ids;
+  }
+
+  /* ── keep the anchor under the cursor while the mouse is down ─────── */
+
+  var looping = false, lastIds = [], startedAt = 0;
+
+  function pump() {
+    if (window.OMEGA_OFF) { looping = false; return; }
+    var ids = activeIds();
+    if (!ids.length || (Date.now() - startedAt) > 60000) { looping = false; return; }
+    lastIds = ids;
+    for (var i = 0; i < ids.length; i++) {
+      var o = find(ids[i]);
+      if (o) { try { restamp(o); } catch (e) {} }
+    }
+    requestAnimationFrame(pump);
+  }
+
+  function kick() {
+    if (looping) return;
+    looping = true;
+    startedAt = Date.now();
+    requestAnimationFrame(pump);
+  }
+
+  function settle() {
+    var ids = activeIds();
+    if (ids.length) lastIds = ids;
+    var take = lastIds.slice();
+    lastIds = [];
+    if (!take.length) return;
+    /* after the app's own mouseup handlers have cleared their flags */
+    setTimeout(function () {
+      for (var i = 0; i < take.length; i++) {
+        var o = find(take[i]);
+        if (o) { try { restamp(o); } catch (e) {} }
+      }
+    }, 0);
+  }
+
+  document.addEventListener('mousedown', kick, true);
+  document.addEventListener('touchstart', kick, true);
+  document.addEventListener('mouseup', settle, true);
+  document.addEventListener('touchend', settle, true);
+
+  /* ── fold the drag offset for centred shapes ──────────────────────── */
+  /* Patch 4 folds tx/ty into pts. An assembly has no pts, so its offset
+     was left dangling in a transform that no anchor knows about. */
+
+  function foldCentred(ids) {
+    var s = S_(); if (!s) return;
+    for (var i = 0; i < ids.length; i++) {
+      var sh = find(ids[i]);
+      if (!sh || sh.cx == null) continue;
+      var dx = sh.tx || 0, dy = sh.ty || 0;
+      if (!dx && !dy) { restamp(sh); continue; }
+      sh.cx += dx; sh.cy += dy;
+      sh.tx = 0; sh.ty = 0;
+      delete sh._tx0; delete sh._ty0;
+      delete sh._gtx0; delete sh._gty0;
+      restamp(sh);
+      try { if (typeof renderShape === 'function') renderShape(sh); } catch (e) {}
+    }
+  }
+
+  function hookShapeEnd() {
+    var orig = window._shapeInteractEnd;
+    if (typeof orig !== 'function' || orig.__omegaMove) return false;
+    var wrapped = function () {
+      try { foldCentred(activeIds()); } catch (e) {}
+      return orig.apply(this, arguments);
+    };
+    wrapped.__omegaMove = true;
+    window._shapeInteractEnd = wrapped;
+    return true;
+  }
+
+  function hookAsmEnd() {
+    var orig = window._asmPartInteractEnd;
+    if (typeof orig !== 'function' || orig.__omegaMove) return false;
+    var wrapped = function () {
+      var s = S_();
+      var id = (s && s.asmPartDrag) ? s.asmPartId : null;
+      var r = orig.apply(this, arguments);
+      if (id) { var o = find(id); if (o) { try { restamp(o); } catch (e) {} } }
+      return r;
+    };
+    wrapped.__omegaMove = true;
+    window._asmPartInteractEnd = wrapped;
+    return true;
+  }
+
+  var n = 0;
+  var iv = setInterval(function () {
+    var a = hookShapeEnd(), b = hookAsmEnd();
+    if (a || b) {
+      if (window.console) console.info(TAG, 'armed — placed assemblies can be dragged and will stay put');
+    }
+    if (++n > 200) clearInterval(iv);
+  }, 300);
+
+  window.OmegaMove = {
+    restamp: restamp,
+
+    /* Re-anchor everything to where it currently sits. Use after moving
+       things around on an older drawing that kept snapping back. */
+    freeAll: function () {
+      var s = S_(); if (!s) return 0;
+      var n = 0;
+      ['shapes', 'elements', 'conduits'].forEach(function (k) {
+        (s[k] || []).forEach(function (o) { if (o && restamp(o)) n++; });
+      });
+      try { if (typeof pushHist === 'function') pushHist(); } catch (e) {}
+      console.info(TAG + ' re-anchored ' + n + ' object(s) to their current positions');
+      return n;
+    },
+
+    status: function () {
+      var s = S_() || {};
+      var shapes = s.shapes || [];
+      var centred = shapes.filter(function (x) { return x && x.cx != null; });
+      var o = {
+        assemblies: shapes.filter(function (x) { return x && x.kind === 'assembly'; }).length,
+        centredShapes: centred.length,
+        anchoredPassOne: centred.filter(function (x) { return !!x._geoPts; }).length,
+        anchoredPassTwo: centred.filter(function (x) { return !!x._geoAnchor; }).length,
+        looseDragOffset: centred.filter(function (x) { return (x.tx || x.ty); }).length,
+        dragging: activeIds().length,
+        liveMap: !!viewState()
+      };
+      o.verdict = !o.centredShapes ? 'Nothing centre-based on the canvas yet.'
+        : !o.liveMap ? 'No live map state — nothing is reprojecting, so nothing will snap back.'
+          : o.looseDragOffset ? o.looseDragOffset + ' assembly(ies) hold an unfolded drag offset. Run OmegaMove.freeAll().'
+            : 'Anchors match current positions. Drags will hold.';
+      if (console.table) console.table(o); else console.log(o);
+      console.info(o.verdict);
+      return o;
+    }
+  };
+})();
+
+
+/* ═══════════════════════════════════════════════════════════════════════
+   OMEGA PATCH — 8 : THE LINE LEFT BEHIND
+   -----------------------------------------------------------------------
+   A conduit in a trench is drawn as two cooperating things:
+
+     renderTrenchCorridors()  the excavation band, and it TAGS each run in
+                              the trench with _inCorridor / _bankSlot /
+                              _bankOf
+     renderConduit()          the coloured run, drawn through _bankedPts(),
+                              which offsets it sideways by _bankSlot * 9px
+                              so parallel runs sit side by side in the
+                              trench rather than on top of each other
+
+   Two things go wrong when you move one, and they compound.
+
+   PROBLEM 1 — THE CHANGE DETECTOR ONLY LOOKS AT THE ENDS
+
+   The existing "trench follows its conduit" module decides whether to
+   redraw from this signature:
+
+       var a = c.pts[0], b = c.pts[c.pts.length-1];
+       out.push(c.id +':'+ round(a.x)+','+round(a.y)
+                     +'-'+ round(b.x)+','+round(b.y)
+                     +'#'+ c.pts.length);
+
+   Its own comment says "first point, last point and count is enough to
+   see any move". It isn't. Drag an INTERIOR vertex 160 px and:
+
+       before   C4:100,100-500,100#3
+       after    C4:100,100-500,100#3
+
+   Identical. The corridor is never told to redraw, so the excavation band
+   stays where it was. Dragging an END vertex does change the signature,
+   which is why the bug looks intermittent — it depends which handle you
+   grabbed.
+
+   PROBLEM 2 — RE-TAGGING IS NOT RE-DRAWING
+
+   renderTrenchCorridors() clears and re-assigns _inCorridor, _bankSlot
+   and _bankOf on its members, then returns. It never calls
+   renderConduit(). So a run whose banking changed keeps the lateral
+   offset it was last DRAWN with:
+
+       3 runs sharing a trench   slots [-1, 0, +1]   offsets [-9, 0, +9] px
+       one moves away, 2 remain  slots [-0.5, +0.5]  offsets [-4.5, +4.5] px
+
+   The two that stayed are now drawn 4.5 px from where they belong, and
+   the one that left is still drawn on the old centreline. That is the
+   line sitting underneath.
+
+   FIX
+
+     1. Hash EVERY vertex, plus type and route, so any move is seen —
+        interior vertices included.
+     2. After the corridor rebuilds, re-render exactly those runs whose
+        banking actually changed, so the drawn geometry matches the new
+        trench.
+
+   The existing module keeps running; this drives it correctly and cleans
+   up after it.
+   ═══════════════════════════════════════════════════════════════════════ */
+(function () {
+  'use strict';
+  /* OPT-IN. This module reaches into the live render/anchor loop, which is
+     where every regression in this bundle came from. It stays off unless
+     window.OMEGA_EXPERIMENTAL === true is set BEFORE this script runs. */
+  if (window.OMEGA_EXPERIMENTAL !== true) return;
+
+
+  var TAG = '[omega/trench]';
+  function S_() { try { return (typeof S !== 'undefined' && S) ? S : null; } catch (e) { return null; } }
+
+  /* ── complete change detection ────────────────────────────────────── */
+  /* A rolling 32-bit hash over every vertex. Cheap enough to run
+     continuously: 50 runs of 10 points is 500 iterations. */
+  function hash() {
+    var s = S_(); if (!s) return 0;
+    var h = 2166136261, cs = s.conduits || [];
+    function mix(v) { h ^= v; h = (h * 16777619) >>> 0; }
+    function mixStr(str) {
+      str = String(str == null ? '' : str);
+      for (var i = 0; i < str.length; i++) mix(str.charCodeAt(i));
+    }
+    mix(cs.length);
+    for (var i = 0; i < cs.length; i++) {
+      var c = cs[i]; if (!c) continue;
+      mixStr(c.id);
+      mixStr(c.condType);
+      mixStr(c.route);
+      var pts = c.pts || [];
+      mix(pts.length);
+      for (var j = 0; j < pts.length; j++) {
+        mix(Math.round(pts[j].x) | 0);
+        mix(Math.round(pts[j].y) | 0);
+      }
+    }
+    return h;
+  }
+
+  /* ── re-render whatever the rebuild re-banked ─────────────────────── */
+
+  function bankState(c) {
+    return (c._inCorridor ? 1 : 0) + ':' + (c._bankSlot == null ? 'n' : c._bankSlot)
+      + ':' + (c._bankOf == null ? 'n' : c._bankOf);
+  }
+
+  var busy = false;
+
+  function rebuild() {
+    if (busy) return 0;
+    var s = S_(); if (!s) return 0;
+    if (typeof renderTrenchCorridors !== 'function') return 0;
+    busy = true;
+    var redrawn = 0;
+    try {
+      var cs = (s.conduits || []).filter(Boolean);
+      var before = cs.map(bankState);
+
+      renderTrenchCorridors();               /* re-tags, does not re-draw */
+
+      for (var i = 0; i < cs.length; i++) {
+        if (bankState(cs[i]) === before[i]) continue;
+        try {
+          if (typeof renderConduit === 'function') { renderConduit(cs[i]); redrawn++; }
+        } catch (e) {}
+      }
+      /* The runs that did not change banking may still have moved, and
+         the corridor rebuild is the moment their node should agree with
+         c.pts. Cheap enough to keep them all honest. */
+      /* Deliberately NOT calling _refreshConduitStyle() here: it rebuilds
+         the corridors and repaints every run, which is exactly the work
+         this function just did surgically. Calling it would undo the point
+         of only touching what changed. */
+    } catch (e) {} finally { busy = false; }
+    return redrawn;
+  }
+
+  var last = null, syncs = 0, rebanks = 0, deferred = false, wasBatching = false;
+
+  /* A guided build places several runs inside one condBatch(). The file is
+     explicit that render paths must stay out of the way during that:
+
+         "True while a bulk operation is in flight - render paths check
+          this and skip their own repaint, deferring to the single flush
+          at the end."   (_condBatching, line 10007)
+
+     autoWireConduit() honours it. This module did not, so a 150 ms timer
+     was rebuilding corridors and re-banking every run in the middle of a
+     bulk placement, moving runs that the batch had not finished writing.
+     Stay out until the depth returns to zero, then sync once. */
+  function batching() {
+    try { return typeof _condBatching === 'function' && _condBatching(); } catch (e) { return false; }
+  }
+
+  function check(force) {
+    if (window.OMEGA_OFF) return false;
+    if (batching()) { deferred = true; wasBatching = true; return false; }
+    if (wasBatching) { wasBatching = false; force = true; }   /* the batch just closed */
+    var h = hash();
+    if (!force && !deferred && h === last) return false;
+    deferred = false;
+    last = h;
+    syncs++;
+    rebanks += rebuild();
+    return true;
+  }
+
+  /* Continuously, but only doing work when a vertex actually moved. */
+  setInterval(function () { check(false); }, 150);
+
+  /* And immediately on release, so the trench lands with the conduit
+     rather than up to 150 ms later. */
+  ['mouseup', 'touchend', 'pointerup'].forEach(function (ev) {
+    document.addEventListener(ev, function () {
+      setTimeout(function () { check(false); }, 16);
+    }, true);
+  });
+
+  if (window.console) console.info(TAG, 'armed — every vertex watched, banking re-drawn after a rebuild');
+
+  window.OmegaTrenchFix = {
+    sync: function () { return check(true); },
+    status: function () {
+      var s = S_() || {};
+      var cs = (s.conduits || []).filter(Boolean);
+      var g = document.getElementById('trench-corridors');
+      var banked = cs.filter(function (c) { return c._inCorridor; });
+      var interior = cs.filter(function (c) { return c.pts && c.pts.length > 2; });
+      var o = {
+        conduits: cs.length,
+        inATrench: banked.length,
+        withInteriorVertices: interior.length,
+        corridorDrawn: !!g,
+        corridorSegments: g ? g.children.length : 0,
+        syncsThisSession: syncs,
+        conduitsRebankedAndRedrawn: rebanks,
+        bulkOperationInFlight: batching(),
+        syncDeferred: deferred
+      };
+      o.verdict = !cs.length ? 'No conduit runs.'
+        : !o.corridorDrawn ? 'No corridor drawn — trenching may be off for these runs.'
+          : o.withInteriorVertices
+            ? o.withInteriorVertices + ' run(s) have interior vertices; those are the drags the old detector missed.'
+            : 'Corridor tracking ' + cs.length + ' run(s).';
+      if (console.table) console.table(o); else console.log(o);
+      console.info(o.verdict);
+      return o;
+    }
+  };
+})();
+
+
+/* ═══════════════════════════════════════════════════════════════════════
    OMEGA PATCH — 12 : renderEl LEAVES ITS OLD NODE BEHIND
    -----------------------------------------------------------------------
    Three renderers, two contracts.
@@ -54009,6 +54021,11 @@ window._crmToastModal=_crmToastModal;
    ═══════════════════════════════════════════════════════════════════════ */
 (function () {
   'use strict';
+  /* OPT-IN. This module reaches into the live render/anchor loop, which is
+     where every regression in this bundle came from. It stays off unless
+     window.OMEGA_EXPERIMENTAL === true is set BEFORE this script runs. */
+  if (window.OMEGA_EXPERIMENTAL !== true) return;
+
 
   var TAG = '[omega/renderel]';
   var removed = 0, calls = 0;
