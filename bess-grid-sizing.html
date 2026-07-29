@@ -1,0 +1,1007 @@
+<!DOCTYPE html>
+<!--
+  ClearSky-OMEGA :: BESS Grid-Capacity Sizing & Pro Forma
+  Single-file, ES5 only, no build step. Standalone (no Firebase dependency).
+  Register in omega-tools.js as TIER.STANDARD (or DELUXE) under category "analysis".
+  Logo: copy clearsky-omega-mark-white.png into repo root.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>ClearSky OMEGA — BESS Sizing &amp; Pro Forma</title>
+<style>
+:root{
+  --navy:#0a1a2f; --navy2:#12293f; --ink:#0f2233; --mute:#64809a;
+  --teal:#19b8a6; --blue:#2f6fed; --amber:#f0a500; --red:#e05252; --green:#2fa36b;
+  --line:#dbe5ee; --bg:#eef3f7; --card:#ffffff;
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;padding:0;background:var(--bg);color:var(--ink);
+  font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+  font-size:14px;line-height:1.45;-webkit-text-size-adjust:100%}
+.topbar{background:var(--navy);color:#fff;padding:10px 16px;display:flex;align-items:center;gap:10px;
+  position:sticky;top:0;z-index:50;box-shadow:0 2px 10px rgba(10,26,47,.25)}
+.tb-omega{height:22px;width:auto;display:block}
+.tb-logo-txt{font-weight:700;letter-spacing:.5px;font-size:15px}
+.tb-logo-txt span{color:var(--teal)}
+.tb-sub{margin-left:auto;font-size:12px;color:#9fc0d6;font-weight:600;letter-spacing:.4px;text-transform:uppercase}
+.wrap{max-width:1240px;margin:0 auto;padding:14px}
+.tabs{display:flex;gap:4px;overflow-x:auto;padding-bottom:8px;-webkit-overflow-scrolling:touch}
+.tab{flex:0 0 auto;padding:8px 14px;border-radius:20px;background:#dde7ef;color:#41627e;font-weight:600;
+  font-size:13px;cursor:pointer;border:1px solid transparent;user-select:none}
+.tab.on{background:var(--navy);color:#fff;border-color:var(--navy)}
+.pane{display:none}
+.pane.on{display:block}
+.card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:14px;margin-bottom:12px}
+.card h3{margin:0 0 10px;font-size:13px;letter-spacing:.7px;text-transform:uppercase;color:var(--mute)}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:10px}
+.f{display:flex;flex-direction:column;gap:4px}
+.f label{font-size:11.5px;font-weight:600;color:#4b6a85}
+.f .hint{font-size:10.5px;color:#8aa3b8;font-weight:400}
+input[type=text],input[type=number],select,textarea{width:100%;padding:8px 9px;border:1px solid var(--line);
+  border-radius:7px;font-size:15px;background:#fff;color:var(--ink);font-family:inherit}
+input:focus,select:focus,textarea:focus{outline:2px solid var(--teal);outline-offset:-1px;border-color:var(--teal)}
+.chk{display:flex;align-items:center;gap:8px;font-size:13px;font-weight:600;color:#4b6a85;padding-top:16px}
+.chk input{width:18px;height:18px}
+.btn{display:inline-block;padding:10px 16px;border-radius:8px;border:0;background:var(--navy);color:#fff;
+  font-weight:700;font-size:14px;cursor:pointer;font-family:inherit}
+.btn.go{background:var(--teal);color:#04231f}
+.btn.alt{background:#dde7ef;color:#2b4a63}
+.btn:active{transform:translateY(1px)}
+.bar{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:10px 0}
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px}
+.kpi{background:#fff;border:1px solid var(--line);border-left:4px solid var(--teal);border-radius:8px;padding:10px 12px}
+.kpi .k{font-size:10.5px;letter-spacing:.6px;text-transform:uppercase;color:var(--mute);font-weight:700}
+.kpi .v{font-size:21px;font-weight:700;margin-top:2px;letter-spacing:-.5px}
+.kpi .s{font-size:11px;color:var(--mute)}
+.kpi.b{border-left-color:var(--blue)} .kpi.a{border-left-color:var(--amber)}
+.kpi.g{border-left-color:var(--green)} .kpi.r{border-left-color:var(--red)}
+table{width:100%;border-collapse:collapse;font-size:12.5px}
+th,td{padding:6px 8px;border-bottom:1px solid var(--line);text-align:right;white-space:nowrap}
+th{background:#f3f7fa;font-size:10.5px;text-transform:uppercase;letter-spacing:.5px;color:var(--mute);
+  position:sticky;top:0;font-weight:700}
+th:first-child,td:first-child{text-align:left}
+tr.best td{background:#e6faf6;font-weight:700}
+.scroll{overflow:auto;max-height:460px;-webkit-overflow-scrolling:touch;border:1px solid var(--line);border-radius:8px}
+canvas{width:100%;height:auto;display:block}
+.note{font-size:12px;color:#5b7a92}
+.msg{padding:9px 11px;border-radius:8px;font-size:12.5px;margin-bottom:10px;font-weight:600}
+.msg.ok{background:#e4f7ef;color:#1c6a48} .msg.warn{background:#fff3d9;color:#8a6100}
+.msg.err{background:#fde8e8;color:#9a2b2b} .msg.info{background:#e8f0fd;color:#28477d}
+.pill{display:inline-block;padding:2px 8px;border-radius:12px;font-size:10.5px;font-weight:700;
+  background:#e3edf5;color:#3d6180;margin-left:6px}
+.legend{font-size:11px;color:var(--mute);margin-top:6px}
+.legend i{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:4px;vertical-align:-1px}
+.constraint{display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px dashed var(--line);font-size:13px}
+.constraint b{font-variant-numeric:tabular-nums}
+.constraint.bind{background:#fff6e6;margin:0 -8px;padding:6px 8px;border-radius:5px}
+@media print{.topbar,.tabs,.bar,.btn{display:none!important}.pane{display:block!important}.card{break-inside:avoid}}
+@media (max-width:600px){.wrap{padding:10px}.kpi .v{font-size:18px}}
+</style>
+<script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+<script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-auth.js"></script>
+<script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-firestore.js"></script>
+<script src="/config.js"></script>
+<script src="/omega-tools.js"></script>
+</head>
+<body>
+
+<div class="topbar">
+  <img src="/clearsky-omega-mark-white.png" alt="OMEGA" class="tb-omega" onerror="this.style.display='none'">
+  <span class="tb-logo-txt">Clear<span>Sky</span> OMEGA</span>
+  <span class="tb-sub">Feeder Capacity &amp; BESS Sizing</span>
+</div>
+
+<div class="wrap">
+
+<div class="tabs">
+  <div class="tab on" data-p="p1">1 · Grid Capacity</div>
+  <div class="tab" data-p="p2">2 · Load (8760)</div>
+  <div class="tab" data-p="p3">3 · Rates</div>
+  <div class="tab" data-p="p4">4 · Cost &amp; Finance</div>
+  <div class="tab" data-p="p5">5 · Results</div>
+</div>
+
+<!-- ============ PANE 1 : GRID ============ -->
+<div class="pane on" id="p1">
+  <div class="card">
+    <h3>Distribution Feeder / Source</h3>
+    <div class="grid">
+      <div class="f"><label>Feeder voltage (kV, line-line)</label><input type="number" id="fdrKV" value="13.2" step="0.1"></div>
+      <div class="f"><label>Feeder conductor rating (A)</label><input type="number" id="fdrA" value="600" step="10"></div>
+      <div class="f"><label>System power factor</label><input type="number" id="pf" value="0.95" step="0.01"></div>
+      <div class="f"><label>Utility planning margin (%)<span class="hint">Reserve held back by the utility</span></label><input type="number" id="fdrMargin" value="15" step="1"></div>
+      <div class="f"><label>Existing feeder peak load (kW)<span class="hint">All customers, excluding this site</span></label><input type="number" id="fdrPeak" value="4200" step="50"></div>
+      <div class="f"><label>Min daytime feeder load (kW)<span class="hint">Backfeed / reverse-flow screen</span></label><input type="number" id="fdrMin" value="1400" step="50"></div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h3>Site Service &amp; Interconnection</h3>
+    <div class="grid">
+      <div class="f"><label>Service voltage (V, line-line)</label><input type="number" id="svcV" value="480" step="1"></div>
+      <div class="f"><label>Main breaker / service rating (A)</label><input type="number" id="svcA" value="4000" step="100"></div>
+      <div class="f"><label>Service continuous derate (%)<span class="hint">20% = NEC 125% continuous rule</span></label><input type="number" id="svcDerate" value="20" step="1"></div>
+      <div class="f"><label>Interconnection limit override (kW)<span class="hint">0 = none. Utility-stated cap.</span></label><input type="number" id="icLimit" value="0" step="50"></div>
+      <div class="f">
+        <label>Export / discharge to grid</label>
+        <select id="exportMode">
+          <option value="none">Non-export (behind the meter only)</option>
+          <option value="limited">Limited export</option>
+          <option value="full">Full export allowed</option>
+        </select>
+      </div>
+      <div class="f"><label>Export limit (kW)<span class="hint">Used when Limited export</span></label><input type="number" id="exportKW" value="1000" step="50"></div>
+    </div>
+    <div class="bar"><button class="btn alt" id="btnGrid">Calculate grid headroom</button></div>
+    <div id="gridOut"></div>
+  </div>
+</div>
+
+<!-- ============ PANE 2 : LOAD ============ -->
+<div class="pane" id="p2">
+  <div class="card">
+    <h3>8760 Interval Data</h3>
+    <div class="grid">
+      <div class="f"><label>Interval length (minutes)</label>
+        <select id="ivl"><option value="60">60 (hourly, 8760 rows)</option><option value="30">30 (17,520 rows)</option><option value="15">15 (35,040 rows)</option></select></div>
+      <div class="f"><label>Value units</label>
+        <select id="units"><option value="kw">kW (average demand)</option><option value="kwh">kWh per interval</option><option value="mw">MW</option></select></div>
+      <div class="f"><label>Data column<span class="hint">Auto = widest numeric column</span></label><input type="text" id="colIdx" value="auto"></div>
+      <div class="f"><label>Load CSV file</label><input type="file" id="fileIn" accept=".csv,.txt"></div>
+    </div>
+    <div class="f" style="margin-top:10px"><label>…or paste values (one per line, or CSV)</label>
+      <textarea id="pasteIn" rows="4" placeholder="1250&#10;1310&#10;1288&#10;..."></textarea></div>
+    <div class="bar">
+      <button class="btn alt" id="btnParse">Load pasted data</button>
+      <button class="btn alt" id="btnClear">Clear profile</button>
+    </div>
+    <div id="loadOut"></div>
+  </div>
+
+  <div class="card">
+    <h3>No interval data? Build a synthetic profile</h3>
+    <div class="grid">
+      <div class="f"><label>Site peak demand (kW)</label><input type="number" id="synPeak" value="1800" step="50"></div>
+      <div class="f"><label>Load factor (0–1)<span class="hint">Annual avg ÷ peak</span></label><input type="number" id="synLF" value="0.55" step="0.01"></div>
+      <div class="f"><label>Facility type</label>
+        <select id="synShape">
+          <option value="office">Office / commercial</option>
+          <option value="ind">Industrial 2-shift</option>
+          <option value="retail">Retail / grocery</option>
+          <option value="flat">Flat / continuous</option>
+          <option value="dc">Data center</option>
+        </select></div>
+    </div>
+    <div class="bar"><button class="btn alt" id="btnSynth">Generate profile</button></div>
+  </div>
+
+  <div class="card"><h3>Load duration curve</h3><canvas id="cvLDC" width="1000" height="300"></canvas>
+    <div class="legend"><i style="background:#2f6fed"></i>Site load, sorted high → low</div></div>
+</div>
+
+<!-- ============ PANE 3 : RATES ============ -->
+<div class="pane" id="p3">
+  <div class="card">
+    <h3>Tariff — Demand</h3>
+    <div class="grid">
+      <div class="f"><label>Facility demand charge ($/kW-mo)</label><input type="number" id="dcFac" value="9.50" step="0.25"></div>
+      <div class="f"><label>On-peak demand charge ($/kW-mo)</label><input type="number" id="dcOn" value="6.00" step="0.25"></div>
+      <div class="f"><label>Demand ratchet (%)<span class="hint">0 = no ratchet</span></label><input type="number" id="ratchet" value="0" step="5"></div>
+    </div>
+  </div>
+  <div class="card">
+    <h3>Tariff — Energy &amp; TOU</h3>
+    <div class="grid">
+      <div class="f"><label>On-peak energy ($/kWh)</label><input type="number" id="eOn" value="0.135" step="0.005"></div>
+      <div class="f"><label>Off-peak energy ($/kWh)</label><input type="number" id="eOff" value="0.058" step="0.005"></div>
+      <div class="f"><label>On-peak start hour</label><input type="number" id="onStart" value="14" step="1"></div>
+      <div class="f"><label>On-peak end hour</label><input type="number" id="onEnd" value="20" step="1"></div>
+      <div class="f"><label>Energy escalation (%/yr)</label><input type="number" id="escEnergy" value="2.5" step="0.25"></div>
+    </div>
+  </div>
+  <div class="card">
+    <h3>Wholesale / Program Stack</h3>
+    <div class="grid">
+      <div class="f"><label>Capacity ($/kW-yr)<span class="hint">PJM RA / MISO ZRC / ISO-NE FCM</span></label><input type="number" id="capYr" value="55" step="5"></div>
+      <div class="f"><label>Capacity qualification (%)<span class="hint">4-hr rule derate for shorter durations</span></label><input type="number" id="capQual" value="100" step="5"></div>
+      <div class="f"><label>Frequency regulation ($/kW-yr)</label><input type="number" id="regYr" value="0" step="5"></div>
+      <div class="f"><label>Demand response / DLC ($/kW-yr)</label><input type="number" id="drYr" value="0" step="5"></div>
+      <div class="f"><label>Other / resilience credit ($/yr)</label><input type="number" id="otherYr" value="0" step="1000"></div>
+      <div class="f"><label>Annual cycle budget<span class="hint">Warranty full-equivalent cycles/yr</span></label><input type="number" id="cycBudget" value="365" step="5"></div>
+    </div>
+  </div>
+</div>
+
+<!-- ============ PANE 4 : COST & FINANCE ============ -->
+<div class="pane" id="p4">
+  <div class="card">
+    <h3>Capital Cost</h3>
+    <div class="grid">
+      <div class="f"><label>DC block ($/kWh)</label><input type="number" id="cKwh" value="111.50" step="0.5"></div>
+      <div class="f"><label>PCS ($/kW)</label><input type="number" id="cKw" value="72" step="1"></div>
+      <div class="f"><label>BOS + civil ($/kW)</label><input type="number" id="cBos" value="95" step="5"></div>
+      <div class="f"><label>EPC / install ($/kW)</label><input type="number" id="cEpc" value="140" step="5"></div>
+      <div class="f"><label>Interconnection &amp; utility (lump $)</label><input type="number" id="cIc" value="150000" step="10000"></div>
+      <div class="f"><label>Development / soft cost (%)</label><input type="number" id="cSoft" value="8" step="1"></div>
+      <div class="f"><label>Contingency (%)</label><input type="number" id="cCont" value="7" step="1"></div>
+      <div class="f"><label>O&amp;M ($/kW-yr)</label><input type="number" id="omKw" value="8.50" step="0.5"></div>
+      <div class="f"><label>O&amp;M escalation (%/yr)</label><input type="number" id="omEsc" value="2.5" step="0.25"></div>
+    </div>
+  </div>
+  <div class="card">
+    <h3>Performance</h3>
+    <div class="grid">
+      <div class="f"><label>Round-trip efficiency (%)</label><input type="number" id="rte" value="87" step="1"></div>
+      <div class="f"><label>Usable depth of discharge (%)</label><input type="number" id="dod" value="90" step="1"></div>
+      <div class="f"><label>Capacity fade (%/yr)</label><input type="number" id="fade" value="2.2" step="0.1"></div>
+      <div class="f"><label>Augmentation year<span class="hint">0 = none</span></label><input type="number" id="augYr" value="10" step="1"></div>
+      <div class="f"><label>Augmentation cost ($/kWh restored)</label><input type="number" id="augCost" value="60" step="5"></div>
+    </div>
+  </div>
+  <div class="card">
+    <h3>Financial Assumptions</h3>
+    <div class="grid">
+      <div class="f"><label>Analysis term (yrs)</label><input type="number" id="term" value="20" step="1"></div>
+      <div class="f"><label>Discount rate (%)</label><input type="number" id="disc" value="9" step="0.5"></div>
+      <div class="f"><label>ITC rate (%)<span class="hint">30 base / 40 / 50 with adders</span></label><input type="number" id="itc" value="40" step="5"></div>
+      <div class="f"><label>ITC-eligible basis (%)</label><input type="number" id="itcBasis" value="95" step="5"></div>
+      <div class="f"><label>Combined tax rate (%)</label><input type="number" id="taxRate" value="26" step="1"></div>
+      <div class="f"><label>IRR hurdle (%)<span class="hint">Used to pick recommended size</span></label><input type="number" id="hurdle" value="12" step="0.5"></div>
+      <div class="chk"><input type="checkbox" id="afterTax" checked><span>After-tax (MACRS 5-yr + ITC)</span></div>
+      <div class="chk"><input type="checkbox" id="useDebt"><span>Include debt</span></div>
+      <div class="f"><label>Debt (% of capex)</label><input type="number" id="ltv" value="60" step="5"></div>
+      <div class="f"><label>Debt rate (%)</label><input type="number" id="debtRate" value="7.5" step="0.25"></div>
+      <div class="f"><label>Debt tenor (yrs)</label><input type="number" id="debtTerm" value="12" step="1"></div>
+    </div>
+  </div>
+  <div class="card">
+    <h3>Size Sweep</h3>
+    <div class="grid">
+      <div class="f"><label>Durations to test (hrs, comma sep)</label><input type="text" id="durList" value="1,2,4,6,8"></div>
+      <div class="f"><label>Power steps</label><input type="number" id="pSteps" value="10" step="1"></div>
+      <div class="f"><label>Min power (% of grid max)</label><input type="number" id="pMinPct" value="10" step="5"></div>
+    </div>
+  </div>
+</div>
+
+<!-- ============ PANE 5 : RESULTS ============ -->
+<div class="pane" id="p5">
+  <div class="bar">
+    <button class="btn go" id="btnRun">Run analysis</button>
+    <button class="btn alt" id="btnCsv">Export pro forma CSV</button>
+    <button class="btn alt" id="btnSave">Save to OMEGA</button>
+    <button class="btn alt" id="btnPrint">Print / PDF</button>
+    <span id="cloudStat"></span>
+  </div>
+  <div id="status"></div>
+  <div id="results"></div>
+</div>
+
+<div class="card" style="font-size:11.5px;color:#6a839a">
+  <b>Method.</b> Grid headroom is screened against feeder thermal capacity, utility planning margin, service
+  conductor/breaker rating, and any stated interconnection or export cap. Peak shaving is dispatched interval-by-interval
+  against a per-month target found by bisection, with charging constrained so the battery never sets a new peak.
+  Residual warranty cycles are credited to TOU arbitrage at the on-peak/off-peak spread net of round-trip losses.
+  Later-year revenue is scaled linearly by retained capacity rather than re-dispatched each year. This is a screening model — not a substitute for a utility interconnection study or an ISO capacity qualification review.
+</div>
+
+</div><!--/wrap-->
+
+<script>
+/* =======================================================================
+   ClearSky-OMEGA BESS Sizing & Pro Forma  —  ES5 ONLY
+   ======================================================================= */
+(function(){
+'use strict';
+
+var S = { load:null, dt:1, n:0, midx:null, mbounds:null, proforma:null, sweep:null, sel:null, grid:null };
+var MDAYS = [31,28,31,30,31,30,31,31,30,31,30,31];
+var MNAME = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+var MACRS = [0.20,0.32,0.192,0.1152,0.1152,0.0576];
+var SQ3 = 1.7320508075688772;
+
+/* ---------- helpers ---------- */
+function $(id){ return document.getElementById(id); }
+function nv(id,d){ var e=$(id); if(!e) return d; var v=parseFloat(e.value); return isFinite(v)?v:d; }
+function sv(id){ var e=$(id); return e?e.value:''; }
+function ck(id){ var e=$(id); return e?!!e.checked:false; }
+function fmt(n,d){
+  if(n===null||n===undefined||!isFinite(n)) return '—';
+  d = (d===undefined)?0:d;
+  var s = Math.abs(n).toFixed(d), p = s.split('.');
+  p[0] = p[0].replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+  return (n<0?'-':'') + p.join('.');
+}
+function usd(n,d){ if(!isFinite(n)) return '—'; return (n<0?'-$':'$')+fmt(Math.abs(n), d===undefined?0:d); }
+function pc(n,d){ return isFinite(n) ? fmt(n*100, d===undefined?1:d)+'%' : '—'; }
+function say(html){ $('status').innerHTML = html; }
+function esc(s){ return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;'); }
+
+/* ---------- tabs ---------- */
+var tabs = document.querySelectorAll('.tab');
+for (var t=0;t<tabs.length;t++){
+  tabs[t].onclick = (function(el){ return function(){
+    var i, all = document.querySelectorAll('.tab'), panes = document.querySelectorAll('.pane');
+    for(i=0;i<all.length;i++) all[i].className='tab';
+    for(i=0;i<panes.length;i++) panes[i].className='pane';
+    el.className='tab on';
+    $(el.getAttribute('data-p')).className='pane on';
+    window.scrollTo(0,0);
+  };})(tabs[t]);
+}
+
+/* ================== GRID HEADROOM ================== */
+function calcGrid(){
+  var kV=nv('fdrKV',13.2), A=nv('fdrA',600), pf=nv('pf',0.95), mar=nv('fdrMargin',15)/100;
+  var fdrCapKVA = SQ3*kV*A;                    // kVA
+  var fdrCapKW  = fdrCapKVA*pf;
+  var fdrExist  = nv('fdrPeak',0);
+  var fdrHead   = Math.max(0, fdrCapKW*(1-mar) - fdrExist);
+  var fdrMin    = nv('fdrMin',0);
+
+  var svcV=nv('svcV',480), svcA=nv('svcA',2000), der=nv('svcDerate',20)/100;
+  var svcCapKW = SQ3*svcV*svcA*pf/1000*(1-der);
+
+  var sitePeak = S.load ? maxOf(S.load) : 0;
+  var svcHead  = Math.max(0, svcCapKW - sitePeak);
+
+  var mode = sv('exportMode');
+  var expCap = mode==='none' ? 0 : (mode==='limited' ? nv('exportKW',0) : Math.min(fdrHead, fdrMin*0.67));
+  var ic = nv('icLimit',0);
+
+  var chargeMax = Math.min(svcHead, fdrHead);
+  if (ic>0) chargeMax = Math.min(chargeMax, ic);
+  var dischargeMax = sitePeak>0 ? sitePeak : svcCapKW;      // BTM discharge can't exceed site load
+  if (mode!=='none') dischargeMax = Math.max(dischargeMax, expCap);
+  if (ic>0) dischargeMax = Math.min(dischargeMax, ic);
+
+  var nameplate = Math.max(0, Math.min(chargeMax, dischargeMax));
+
+  var binder = 'service headroom';
+  if (fdrHead <= svcHead) binder = 'feeder headroom';
+  if (ic>0 && ic<=Math.min(fdrHead,svcHead)) binder = 'stated interconnection cap';
+  if (dischargeMax < chargeMax) binder = (mode==='none' ? 'site load (non-export)' : 'export limit');
+
+  S.grid = { fdrCapKW:fdrCapKW, fdrHead:fdrHead, svcCapKW:svcCapKW, svcHead:svcHead, sitePeak:sitePeak,
+             chargeMax:chargeMax, dischargeMax:dischargeMax, nameplate:nameplate, binder:binder, expCap:expCap,
+             fdrMin:fdrMin, mode:mode };
+  return S.grid;
+}
+function rowC(k,v,bind){ return '<div class="constraint'+(bind?' bind':'')+'"><span>'+k+'</span><b>'+v+'</b></div>'; }
+
+function showGrid(){
+  var g = calcGrid();
+  var h = '';
+  if(!S.load) h += '<div class="msg info">No interval data loaded yet — site peak is unknown, so the service headroom and discharge limits below are provisional. Load an 8760 on tab 2 for a firm number.</div>';
+  h += rowC('Feeder thermal capacity', fmt(g.fdrCapKW,0)+' kW');
+  h += rowC('Feeder headroom after planning margin', fmt(g.fdrHead,0)+' kW', g.binder==='feeder headroom');
+  h += rowC('Service capacity (derated)', fmt(g.svcCapKW,0)+' kW');
+  h += rowC('Site peak from interval data', g.sitePeak?fmt(g.sitePeak,0)+' kW':'not loaded');
+  h += rowC('Service headroom for charging', fmt(g.svcHead,0)+' kW', g.binder==='service headroom');
+  h += rowC('Max charging power', fmt(g.chargeMax,0)+' kW');
+  h += rowC('Max discharging power', fmt(g.dischargeMax,0)+' kW');
+  h += '<div class="kpis" style="margin-top:12px"><div class="kpi"><div class="k">Max BESS the site can accept</div><div class="v">'+
+       fmt(g.nameplate,0)+' kW</div><div class="s">Binding constraint: '+g.binder+'</div></div></div>';
+  if (g.mode!=='none' && g.expCap > g.fdrMin*0.67 && g.fdrMin>0)
+    h += '<div class="msg warn">Export of '+fmt(g.expCap,0)+' kW exceeds 67% of minimum daytime feeder load ('+fmt(g.fdrMin,0)+' kW). Expect a supplemental review screen on reverse power flow.</div>';
+  $('gridOut').innerHTML = h;
+}
+$('btnGrid').onclick = showGrid;
+
+/* ================== LOAD DATA ================== */
+function maxOf(a){ var m=-1e18,i; for(i=0;i<a.length;i++) if(a[i]>m) m=a[i]; return m; }
+function meanOf(a){ var s=0,i; for(i=0;i<a.length;i++) s+=a[i]; return s/a.length; }
+
+function buildIndex(n, dt){
+  var arr = new Array(n), bounds = [], idx=0, m, k;
+  for(m=0;m<12;m++){
+    var start = idx;
+    var steps = Math.round(MDAYS[m]*24/dt);
+    for(k=0;k<steps && idx<n;k++){ arr[idx++]=m; }
+    bounds.push([start, idx]);
+  }
+  while(idx<n){ arr[idx]=11; bounds[11][1]=++idx; }
+  S.midx = arr; S.mbounds = bounds;
+}
+
+function parseText(txt){
+  var lines = txt.replace(/\r/g,'').split('\n');
+  var rows = [], i, j;
+  for(i=0;i<lines.length;i++){
+    var ln = lines[i];
+    if(!ln || !ln.replace(/[\s,;]/g,'')) continue;
+    rows.push(ln.split(/[,;\t]/));
+  }
+  if(!rows.length) return null;
+
+  var want = sv('colIdx');
+  var col;
+  if(want!=='auto' && isFinite(parseInt(want,10))) {
+    col = parseInt(want,10);
+  } else {
+    var wide = rows[Math.min(5, rows.length-1)].length, counts=[], c;
+    for(c=0;c<wide;c++) counts.push(0);
+    for(i=0;i<rows.length;i++) for(c=0;c<wide && c<rows[i].length;c++){
+      var vv = parseFloat(rows[i][c]); if(isFinite(vv)) counts[c]++;
+    }
+    col = 0; var bestn=-1;
+    for(c=0;c<wide;c++) if(counts[c]>=bestn){ bestn=counts[c]; col=c; }
+  }
+
+  var out=[];
+  for(i=0;i<rows.length;i++){
+    if(col>=rows[i].length) continue;
+    var v = parseFloat(String(rows[i][col]).replace(/["'\s]/g,''));
+    if(isFinite(v)) out.push(v);
+  }
+  return out.length ? out : null;
+}
+
+function ingest(vals){
+  var dt = nv('ivl',60)/60;
+  var u  = sv('units'), i;
+  for(i=0;i<vals.length;i++){
+    if(u==='mw') vals[i] = vals[i]*1000;
+    else if(u==='kwh') vals[i] = vals[i]/dt;
+    if(vals[i] < 0) vals[i] = 0;
+  }
+  var expect = Math.round(8760/dt);
+  var msg = '';
+  if(vals.length > expect){ vals = vals.slice(0, expect); msg = 'Trimmed to '+fmt(expect,0)+' intervals.'; }
+  else if(vals.length < expect){
+    msg = 'Only '+fmt(vals.length,0)+' intervals found — expected '+fmt(expect,0)+'. Padded by repeating the profile.';
+    var src = vals.slice(0), k=0;
+    while(vals.length < expect){ vals.push(src[k % src.length]); k++; }
+  }
+  S.load = vals; S.dt = dt; S.n = vals.length;
+  buildIndex(S.n, dt);
+
+  var pk = maxOf(vals), av = meanOf(vals);
+  var h = '<div class="msg '+(msg?'warn':'ok')+'">Profile loaded: '+fmt(S.n,0)+' intervals @ '+fmt(dt*60,0)+' min. '+esc(msg)+'</div>';
+  h += '<div class="kpis"><div class="kpi"><div class="k">Peak demand</div><div class="v">'+fmt(pk,0)+' kW</div></div>'+
+       '<div class="kpi b"><div class="k">Average demand</div><div class="v">'+fmt(av,0)+' kW</div></div>'+
+       '<div class="kpi a"><div class="k">Load factor</div><div class="v">'+fmt(av/pk,2)+'</div></div>'+
+       '<div class="kpi g"><div class="k">Annual consumption</div><div class="v">'+fmt(av*8760/1000,0)+' MWh</div></div></div>';
+  $('loadOut').innerHTML = h;
+  drawLDC();
+  showGrid();
+}
+
+$('btnParse').onclick = function(){
+  var v = parseText(sv('pasteIn'));
+  if(!v){ $('loadOut').innerHTML = '<div class="msg err">No numeric values found in the pasted text. Check the column setting.</div>'; return; }
+  ingest(v);
+};
+$('btnClear').onclick = function(){ S.load=null; $('loadOut').innerHTML=''; drawLDC(); };
+$('fileIn').onchange = function(e){
+  var f = e.target.files && e.target.files[0]; if(!f) return;
+  var r = new FileReader();
+  r.onload = function(){ var v = parseText(String(r.result));
+    if(!v){ $('loadOut').innerHTML='<div class="msg err">Could not read numeric values from that file.</div>'; return; }
+    ingest(v); };
+  r.readAsText(f);
+};
+
+$('btnSynth').onclick = function(){
+  var peak = nv('synPeak',1800), lf = nv('synLF',0.55), shape = sv('synShape');
+  var dt = nv('ivl',60)/60, n = Math.round(8760/dt), raw = new Array(n), i;
+  for(i=0;i<n;i++){
+    var hoy = i*dt, hod = hoy % 24, doy = Math.floor(hoy/24), dow = (doy+3)%7;
+    var wknd = (dow===5 || dow===6), v;
+    if(shape==='flat') v = 0.95;
+    else if(shape==='dc') v = 0.90 + 0.10*Math.sin((hod-6)/24*2*Math.PI);
+    else if(shape==='ind'){ v = (hod>=6 && hod<18) ? 1.0 : 0.45; if(wknd) v *= 0.70; }
+    else if(shape==='retail') v = (hod>=9 && hod<21) ? (0.60+0.40*Math.sin((hod-9)/12*Math.PI)) : 0.30;
+    else { v = (hod>=7 && hod<19) ? (0.55+0.45*Math.sin((hod-7)/12*Math.PI)) : 0.25; if(wknd) v *= 0.45; }
+    var seas = 1 - 0.18*Math.cos((doy-200)/365*2*Math.PI);
+    raw[i] = Math.max(0.02, v*seas);
+  }
+  var mx = maxOf(raw);
+  for(i=0;i<n;i++) raw[i] /= mx;
+  var lo=0.2, hi=8, k, j;
+  for(j=0;j<40;j++){
+    k = (lo+hi)/2;
+    var s=0; for(i=0;i<n;i++) s += Math.pow(raw[i],k);
+    if(s/n > lf) lo = k; else hi = k;
+  }
+  var out = new Array(n);
+  for(i=0;i<n;i++) out[i] = peak*Math.pow(raw[i],k);
+  var m2 = maxOf(out); for(i=0;i<n;i++) out[i] = out[i]*peak/m2;
+  $('units').value = 'kw';
+  ingest(out);
+};
+
+/* ================== DISPATCH ================== */
+/* Simulate one month at a given shave target. Charging is capped so the
+   battery can never create a new peak above the target. */
+function simMonth(a, b, P, E, target, dt, rte, dod, retain){
+  var usable = E*dod*retain, soc = usable, i, peak = 0, dis = 0, chg = 0;
+  for(i=a;i<b;i++){
+    var L = S.load[i], net = L;
+    if(L > target){
+      var d = Math.min(P, L-target, soc*rte/dt);
+      if(d>0){ soc -= d*dt/rte; net = L-d; dis += d*dt; }
+    } else {
+      var room = (usable-soc)/(dt*rte);
+      var c = Math.min(P, Math.max(0, target-L), room);
+      if(c>0){ soc += c*dt*rte; net = L+c; chg += c*dt; }
+    }
+    if(net > peak) peak = net;
+  }
+  return { peak:peak, dis:dis, chg:chg };
+}
+
+/* Lowest achievable monthly peak for a given P/E. */
+function solveMonth(a, b, P, E, dt, rte, dod, retain){
+  var i, basePeak = 0, baseMin = 1e18;
+  for(i=a;i<b;i++){ if(S.load[i]>basePeak) basePeak=S.load[i]; if(S.load[i]<baseMin) baseMin=S.load[i]; }
+  var lo = baseMin, hi = basePeak, res = null, j;
+  for(j=0;j<14;j++){
+    var mid = (lo+hi)/2;
+    var r = simMonth(a,b,P,E,mid,dt,rte,dod,retain);
+    if(r.peak <= mid + 0.5){ hi = mid; res = r; res.target = mid; }
+    else lo = mid;
+  }
+  if(!res){ res = simMonth(a,b,P,E,basePeak,dt,rte,dod,retain); res.target = basePeak; }
+  res.basePeak = basePeak;
+  res.shave = Math.max(0, basePeak - res.target);
+  return res;
+}
+
+function runYear1(P, E, retain){
+  var dt=S.dt, rte=Math.sqrt(nv('rte',87)/100), dod=nv('dod',90)/100;
+  var m, shaveKW = 0, dis = 0, chg = 0, months = [];
+  for(m=0;m<12;m++){
+    var bd = S.mbounds[m];
+    var r = solveMonth(bd[0], bd[1], P, E, dt, rte, dod, retain);
+    months.push(r); shaveKW += r.shave; dis += r.dis; chg += r.chg;
+  }
+  return { months:months, shaveKWmo:shaveKW, dis:dis, chg:chg };
+}
+
+/* ================== ECONOMICS ================== */
+function capexOf(P,E){
+  var batt = E*nv('cKwh',111.5), pcs = P*nv('cKw',72), bos = P*nv('cBos',95),
+      epc = P*nv('cEpc',140), ic = nv('cIc',0);
+  var sub = batt+pcs+bos+epc+ic;
+  var soft = sub*nv('cSoft',8)/100;
+  var cont = (sub+soft)*nv('cCont',7)/100;
+  return { batt:batt, pcs:pcs, bos:bos, epc:epc, ic:ic, soft:soft, cont:cont, total:sub+soft+cont };
+}
+
+function irr(cf){
+  var lo=-0.95, hi=5, i, j;
+  function npvAt(r){ var s=0; for(i=0;i<cf.length;i++) s += cf[i]/Math.pow(1+r,i); return s; }
+  if(npvAt(lo)*npvAt(hi) > 0) return NaN;
+  for(j=0;j<200;j++){ var mid=(lo+hi)/2; if(npvAt(lo)*npvAt(mid) <= 0) hi=mid; else lo=mid; }
+  return (lo+hi)/2;
+}
+
+function evaluate(P, E, y1){
+  var term = Math.round(nv('term',20)), disc = nv('disc',9)/100;
+  var fade = nv('fade',2.2)/100, augYr = Math.round(nv('augYr',0)), augC = nv('augCost',60);
+  var dod = nv('dod',90)/100, rte = nv('rte',87)/100;
+  var dcTot = nv('dcFac',0)+nv('dcOn',0);
+  var eOn = nv('eOn',0), eOff = nv('eOff',0), esc = nv('escEnergy',2.5)/100;
+  var capYr = nv('capYr',0)*nv('capQual',100)/100, regYr = nv('regYr',0), drYr = nv('drYr',0), othYr = nv('otherYr',0);
+  var cycBud = nv('cycBudget',365);
+  var omKw = nv('omKw',8.5), omEsc = nv('omEsc',2.5)/100;
+  var taxR = nv('taxRate',26)/100, itcR = nv('itc',40)/100, itcB = nv('itcBasis',95)/100;
+  var after = ck('afterTax'), useDebt = ck('useDebt');
+
+  var cap = capexOf(P,E);
+  var itcAmt = after ? cap.total*itcB*itcR : 0;
+  var deprBasis = after ? Math.max(0, cap.total - 0.5*itcAmt) : 0;
+
+  var debt0 = useDebt ? cap.total*nv('ltv',60)/100 : 0;
+  var dRate = nv('debtRate',7.5)/100, dTerm = Math.round(nv('debtTerm',12));
+  var pmt = 0;
+  if(debt0>0 && dTerm>0) pmt = dRate>0 ? debt0*dRate/(1-Math.pow(1+dRate,-dTerm)) : debt0/dTerm;
+
+  var cycUsed1 = (E*dod)>0 ? y1.dis/(E*dod) : 0;
+  var arbCyc = Math.max(0, cycBud - cycUsed1);
+  var spread = eOn - eOff/rte;
+
+  var rows = [], cf = [], bal = debt0, i;
+  cf.push(-(cap.total - debt0));
+  var totDis = 0, pvDis = 0, pvOm = 0;
+
+  for(i=1;i<=term;i++){
+    var retain = Math.pow(1-fade, i-1);
+    if(augYr>0 && i>=augYr) retain = Math.pow(1-fade, i-augYr);
+    var infl = Math.pow(1+esc, i-1);
+
+    var demRev = y1.shaveKWmo * dcTot * retain * infl;
+    var arbE   = arbCyc * E * dod * retain;
+    var arbRev = Math.max(0, arbE * spread * infl);
+    var capRev = P * capYr * retain * infl;
+    var ancRev = P * (regYr + drYr) * infl;
+    var rev    = demRev + arbRev + capRev + ancRev + othYr*infl;
+
+    var om = P * omKw * Math.pow(1+omEsc, i-1);
+    var aug = (augYr>0 && i===augYr) ? E*augC : 0;
+    var ebitda = rev - om;
+
+    var depr = (after && i<=6) ? deprBasis*MACRS[i-1] : 0;
+    var intr = 0, prin = 0;
+    if(debt0>0 && i<=dTerm){ intr = bal*dRate; prin = Math.max(0, pmt-intr); bal = Math.max(0, bal-prin); }
+
+    var taxable = ebitda - depr - intr;
+    var tax = after ? taxable*taxR : 0;
+    var itcThis = (after && i===1) ? itcAmt : 0;
+
+    var net = ebitda - aug - intr - prin - tax + itcThis;
+    cf.push(net);
+
+    var disF = Math.pow(1+disc, i);
+    var yDis = y1.dis*retain + arbE;
+    totDis += yDis; pvDis += yDis/disF; pvOm += (om+aug)/disF;
+
+    rows.push({ y:i, retain:retain, dem:demRev, arb:arbRev, capr:capRev, anc:ancRev+othYr*infl,
+                rev:rev, om:om, aug:aug, ebitda:ebitda, depr:depr, intr:intr, prin:prin,
+                tax:tax, itc:itcThis, net:net });
+  }
+
+  var npv = 0, cum = 0, pay = NaN, dcum = 0, dpay = NaN;
+  for(i=0;i<cf.length;i++){
+    npv += cf[i]/Math.pow(1+disc,i);
+    cum += cf[i];
+    dcum += cf[i]/Math.pow(1+disc,i);
+    if(isNaN(pay) && i>0 && cum>=0) pay = i - 1 + (cf[i]-cum)/cf[i];
+    if(isNaN(dpay) && i>0 && dcum>=0) dpay = i;
+  }
+  var eq = cap.total - debt0;
+  var inflow = 0; for(i=1;i<cf.length;i++) inflow += cf[i];
+  var lcos = pvDis>0 ? (cap.total + pvOm)/pvDis : NaN;
+
+  return { P:P, E:E, cap:cap, rows:rows, cf:cf, npv:npv, irr:irr(cf), payback:pay, dpayback:dpay,
+           roi: eq>0 ? inflow/eq : NaN, lcos:lcos, itc:itcAmt, equity:eq, debt:debt0,
+           shaveKWmo:y1.shaveKWmo, cyc:cycUsed1, arbCyc:arbCyc, y1:y1, dur:E/P };
+}
+
+/* ================== RUN ================== */
+$('btnRun').onclick = function(){
+  if(!S.load){ say('<div class="msg err">Load an 8760 profile on tab 2 first — or generate a synthetic one. Sizing depends on the shape of the load, not just the peak.</div>'); return; }
+  var g = calcGrid();
+  if(g.nameplate <= 0){ say('<div class="msg err">Grid headroom is zero or negative. The feeder or service has no room for a battery under the current inputs — revisit tab 1.</div>'); return; }
+  say('<div class="msg info">Running dispatch across the size sweep…</div>');
+  setTimeout(doRun, 30);
+};
+
+function doRun(){
+  var g = S.grid, i, j;
+  var durs = [], parts = sv('durList').split(',');
+  for(i=0;i<parts.length;i++){ var d=parseFloat(parts[i]); if(isFinite(d)&&d>0) durs.push(d); }
+  if(!durs.length) durs = [2,4];
+  var steps = Math.max(2, Math.round(nv('pSteps',10)));
+  var pmin = g.nameplate * nv('pMinPct',10)/100;
+
+  var sweep = [], best = null, bestHurdle = null;
+  var hurdle = nv('hurdle',12)/100;
+
+  for(i=0;i<steps;i++){
+    var P = pmin + (g.nameplate - pmin)*i/(steps-1);
+    if(P < 25) continue;
+    for(j=0;j<durs.length;j++){
+      var E = P*durs[j];
+      var y1 = runYear1(P, E, 1);
+      var r  = evaluate(P, E, y1);
+      sweep.push(r);
+      if(!best || r.npv > best.npv) best = r;
+      if(isFinite(r.irr) && r.irr >= hurdle){ if(!bestHurdle || r.npv > bestHurdle.npv) bestHurdle = r; }
+    }
+  }
+  S.sweep = sweep;
+  S.sel = bestHurdle || best;
+  render();
+}
+
+/* ================== RENDER ================== */
+function render(){
+  var r = S.sel, g = S.grid, i;
+  if(!r){ say('<div class="msg err">No feasible size found.</div>'); return; }
+  say('');
+  var hurdle = nv('hurdle',12)/100;
+
+  var h = '';
+  h += '<div class="card"><h3>Recommendation</h3>';
+  h += '<div class="kpis">';
+  h += kpi('Recommended BESS','', fmt(r.P,0)+' kW / '+fmt(r.E,0)+' kWh', fmt(r.dur,1)+'-hour duration');
+  h += kpi('Grid-limited maximum','b', fmt(g.nameplate,0)+' kW', 'Bound by '+g.binder);
+  h += kpi('Installed cost','a', usd(r.cap.total), usd(r.cap.total/r.E,0)+'/kWh all-in');
+  h += kpi('Unlevered IRR', isFinite(r.irr)&&r.irr>=hurdle?'g':'r', pc(r.irr,1), 'Hurdle '+pc(hurdle,1));
+  h += kpi('NPV @ '+fmt(nv('disc',9),1)+'%', r.npv>0?'g':'r', usd(r.npv));
+  h += kpi('Simple payback','', isFinite(r.payback)?fmt(r.payback,1)+' yrs':'never', isFinite(r.dpayback)?'Discounted '+fmt(r.dpayback,0)+' yrs':'');
+  h += kpi('Lifetime ROI','', isFinite(r.roi)?fmt(r.roi,2)+'x':'—', 'On '+usd(r.equity)+' equity');
+  h += kpi('LCOS','', isFinite(r.lcos)?usd(r.lcos,3)+'/kWh':'—');
+  h += '</div>';
+  if(r.P >= g.nameplate*0.98)
+    h += '<div class="msg warn">The economic optimum is pinned at the grid ceiling — the site is capacity-constrained, not economics-constrained. More headroom (feeder upgrade, service upsize, or a higher export cap) would buy more value.</div>';
+  h += '</div>';
+
+  /* constraints recap */
+  h += '<div class="card"><h3>Capacity screen</h3>'+
+       rowC('Feeder capacity / headroom', fmt(g.fdrCapKW,0)+' kW / '+fmt(g.fdrHead,0)+' kW', g.binder==='feeder headroom')+
+       rowC('Service capacity / headroom', fmt(g.svcCapKW,0)+' kW / '+fmt(g.svcHead,0)+' kW', g.binder==='service headroom')+
+       rowC('Site peak demand', fmt(g.sitePeak,0)+' kW')+
+       rowC('Max charge / max discharge', fmt(g.chargeMax,0)+' kW / '+fmt(g.dischargeMax,0)+' kW')+
+       rowC('Accepted nameplate', fmt(g.nameplate,0)+' kW', true)+'</div>';
+
+  /* operations */
+  h += '<div class="card"><h3>Year 1 operations</h3><div class="kpis">'+
+       kpi('Demand reduction','', fmt(r.shaveKWmo/12,0)+' kW', 'Average monthly shave')+
+       kpi('Discharged energy','b', fmt(r.y1.dis/1000,0)+' MWh', 'Peak shaving only')+
+       kpi('Cycles used','a', fmt(r.cyc,0), 'of '+fmt(nv('cycBudget',365),0)+' budgeted')+
+       kpi('Cycles for arbitrage','', fmt(r.arbCyc,0), 'Residual, credited at TOU spread')+
+       '</div>';
+  h += '<div class="scroll" style="margin-top:10px"><table><thead><tr><th>Month</th><th>Base peak kW</th><th>New peak kW</th><th>Shave kW</th><th>Shave %</th><th>Discharge kWh</th></tr></thead><tbody>';
+  for(i=0;i<12;i++){ var m = r.y1.months[i];
+    h += '<tr><td>'+MNAME[i]+'</td><td>'+fmt(m.basePeak,0)+'</td><td>'+fmt(m.target,0)+'</td><td>'+fmt(m.shave,0)+
+         '</td><td>'+pc(m.shave/m.basePeak,1)+'</td><td>'+fmt(m.dis,0)+'</td></tr>';
+  }
+  h += '</tbody></table></div></div>';
+
+  /* charts */
+  h += '<div class="card"><h3>Monthly peak — before vs after</h3><canvas id="cvMon" width="1000" height="280"></canvas>'+
+       '<div class="legend"><i style="background:#94adc4"></i>Baseline peak &nbsp; <i style="background:#19b8a6"></i>Shaved peak</div></div>';
+  h += '<div class="card"><h3>Cumulative cash flow</h3><canvas id="cvCF" width="1000" height="280"></canvas>'+
+       '<div class="legend"><i style="background:#2f6fed"></i>Cumulative nominal &nbsp; <i style="background:#f0a500"></i>Cumulative discounted</div></div>';
+
+  /* capex */
+  var c = r.cap;
+  h += '<div class="card"><h3>Capital cost build-up</h3><div class="scroll"><table><tbody>'+
+       ln('DC blocks', c.batt)+ln('PCS', c.pcs)+ln('BOS &amp; civil', c.bos)+ln('EPC / install', c.epc)+
+       ln('Interconnection &amp; utility', c.ic)+ln('Development / soft', c.soft)+ln('Contingency', c.cont)+
+       '<tr class="best"><td>Total installed</td><td>'+usd(c.total)+'</td></tr>'+
+       (r.itc>0?ln('ITC credit (year 1)', -r.itc):'')+
+       (r.debt>0?ln('Debt proceeds', -r.debt):'')+
+       '<tr class="best"><td>Net equity at risk</td><td>'+usd(r.equity)+'</td></tr>'+
+       '</tbody></table></div></div>';
+
+  /* pro forma */
+  h += '<div class="card"><h3>Pro forma — '+fmt(r.P,0)+' kW / '+fmt(r.E,0)+' kWh</h3><div class="scroll"><table><thead><tr>'+
+       '<th>Yr</th><th>Retention</th><th>Demand</th><th>Arbitrage</th><th>Capacity</th><th>Ancillary</th>'+
+       '<th>Revenue</th><th>O&amp;M</th><th>Aug</th><th>EBITDA</th><th>Depr</th><th>Interest</th><th>Principal</th>'+
+       '<th>Tax</th><th>ITC</th><th>Net CF</th><th>Cumulative</th></tr></thead><tbody>';
+  var cum = -r.equity;
+  h += '<tr><td>0</td><td>—</td><td colspan="14">Equity outlay</td><td>'+usd(-r.equity)+'</td><td>'+usd(cum)+'</td></tr>';
+  for(i=0;i<r.rows.length;i++){ var w = r.rows[i]; cum += w.net;
+    h += '<tr><td>'+w.y+'</td><td>'+pc(w.retain,0)+'</td><td>'+usd(w.dem)+'</td><td>'+usd(w.arb)+'</td><td>'+usd(w.capr)+
+         '</td><td>'+usd(w.anc)+'</td><td>'+usd(w.rev)+'</td><td>'+usd(-w.om)+'</td><td>'+(w.aug?usd(-w.aug):'—')+
+         '</td><td>'+usd(w.ebitda)+'</td><td>'+usd(w.depr)+'</td><td>'+usd(-w.intr)+'</td><td>'+usd(-w.prin)+
+         '</td><td>'+usd(-w.tax)+'</td><td>'+(w.itc?usd(w.itc):'—')+'</td><td>'+usd(w.net)+'</td><td>'+usd(cum)+'</td></tr>';
+  }
+  h += '</tbody></table></div></div>';
+
+  /* sweep */
+  h += '<div class="card"><h3>Size sweep — all candidates</h3><div class="scroll"><table><thead><tr>'+
+       '<th>Power kW</th><th>Energy kWh</th><th>Hrs</th><th>Capex</th><th>$/kWh</th><th>Avg shave kW</th>'+
+       '<th>Cycles</th><th>IRR</th><th>NPV</th><th>Payback</th><th>LCOS</th></tr></thead><tbody>';
+  var sw = S.sweep.slice(0);
+  sw.sort(function(a,b){ return b.npv - a.npv; });
+  for(i=0;i<sw.length;i++){ var s = sw[i];
+    h += '<tr'+(s===r?' class="best"':'')+'><td>'+fmt(s.P,0)+'</td><td>'+fmt(s.E,0)+'</td><td>'+fmt(s.dur,1)+
+         '</td><td>'+usd(s.cap.total)+'</td><td>'+usd(s.cap.total/s.E,0)+'</td><td>'+fmt(s.shaveKWmo/12,0)+
+         '</td><td>'+fmt(s.cyc,0)+'</td><td>'+pc(s.irr,1)+'</td><td>'+usd(s.npv)+'</td><td>'+
+         (isFinite(s.payback)?fmt(s.payback,1):'—')+'</td><td>'+(isFinite(s.lcos)?usd(s.lcos,3):'—')+'</td></tr>';
+  }
+  h += '</tbody></table></div><div class="legend">Highlighted row is the recommended size: highest NPV among candidates clearing the IRR hurdle.</div></div>';
+
+  $('results').innerHTML = h;
+  drawMonthly(); drawCF();
+}
+function kpi(k,cls,v,s){ return '<div class="kpi '+(cls||'')+'"><div class="k">'+k+'</div><div class="v">'+v+'</div>'+
+  (s?'<div class="s">'+s+'</div>':'')+'</div>'; }
+function ln(k,v){ return '<tr><td>'+k+'</td><td>'+usd(v)+'</td></tr>'; }
+
+/* ================== CHARTS ================== */
+function ctxOf(id){
+  var cv = $(id); if(!cv) return null;
+  var w = cv.parentNode.clientWidth || 900;
+  var dpr = window.devicePixelRatio || 1;
+  cv.width = Math.round(w*dpr); cv.height = Math.round(280*dpr);
+  cv.style.height = '280px';
+  var x = cv.getContext('2d'); x.setTransform(dpr,0,0,dpr,0,0);
+  x.clearRect(0,0,w,280);
+  return { c:x, w:w, h:280 };
+}
+function axis(c,w,h,pad){ c.strokeStyle='#c8d6e2'; c.lineWidth=1; c.beginPath();
+  c.moveTo(pad,8); c.lineTo(pad,h-22); c.lineTo(w-8,h-22); c.stroke(); }
+
+function drawLDC(){
+  var o = ctxOf('cvLDC'); if(!o) return;
+  if(!S.load){ o.c.fillStyle='#9fb4c6'; o.c.font='13px sans-serif'; o.c.fillText('No profile loaded', 12, 30); return; }
+  var a = S.load.slice(0); a.sort(function(x,y){ return y-x; });
+  var pad=52, w=o.w, h=o.h, c=o.c, mx=a[0], i;
+  axis(c,w,h,pad);
+  c.beginPath(); c.strokeStyle='#2f6fed'; c.lineWidth=2;
+  for(i=0;i<a.length;i++){
+    var X = pad + (w-pad-8)*i/(a.length-1), Y = (h-22) - (h-32)*a[i]/mx;
+    if(i===0) c.moveTo(X,Y); else c.lineTo(X,Y);
+  }
+  c.stroke();
+  c.fillStyle='#64809a'; c.font='11px sans-serif';
+  c.fillText(fmt(mx,0)+' kW', 4, 14); c.fillText('0', 4, h-24);
+  c.fillText('0%', pad, h-8); c.fillText('100% of hours', w-88, h-8);
+}
+
+function drawMonthly(){
+  var o = ctxOf('cvMon'); if(!o || !S.sel) return;
+  var c=o.c, w=o.w, h=o.h, pad=56, ms=S.sel.y1.months, i, mx=0;
+  for(i=0;i<12;i++) if(ms[i].basePeak>mx) mx=ms[i].basePeak;
+  axis(c,w,h,pad);
+  var bw = (w-pad-12)/12;
+  for(i=0;i<12;i++){
+    var x0 = pad + bw*i + 3, bwi = bw-6;
+    var hb = (h-32)*ms[i].basePeak/mx, ha = (h-32)*ms[i].target/mx;
+    c.fillStyle='#94adc4'; c.fillRect(x0,(h-22)-hb,bwi,hb);
+    c.fillStyle='#19b8a6'; c.fillRect(x0,(h-22)-ha,bwi,ha);
+    c.fillStyle='#64809a'; c.font='10px sans-serif';
+    c.fillText(MNAME[i], x0+bwi/2-10, h-8);
+  }
+  c.fillStyle='#64809a'; c.font='11px sans-serif'; c.fillText(fmt(mx,0)+' kW', 4, 14);
+}
+
+function drawCF(){
+  var o = ctxOf('cvCF'); if(!o || !S.sel) return;
+  var c=o.c, w=o.w, h=o.h, pad=64, cf=S.sel.cf, disc=nv('disc',9)/100, i;
+  var cum=[], dcum=[], s=0, d=0, lo=0, hi=0;
+  for(i=0;i<cf.length;i++){
+    s += cf[i]; d += cf[i]/Math.pow(1+disc,i);
+    cum.push(s); dcum.push(d);
+    if(s<lo) lo=s; if(s>hi) hi=s; if(d<lo) lo=d; if(d>hi) hi=d;
+  }
+  var rng = (hi-lo)||1;
+  function Y(v){ return (h-22) - (h-34)*(v-lo)/rng; }
+  axis(c,w,h,pad);
+  c.strokeStyle='#c8d6e2'; c.setLineDash([4,4]); c.beginPath();
+  c.moveTo(pad, Y(0)); c.lineTo(w-8, Y(0)); c.stroke(); c.setLineDash([]);
+  function line(arr, col){
+    c.beginPath(); c.strokeStyle=col; c.lineWidth=2;
+    for(i=0;i<arr.length;i++){
+      var X = pad + (w-pad-8)*i/(arr.length-1);
+      if(i===0) c.moveTo(X,Y(arr[i])); else c.lineTo(X,Y(arr[i]));
+    }
+    c.stroke();
+  }
+  line(cum,'#2f6fed'); line(dcum,'#f0a500');
+  c.fillStyle='#64809a'; c.font='11px sans-serif';
+  c.fillText(usd(hi), 4, 14); c.fillText(usd(lo), 4, h-24);
+  c.fillText('Yr 0', pad, h-8); c.fillText('Yr '+(cf.length-1), w-52, h-8);
+}
+window.onresize = function(){ drawLDC(); if(S.sel){ drawMonthly(); drawCF(); } };
+
+/* ================== EXPORT ================== */
+$('btnCsv').onclick = function(){
+  var r = S.sel; if(!r){ say('<div class="msg warn">Run the analysis first.</div>'); return; }
+  var L = [], i;
+  L.push('ClearSky-OMEGA BESS Pro Forma');
+  L.push('Power kW,'+r.P.toFixed(0)); L.push('Energy kWh,'+r.E.toFixed(0));
+  L.push('Duration hrs,'+r.dur.toFixed(2));
+  L.push('Grid max kW,'+S.grid.nameplate.toFixed(0)); L.push('Binding constraint,'+S.grid.binder);
+  L.push('Installed cost,'+r.cap.total.toFixed(0)); L.push('Equity,'+r.equity.toFixed(0));
+  L.push('IRR,'+(isFinite(r.irr)?(r.irr*100).toFixed(2):'')); L.push('NPV,'+r.npv.toFixed(0));
+  L.push('Payback yrs,'+(isFinite(r.payback)?r.payback.toFixed(2):''));
+  L.push('LCOS $/kWh,'+(isFinite(r.lcos)?r.lcos.toFixed(4):''));
+  L.push('');
+  L.push('Year,Retention,Demand,Arbitrage,Capacity,Ancillary,Revenue,OM,Augmentation,EBITDA,Depreciation,Interest,Principal,Tax,ITC,NetCF');
+  for(i=0;i<r.rows.length;i++){ var w=r.rows[i];
+    L.push([w.y,w.retain.toFixed(4),w.dem.toFixed(0),w.arb.toFixed(0),w.capr.toFixed(0),w.anc.toFixed(0),
+            w.rev.toFixed(0),(-w.om).toFixed(0),(-w.aug).toFixed(0),w.ebitda.toFixed(0),w.depr.toFixed(0),
+            (-w.intr).toFixed(0),(-w.prin).toFixed(0),(-w.tax).toFixed(0),w.itc.toFixed(0),w.net.toFixed(0)].join(','));
+  }
+  L.push(''); L.push('Month,BasePeakKW,NewPeakKW,ShaveKW,DischargeKWh');
+  for(i=0;i<12;i++){ var m=r.y1.months[i];
+    L.push([MNAME[i],m.basePeak.toFixed(0),m.target.toFixed(0),m.shave.toFixed(0),m.dis.toFixed(0)].join(',')); }
+  L.push(''); L.push('SWEEP: PowerKW,EnergyKWh,Hours,Capex,AvgShaveKW,Cycles,IRR,NPV,PaybackYrs,LCOS');
+  for(i=0;i<S.sweep.length;i++){ var s=S.sweep[i];
+    L.push([s.P.toFixed(0),s.E.toFixed(0),s.dur.toFixed(1),s.cap.total.toFixed(0),(s.shaveKWmo/12).toFixed(0),
+            s.cyc.toFixed(0),(isFinite(s.irr)?(s.irr*100).toFixed(2):''),s.npv.toFixed(0),
+            (isFinite(s.payback)?s.payback.toFixed(2):''),(isFinite(s.lcos)?s.lcos.toFixed(4):'')].join(',')); }
+
+  var blob = new Blob([L.join('\n')], {type:'text/csv'});
+  var a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'omega-bess-proforma-'+r.P.toFixed(0)+'kW-'+r.E.toFixed(0)+'kWh.csv';
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+};
+$('btnPrint').onclick = function(){ window.print(); };
+
+
+/* ================== OMEGA SAVED-DATA CONTRACT ==================
+   Persists at toolData/{orgId}/tools/gridsizing via OMEGATools helpers.
+   Degrades to standalone if firebase / omega-tools.js are absent. */
+var TOOLKEY = 'gridsizing';
+var DB = null, FB = null, ORG = null;
+
+var FIELDS = ['fdrKV','fdrA','pf','fdrMargin','fdrPeak','fdrMin','svcV','svcA','svcDerate',
+  'icLimit','exportMode','exportKW','ivl','units','colIdx','synPeak','synLF','synShape',
+  'dcFac','dcOn','ratchet','eOn','eOff','onStart','onEnd','escEnergy','capYr','capQual',
+  'regYr','drYr','otherYr','cycBudget','cKwh','cKw','cBos','cEpc','cIc','cSoft','cCont',
+  'omKw','omEsc','rte','dod','fade','augYr','augCost','term','disc','itc','itcBasis',
+  'taxRate','hurdle','afterTax','useDebt','ltv','debtRate','debtTerm','durList','pSteps','pMinPct'];
+
+function cloudStatus(txt){ var e=$('cloudStat'); if(e) e.innerHTML='<span class="pill">'+esc(txt)+'</span>'; }
+
+function collectState(){
+  var st = { v:1, inputs:{}, dt:S.dt }, i, e;
+  for(i=0;i<FIELDS.length;i++){
+    e = $(FIELDS[i]); if(!e) continue;
+    st.inputs[FIELDS[i]] = (e.type==='checkbox') ? (e.checked?1:0) : e.value;
+  }
+  if(S.load && S.load.length){
+    var a = new Array(S.load.length);
+    for(i=0;i<S.load.length;i++) a[i] = Math.round(S.load[i]*10)/10;
+    if(JSON.stringify(a).length < 700000) st.load = a;
+    else st.loadSkipped = S.load.length;
+  }
+  return st;
+}
+
+function applyState(st){
+  if(!st || !st.inputs) return;
+  var i, e, k;
+  for(i=0;i<FIELDS.length;i++){
+    k = FIELDS[i]; e = $(k);
+    if(!e || !st.inputs.hasOwnProperty(k)) continue;
+    if(e.type==='checkbox') e.checked = !!parseInt(st.inputs[k],10);
+    else e.value = st.inputs[k];
+  }
+  if(st.load && st.load.length){
+    S.load = st.load.slice(0); S.dt = st.dt || 1; S.n = S.load.length;
+    buildIndex(S.n, S.dt);
+    var pk = maxOf(S.load), av = meanOf(S.load);
+    $('loadOut').innerHTML = '<div class="msg ok">Restored saved profile: '+fmt(S.n,0)+' intervals, peak '+
+      fmt(pk,0)+' kW, load factor '+fmt(av/pk,2)+'.</div>';
+    drawLDC();
+  } else if(st.loadSkipped){
+    $('loadOut').innerHTML = '<div class="msg warn">Saved inputs restored, but the '+fmt(st.loadSkipped,0)+
+      '-interval profile was too large to store. Re-upload the CSV before running.</div>';
+  }
+  showGrid();
+}
+
+function cloudSave(){
+  if(!DB || !ORG){ cloudStatus('Not signed in — nothing saved'); return; }
+  cloudStatus('Saving…');
+  OMEGATools.saveToolData(DB, FB, ORG, TOOLKEY, collectState())
+    .then(function(){ cloudStatus('Saved to '+ORG); })
+    ['catch'](function(err){ cloudStatus('Save failed: '+(err && err.message ? err.message : 'unknown error')); });
+}
+
+function cloudLoad(){
+  if(!DB || !ORG) return;
+  OMEGATools.loadToolData(DB, ORG, TOOLKEY).then(function(doc){
+    if(doc && doc.data){ applyState(doc.data); cloudStatus('Loaded — '+ORG); }
+    else cloudStatus(ORG+' — no saved inputs yet');
+  })['catch'](function(){ cloudStatus('Could not load saved inputs'); });
+}
+
+function initCloud(){
+  if(typeof firebase === 'undefined' || typeof OMEGATools === 'undefined'){
+    cloudStatus('Standalone — save unavailable'); return;
+  }
+  var cfg = window.firebaseConfig || window.FIREBASE_CONFIG || null;
+  try{
+    if(!firebase.apps.length){
+      if(!cfg){ cloudStatus('Standalone — no Firebase config'); return; }
+      firebase.initializeApp(cfg);
+    }
+    FB = firebase; DB = firebase.firestore();
+    firebase.auth().onAuthStateChanged(function(u){
+      ORG = OMEGATools.orgFromUrl(u ? u.email : null);
+      if(ORG){ cloudLoad(); } else { cloudStatus('Sign in to save'); }
+    });
+  } catch(e){ cloudStatus('Standalone — save unavailable'); }
+}
+$('btnSave').onclick = cloudSave;
+
+/* boot */
+showGrid(); drawLDC(); initCloud();
+
+})();
+</script>
+</body>
+</html>
