@@ -50506,7 +50506,7 @@ window._crmToastModal=_crmToastModal;
 
 <!-- ═════════════════════════════════════════════════════════════════════
      CLEARSKY OMEGA — SITE MAP DESIGNER PRO
-     PATCH BUNDLE  ·  2026-07-28  ·  rev 19
+     PATCH BUNDLE  ·  2026-07-28  ·  rev 28
 
      Exactly ONE copy per file, immediately before </body>.
 
@@ -50529,11 +50529,31 @@ window._crmToastModal=_crmToastModal;
           draft's leg normalised from the colour string it was given
       15. Conduit callout tags rebuild when a run is added, so a second
           build no longer renders every run as C?
+      16. Conduits follow the equipment they connect — the follow
+          block read fromElId/toElId, the records carry fromId/toId
+      17. OmegaTrench.rebuild() re-lays BESS cluster trenching in the
+          cluster's OWN frame — works at any heading, taps leave the
+          pad square, spine runs the aisle. EMS move re-lanes it.
+      18. Trench bands at 45% so the imagery reads through
+          (OmegaTrenchOpacity.set(0.35 – 0.55) to taste)
+      19. OmegaRotate.by(deg) turns a whole layout as a rigid body —
+          equipment, stencils, boundaries, solar tables and conduits
+      20. 14 balance-of-plant footprints in Draw › Utility — EMS,
+          switchgear, panelboard, PCS, MV gear, ATS, genset...
+      21. OmegaSLD.generate() builds the one-line from the equipment
+          and conduits actually on the site map
+      22. E2.0 prints that generated one-line instead of the fixed
+          BTM/FOM template, + 16 residential/C&I footprints
+      23. Alt-click a container to select the WHOLE cluster — drag,
+          arrow-key or rotate it as one; trenching re-lays on release
+      24. Rotate GRIP on the selection — drag to turn, Shift snaps to
+          15°, live angle readout, one undo step per drag
+       7. Guided-build assemblies can be dragged and stay put
+          (moved out of opt-in — this is the BESS pad fix)
 
      OPT-IN — these reach into the live render/anchor loop. OFF unless
      window.OMEGA_EXPERIMENTAL = true is set before this script:
        6. Conduit length from coordinates, not pixels
-       7. Guided-build assemblies draggable
        8. Trench and conduit move together
       12. renderEl replaces its node instead of stacking a ghost
 
@@ -50561,7 +50581,7 @@ window._crmToastModal=_crmToastModal;
       console.info('[omega] patch passes ON');
       return true;
     },
-    rev: 19,
+    rev: 28,
     installed: function () {
       var active = ['OmegaMapExport', 'OmegaClose', 'OmegaSolar', 'OmegaAnchor', 'OmegaRecent',
                     'OmegaSave', 'OmegaProjects', 'OmegaAutoLayout', 'OmegaBgbLeg',
@@ -53593,6 +53613,2309 @@ window._crmToastModal=_crmToastModal;
 
 
 /* ═══════════════════════════════════════════════════════════════════════
+   OMEGA PATCH — 16 : CONDUITS DO NOT FOLLOW THE EQUIPMENT THEY CONNECT
+   -----------------------------------------------------------------------
+   Drag a BESS pad and its runs stay where they were, still drawn to the
+   old position, still reporting the old length.
+
+   The code to make them follow exists and is correct. It reads the wrong
+   field names:
+
+       const fromIn = c.fromElId && allGroupIds.has(c.fromElId);
+       const toIn   = c.toElId   && allGroupIds.has(c.toElId);
+       if(fromIn || toIn){
+         ... re-snap endpoints to current centres, recompute pxLen/ftLen,
+             remove the node and renderConduit(c)
+       }
+
+   A conduit record is created with fromId / toId:
+
+       const c = { id:uid(), condType:S.condType, pts:[...S.condPts],
+                   pxLen, ftLen,
+                   fromId: S.condPts[0].elId || null,
+                   toId:   S.condPts[S.condPts.length-1].elId || null };
+
+   Counted across the file: 8 places write fromId, exactly 2 write
+   fromElId. removeEl() reads fromId. The follow block reads fromElId.
+
+   So fromIn and toIn are always undefined, the branch never runs, and no
+   conduit has ever followed a moved element. Silent, because reading a
+   missing property is not an error — the same shape as the .where('owner')
+   bug on a document that stores uid.
+
+   The fix is to make both names resolve to the same endpoint, on every
+   conduit, so whichever name a code path happens to read it gets an
+   answer. Cheaper and far less risky than editing twelve read sites, and
+   it repairs conduits already saved with only one of the two.
+
+   Endpoints are kept in step continuously while a drag is in flight,
+   because the follow block runs on mousemove and needs the fields present
+   before it looks.
+   ═══════════════════════════════════════════════════════════════════════ */
+(function () {
+  'use strict';
+
+  var TAG = '[omega/condlink]';
+
+  function S_() { try { return (typeof S !== 'undefined' && S) ? S : null; } catch (e) { return null; } }
+
+  /* Mirror whichever endpoint fields exist onto the other spelling. */
+  function reconcile(c) {
+    if (!c) return false;
+    var changed = false;
+    var from = (c.fromId != null) ? c.fromId : c.fromElId;
+    var to = (c.toId != null) ? c.toId : c.toElId;
+
+    /* Nothing recorded either way — recover it from the point the run was
+       drawn from, which carries elId when it snapped to equipment. */
+    if (from == null && c.pts && c.pts.length) from = c.pts[0].elId || null;
+    if (to == null && c.pts && c.pts.length) to = c.pts[c.pts.length - 1].elId || null;
+
+    if (from != null && c.fromId !== from) { c.fromId = from; changed = true; }
+    if (from != null && c.fromElId !== from) { c.fromElId = from; changed = true; }
+    if (to != null && c.toId !== to) { c.toId = to; changed = true; }
+    if (to != null && c.toElId !== to) { c.toElId = to; changed = true; }
+    return changed;
+  }
+
+  function reconcileAll() {
+    var s = S_(); if (!s) return 0;
+    var n = 0;
+    (s.conduits || []).forEach(function (c) { if (reconcile(c)) n++; });
+    return n;
+  }
+
+  /* The follow block reads these fields on every mousemove of a drag, so
+     they have to be right before the drag starts, not after it ends. */
+  document.addEventListener('mousedown', function () {
+    try { reconcileAll(); } catch (e) {}
+  }, true);
+  document.addEventListener('touchstart', function () {
+    try { reconcileAll(); } catch (e) {}
+  }, true);
+
+  /* A newly drawn run needs the mirror before it can ever be dragged. */
+  function hookPushHist() {
+    var orig = window.pushHist;
+    if (typeof orig !== 'function' || orig.__omegaLink) return false;
+    var wrapped = function () {
+      try { reconcileAll(); } catch (e) {}
+      return orig.apply(this, arguments);
+    };
+    wrapped.__omegaLink = true;
+    window.pushHist = wrapped;
+    return true;
+  }
+
+  var n = 0;
+  var iv = setInterval(function () {
+    if (hookPushHist()) {
+      var fixed = reconcileAll();
+      if (window.console) {
+        console.info(TAG, 'armed — conduit endpoints reconciled'
+          + (fixed ? ' (' + fixed + ' run(s) repaired)' : ''));
+      }
+    }
+    if (++n > 200) clearInterval(iv);
+  }, 300);
+
+  window.OmegaCondLink = {
+    reconcile: reconcileAll,
+
+    /* Which runs are actually attached to a given element. */
+    attachedTo: function (elId) {
+      var s = S_(); if (!s) return [];
+      return (s.conduits || []).filter(function (c) {
+        return c && (c.fromId === elId || c.toId === elId);
+      }).map(function (c) { return c.id; });
+    },
+
+    status: function () {
+      var s = S_() || {};
+      var cs = (s.conduits || []).filter(Boolean);
+      var linked = cs.filter(function (c) { return c.fromId != null || c.toId != null; });
+      var mirrored = cs.filter(function (c) {
+        return (c.fromId == null || c.fromElId === c.fromId)
+          && (c.toId == null || c.toElId === c.toId);
+      });
+      var o = {
+        conduits: cs.length,
+        withAnEndpoint: linked.length,
+        bothFieldNamesAgree: mirrored.length,
+        floating: cs.length - linked.length
+      };
+      o.verdict = !cs.length ? 'No conduit runs.'
+        : mirrored.length < cs.length
+          ? (cs.length - mirrored.length) + ' run(s) still mismatched — run OmegaCondLink.reconcile().'
+          : linked.length < cs.length
+            ? (cs.length - linked.length) + ' run(s) are not attached to any equipment, so nothing can pull them.'
+            : 'All runs linked; moving equipment will drag its conduits.';
+      if (console.table) console.table(o); else console.log(o);
+      console.info(o.verdict);
+      return o;
+    }
+  };
+})();
+
+
+/* ═══════════════════════════════════════════════════════════════════════
+   OMEGA PATCH — 17 : RE-LAY THE CLUSTER TRENCHING  (rotation-aware)
+   -----------------------------------------------------------------------
+   _trenchClusterSpine() lays a BESS cluster the way a real one is built:
+   each container drops taps into a lane beside its row, and a spine runs
+   that lane across to the EMS. Two problems.
+
+   IT RUNS ONCE. At build time, against wherever things stood. Move a
+   container or the EMS and laneY, spineMinX and the tap positions are all
+   stale, so the runs stay drawn where they were.
+
+   AND IT IS AXIS-LOCKED. Every point it emits is world-aligned:
+
+       var laneY   = rowCy + halfH + 16;                      // horizontal
+       tapPts   = [{x:unit.cx, y:rowCy+halfH-2}, {x:unit.cx, y:laneY}];
+       spinePts = [{x:minX,y:laneY},{x:ex,y:laneY},{x:ex,y:ey}];
+
+   A tap has to leave the pad face square. Drawn straight down onto a pad
+   that has been turned, it has to travel further and further:
+
+       rotation   perpendicular   drawn down   overrun
+          0°          36 px          36 px        0%
+         30°          36 px          42 px       15%
+         45°          36 px          51 px       41%   crosses the neighbour
+         60°          36 px          72 px      100%
+         90°          36 px           —          never reaches the lane
+
+   The spine is worse: it runs east-west whatever way the row points, so on
+   a turned cluster it cuts straight across the pads instead of running the
+   aisle between them. That is what you are looking at.
+
+   So this re-lays in the CLUSTER'S OWN FRAME. Work out which way the row
+   actually points — from the containers' rotation, or from the direction
+   they are spread if they carry none — rotate into that frame, lay the
+   lane and the taps there exactly as before, then rotate back. Taps leave
+   square at any angle and the spine runs the aisle.
+
+   Turn the cluster to any heading and re-run it; the trenching follows.
+   ═══════════════════════════════════════════════════════════════════════ */
+(function () {
+  'use strict';
+
+  var TAG = '[omega/trenchfit]';
+
+  function S_() { try { return (typeof S !== 'undefined' && S) ? S : null; } catch (e) { return null; } }
+  function ppf() { try { return (S_() && S.pxPerFt > 0) ? S.pxPerFt : 6; } catch (e) { return 6; } }
+
+  /* The EMS node, however it was placed. */
+  function findEms() {
+    var s = S_(); if (!s) return null;
+    var els = s.elements || [];
+    for (var i = 0; i < els.length; i++) {
+      if (els[i] && (els[i].eqId === 'ems' || els[i].type === 'ems')) return els[i];
+    }
+    return null;
+  }
+
+  /* Every container the router should be feeding, with its CURRENT centre.
+     Rebuilt from the shapes themselves rather than from whatever list the
+     build pass happened to close over. */
+  function findUnits() {
+    var s = S_(); if (!s) return [];
+    var out = [];
+    (s.shapes || []).forEach(function (sh) {
+      if (!sh) return;
+      var isUnit = (sh.kind === 'assembly') ||
+        (sh.parts && sh.parts.some && sh.parts.some(function (p) {
+          return p && /container|bess/i.test(String(p.key || p.label || ''));
+        }));
+      if (!isUnit) return;
+      var cx = null, cy = null;
+      if (sh.cx != null && sh.cy != null) { cx = sh.cx + (sh.tx || 0); cy = sh.cy + (sh.ty || 0); }
+      else if (sh.pts && sh.pts.length) {
+        var xs = sh.pts.map(function (p) { return p.x; }), ys = sh.pts.map(function (p) { return p.y; });
+        cx = (Math.min.apply(null, xs) + Math.max.apply(null, xs)) / 2;
+        cy = (Math.min.apply(null, ys) + Math.max.apply(null, ys)) / 2;
+      }
+      if (cx != null) out.push({ shape: sh, cx: cx, cy: cy });
+    });
+    return out;
+  }
+
+  /* Which way does this row actually point?
+     Prefer the containers' own rotation; fall back to the direction they
+     are spread, which is the row axis by definition. Returns radians. */
+  function axisOf(units) {
+    /* `|| 0` would turn a MISSING rotation into a real 0 degrees and the
+       spread fallback would never run. Only count rotations that exist. */
+    var rots = units.map(function (u) {
+      return (u.shape && typeof u.shape.rot === 'number') ? u.shape.rot : null;
+    }).filter(function (r) { return r !== null && isFinite(r); });
+    if (rots.length) {
+      var mean = rots.reduce(function (a, b) { return a + b; }, 0) / rots.length;
+      var spread = Math.max.apply(null, rots) - Math.min.apply(null, rots);
+      if (spread < 5) return mean * Math.PI / 180;   /* they agree — use it */
+    }
+    if (units.length < 2) return 0;
+    /* longest spread between any two centres = the row direction */
+    var best = 0, bx = 1, by = 0;
+    for (var i = 0; i < units.length; i++) {
+      for (var j = i + 1; j < units.length; j++) {
+        var dx = units[j].cx - units[i].cx, dy = units[j].cy - units[i].cy;
+        var d = dx * dx + dy * dy;
+        if (d > best) { best = d; bx = dx; by = dy; }
+      }
+    }
+    return Math.atan2(by, bx);
+  }
+
+  function toFrame(x, y, rad) {
+    var c = Math.cos(-rad), s2 = Math.sin(-rad);
+    return { x: x * c - y * s2, y: x * s2 + y * c };
+  }
+  function fromFrame(x, y, rad) {
+    var c = Math.cos(rad), s2 = Math.sin(rad);
+    return { x: x * c - y * s2, y: x * s2 + y * c };
+  }
+
+  /* The router, in the cluster's own frame. Same lane-and-taps arrangement
+     the original draws, just not nailed to world axes. */
+  function layInFrame(units, ems, rad) {
+    var s = S_(); if (!s) return 0;
+    var ppfv = ppf();
+    var halfH = 12 * ppfv / 2;                     /* half the pad depth */
+    var gap = 16;
+    var offs = [{ t: 'RMC-DC', d: -5 }, { t: 'RMC-AC', d: 0 }, { t: 'EMT-BMS', d: 5 }];
+
+    var fu = units.map(function (u) {
+      var f = toFrame(u.cx, u.cy, rad);
+      return { u: u, fx: f.x, fy: f.y };
+    });
+    var fe = toFrame(ems.x + (ems.w || 32) / 2, ems.y + (ems.w || 32) / 2, rad);
+
+    /* rows are constant-y in the frame */
+    var rows = {};
+    fu.forEach(function (p) {
+      var key = Math.round(p.fy / (6 * ppfv)) * (6 * ppfv);
+      (rows[key] = rows[key] || []).push(p);
+    });
+
+    var made = 0;
+    Object.keys(rows).forEach(function (rk) {
+      var mem = rows[rk];
+      var rowFy = mem[0].fy;
+      /* lane on the side the EMS is on, so the spine never crosses the row */
+      var laneFy = rowFy + (fe.y >= rowFy ? 1 : -1) * (halfH + gap);
+      /* The lane must reach EVERY tap and the EMS. rev 26 ran it from the
+         leftmost tap to the EMS only, so any pad further out than the EMS
+         dropped into open ground past the end of the run — counted in the
+         schedule, connected to nothing. */
+      var fxs = mem.map(function (p) { return p.fx; });
+      var spanLo = Math.min(Math.min.apply(null, fxs), fe.x);
+      var spanHi = Math.max(Math.max.apply(null, fxs), fe.x);
+
+      mem.forEach(function (p) {
+        offs.forEach(function (o) {
+          var a = fromFrame(p.fx + o.d, rowFy + (laneFy > rowFy ? halfH - 2 : -(halfH - 2)) + o.d, rad);
+          var b = fromFrame(p.fx + o.d, laneFy + o.d, rad);
+          var pts = [{ x: a.x, y: a.y }, { x: b.x, y: b.y }];
+          var c = { id: uid(), condType: o.t, pts: pts, pxLen: _polyLen(pts),
+                    ftLen: +(_polyLen(pts) / (ppfv || 6)).toFixed(1),
+                    cluster: true, tap: true, labelHidden: true,
+                    fromShapeId: p.u.shape ? p.u.shape.id : null };
+          s.conduits.push(c);
+          if (typeof renderConduit === 'function') renderConduit(c);
+          made++;
+        });
+      });
+
+      offs.forEach(function (o) {
+        /* 1) the lane itself, running the full aisle so every tap lands on it */
+        var a1 = fromFrame(spanLo + o.d, laneFy + o.d, rad);
+        var a2 = fromFrame(spanHi + o.d, laneFy + o.d, rad);
+        var lanePts = [{ x: a1.x, y: a1.y }, { x: a2.x, y: a2.y }];
+        var laneRun = { id: uid(), condType: o.t, pts: lanePts, pxLen: _polyLen(lanePts),
+                        ftLen: +(_polyLen(lanePts) / (ppfv || 6)).toFixed(1),
+                        cluster: true, spine: true, emsEdgeOff: o.d };
+        s.conduits.push(laneRun);
+        if (typeof renderConduit === 'function') renderConduit(laneRun);
+        made++;
+
+        /* 2) the EMS stub, dropping out of the lane into the cabinet */
+        var b1 = fromFrame(fe.x + o.d, laneFy + o.d, rad);
+        var b2 = fromFrame(fe.x + o.d, fe.y + o.d, rad);
+        var stubPts = [{ x: b1.x, y: b1.y }, { x: b2.x, y: b2.y }];
+        var stub = { id: uid(), condType: o.t, pts: stubPts, pxLen: _polyLen(stubPts),
+                     ftLen: +(_polyLen(stubPts) / (ppfv || 6)).toFixed(1),
+                     cluster: true, spine: true, toId: ems.id, emsEdgeOff: o.d,
+                     labelHidden: true };
+        s.conduits.push(stub);
+        if (typeof renderConduit === 'function') renderConduit(stub);
+        made++;
+      });
+    });
+    return made;
+  }
+
+  function clearClusterRuns() {
+    var s = S_(); if (!s || !s.conduits) return 0;
+    var doomed = s.conduits.filter(function (c) { return c && c.cluster; });
+    doomed.forEach(function (c) {
+      var g = document.querySelector('[data-cid="' + c.id + '"]');
+      if (g && g.parentNode) g.parentNode.removeChild(g);
+    });
+    s.conduits = s.conduits.filter(function (c) { return !(c && c.cluster); });
+    return doomed.length;
+  }
+
+  function rebuild(quiet) {
+    var s = S_();
+    if (!s) return null;
+    var ems = findEms();
+    var units = findUnits();
+    if (!ems) { if (!quiet) console.warn(TAG, 'no EMS on the drawing — nothing to route to'); return null; }
+    if (!units.length) { if (!quiet) console.warn(TAG, 'no BESS containers found'); return null; }
+
+    var removed = clearClusterRuns();
+
+    /* Cell size from the units themselves so the lane sits correctly under
+       whatever spacing is actually on the drawing. */
+    var xs = units.map(function (u) { return u.cx; }), ys = units.map(function (u) { return u.cy; });
+    var spanX = Math.max.apply(null, xs) - Math.min.apply(null, xs);
+    var spanY = Math.max.apply(null, ys) - Math.min.apply(null, ys);
+    var rows = new Set(ys.map(function (y) { return Math.round(y / 5) * 5; })).size;
+    var cols = Math.max(1, Math.round(units.length / Math.max(1, rows)));
+    var cellW = cols > 1 ? spanX / (cols - 1) : 40 * ppf();
+    var cellH = rows > 1 ? spanY / (rows - 1) : 24 * ppf();
+
+    var rad = axisOf(units);
+    try {
+      layInFrame(units, ems, rad);
+    } catch (e) {
+      console.warn(TAG, 'router threw:', e && e.message);
+      return null;
+    }
+
+    try { if (typeof _refreshConduitStyle === 'function') _refreshConduitStyle(); } catch (e) {}
+    try { if (typeof pushHist === 'function') pushHist(); } catch (e) {}
+
+    var added = (s.conduits || []).filter(function (c) { return c && c.cluster; }).length;
+    if (!quiet) {
+      console.info(TAG + ' re-laid ' + units.length + ' container(s) at '
+        + Math.round(rad * 180 / Math.PI) + '\u00b0: removed ' + removed
+        + ' stale run(s), created ' + added + '.');
+    }
+    return { units: units.length, headingDeg: Math.round(rad * 180 / Math.PI), removed: removed, created: added };
+  }
+
+  /* Relocating the EMS should re-lane the spine, not just re-point its
+     last leg. Fires on release so it does not thrash during the drag. */
+  var pending = false;
+  document.addEventListener('mouseup', function () {
+    var s = S_(); if (!s) return;
+    var dragged = s.drag;
+    if (!dragged) return;
+    var ems = findEms();
+    if (!ems || ems.id !== dragged) return;
+    if (pending) return;
+    pending = true;
+    setTimeout(function () {
+      pending = false;
+      try { rebuild(true); } catch (e) {}
+    }, 60);
+  }, true);
+
+  window.OmegaTrench = {
+    rebuild: function () { return rebuild(false); },
+    units: findUnits,
+    ems: findEms,
+    status: function () {
+      var s = S_() || {};
+      var cs = (s.conduits || []).filter(Boolean);
+      var cluster = cs.filter(function (c) { return c.cluster; });
+      var units = findUnits(), ems = findEms();
+      var o = {
+        containers: units.length,
+        emsOnDrawing: !!ems,
+        totalRuns: cs.length,
+        clusterRuns: cluster.length,
+        taps: cluster.filter(function (c) { return c.tap; }).length,
+        spines: cluster.filter(function (c) { return c.spine; }).length,
+        handDrawn: cs.length - cluster.length,
+        routerPresent: typeof _trenchClusterSpine === 'function'
+      };
+      o.verdict = !ems ? 'No EMS — the spine has nothing to run to.'
+        : !units.length ? 'No BESS containers found.'
+          : !cluster.length ? 'No cluster runs on the drawing. OmegaTrench.rebuild() will lay them.'
+            : 'OmegaTrench.rebuild() re-lays these ' + cluster.length
+              + ' run(s) from where things stand now. The ' + o.handDrawn + ' hand-drawn run(s) are left alone.';
+      if (console.table) console.table(o); else console.log(o);
+      console.info(o.verdict);
+      return o;
+    }
+  };
+
+  if (window.console) console.info(TAG, 'armed — OmegaTrench.rebuild() re-lays cluster trenching');
+})();
+
+
+/* ═══════════════════════════════════════════════════════════════════════
+   OMEGA PATCH — 18 : TRENCH OPACITY
+   -----------------------------------------------------------------------
+   The excavation band is drawn as two strokes with opacity baked into
+   each, and the two disagree:
+
+       edge  opacity  0.45  (0.30 in ENG mode)
+       fill  opacity  0.62  (0.92 in ENG mode)
+
+   So the band reads heavier than either number suggests — the fill is the
+   wide one, and at 0.62 over satellite it goes close to solid, which is
+   why the trenching buries the imagery underneath it.
+
+   Setting opacity on the GROUP rather than editing both strokes keeps
+   their relationship intact — the edge stays lighter than the fill, the
+   band still reads as an excavation — while scaling the whole thing to
+   whatever you want. Applied to both trench layers:
+
+       #trench-corridors   the conduit corridor bands
+       #dcfc-trenches      the guided-build trench layer
+
+   Default 0.45, the middle of the range you asked for. Adjustable live
+   and remembered:
+
+       OmegaTrenchOpacity.set(0.35)     lighter
+       OmegaTrenchOpacity.set(0.55)     heavier
+       OmegaTrenchOpacity.reset()       back to the built-in look
+
+   ENG mode is left alone. That is a black-on-white drawing sheet where
+   the band is meant to be solid, and thinning it there would only make it
+   photocopy badly.
+   ═══════════════════════════════════════════════════════════════════════ */
+(function () {
+  'use strict';
+
+  var TAG = '[omega/trenchop]';
+  var KEY = 'omegaTrenchOpacity';
+  var DEFAULT = 0.45;
+  var LAYERS = ['trench-corridors', 'dcfc-trenches'];
+
+  function stored() {
+    try {
+      var v = parseFloat(localStorage.getItem(KEY));
+      return (isFinite(v) && v > 0 && v <= 1) ? v : DEFAULT;
+    } catch (e) { return DEFAULT; }
+  }
+  var level = stored();
+
+  function engMode() {
+    try { return !!window.ENG_MODE; } catch (e) { return false; }
+  }
+
+  function apply() {
+    /* On the ENG sheet the band is meant to be solid — leave it. */
+    var v = engMode() ? null : level;
+    for (var i = 0; i < LAYERS.length; i++) {
+      var g = document.getElementById(LAYERS[i]);
+      if (!g) continue;
+      if (v == null) g.removeAttribute('opacity');
+      else g.setAttribute('opacity', String(v));
+    }
+  }
+
+  /* Both layers are torn down and rebuilt on every re-render, so the
+     attribute has to go back on afterwards. */
+  function wrap(name) {
+    var orig = window[name];
+    if (typeof orig !== 'function' || orig.__omegaOp) return false;
+    var wrapped = function () {
+      var r = orig.apply(this, arguments);
+      try { apply(); } catch (e) {}
+      return r;
+    };
+    wrapped.__omegaOp = true;
+    window[name] = wrapped;
+    return true;
+  }
+
+  var n = 0;
+  var iv = setInterval(function () {
+    var a = wrap('renderTrenchCorridors'), b = wrap('_dcfcRenderTrenches'), c = wrap('_refreshConduitStyle');
+    if (a || b || c) {
+      apply();
+      if (window.console) console.info(TAG, 'armed — trench layers at ' + Math.round(level * 100) + '%');
+    }
+    apply();                       /* covers renders that happen between hooks */
+    if (++n > 200) clearInterval(iv);
+  }, 400);
+
+  window.OmegaTrenchOpacity = {
+    get: function () { return level; },
+    set: function (v) {
+      v = parseFloat(v);
+      if (!isFinite(v) || v <= 0 || v > 1) { console.warn(TAG, 'give a value between 0 and 1'); return level; }
+      level = v;
+      try { localStorage.setItem(KEY, String(v)); } catch (e) {}
+      apply();
+      console.info(TAG + ' trenching at ' + Math.round(v * 100) + '%');
+      return level;
+    },
+    reset: function () {
+      level = DEFAULT;
+      try { localStorage.removeItem(KEY); } catch (e) {}
+      LAYERS.forEach(function (id) {
+        var g = document.getElementById(id);
+        if (g) g.removeAttribute('opacity');
+      });
+      console.info(TAG + ' back to the built-in look');
+      return true;
+    },
+    status: function () {
+      var o = { setting: level, percent: Math.round(level * 100) + '%', engMode: engMode() };
+      LAYERS.forEach(function (id) {
+        var g = document.getElementById(id);
+        o[id] = g ? (g.getAttribute('opacity') || '(none)') : 'not on the drawing';
+      });
+      o.verdict = engMode()
+        ? 'ENG mode is on — the band is deliberately solid there and this setting is ignored.'
+        : 'Trenching at ' + o.percent + '. OmegaTrenchOpacity.set(0.35) to 0.55 to taste.';
+      if (console.table) console.table(o); else console.log(o);
+      console.info(o.verdict);
+      return o;
+    }
+  };
+})();
+
+
+/* ═══════════════════════════════════════════════════════════════════════
+   OMEGA PATCH — 19 : ROTATE THE WHOLE SYSTEM
+   -----------------------------------------------------------------------
+   Rotation in this file is per-object. An element has el.rot, a shape has
+   sh.rot, and each handle spins that one thing about its own centre.
+   Nothing rotates a LAYOUT — swing a BESS cluster to match a pad that
+   sits at 20 degrees to north and you would have to rotate every
+   container, re-place every one of them by hand, and redraw the
+   trenching, because a conduit is a list of points and has no rot at all.
+
+   This rotates the arrangement: every object's POSITION swings about one
+   shared pivot, and objects that carry their own heading also spin by the
+   same amount, so the layout turns as a rigid body.
+
+   Three kinds of geometry, three rules:
+
+     shapes with cx/cy       assemblies. Rotate the centre, add to rot.
+     shapes with one point   stencils. Rotate the point, add to rot.
+     shapes with many points polylines, boundaries. Rotate every point and
+                             leave rot alone — the geometry IS the shape,
+                             so adding rot on top would turn it twice.
+
+   Elements anchor on their top-left, so the CENTRE is rotated and x/y
+   derived back from it — rotating x/y directly would swing each icon out
+   by half its own size. Conduits have every point rotated, which is what
+   makes the trenching come with the equipment instead of being left
+   behind. Solar arrays get their boundary rotated and each table's own
+   azimuth advanced, so rows stay parallel to the array.
+
+   Everything is re-anchored afterwards. Without that, the anchor passes
+   would drag it all back on the next map event.
+
+       OmegaRotate.by(15)           swing 15 degrees clockwise
+       OmegaRotate.by(-15)          and back
+       OmegaRotate.by(20, {onlyCluster:true})   BESS cluster + its runs only
+       OmegaRotate.status()         what would move, and about what pivot
+   ═══════════════════════════════════════════════════════════════════════ */
+(function () {
+  'use strict';
+
+  var TAG = '[omega/rotate]';
+
+  function S_() { try { return (typeof S !== 'undefined' && S) ? S : null; } catch (e) { return null; } }
+
+  function spin(px, py, cx, cy, rad) {
+    var s = Math.sin(rad), c = Math.cos(rad);
+    var dx = px - cx, dy = py - cy;
+    return { x: cx + dx * c - dy * s, y: cy + dx * s + dy * c };
+  }
+
+  function isCluster(o) {
+    if (!o) return false;
+    if (o.cluster) return true;                        /* cluster conduit */
+    if (o.kind === 'assembly') return true;
+    if (o.eqId === 'ems' || o.type === 'ems') return true;
+    return false;
+  }
+
+  /* Everything that will move, and the box that contains it. */
+  function collect(opts) {
+    var s = S_(); if (!s) return null;
+    var only = opts && opts.onlyCluster;
+    var shapes = (s.shapes || []).filter(function (x) { return x && (!only || isCluster(x)); });
+    var els = (s.elements || []).filter(function (x) { return x && (!only || isCluster(x)); });
+    var conds = (s.conduits || []).filter(function (x) { return x && (!only || isCluster(x)); });
+
+    var xs = [], ys = [];
+    function note(x, y) { if (isFinite(x) && isFinite(y)) { xs.push(x); ys.push(y); } }
+
+    shapes.forEach(function (sh) {
+      if (sh.cx != null) note(sh.cx + (sh.tx || 0), sh.cy + (sh.ty || 0));
+      (sh.pts || []).forEach(function (p) { note(p.x + (sh.tx || 0), p.y + (sh.ty || 0)); });
+      (sh.boundary || []).forEach(function (p) { note(p.x, p.y); });
+    });
+    els.forEach(function (el) { note(el.x + (el.w || 60) / 2, el.y + (el.h || el.w || 60) / 2); });
+    conds.forEach(function (c) { (c.pts || []).forEach(function (p) { note(p.x, p.y); }); });
+
+    if (!xs.length) return null;
+    return {
+      shapes: shapes, elements: els, conduits: conds,
+      pivot: {
+        x: (Math.min.apply(null, xs) + Math.max.apply(null, xs)) / 2,
+        y: (Math.min.apply(null, ys) + Math.max.apply(null, ys)) / 2
+      }
+    };
+  }
+
+  function restamp(o) {
+    try {
+      if (window.OmegaMove && typeof OmegaMove.restamp === 'function') { OmegaMove.restamp(o); return; }
+      delete o._geoAnchor;
+      if (typeof _liveMapState !== 'function' || typeof _pxToLatLng !== 'function') return;
+      var ms = _liveMapState(); if (!ms) return;
+      var sz = (typeof _getCanvasSize === 'function') ? _getCanvasSize() : { w: 1200, h: 800 };
+      if (o.cx != null) {
+        var g = _pxToLatLng(o.cx, o.cy, ms, sz.w, sz.h);
+        if (g) { o._geoPts = [{ lat: g.lat, lng: g.lng }]; o._geoCentred = true; }
+      } else if (o.pts && o.pts.length) {
+        o._geoPts = o.pts.map(function (p) {
+          var q = _pxToLatLng(p.x, p.y, ms, sz.w, sz.h);
+          return q ? { lat: q.lat, lng: q.lng } : null;
+        });
+      } else if (typeof o.x === 'number') {
+        var c = _pxToLatLng(o.x + ((o.w || 60) / 2), o.y + ((o.h || o.w || 60) / 2), ms, sz.w, sz.h);
+        if (c) { o._geoLat = c.lat; o._geoLng = c.lng; }
+      }
+    } catch (e) {}
+  }
+
+  function by(deg, opts) {
+    deg = parseFloat(deg);
+    if (!isFinite(deg) || !deg) { console.warn(TAG, 'give a number of degrees'); return null; }
+    var set = collect(opts);
+    if (!set) { console.warn(TAG, 'nothing on the drawing to rotate'); return null; }
+
+    var rad = deg * Math.PI / 180, P = set.pivot;
+    var moved = { shapes: 0, elements: 0, conduits: 0 };
+
+    set.shapes.forEach(function (sh) {
+      /* Fold any dangling drag offset first, or it survives the rotation
+         as an un-rotated pixel nudge. */
+      if (sh.tx || sh.ty) {
+        if (sh.cx != null) { sh.cx += sh.tx || 0; sh.cy += sh.ty || 0; }
+        else if (sh.pts) sh.pts.forEach(function (p) { p.x += sh.tx || 0; p.y += sh.ty || 0; });
+        sh.tx = 0; sh.ty = 0;
+      }
+
+      if (sh.cx != null) {
+        var c = spin(sh.cx, sh.cy, P.x, P.y, rad);
+        sh.cx = c.x; sh.cy = c.y;
+        sh.rot = (sh.rot || 0) + deg;
+      } else if (sh.pts && sh.pts.length === 1) {
+        var p0 = spin(sh.pts[0].x, sh.pts[0].y, P.x, P.y, rad);
+        sh.pts[0].x = p0.x; sh.pts[0].y = p0.y;
+        sh.rot = (sh.rot || 0) + deg;
+      } else if (sh.pts && sh.pts.length > 1) {
+        sh.pts.forEach(function (p) { var q = spin(p.x, p.y, P.x, P.y, rad); p.x = q.x; p.y = q.y; });
+        /* rot deliberately untouched — the points already carry the turn */
+      }
+
+      /* Solar arrays: the traced outline, and each table's own heading. */
+      if (sh.boundary && sh.boundary.length) {
+        sh.boundary.forEach(function (p) { var q = spin(p.x, p.y, P.x, P.y, rad); p.x = q.x; p.y = q.y; });
+      }
+      if (sh.exclusions && sh.exclusions.length) {
+        sh.exclusions.forEach(function (z) {
+          var ring = Array.isArray(z) ? z : (z && z.pts) || [];
+          ring.forEach(function (p) { var q = spin(p.x, p.y, P.x, P.y, rad); p.x = q.x; p.y = q.y; });
+        });
+      }
+      if (sh.tables && sh.tables.length) {
+        sh.tables.forEach(function (t) {
+          var cx = t.x + t.w / 2, cy = t.y + t.h / 2;
+          var q = spin(cx, cy, P.x, P.y, rad);
+          t.x = q.x - t.w / 2; t.y = q.y - t.h / 2;
+          t.a = (t.a || 0) + rad;
+        });
+        if (sh.angleDeg != null) sh.angleDeg = (((sh.angleDeg + deg) % 180) + 180) % 180;
+      }
+
+      restamp(sh);
+      moved.shapes++;
+    });
+
+    set.elements.forEach(function (el) {
+      var w = el.w || 60, h = el.h || el.w || 60;
+      var c = spin(el.x + w / 2, el.y + h / 2, P.x, P.y, rad);
+      el.x = c.x - w / 2; el.y = c.y - h / 2;
+      el.rot = (el.rot || 0) + deg;
+      restamp(el);
+      moved.elements++;
+    });
+
+    set.conduits.forEach(function (cd) {
+      (cd.pts || []).forEach(function (p) { var q = spin(p.x, p.y, P.x, P.y, rad); p.x = q.x; p.y = q.y; });
+      if (cd.laneY != null) cd.laneY = null;          /* lane geometry no longer describes it */
+      if (cd.spineMinX != null) cd.spineMinX = null;
+      restamp(cd);
+      moved.conduits++;
+    });
+
+    /* Redraw everything that moved. */
+    try {
+      set.shapes.forEach(function (sh) { if (typeof renderShape === 'function') renderShape(sh); });
+      set.elements.forEach(function (el) { if (typeof renderEl === 'function') renderEl(el); });
+      set.conduits.forEach(function (c) {
+        var g = document.querySelector('[data-cid="' + c.id + '"]');
+        if (g && g.parentNode) g.parentNode.removeChild(g);
+        if (typeof renderConduit === 'function') renderConduit(c);
+      });
+      if (typeof _refreshConduitStyle === 'function') _refreshConduitStyle();
+      if (typeof updCondStat === 'function') updCondStat();
+      if (typeof renderLegend === 'function') renderLegend();
+      if (typeof pushHist === 'function') pushHist();
+    } catch (e) { console.warn(TAG, 'redraw:', e && e.message); }
+
+    console.info(TAG + ' rotated ' + deg + '\u00b0 about ('
+      + Math.round(P.x) + ',' + Math.round(P.y) + ') \u2014 '
+      + moved.shapes + ' shape(s), ' + moved.elements + ' element(s), '
+      + moved.conduits + ' conduit(s). Undo with OmegaRotate.by(' + (-deg) + ').');
+    return { degrees: deg, pivot: P, moved: moved };
+  }
+
+  window.OmegaRotate = {
+    by: by,
+    clusterBy: function (deg) { return by(deg, { onlyCluster: true }); },
+    status: function (opts) {
+      var set = collect(opts);
+      var o = set ? {
+        shapes: set.shapes.length,
+        elements: set.elements.length,
+        conduits: set.conduits.length,
+        pivotX: Math.round(set.pivot.x),
+        pivotY: Math.round(set.pivot.y)
+      } : { shapes: 0, elements: 0, conduits: 0 };
+      o.verdict = !set ? 'Nothing on the drawing to rotate.'
+        : 'OmegaRotate.by(deg) turns all ' + (o.shapes + o.elements + o.conduits)
+          + ' object(s) about (' + o.pivotX + ',' + o.pivotY + '). '
+          + 'OmegaRotate.clusterBy(deg) limits it to the BESS cluster and its runs.';
+      if (console.table) console.table(o); else console.log(o);
+      console.info(o.verdict);
+      return o;
+    }
+  };
+
+  if (window.console) console.info(TAG, 'armed — OmegaRotate.by(deg) turns the whole layout');
+})();
+
+
+/* ═══════════════════════════════════════════════════════════════════════
+   OMEGA PATCH — 20 : BALANCE-OF-PLANT EQUIPMENT IN DRAW
+   -----------------------------------------------------------------------
+   Draw > Utility places five things: meter, utility transformer, AC
+   disconnect, CT cabinet, M-POI. Everything between the array and the
+   point of interconnect — the EMS, the switchgear lineup, panelboards,
+   the PCS skid, combiners, the MV gear — has to be drawn by hand as a
+   rectangle and labelled by hand.
+
+   The mechanism to fix that is already here and is the right one. A
+   UTILITY_CATALOG entry is a real footprint in feet:
+
+       xfmr: { label:'UTILITY XFMR', lf:6.0, wf:5.0, abbr:'T' }
+
+   and _placeUtility() turns it into kind:'utility' with cx/cy, lf/wf and
+   scaled:true — a to-scale footprint on the drawing, counted in the
+   Summary and carried into permit sheets. Not an icon. That is the
+   distinction you drew, and this catalog is already on the right side of
+   it.
+
+   So this adds entries rather than a new system. Each one is a real
+   footprint you can check against a cut sheet, and each renders, scales,
+   anchors, exports and counts exactly like the five that shipped.
+
+   Dimensions are typical, not gospel — switchgear in particular runs from
+   a 4 ft section to a 30 ft lineup. Every one is editable per placement,
+   and OmegaBOP.resize('mdp', 12, 4) changes the default for the rest of a
+   session if your standard kit differs.
+   ═══════════════════════════════════════════════════════════════════════ */
+(function () {
+  'use strict';
+
+  var TAG = '[omega/bop]';
+
+  /* lf = length along the front, wf = depth. Feet. */
+  var BOP = {
+    /* --- controls & communications ------------------------------------ */
+    ems: { label: 'EMS CABINET', lf: 3.0, wf: 2.0, abbr: 'EMS' },
+    scada: { label: 'SCADA / COMMS CABINET', lf: 2.5, wf: 2.0, abbr: 'COM' },
+
+    /* --- AC distribution ---------------------------------------------- */
+    mdp: { label: 'MAIN SWITCHGEAR / MDP', lf: 10.0, wf: 3.0, abbr: 'MDP' },
+    swbd: { label: 'SWITCHBOARD', lf: 7.0, wf: 3.0, abbr: 'SWB' },
+    panel: { label: 'PANELBOARD', lf: 2.5, wf: 1.0, abbr: 'PNL' },
+    ats: { label: 'AUTOMATIC TRANSFER SWITCH', lf: 3.0, wf: 2.0, abbr: 'ATS' },
+    mvswgr: { label: 'MV SWITCHGEAR', lf: 8.0, wf: 6.0, abbr: 'MVS' },
+    recloser: { label: 'RECLOSER', lf: 4.0, wf: 3.0, abbr: 'REC' },
+
+    /* --- conversion ---------------------------------------------------- */
+    pcs: { label: 'PCS / INVERTER SKID', lf: 12.0, wf: 8.0, abbr: 'PCS' },
+    inverter: { label: 'STRING INVERTER', lf: 3.6, wf: 1.8, abbr: 'INV' },
+    combiner: { label: 'DC COMBINER BOX', lf: 2.0, wf: 1.5, abbr: 'CMB' },
+    padxfmr: { label: 'PAD-MOUNT XFMR (1000 kVA)', lf: 8.0, wf: 7.0, abbr: 'PXF' },
+
+    /* --- site ---------------------------------------------------------- */
+    genset: { label: 'STANDBY GENERATOR', lf: 20.0, wf: 8.0, abbr: 'GEN' },
+    ltbank: { label: 'LOAD BANK', lf: 8.0, wf: 6.0, abbr: 'LB' }
+  };
+
+  /* Grouped for the menu, in the order you would walk the one-line. */
+  var MENU = [
+    ['Controls', [['ems', '▤'], ['scada', '▥']]],
+    ['AC distribution', [['mdp', '▦'], ['swbd', '▦'], ['panel', '▯'], ['ats', '⧉']]],
+    ['Medium voltage', [['mvswgr', '▧'], ['recloser', '⊗'], ['padxfmr', '⬢']]],
+    ['Conversion', [['pcs', '▩'], ['inverter', '◨'], ['combiner', '▫']]],
+    ['Site', [['genset', '▬'], ['ltbank', '▤']]]
+  ];
+
+  function install() {
+    if (typeof UTILITY_CATALOG === 'undefined' || typeof setUtilityType !== 'function') return false;
+    if (window.__omegaBOP) return false;
+
+    /* Extend the catalog the existing placer already reads. */
+    for (var k in BOP) {
+      if (!Object.prototype.hasOwnProperty.call(BOP, k)) continue;
+      if (!UTILITY_CATALOG[k]) UTILITY_CATALOG[k] = BOP[k];
+    }
+
+    var fly = document.getElementById('fly-util');
+    if (!fly) return false;
+
+    if (!document.getElementById('omega-bop-sep')) {
+      var sep = document.createElement('div');
+      sep.className = 'menu-sep';
+      sep.id = 'omega-bop-sep';
+      fly.appendChild(sep);
+
+      MENU.forEach(function (grp) {
+        var h = document.createElement('div');
+        h.textContent = grp[0];
+        h.style.cssText = 'font:700 8.5px/1.6 "IBM Plex Sans",sans-serif;letter-spacing:.08em;'
+          + 'text-transform:uppercase;color:#7D95B4;padding:5px 10px 2px';
+        fly.appendChild(h);
+
+        grp[1].forEach(function (item) {
+          var key = item[0], ico = item[1], def = BOP[key];
+          var b = document.createElement('button');
+          b.className = 'rb-fly-item';
+          b.title = def.label + ' — ' + def.lf + '\u2032 \u00d7 ' + def.wf + '\u2032 footprint';
+          b.innerHTML = '<span class="fi-ico">' + ico + '</span> ' + def.label
+            + ' <span style="opacity:.5;font-size:9px">' + def.lf + '\u2032\u00d7' + def.wf + '\u2032</span>';
+          b.onclick = (function (k2) {
+            return function () {
+              try {
+                if (typeof rbFlyDo === 'function') { rbFlyDo('fly-util', function () { setUtilityType(k2); }); }
+                else setUtilityType(k2);
+              } catch (e) { setUtilityType(k2); }
+            };
+          })(key);
+          fly.appendChild(b);
+        });
+      });
+    }
+
+    window.__omegaBOP = true;
+    if (window.console) {
+      console.info(TAG, 'armed — ' + Object.keys(BOP).length
+        + ' balance-of-plant footprints added to Draw \u203a Utility');
+    }
+    return true;
+  }
+
+  var n = 0;
+  var iv = setInterval(function () { if (install() || ++n > 200) clearInterval(iv); }, 300);
+
+  window.OmegaBOP = {
+    catalog: BOP,
+
+    /* Your standard kit differs from the typicals? Change the default. */
+    resize: function (key, lf, wf) {
+      if (!BOP[key]) { console.warn(TAG, 'no such item: ' + key + '. Try OmegaBOP.list()'); return null; }
+      lf = parseFloat(lf); wf = parseFloat(wf);
+      if (!(lf > 0) || !(wf > 0)) { console.warn(TAG, 'give length and depth in feet'); return null; }
+      BOP[key].lf = lf; BOP[key].wf = wf;
+      try { if (UTILITY_CATALOG[key]) { UTILITY_CATALOG[key].lf = lf; UTILITY_CATALOG[key].wf = wf; } } catch (e) {}
+      console.info(TAG + ' ' + BOP[key].label + ' now ' + lf + '\u2032 \u00d7 ' + wf + '\u2032 for new placements');
+      return BOP[key];
+    },
+
+    list: function () {
+      var rows = Object.keys(BOP).map(function (k) {
+        return { key: k, label: BOP[k].label, lengthFt: BOP[k].lf, depthFt: BOP[k].wf, abbr: BOP[k].abbr };
+      });
+      if (console.table) console.table(rows); else console.log(rows);
+      console.info(TAG + ' place from Draw \u203a Utility, or setUtilityType("mdp") then click the map.');
+      return rows;
+    },
+
+    status: function () {
+      var s = null; try { s = (typeof S !== 'undefined') ? S : null; } catch (e) {}
+      var placed = {};
+      try {
+        (s.shapes || []).forEach(function (sh) {
+          if (sh && sh.kind === 'utility' && sh.utype) placed[sh.utype] = (placed[sh.utype] || 0) + 1;
+        });
+      } catch (e) {}
+      var o = {
+        catalogSize: (typeof UTILITY_CATALOG !== 'undefined') ? Object.keys(UTILITY_CATALOG).length : 0,
+        addedByThisPatch: Object.keys(BOP).length,
+        menuInjected: !!document.getElementById('omega-bop-sep'),
+        onThisDrawing: JSON.stringify(placed)
+      };
+      o.verdict = !o.menuInjected
+        ? 'Menu not injected — open the Draw tab once, then re-check.'
+        : 'Draw \u203a Utility now offers ' + o.catalogSize + ' to-scale footprints.';
+      if (console.table) console.table(o); else console.log(o);
+      console.info(o.verdict);
+      return o;
+    }
+  };
+})();
+
+
+/* ═══════════════════════════════════════════════════════════════════════
+   OMEGA PATCH — 21 : ONE-LINE GENERATED FROM WHAT WAS BUILT
+   -----------------------------------------------------------------------
+   Two things exist already and do not talk to each other.
+
+   _sld  (line 15338) is a real one-line editor — nodes, wires, drag, snap,
+   15 node types in SLD_TYPES. Everything on it is placed by hand.
+
+   E2.0 — Single Line Diagram is a plot-plan sheet, and it draws a fixed
+   template chosen by wizMode:
+
+       s += (wizMode==='FOM' ? 'FRONT-OF-METER' : 'BEHIND-THE-METER')
+          + ' BATTERY ENERGY STORAGE SYSTEM';
+
+   So the sheet shows a generic BTM or FOM BESS regardless of what is on
+   the site map. Draw four containers, two inverters and a genset, and
+   E2.0 still prints the same two-battery diagram.
+
+   The topology is right there and has been all along. Equipment carries a
+   type; every conduit records which two things it joins in fromId/toId.
+   That is a graph. This reads it.
+
+       equipment  ->  nodes, typed by what they actually are
+       conduits   ->  wires, labelled with their service and size
+       layout     ->  breadth-first from the utility point of
+                      interconnection, so power flows left to right the way
+                      an electrician reads it
+
+   Conduit endpoints only became reliable in rev 20 — the follow code read
+   fromElId while records carried fromId, so half the graph was invisible.
+   This depends on that fix.
+
+       OmegaSLD.generate()     build the one-line from the drawing
+       OmegaSLD.preview()      the graph it read, as a table, without drawing
+       OmegaSLD.status()       what is connected and what is stranded
+
+   Nothing is overwritten silently: generate() replaces the one-line, so it
+   warns first if you have hand-placed nodes on it.
+   ═══════════════════════════════════════════════════════════════════════ */
+(function () {
+  'use strict';
+
+  var TAG = '[omega/sld]';
+
+  function S_() { try { return (typeof S !== 'undefined' && S) ? S : null; } catch (e) { return null; } }
+
+  /* What each drawing object becomes on the one-line. Left side is what the
+     site map calls it; right side is a key in SLD_TYPES. */
+  var MAP = {
+    /* utility-side footprints (kind:'utility', by utype) */
+    meter: 'meter', xfmr: 'xfmr', padxfmr: 'xfmr', disco: 'disco',
+    ct: 'meter', mpoi: 'utility',
+    mdp: 'panel', swbd: 'panel', panel: 'evpanel', mvswgr: 'panel',
+    ats: 'disco', recloser: 'disco',
+    ems: 'pcs', scada: 'pcs',
+    pcs: 'inv', inverter: 'inv', combiner: 'evpanel',
+    genset: 'dergen', ltbank: 'evpanel',
+    /* elements, by eqId */
+    ems_el: 'pcs', evdcfc: 'evdcfc', evl2: 'evl2', evcab: 'evcab',
+    /* shapes, by kind */
+    dersolar: 'dersolar', derwind: 'derwind', assembly: 'bess', bespad: 'bess'
+  };
+
+  function typeOf(o) {
+    if (!o) return null;
+    if (o.kind === 'utility' && o.utype) return MAP[o.utype] || 'panel';
+    if (o.kind && MAP[o.kind]) return MAP[o.kind];
+    if (o.eqId) {
+      if (o.eqId === 'ems') return 'pcs';
+      if (MAP[o.eqId]) return MAP[o.eqId];
+    }
+    if (o.type === 'bess-asm') return 'bess';
+    return null;
+  }
+
+  function labelOf(o, t) {
+    var name = o.label || o.name || '';
+    if (!name) {
+      try { name = (SLD_TYPES[t] && SLD_TYPES[t].label.split('\n')[0]) || t; } catch (e) { name = t; }
+    }
+    var sub = '';
+    if (o.kw) sub = o.kw + ' kW-DC';
+    else if (o.kwh) sub = o.kwh + ' kWh';
+    else if (o.lf && o.wf) sub = o.lf + '\u2032 \u00d7 ' + o.wf + '\u2032';
+    return sub ? (name + '\n' + sub) : name;
+  }
+
+  /* Everything on the drawing that belongs on a one-line, plus the runs
+     that join them. */
+  function readTopology() {
+    var s = S_(); if (!s) return null;
+    var nodes = {}, order = [];
+
+    function add(o) {
+      var t = typeOf(o);
+      if (!t || !o.id || nodes[o.id]) return;
+      nodes[o.id] = { srcId: o.id, sldType: t, label: labelOf(o, t), obj: o, links: [] };
+      order.push(o.id);
+    }
+    (s.elements || []).forEach(add);
+    (s.shapes || []).forEach(add);
+
+    var edges = [];
+    (s.conduits || []).forEach(function (c) {
+      if (!c) return;
+      var a = (c.fromId != null) ? c.fromId : c.fromElId;
+      var b = (c.toId != null) ? c.toId : c.toElId;
+      if (a == null || b == null || a === b) return;
+      if (!nodes[a] || !nodes[b]) return;          /* one end is not one-line kit */
+      edges.push({
+        from: a, to: b,
+        label: (c.condType || '') + (c.ftLen ? '  ' + c.ftLen + ' ft' : ''),
+        service: c.condType || ''
+      });
+      nodes[a].links.push(b);
+      nodes[b].links.push(a);
+    });
+
+    return { nodes: nodes, order: order, edges: edges };
+  }
+
+  /* Where does power come from? The POI if there is one, otherwise the
+     best-connected node, so the diagram still reads sensibly. */
+  function findRoot(topo) {
+    var best = null, bestScore = -1;
+    topo.order.forEach(function (id) {
+      var n = topo.nodes[id];
+      var score = n.links.length;
+      if (n.sldType === 'utility') score += 100;
+      else if (n.sldType === 'meter') score += 50;
+      else if (n.sldType === 'xfmr') score += 20;
+      if (score > bestScore) { bestScore = score; best = id; }
+    });
+    return best;
+  }
+
+  /* Breadth-first from the root gives each node a column; power reads
+     left to right. Anything the conduits never reached is stacked at the
+     far right rather than dropped, so you can see what is unwired. */
+  function layout(topo) {
+    var root = findRoot(topo);
+    var depth = {}, queue = [], seen = {};
+    if (root) { depth[root] = 0; queue.push(root); seen[root] = 1; }
+
+    while (queue.length) {
+      var id = queue.shift();
+      topo.nodes[id].links.forEach(function (nx) {
+        if (seen[nx]) return;
+        seen[nx] = 1; depth[nx] = depth[id] + 1; queue.push(nx);
+      });
+    }
+
+    var orphanCol = 0;
+    topo.order.forEach(function (id) { if (depth[id] == null) orphanCol = Math.max(orphanCol, 1); });
+    var maxDepth = 0;
+    Object.keys(depth).forEach(function (k) { maxDepth = Math.max(maxDepth, depth[k]); });
+    topo.order.forEach(function (id) { if (depth[id] == null) depth[id] = maxDepth + 1; });
+
+    var cols = {};
+    topo.order.forEach(function (id) { (cols[depth[id]] = cols[depth[id]] || []).push(id); });
+
+    var COLW = 230, ROWH = 110, X0 = 60, Y0 = 60;
+    var placed = [];
+    Object.keys(cols).sort(function (a, b) { return a - b; }).forEach(function (d) {
+      cols[d].forEach(function (id, i) {
+        var n = topo.nodes[id];
+        var meta = null; try { meta = SLD_TYPES[n.sldType]; } catch (e) {}
+        placed.push({
+          id: 'n' + (placed.length + 1),
+          srcId: id,
+          type: n.sldType,
+          x: X0 + (+d) * COLW,
+          y: Y0 + i * ROWH,
+          label: n.label,
+          w: (meta && meta.w) || 150,
+          h: (meta && meta.h) || 58,
+          orphan: (+d) === maxDepth + 1 && orphanCol
+        });
+      });
+    });
+    return { placed: placed, root: root, maxDepth: maxDepth };
+  }
+
+  function generate(opts) {
+    var topo = readTopology();
+    if (!topo) { console.warn(TAG, 'no session'); return null; }
+    if (!topo.order.length) {
+      console.warn(TAG, 'nothing on the site map that belongs on a one-line yet');
+      return null;
+    }
+
+    /* Do not silently discard hand-drawn work. */
+    var existing = 0;
+    try { existing = (_sld.nodes || []).filter(function (n) { return !n._omegaGen; }).length; } catch (e) {}
+    if (existing && !(opts && opts.force)) {
+      console.warn(TAG, 'the one-line has ' + existing + ' hand-placed node(s). '
+        + 'OmegaSLD.generate({force:true}) will replace them.');
+      return null;
+    }
+
+    var L = layout(topo);
+    var bySrc = {};
+    L.placed.forEach(function (p) { bySrc[p.srcId] = p.id; });
+
+    try {
+      _sld.nodes = L.placed.map(function (p) {
+        return { id: p.id, type: p.type, x: p.x, y: p.y, label: p.label,
+                 w: p.w, h: p.h, _omegaGen: true, _srcId: p.srcId };
+      });
+      _sld.wires = topo.edges.map(function (e, i) {
+        return { id: 'w' + (i + 1), fromId: bySrc[e.from], toId: bySrc[e.to],
+                 label: e.label, style: 'solid', _omegaGen: true };
+      }).filter(function (w) { return w.fromId && w.toId; });
+      _sld.nextId = _sld.nodes.length + _sld.wires.length + 1;
+      _sld.sel = null;
+    } catch (e) {
+      console.warn(TAG, 'could not write the one-line:', e && e.message);
+      return null;
+    }
+
+    try { if (typeof sldRender === 'function') sldRender(); } catch (e) {}
+    try { if (typeof pushHist === 'function') pushHist(); } catch (e) {}
+
+    var orphans = L.placed.filter(function (p) { return p.orphan; }).length;
+    console.info(TAG + ' built ' + _sld.nodes.length + ' node(s) and ' + _sld.wires.length
+      + ' wire(s) from the drawing'
+      + (orphans ? '. ' + orphans + ' item(s) have no conduit and are stacked at the right.' : '.')
+      + ' Open the One-Line Diagram tab.');
+    return { nodes: _sld.nodes.length, wires: _sld.wires.length, orphans: orphans };
+  }
+
+  window.OmegaSLD = {
+    generate: generate,
+
+    preview: function () {
+      var topo = readTopology();
+      if (!topo || !topo.order.length) { console.warn(TAG, 'nothing to read'); return []; }
+      var rows = topo.order.map(function (id) {
+        var n = topo.nodes[id];
+        return { onDrawing: (n.obj.kind || n.obj.eqId || n.obj.type || '?'),
+                 becomes: n.sldType,
+                 label: String(n.label).replace('\n', ' \u00b7 '),
+                 conduits: n.links.length };
+      });
+      if (console.table) console.table(rows); else console.log(rows);
+      console.info(TAG + ' ' + rows.length + ' item(s), ' + topo.edges.length
+        + ' conduit link(s). OmegaSLD.generate() draws it.');
+      return rows;
+    },
+
+    status: function () {
+      var topo = readTopology();
+      var s = S_() || {};
+      var conds = (s.conduits || []).filter(Boolean);
+      var linked = conds.filter(function (c) {
+        return (c.fromId != null || c.fromElId != null) && (c.toId != null || c.toElId != null);
+      });
+      var o = {
+        oneLineItems: topo ? topo.order.length : 0,
+        conduitRuns: conds.length,
+        runsWithBothEnds: linked.length,
+        usableLinks: topo ? topo.edges.length : 0,
+        existingSldNodes: (function () { try { return (_sld.nodes || []).length; } catch (e) { return 0; } })(),
+        handPlaced: (function () { try { return (_sld.nodes || []).filter(function (n) { return !n._omegaGen; }).length; } catch (e) { return 0; } })()
+      };
+      o.verdict = !o.oneLineItems ? 'No equipment on the site map yet.'
+        : !o.usableLinks ? 'Equipment is placed but no conduit joins two pieces of it — the one-line would be all boxes, no wires.'
+          : o.handPlaced ? o.handPlaced + ' hand-placed node(s) on the one-line; generate({force:true}) to replace.'
+            : 'Ready: ' + o.oneLineItems + ' item(s), ' + o.usableLinks + ' link(s). Run OmegaSLD.generate().';
+      if (console.table) console.table(o); else console.log(o);
+      console.info(o.verdict);
+      return o;
+    }
+  };
+
+  if (window.console) console.info(TAG, 'armed — OmegaSLD.generate() builds the one-line from the drawing');
+})();
+
+
+/* ═══════════════════════════════════════════════════════════════════════
+   OMEGA PATCH — 22 : E2.0 DRAWS WHAT WAS BUILT  +  RESIDENTIAL / C&I KIT
+   -----------------------------------------------------------------------
+   PART A — the sheet
+
+   E2.0 calls _olRender(sizeKey, true), which builds a one-line from the
+   ONE-LINE DIALOG's fields — container count, containers per block, block
+   transformer size — and from wizMode for the BTM/FOM heading. Good for a
+   utility BESS. It has never looked at the site map, so a drawing with
+   four containers, a PCS, a genset and a solar array still prints the
+   generic two-battery diagram.
+
+   Patch 21 reads the real topology into _sld. This renders THAT onto the
+   sheet when it exists, and falls through to the original template when it
+   does not — so nothing changes for anyone who has not generated one.
+
+   Drawn as a permit sheet, not as the dark editor UI: white ground, black
+   linework, orthogonal routing, service and length on every run. The
+   references you sent all read that way.
+
+   PART B — the equipment
+
+   Reading across the one-lines you sent, the kit that had no footprint in
+   Draw is mostly residential and small C&I: the combiner, the system
+   controller, the junction boxes, the RSD switch, the production meter,
+   the sub panel and critical-loads panel, the gutter, the transfer
+   switches. Utility-scale BOP went in at rev 24; this is the other end of
+   the range.
+
+   Footprints are real enclosure sizes — an IQ Combiner is about 2 ft by
+   1.3 ft on the wall, a 200 A MSP about 3 ft by 1.3 ft. They place, scale,
+   anchor, count and export like every other utility footprint.
+   ═══════════════════════════════════════════════════════════════════════ */
+(function () {
+  'use strict';
+
+  var TAG = '[omega/e20]';
+
+  /* ───────────────── PART B — catalogue ───────────────── */
+  var RES = {
+    msp:      { label: 'MAIN SERVICE PANEL 200A',   lf: 3.0,  wf: 1.3, abbr: 'MSP' },
+    subpanel: { label: 'SUB PANEL',                 lf: 2.5,  wf: 1.2, abbr: 'SUB' },
+    critpanel:{ label: 'CRITICAL LOADS PANEL',      lf: 2.5,  wf: 1.2, abbr: 'CLP' },
+    loadctr:  { label: 'AC LOAD CENTER 125A',       lf: 2.0,  wf: 1.0, abbr: 'LC'  },
+    combiner5c:{label: 'IQ COMBINER / AC COMBINER', lf: 2.0,  wf: 1.3, abbr: 'CMB' },
+    sysctrl:  { label: 'IQ SYSTEM CONTROLLER 3',    lf: 2.2,  wf: 1.3, abbr: 'SC'  },
+    jbox:     { label: 'JUNCTION BOX',              lf: 1.0,  wf: 0.8, abbr: 'JB'  },
+    rsd:      { label: 'RAPID SHUTDOWN SWITCH',     lf: 0.8,  wf: 0.6, abbr: 'RSD' },
+    prodmeter:{ label: 'PV PRODUCTION METER',       lf: 1.2,  wf: 1.0, abbr: 'PM'  },
+    gutter:   { label: 'ELECTRICAL GUTTER',         lf: 6.0,  wf: 0.7, abbr: 'GTR' },
+    gts:      { label: 'GENERATOR TRANSFER SWITCH', lf: 2.5,  wf: 1.3, abbr: 'GTS' },
+    mts:      { label: 'MANUAL TRANSFER SWITCH',    lf: 2.0,  wf: 1.2, abbr: 'MTS' },
+    battwall: { label: 'WALL-MOUNT BATTERY',        lf: 3.6,  wf: 1.1, abbr: 'BAT' },
+    strinv:   { label: 'STRING INVERTER (WALL)',    lf: 2.2,  wf: 1.0, abbr: 'INV' },
+    gateway:  { label: 'COMMS GATEWAY / ENVOY',     lf: 0.8,  wf: 0.5, abbr: 'GW'  },
+    groundrod:{ label: 'GROUND ROD',                lf: 0.5,  wf: 0.5, abbr: 'GR'  }
+  };
+
+  var MENU = [
+    ['Service & distribution', [['msp','▤'],['subpanel','▯'],['critpanel','▯'],['loadctr','▯'],['gutter','▭']]],
+    ['PV / storage balance',   [['combiner5c','▦'],['sysctrl','▥'],['strinv','◨'],['battwall','▬'],['jbox','▫'],['rsd','◌']]],
+    ['Metering & transfer',    [['prodmeter','◍'],['gts','⧉'],['mts','⧉'],['gateway','◈'],['groundrod','⏚']]]
+  ];
+
+  function installCatalog() {
+    if (typeof UTILITY_CATALOG === 'undefined' || typeof setUtilityType !== 'function') return false;
+    if (window.__omegaRes) return false;
+    for (var k in RES) {
+      if (Object.prototype.hasOwnProperty.call(RES, k) && !UTILITY_CATALOG[k]) UTILITY_CATALOG[k] = RES[k];
+    }
+    var fly = document.getElementById('fly-util');
+    if (!fly) return false;
+    if (!document.getElementById('omega-res-sep')) {
+      var sep = document.createElement('div');
+      sep.className = 'menu-sep'; sep.id = 'omega-res-sep';
+      fly.appendChild(sep);
+      MENU.forEach(function (grp) {
+        var h = document.createElement('div');
+        h.textContent = grp[0];
+        h.style.cssText = 'font:700 8.5px/1.6 "IBM Plex Sans",sans-serif;letter-spacing:.08em;'
+          + 'text-transform:uppercase;color:#7D95B4;padding:5px 10px 2px';
+        fly.appendChild(h);
+        grp[1].forEach(function (it) {
+          var key = it[0], def = RES[key];
+          var b = document.createElement('button');
+          b.className = 'rb-fly-item';
+          b.title = def.label + ' — ' + def.lf + '\u2032 \u00d7 ' + def.wf + '\u2032';
+          b.innerHTML = '<span class="fi-ico">' + it[1] + '</span> ' + def.label
+            + ' <span style="opacity:.5;font-size:9px">' + def.lf + '\u2032\u00d7' + def.wf + '\u2032</span>';
+          b.onclick = (function (k2) {
+            return function () {
+              try { if (typeof rbFlyDo === 'function') { rbFlyDo('fly-util', function () { setUtilityType(k2); }); return; } } catch (e) {}
+              setUtilityType(k2);
+            };
+          })(key);
+          fly.appendChild(b);
+        });
+      });
+    }
+    window.__omegaRes = true;
+    return true;
+  }
+
+  /* ───────────────── PART A — the sheet ───────────────── */
+
+  function esc(s) {
+    return String(s == null ? '' : s)
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;');
+  }
+
+  function generated() {
+    try {
+      return (_sld.nodes || []).some(function (n) { return n && n._omegaGen; }) ? _sld : null;
+    } catch (e) { return null; }
+  }
+
+  /* Orthogonal route: out of the source, along a mid corridor, into the
+     target. Diagonals do not belong on a one-line. */
+  function route(a, b) {
+    var x1 = a.x + a.w, y1 = a.y + a.h / 2;
+    var x2 = b.x, y2 = b.y + b.h / 2;
+    if (x2 < x1) { x1 = a.x; x2 = b.x + b.w; }
+    var mid = (x1 + x2) / 2;
+    return 'M' + x1 + ',' + y1 + ' H' + mid + ' V' + y2 + ' H' + x2;
+  }
+
+  function renderSheet(sizeKey, withSched) {
+    var sld = generated(); if (!sld) return null;
+    var sheet = null, dpi = 96;
+    try { sheet = OL_SHEETS[sizeKey] || OL_SHEETS.B; dpi = OL_DPI || 96; } catch (e) {}
+    var W = (sheet ? sheet.w : 17) * dpi, H = (sheet ? sheet.h : 11) * dpi;
+
+    var nodes = sld.nodes, wires = sld.wires || [];
+    var minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    nodes.forEach(function (n) {
+      minX = Math.min(minX, n.x); minY = Math.min(minY, n.y);
+      maxX = Math.max(maxX, n.x + n.w); maxY = Math.max(maxY, n.y + n.h);
+    });
+    if (!isFinite(minX)) return null;
+
+    var padL = 70, padT = 90, padR = 70, padB = withSched ? 230 : 90;
+    var availW = W - padL - padR, availH = H - padT - padB;
+    var k = Math.min(availW / Math.max(1, maxX - minX), availH / Math.max(1, maxY - minY), 1.6);
+    var offX = padL - minX * k + (availW - (maxX - minX) * k) / 2;
+    var offY = padT - minY * k + (availH - (maxY - minY) * k) / 2;
+    var X = function (v) { return (v * k + offX).toFixed(1); };
+    var Y = function (v) { return (v * k + offY).toFixed(1); };
+
+    var s = '<svg xmlns="http://www.w3.org/2000/svg" width="' + W + '" height="' + H
+      + '" viewBox="0 0 ' + W + ' ' + H + '">';
+    s += '<rect width="' + W + '" height="' + H + '" fill="#FFFFFF"/>';
+    s += '<rect x="24" y="24" width="' + (W - 48) + '" height="' + (H - 48)
+      + '" fill="none" stroke="#000" stroke-width="2"/>';
+    s += '<text x="44" y="58" font-family="Arial" font-size="20" font-weight="bold">'
+      + 'ELECTRICAL SINGLE LINE DIAGRAM</text>';
+    s += '<text x="44" y="76" font-family="Arial" font-size="10" fill="#333">'
+      + 'Generated from the site map \u2014 ' + nodes.length + ' equipment item(s), '
+      + wires.length + ' circuit(s)</text>';
+
+    var byId = {};
+    nodes.forEach(function (n) { byId[n.id] = n; });
+
+    /* wires first so boxes sit on top */
+    wires.forEach(function (w) {
+      var a = byId[w.fromId], b = byId[w.toId];
+      if (!a || !b) return;
+      var sa = { x: a.x * k + offX, y: a.y * k + offY, w: a.w * k, h: a.h * k };
+      var sb = { x: b.x * k + offX, y: b.y * k + offY, w: b.w * k, h: b.h * k };
+      s += '<path d="' + route(sa, sb) + '" fill="none" stroke="#000" stroke-width="1.6"/>';
+      if (w.label) {
+        var lx = (sa.x + sa.w + sb.x) / 2, ly = (sa.y + sa.h / 2 + sb.y + sb.h / 2) / 2 - 5;
+        s += '<text x="' + lx.toFixed(1) + '" y="' + ly.toFixed(1)
+          + '" font-family="Arial" font-size="9" text-anchor="middle" fill="#000">'
+          + esc(w.label) + '</text>';
+      }
+    });
+
+    nodes.forEach(function (n) {
+      var bx = X(n.x), by = Y(n.y), bw = (n.w * k).toFixed(1), bh = (n.h * k).toFixed(1);
+      s += '<rect x="' + bx + '" y="' + by + '" width="' + bw + '" height="' + bh
+        + '" fill="#FFFFFF" stroke="#000" stroke-width="1.8"/>';
+      var lines = String(n.label || '').split('\n');
+      var cx = (+bx) + (+bw) / 2, cy = (+by) + (+bh) / 2 - (lines.length - 1) * 6;
+      lines.forEach(function (ln, i) {
+        s += '<text x="' + cx.toFixed(1) + '" y="' + (cy + i * 13).toFixed(1)
+          + '" font-family="Arial" font-size="' + (i ? 9 : 11) + '"'
+          + (i ? '' : ' font-weight="bold"') + ' text-anchor="middle">' + esc(ln) + '</text>';
+      });
+    });
+
+    if (withSched) {
+      var ty = H - 200;
+      s += '<text x="44" y="' + ty + '" font-family="Arial" font-size="12" font-weight="bold">CIRCUIT SCHEDULE</text>';
+      var cols = [44, 150, 430, 700, 900];
+      var hdr = ['TAG', 'FROM \u2192 TO', 'SERVICE', 'LENGTH'];
+      s += '<line x1="44" y1="' + (ty + 8) + '" x2="' + (W - 44) + '" y2="' + (ty + 8) + '" stroke="#000" stroke-width="1"/>';
+      hdr.forEach(function (h2, i) {
+        s += '<text x="' + cols[i] + '" y="' + (ty + 24) + '" font-family="Arial" font-size="9" font-weight="bold">' + h2 + '</text>';
+      });
+      wires.slice(0, 12).forEach(function (w, i) {
+        var a = byId[w.fromId], b = byId[w.toId]; if (!a || !b) return;
+        var yy = ty + 40 + i * 13;
+        var parts = String(w.label || '').split('  ');
+        var cells = ['C' + (i + 1),
+          String(a.label).split('\n')[0] + ' \u2192 ' + String(b.label).split('\n')[0],
+          parts[0] || '', parts[1] || ''];
+        cells.forEach(function (c2, j) {
+          s += '<text x="' + cols[j] + '" y="' + yy + '" font-family="Arial" font-size="8.5">' + esc(c2) + '</text>';
+        });
+      });
+    }
+    s += '</svg>';
+    return s;
+  }
+
+  function hookRender() {
+    var orig = window._olRender;
+    if (typeof orig !== 'function' || orig.__omegaE20) return false;
+    var wrapped = function (sizeKey, withSched) {
+      try {
+        var s = renderSheet(sizeKey, withSched);
+        if (s) return s;                       /* built from the drawing */
+      } catch (e) { console.warn(TAG, 'falling back to the template:', e && e.message); }
+      return orig.apply(this, arguments);      /* nothing generated — template */
+    };
+    wrapped.__omegaE20 = true;
+    window._olRender = wrapped;
+    return true;
+  }
+
+  var n = 0;
+  var iv = setInterval(function () {
+    var a = installCatalog(), b = hookRender();
+    if (a || b) {
+      if (window.console) {
+        console.info(TAG, 'armed'
+          + (a ? ' \u2014 ' + Object.keys(RES).length + ' residential/C&I footprints in Draw \u203a Utility' : '')
+          + (b ? ' \u2014 E2.0 will draw the generated one-line when there is one' : ''));
+      }
+    }
+    if (++n > 200) clearInterval(iv);
+  }, 300);
+
+  window.OmegaE20 = {
+    catalog: RES,
+    preview: function (sizeKey) {
+      var s = renderSheet(sizeKey || 'B', true);
+      if (!s) { console.warn(TAG, 'no generated one-line yet — run OmegaSLD.generate() first'); return null; }
+      try {
+        var w = window.open('', '_blank');
+        w.document.write(s); w.document.close();
+      } catch (e) { console.info(TAG, 'popup blocked; the SVG string is returned instead'); }
+      return s;
+    },
+    status: function () {
+      var g = generated();
+      var o = {
+        residentialItems: Object.keys(RES).length,
+        menuInjected: !!document.getElementById('omega-res-sep'),
+        e20Hooked: !!(window._olRender && window._olRender.__omegaE20),
+        generatedOneLine: !!g,
+        nodes: g ? g.nodes.length : 0,
+        wires: g ? (g.wires || []).length : 0
+      };
+      o.verdict = !o.e20Hooked ? 'E2.0 not hooked yet — open the Output tab once.'
+        : !g ? 'No generated one-line. Run OmegaSLD.generate(), then tick E2.0 in the Plot Plan export.'
+          : 'E2.0 will print your ' + o.nodes + '-item one-line instead of the template.';
+      if (console.table) console.table(o); else console.log(o);
+      console.info(o.verdict);
+      return o;
+    }
+  };
+})();
+
+
+/* ═══════════════════════════════════════════════════════════════════════
+   OMEGA PATCH — 23 : SELECT AND MOVE THE WHOLE CLUSTER
+   -----------------------------------------------------------------------
+   Selection here is one object at a time. S.sel holds a single element id,
+   S.shapeDrag a single shape id. There is a group mechanism — _groupIds —
+   but it is a parent/child relationship built at placement time for a node
+   and its bollards, not something you can form by clicking.
+
+   So relocating a BESS cluster means moving each container, then the EMS,
+   then re-laying the trenching, and hoping the spacing survived.
+
+   This adds a cluster as a first-class thing you can grab. A cluster is
+   what OmegaTrench already understands: the containers, the EMS, and the
+   runs flagged cluster:true. Alt-click any container and the whole
+   arrangement is selected; drag it and everything moves together at fixed
+   spacing; rotate it and the trenching re-lays in the new frame.
+
+       Alt-click a container      select the cluster
+       drag                       move it as one
+       Esc                        drop the selection
+
+       OmegaCluster.select()      same thing from the console
+       OmegaCluster.move(dx,dy)   nudge in pixels
+       OmegaCluster.rotate(15)    turn it and re-lay the trenching
+       OmegaCluster.clear()
+
+   Everything is re-anchored as it moves, so the anchor passes do not drag
+   it back, and the trenching is re-laid on release rather than during, so
+   a drag stays smooth.
+   ═══════════════════════════════════════════════════════════════════════ */
+(function () {
+  'use strict';
+
+  var TAG = '[omega/cluster]';
+  var sel = null;      /* {shapes:[], elements:[], conduits:[]} */
+  var drag = null;
+
+  function S_() { try { return (typeof S !== 'undefined' && S) ? S : null; } catch (e) { return null; } }
+
+  function members() {
+    var s = S_(); if (!s) return null;
+    var shapes = (s.shapes || []).filter(function (x) {
+      return x && (x.kind === 'assembly' || x.type === 'bess-asm');
+    });
+    var els = (s.elements || []).filter(function (x) {
+      return x && (x.eqId === 'ems' || x.type === 'ems');
+    });
+    var conds = (s.conduits || []).filter(function (c) { return c && c.cluster; });
+    if (!shapes.length && !els.length) return null;
+    return { shapes: shapes, elements: els, conduits: conds };
+  }
+
+  function highlight(on) {
+    try {
+      (sel ? sel.shapes : []).forEach(function (sh) {
+        var g = document.querySelector('[data-shid="' + sh.id + '"]');
+        if (g) g.setAttribute('opacity', on ? '0.72' : '1');
+      });
+      (sel ? sel.elements : []).forEach(function (el) {
+        var d = document.querySelector('[data-elid="' + el.id + '"]');
+        if (d) d.style.outline = on ? '2px dashed #FBBF24' : '';
+      });
+    } catch (e) {}
+  }
+
+  function select() {
+    var m = members();
+    if (!m) { console.warn(TAG, 'no BESS cluster on the drawing'); return null; }
+    highlight(false);
+    sel = m;
+    highlight(true);
+    var n = m.shapes.length + m.elements.length;
+    try {
+      if (typeof showBanner === 'function') {
+        showBanner('shape', ' Cluster selected \u2014 ' + m.shapes.length + ' container(s), '
+          + m.conduits.length + ' run(s). Drag to move, Esc to drop.');
+      }
+    } catch (e) {}
+    console.info(TAG + ' selected ' + n + ' item(s) and ' + m.conduits.length + ' run(s)');
+    return { items: n, runs: m.conduits.length };
+  }
+
+  function clear() {
+    highlight(false);
+    sel = null; drag = null;
+    try { if (typeof showBanner === 'function') showBanner('shape', ' Cluster released'); } catch (e) {}
+    return true;
+  }
+
+  function restamp(o) {
+    try { if (window.OmegaMove && OmegaMove.restamp) OmegaMove.restamp(o); } catch (e) {}
+  }
+
+  function move(dx, dy, quiet) {
+    if (!sel) { if (!quiet) console.warn(TAG, 'nothing selected — OmegaCluster.select() first'); return null; }
+    dx = +dx || 0; dy = +dy || 0;
+    if (!dx && !dy) return null;
+
+    sel.shapes.forEach(function (sh) {
+      if (sh.cx != null) { sh.cx += dx; sh.cy += dy; }
+      else if (sh.pts) sh.pts.forEach(function (p) { p.x += dx; p.y += dy; });
+      if (sh.boundary) sh.boundary.forEach(function (p) { p.x += dx; p.y += dy; });
+      restamp(sh);
+      try { if (typeof renderShape === 'function') renderShape(sh); } catch (e) {}
+    });
+    sel.elements.forEach(function (el) {
+      el.x += dx; el.y += dy;
+      restamp(el);
+      try {
+        var d = document.querySelector('[data-elid="' + el.id + '"]');
+        if (d) { d.style.left = el.x + 'px'; d.style.top = el.y + 'px'; }
+      } catch (e) {}
+    });
+    sel.conduits.forEach(function (c) {
+      (c.pts || []).forEach(function (p) { p.x += dx; p.y += dy; });
+      restamp(c);
+      try {
+        var g = document.querySelector('[data-cid="' + c.id + '"]');
+        if (g && g.parentNode) g.parentNode.removeChild(g);
+        if (typeof renderConduit === 'function') renderConduit(c);
+      } catch (e) {}
+    });
+    highlight(true);
+    return { dx: dx, dy: dy };
+  }
+
+  function rotate(deg) {
+    if (!sel) { console.warn(TAG, 'nothing selected'); return null; }
+    if (!window.OmegaRotate || typeof OmegaRotate.clusterBy !== 'function') {
+      console.warn(TAG, 'OmegaRotate is not loaded'); return null;
+    }
+    var r = OmegaRotate.clusterBy(deg);
+    /* the lane geometry no longer describes the new heading */
+    try { if (window.OmegaTrench && OmegaTrench.rebuild) OmegaTrench.rebuild(); } catch (e) {}
+    sel = members(); highlight(true);
+    return r;
+  }
+
+  /* ── alt-click to grab, drag to move ─────────────────────────────── */
+
+  function shapeAt(target) {
+    try {
+      var g = target && target.closest ? target.closest('[data-shid]') : null;
+      if (!g) return null;
+      var id = g.getAttribute('data-shid');
+      var s = S_(); if (!s) return null;
+      for (var i = 0; i < (s.shapes || []).length; i++) {
+        var sh = s.shapes[i];
+        if (sh.id === id && (sh.kind === 'assembly' || sh.type === 'bess-asm')) return sh;
+      }
+    } catch (e) {}
+    return null;
+  }
+
+  document.addEventListener('mousedown', function (e) {
+    if (!e.altKey) return;
+    var hit = shapeAt(e.target);
+    if (!hit) return;
+    e.preventDefault(); e.stopPropagation();
+    select();
+    drag = { x: e.clientX, y: e.clientY };
+  }, true);
+
+  document.addEventListener('mousemove', function (e) {
+    if (!drag || !sel) return;
+    var dx = e.clientX - drag.x, dy = e.clientY - drag.y;
+    if (!dx && !dy) return;
+    drag.x = e.clientX; drag.y = e.clientY;
+    move(dx, dy, true);
+  }, true);
+
+  document.addEventListener('mouseup', function () {
+    if (!drag) return;
+    drag = null;
+    /* re-lay once on release, not on every mousemove */
+    try { if (window.OmegaTrench && OmegaTrench.rebuild) OmegaTrench.rebuild(); } catch (e) {}
+    try { if (typeof pushHist === 'function') pushHist(); } catch (e) {}
+    sel = members(); highlight(true);
+  }, true);
+
+  document.addEventListener('keydown', function (e) {
+    if (e.key === 'Escape' && sel) { clear(); return; }
+    if (!sel || drag) return;
+    var t = e.target;
+    if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return;
+    var step = e.shiftKey ? 10 : 1, dx = 0, dy = 0;
+    if (e.key === 'ArrowLeft') dx = -step;
+    else if (e.key === 'ArrowRight') dx = step;
+    else if (e.key === 'ArrowUp') dy = -step;
+    else if (e.key === 'ArrowDown') dy = step;
+    else return;
+    e.preventDefault();
+    move(dx, dy, true);
+  }, true);
+
+  window.OmegaCluster = {
+    select: select, clear: clear, move: move, rotate: rotate,
+    status: function () {
+      var m = members();
+      var o = {
+        containers: m ? m.shapes.length : 0,
+        ems: m ? m.elements.length : 0,
+        clusterRuns: m ? m.conduits.length : 0,
+        selected: !!sel
+      };
+      o.verdict = !m ? 'No BESS cluster on the drawing.'
+        : sel ? 'Cluster selected. Drag it, arrow-key it, or OmegaCluster.rotate(deg).'
+          : 'Alt-click a container to select the cluster, or OmegaCluster.select().';
+      if (console.table) console.table(o); else console.log(o);
+      console.info(o.verdict);
+      return o;
+    }
+  };
+
+  if (window.console) console.info(TAG, 'armed — alt-click a container to grab the whole cluster');
+})();
+
+
+/* ═══════════════════════════════════════════════════════════════════════
+   OMEGA PATCH — 24 : ROTATE HANDLE FOR THE CLUSTER
+   -----------------------------------------------------------------------
+   Rev 23 made a cluster grabbable and rev 19 gave it rigid-body rotation,
+   but the only way to turn one was to type a number. This puts a grip on
+   it.
+
+   Select a cluster (alt-click a container) and a dashed box appears round
+   the whole arrangement with a grip on a stem above it. Drag the grip and
+   the cluster turns about its own centre, live. The angle reads out as you
+   go, because "about 20 degrees" is not a thing you can hand to a
+   contractor.
+
+       drag the grip        free rotation
+       hold Shift           snap to 15 degrees
+       release              trenching re-lays in the new frame
+
+   Two things are deliberate.
+
+   The turn is applied as a DELTA each frame rather than re-rotating from
+   the original heading. Accumulating a fresh absolute transform every
+   mousemove would compound floating-point drift through the containers,
+   the EMS and every conduit point until the spacing visibly crept.
+
+   And history is written ONCE, on release. Rotation calls pushHist, so a
+   live drag would otherwise stack a hundred undo steps and you would be
+   pressing Cmd-Z all afternoon to get back where you started.
+   ═══════════════════════════════════════════════════════════════════════ */
+(function () {
+  'use strict';
+
+  var TAG = '[omega/rotgrip]';
+  var NS = 'http://www.w3.org/2000/svg';
+  var grip = null;                 /* {cx, cy, lastAngle, total} while dragging */
+
+  function S_() { try { return (typeof S !== 'undefined' && S) ? S : null; } catch (e) { return null; } }
+  function selected() {
+    try { return (window.OmegaCluster && OmegaCluster.status) ? !!clusterBox() : false; } catch (e) { return false; }
+  }
+
+  /* The bounding box of everything in the cluster, in canvas pixels. */
+  function clusterBox() {
+    var s = S_(); if (!s) return null;
+    var xs = [], ys = [];
+    function note(x, y) { if (isFinite(x) && isFinite(y)) { xs.push(x); ys.push(y); } }
+    (s.shapes || []).forEach(function (sh) {
+      if (!sh || !(sh.kind === 'assembly' || sh.type === 'bess-asm')) return;
+      if (sh.cx != null) note(sh.cx, sh.cy);
+      (sh.pts || []).forEach(function (p) { note(p.x, p.y); });
+    });
+    (s.elements || []).forEach(function (el) {
+      if (!el || !(el.eqId === 'ems' || el.type === 'ems')) return;
+      note(el.x + (el.w || 32) / 2, el.y + (el.h || el.w || 32) / 2);
+    });
+    (s.conduits || []).forEach(function (c) {
+      if (!c || !c.cluster) return;
+      (c.pts || []).forEach(function (p) { note(p.x, p.y); });
+    });
+    if (xs.length < 1) return null;
+    var pad = 26;
+    return {
+      x1: Math.min.apply(null, xs) - pad, y1: Math.min.apply(null, ys) - pad,
+      x2: Math.max.apply(null, xs) + pad, y2: Math.max.apply(null, ys) + pad,
+      cx: (Math.min.apply(null, xs) + Math.max.apply(null, xs)) / 2,
+      cy: (Math.min.apply(null, ys) + Math.max.apply(null, ys)) / 2
+    };
+  }
+
+  function hide() {
+    var g = document.getElementById('omega-cluster-gizmo');
+    if (g && g.parentNode) g.parentNode.removeChild(g);
+  }
+
+  function draw(angleLabel) {
+    var svg = document.getElementById('csvg');
+    var b = clusterBox();
+    if (!svg || !b) { hide(); return; }
+    hide();
+
+    var g = document.createElementNS(NS, 'g');
+    g.setAttribute('id', 'omega-cluster-gizmo');
+
+    var box = document.createElementNS(NS, 'rect');
+    box.setAttribute('x', b.x1); box.setAttribute('y', b.y1);
+    box.setAttribute('width', b.x2 - b.x1); box.setAttribute('height', b.y2 - b.y1);
+    box.setAttribute('fill', 'none');
+    box.setAttribute('stroke', '#FBBF24');
+    box.setAttribute('stroke-width', '1.4');
+    box.setAttribute('stroke-dasharray', '7,5');
+    box.setAttribute('pointer-events', 'none');
+    g.appendChild(box);
+
+    var gy = b.y1 - 34;
+    var stem = document.createElementNS(NS, 'line');
+    stem.setAttribute('x1', b.cx); stem.setAttribute('y1', b.y1);
+    stem.setAttribute('x2', b.cx); stem.setAttribute('y2', gy + 10);
+    stem.setAttribute('stroke', '#FBBF24');
+    stem.setAttribute('stroke-width', '1.4');
+    stem.setAttribute('pointer-events', 'none');
+    g.appendChild(stem);
+
+    var knob = document.createElementNS(NS, 'circle');
+    knob.setAttribute('id', 'omega-rot-grip');
+    knob.setAttribute('cx', b.cx); knob.setAttribute('cy', gy);
+    knob.setAttribute('r', 10);
+    knob.setAttribute('fill', '#FBBF24');
+    knob.setAttribute('stroke', '#0A1628');
+    knob.setAttribute('stroke-width', '2');
+    knob.setAttribute('cursor', 'grab');
+    g.appendChild(knob);
+
+    var arc = document.createElementNS(NS, 'path');
+    arc.setAttribute('d', 'M' + (b.cx - 5) + ',' + (gy + 1) + ' A5,5 0 1,1 ' + (b.cx + 4) + ',' + (gy + 3));
+    arc.setAttribute('fill', 'none');
+    arc.setAttribute('stroke', '#0A1628');
+    arc.setAttribute('stroke-width', '1.6');
+    arc.setAttribute('pointer-events', 'none');
+    g.appendChild(arc);
+
+    /* a centre mark, so it is obvious what it turns about */
+    var dot = document.createElementNS(NS, 'circle');
+    dot.setAttribute('cx', b.cx); dot.setAttribute('cy', b.cy); dot.setAttribute('r', 3);
+    dot.setAttribute('fill', '#FBBF24'); dot.setAttribute('pointer-events', 'none');
+    g.appendChild(dot);
+
+    if (angleLabel != null) {
+      var t = document.createElementNS(NS, 'text');
+      t.setAttribute('x', b.cx + 16); t.setAttribute('y', gy + 4);
+      t.setAttribute('font-family', 'IBM Plex Mono, monospace');
+      t.setAttribute('font-size', '13');
+      t.setAttribute('font-weight', '700');
+      t.setAttribute('fill', '#FBBF24');
+      t.setAttribute('pointer-events', 'none');
+      t.textContent = (angleLabel > 0 ? '+' : '') + angleLabel.toFixed(1) + '\u00b0';
+      g.appendChild(t);
+    }
+
+    svg.appendChild(g);
+  }
+
+  /* Rotate without touching history — the drag writes one entry on release. */
+  function turn(deg) {
+    if (!deg) return;
+    var orig = window.pushHist;
+    try {
+      window.pushHist = function () {};
+      if (window.OmegaRotate && OmegaRotate.clusterBy) OmegaRotate.clusterBy(deg);
+    } catch (e) {} finally { window.pushHist = orig; }
+  }
+
+  function canvasPoint(e) {
+    try {
+      var sc = document.getElementById('sc');
+      if (!sc) return { x: e.clientX, y: e.clientY };
+      var r = sc.getBoundingClientRect();
+      return { x: e.clientX - r.left, y: e.clientY - r.top };
+    } catch (err) { return { x: e.clientX, y: e.clientY }; }
+  }
+
+  document.addEventListener('mousedown', function (e) {
+    var t = e.target;
+    if (!t || t.id !== 'omega-rot-grip') return;
+    var b = clusterBox(); if (!b) return;
+    e.preventDefault(); e.stopPropagation();
+    var p = canvasPoint(e);
+    var a0 = Math.atan2(p.y - b.cy, p.x - b.cx);
+    /* A pointer event without coordinates would seed this NaN, and every
+       delta after it would inherit that — the drag would look like it was
+       working while the total stayed NaN, so release would silently skip
+       the re-lay and the history entry. */
+    grip = { cx: b.cx, cy: b.cy, last: isFinite(a0) ? a0 : 0, total: 0 };
+    try { t.setAttribute('cursor', 'grabbing'); } catch (err) {}
+  }, true);
+
+  document.addEventListener('mousemove', function (e) {
+    if (!grip) return;
+    e.preventDefault();
+    var p = canvasPoint(e);
+    var now = Math.atan2(p.y - grip.cy, p.x - grip.cx);
+    var d = now - grip.last;
+    while (d > Math.PI) d -= 2 * Math.PI;
+    while (d < -Math.PI) d += 2 * Math.PI;
+    var deg = d * 180 / Math.PI;
+    if (!isFinite(deg)) return;
+
+    if (e.shiftKey) {
+      /* snap the TOTAL, not each step, or the snap fights the pointer */
+      var want = Math.round((grip.total + deg) / 15) * 15;
+      deg = want - grip.total;
+      if (!deg) return;
+    }
+    grip.total += deg;
+    grip.last = now;
+    turn(deg);
+    draw(grip.total);
+  }, true);
+
+  document.addEventListener('mouseup', function () {
+    if (!grip) return;
+    var total = grip.total;
+    grip = null;
+    try {
+      var k = document.getElementById('omega-rot-grip');
+      if (k) k.setAttribute('cursor', 'grab');
+    } catch (e) {}
+    if (Math.abs(total) > 0.05) {
+      try { if (window.OmegaTrench && OmegaTrench.rebuild) OmegaTrench.rebuild(); } catch (e) {}
+      try { if (typeof pushHist === 'function') pushHist(); } catch (e) {}
+      console.info(TAG + ' rotated ' + total.toFixed(1) + '\u00b0 \u2014 trenching re-laid');
+    }
+    draw(null);
+  }, true);
+
+  /* Keep the gizmo in step with selection and with cluster moves. */
+  var lastSig = '';
+  setInterval(function () {
+    if (window.OMEGA_OFF) return;
+    var on = false;
+    try { on = !!(window.OmegaCluster && OmegaCluster.status && document.getElementById('csvg')); } catch (e) {}
+    if (!on) return;
+    var isSel = false;
+    try { isSel = OmegaCluster.status.__quiet ? false : !!window.__omegaClusterSel; } catch (e) {}
+    /* OmegaCluster does not expose its selection flag, so mirror the
+       highlight it applies instead. */
+    var anyHighlighted = false;
+    try {
+      var s = S_();
+      (s && s.shapes || []).forEach(function (sh) {
+        if (sh.kind !== 'assembly') return;
+        var g2 = document.querySelector('[data-shid="' + sh.id + '"]');
+        if (g2 && g2.getAttribute('opacity') === '0.72') anyHighlighted = true;
+      });
+    } catch (e) {}
+    var b = anyHighlighted ? clusterBox() : null;
+    var sig = b ? [b.x1, b.y1, b.x2, b.y2].map(Math.round).join(',') : '';
+    if (sig === lastSig) return;
+    lastSig = sig;
+    if (b && !grip) draw(null); else if (!b) hide();
+  }, 250);
+
+  window.OmegaRotGrip = {
+    show: function () { draw(null); return true; },
+    hide: hide,
+    status: function () {
+      var b = clusterBox();
+      var o = {
+        clusterFound: !!b,
+        gizmoOnScreen: !!document.getElementById('omega-cluster-gizmo'),
+        dragging: !!grip,
+        pivot: b ? (Math.round(b.cx) + ',' + Math.round(b.cy)) : null
+      };
+      o.verdict = !b ? 'No cluster on the drawing.'
+        : o.gizmoOnScreen ? 'Grip is up — drag it to rotate, Shift to snap to 15\u00b0.'
+          : 'Alt-click a container to select the cluster and the grip appears.';
+      if (console.table) console.table(o); else console.log(o);
+      console.info(o.verdict);
+      return o;
+    }
+  };
+
+  if (window.console) console.info(TAG, 'armed — drag the grip above a selected cluster to rotate it');
+})();
+
+
+/* ═══════════════════════════════════════════════════════════════════════
+   OMEGA PATCH — 7 : MOVING WHAT THE GUIDED BUILD PLACED
+   -----------------------------------------------------------------------
+   To answer the question directly: moving them is fine, and it does not
+   break the anchor. The anchor is a RECORD of where you put something,
+   not a cage around it. When you move a thing deliberately, the new
+   position is supposed to become the new record.
+
+   Nothing was updating that record, and two separate timers were putting
+   the old one back.
+
+   WHAT A GUIDED BUILD PLACES
+
+   Not an element and not a normal shape. openBessGuidedBuild and friends
+   emit kind:'assembly' (line 8235), which stores its position as a PIXEL
+   CENTRE — sh.cx / sh.cy — and has no sh.pts at all. Everything else in
+   the file anchors through sh.pts, so assemblies needed their own path
+   and got two of them.
+
+   PASS ONE  (line 47491) anchors centred shapes as sh._geoPts[0] and
+   writes sh.cx/cy back from it. It runs on four map events AND on:
+
+       setInterval(function(){ stamp(); reproject(); }, 700);
+
+   PASS TWO  (line 48104) is the later "unified engine". It anchors as
+   o._geoAnchor and also writes o.cx/cy. It runs on four map events AND on:
+
+       setInterval(function(){ standDown(); run(); }, 500);
+
+   Pass two knows pass one is redundant and tries to switch it off:
+
+       window.OmegaAssembly.reproject = function(){ return 0; };
+
+   That cannot work. The 700 ms timer closed over the LOCAL reproject
+   when the module was defined; reassigning the exported property is not
+   visible to it. So both passes are live, on 700 ms and 500 ms.
+
+   Neither pass has a drag guard — grep for asmPartDrag, S.drag or
+   shapeDrag across both modules returns nothing. And neither is ever told
+   a move was deliberate: OmegaRestampAssemblies (47524) and OmegaReanchor
+   (48218) both exist for exactly this purpose and neither is called from
+   any drag path.
+
+   So: drag an assembly, and within 500 ms a pass recomputes cx/cy from
+   the anchor you have not updated and puts it back. Hold the drag longer
+   than that and it fights you WHILE the mouse is down, which is the
+   "cannot be moved" half of it.
+
+   THE FIX
+
+   Rather than try to reach inside a closure that cannot be reached, keep
+   the anchor honest so there is nothing to fight about:
+
+     1. while a drag is in progress, re-stamp the dragged object's anchor
+        every frame. Any pass that fires mid-drag then computes the
+        position the cursor is already at, and moves nothing.
+     2. on release, re-stamp once more and drop _geoAnchor so the unified
+        engine re-derives from the pixels you left it at.
+     3. fold tx/ty into cx/cy for centred shapes — patch 4 does this for
+        pts-based shapes, but an assembly has no pts, so its drag offset
+        was never being folded anywhere.
+
+   Both passes keep running. They just agree now.
+   ═══════════════════════════════════════════════════════════════════════ */
+(function () {
+  'use strict';
+  /* Enabled by default from rev 20. Gated when the bundle was rebuilt on the
+     rev-2 baseline, but this module was never implicated in a confirmed
+     regression, and it is the fix for a guided-build assembly snapping back
+     when dragged. OmegaPatch.off() still stops it. */
+
+
+  var TAG = '[omega/move]';
+
+  function S_() { try { return (typeof S !== 'undefined' && S) ? S : null; } catch (e) { return null; } }
+
+  function viewState() {
+    try { if (typeof _liveMapState === 'function') return _liveMapState(); } catch (e) {}
+    return null;
+  }
+  function canvasSize() {
+    try { if (typeof _getCanvasSize === 'function') return _getCanvasSize(); } catch (e) {}
+    return { w: 1200, h: 800 };
+  }
+  function toGeo(x, y, ms, sz) {
+    try {
+      if (typeof _pxToLatLng !== 'function') return null;
+      return _pxToLatLng(x, y, ms, sz.w, sz.h);
+    } catch (e) { return null; }
+  }
+
+  /* ── the record follows the thing ─────────────────────────────────── */
+
+  function restamp(o) {
+    if (!o) return false;
+    var ms = viewState(); if (!ms) return false;
+    var sz = canvasSize();
+
+    /* Pass two re-derives whatever it cannot find. Leave _auxFt alone:
+       fence and bollard offsets are recorded in feet relative to the
+       anchor and are still correct after a move. */
+    delete o._geoAnchor;
+
+    /* Pass one: a centred shape carries a single-point _geoPts. */
+    if (o.cx != null && o.cy != null) {
+      var g = toGeo(o.cx, o.cy, ms, sz);
+      if (g) { o._geoPts = [{ lat: g.lat, lng: g.lng }]; o._geoCentred = true; }
+      return true;
+    }
+
+    if (o.pts && o.pts.length) {
+      o._geoPts = o.pts.map(function (p) {
+        var q = toGeo(p.x, p.y, ms, sz);
+        return q ? { lat: q.lat, lng: q.lng } : null;
+      });
+      return true;
+    }
+
+    /* A DOM element anchors on its centre. */
+    if (typeof o.x === 'number') {
+      var c = toGeo(o.x + ((o.w || 60) / 2), o.y + ((o.h || o.w || 60) / 2), ms, sz);
+      if (c) { o._geoLat = c.lat; o._geoLng = c.lng; }
+      return true;
+    }
+    return false;
+  }
+
+  function find(id) {
+    var s = S_(); if (!s || !id) return null;
+    var pools = ['shapes', 'elements', 'conduits'], i, j;
+    for (i = 0; i < pools.length; i++) {
+      var arr = s[pools[i]] || [];
+      for (j = 0; j < arr.length; j++) if (arr[j] && arr[j].id === id) return arr[j];
+    }
+    return null;
+  }
+
+  /* Every flag the file uses to mean "something is being moved". */
+  function activeIds() {
+    var s = S_(); if (!s) return [];
+    var ids = [];
+    if (s.asmPartDrag && s.asmPartId) ids.push(s.asmPartId);
+    if (s.shapeDrag) ids.push(s.shapeDrag);
+    if (s.shapeResize) ids.push(s.shapeResize);
+    if (s.shapeRotate) ids.push(s.shapeRotate);
+    if (s.groupDrag && s.groupDrag.length) ids = ids.concat(s.groupDrag);
+    if (s.drag) ids.push(s.drag);
+    if (s.resizing) ids.push(s.resizing);
+    if (s.rotating) ids.push(s.rotating);
+    return ids;
+  }
+
+  /* ── keep the anchor under the cursor while the mouse is down ─────── */
+
+  var looping = false, lastIds = [], startedAt = 0;
+
+  function pump() {
+    if (window.OMEGA_OFF) { looping = false; return; }
+    var ids = activeIds();
+    if (!ids.length || (Date.now() - startedAt) > 60000) { looping = false; return; }
+    lastIds = ids;
+    for (var i = 0; i < ids.length; i++) {
+      var o = find(ids[i]);
+      if (o) { try { restamp(o); } catch (e) {} }
+    }
+    requestAnimationFrame(pump);
+  }
+
+  function kick() {
+    if (looping) return;
+    looping = true;
+    startedAt = Date.now();
+    requestAnimationFrame(pump);
+  }
+
+  function settle() {
+    var ids = activeIds();
+    if (ids.length) lastIds = ids;
+    var take = lastIds.slice();
+    lastIds = [];
+    if (!take.length) return;
+    /* after the app's own mouseup handlers have cleared their flags */
+    setTimeout(function () {
+      for (var i = 0; i < take.length; i++) {
+        var o = find(take[i]);
+        if (o) { try { restamp(o); } catch (e) {} }
+      }
+    }, 0);
+  }
+
+  document.addEventListener('mousedown', kick, true);
+  document.addEventListener('touchstart', kick, true);
+  document.addEventListener('mouseup', settle, true);
+  document.addEventListener('touchend', settle, true);
+
+  /* ── fold the drag offset for centred shapes ──────────────────────── */
+  /* Patch 4 folds tx/ty into pts. An assembly has no pts, so its offset
+     was left dangling in a transform that no anchor knows about. */
+
+  function foldCentred(ids) {
+    var s = S_(); if (!s) return;
+    for (var i = 0; i < ids.length; i++) {
+      var sh = find(ids[i]);
+      if (!sh || sh.cx == null) continue;
+      var dx = sh.tx || 0, dy = sh.ty || 0;
+      if (!dx && !dy) { restamp(sh); continue; }
+      sh.cx += dx; sh.cy += dy;
+      sh.tx = 0; sh.ty = 0;
+      delete sh._tx0; delete sh._ty0;
+      delete sh._gtx0; delete sh._gty0;
+      restamp(sh);
+      try { if (typeof renderShape === 'function') renderShape(sh); } catch (e) {}
+    }
+  }
+
+  function hookShapeEnd() {
+    var orig = window._shapeInteractEnd;
+    if (typeof orig !== 'function' || orig.__omegaMove) return false;
+    var wrapped = function () {
+      try { foldCentred(activeIds()); } catch (e) {}
+      return orig.apply(this, arguments);
+    };
+    wrapped.__omegaMove = true;
+    window._shapeInteractEnd = wrapped;
+    return true;
+  }
+
+  function hookAsmEnd() {
+    var orig = window._asmPartInteractEnd;
+    if (typeof orig !== 'function' || orig.__omegaMove) return false;
+    var wrapped = function () {
+      var s = S_();
+      var id = (s && s.asmPartDrag) ? s.asmPartId : null;
+      var r = orig.apply(this, arguments);
+      if (id) { var o = find(id); if (o) { try { restamp(o); } catch (e) {} } }
+      return r;
+    };
+    wrapped.__omegaMove = true;
+    window._asmPartInteractEnd = wrapped;
+    return true;
+  }
+
+  var n = 0;
+  var iv = setInterval(function () {
+    var a = hookShapeEnd(), b = hookAsmEnd();
+    if (a || b) {
+      if (window.console) console.info(TAG, 'armed — placed assemblies can be dragged and will stay put');
+    }
+    if (++n > 200) clearInterval(iv);
+  }, 300);
+
+  window.OmegaMove = {
+    restamp: restamp,
+
+    /* Re-anchor everything to where it currently sits. Use after moving
+       things around on an older drawing that kept snapping back. */
+    freeAll: function () {
+      var s = S_(); if (!s) return 0;
+      var n = 0;
+      ['shapes', 'elements', 'conduits'].forEach(function (k) {
+        (s[k] || []).forEach(function (o) { if (o && restamp(o)) n++; });
+      });
+      try { if (typeof pushHist === 'function') pushHist(); } catch (e) {}
+      console.info(TAG + ' re-anchored ' + n + ' object(s) to their current positions');
+      return n;
+    },
+
+    status: function () {
+      var s = S_() || {};
+      var shapes = s.shapes || [];
+      var centred = shapes.filter(function (x) { return x && x.cx != null; });
+      var o = {
+        assemblies: shapes.filter(function (x) { return x && x.kind === 'assembly'; }).length,
+        centredShapes: centred.length,
+        anchoredPassOne: centred.filter(function (x) { return !!x._geoPts; }).length,
+        anchoredPassTwo: centred.filter(function (x) { return !!x._geoAnchor; }).length,
+        looseDragOffset: centred.filter(function (x) { return (x.tx || x.ty); }).length,
+        dragging: activeIds().length,
+        liveMap: !!viewState()
+      };
+      o.verdict = !o.centredShapes ? 'Nothing centre-based on the canvas yet.'
+        : !o.liveMap ? 'No live map state — nothing is reprojecting, so nothing will snap back.'
+          : o.looseDragOffset ? o.looseDragOffset + ' assembly(ies) hold an unfolded drag offset. Run OmegaMove.freeAll().'
+            : 'Anchors match current positions. Drags will hold.';
+      if (console.table) console.table(o); else console.log(o);
+      console.info(o.verdict);
+      return o;
+    }
+  };
+})();
+
+
+/* ═══════════════════════════════════════════════════════════════════════
    OMEGA PATCH — 6 : GROUND-TRUE MEASUREMENT
    -----------------------------------------------------------------------
    This is the native-prototype idea applied where it pays best. The
@@ -53976,298 +56299,6 @@ window._crmToastModal=_crmToastModal;
         : o.pixelOnly ? o.pixelOnly + ' run(s) have no coordinates and still use pixel maths — '
           + 'drawn before a site was loaded.'
           : 'All runs measured from coordinates. Lengths hold through pan and zoom.';
-      if (console.table) console.table(o); else console.log(o);
-      console.info(o.verdict);
-      return o;
-    }
-  };
-})();
-
-
-/* ═══════════════════════════════════════════════════════════════════════
-   OMEGA PATCH — 7 : MOVING WHAT THE GUIDED BUILD PLACED
-   -----------------------------------------------------------------------
-   To answer the question directly: moving them is fine, and it does not
-   break the anchor. The anchor is a RECORD of where you put something,
-   not a cage around it. When you move a thing deliberately, the new
-   position is supposed to become the new record.
-
-   Nothing was updating that record, and two separate timers were putting
-   the old one back.
-
-   WHAT A GUIDED BUILD PLACES
-
-   Not an element and not a normal shape. openBessGuidedBuild and friends
-   emit kind:'assembly' (line 8235), which stores its position as a PIXEL
-   CENTRE — sh.cx / sh.cy — and has no sh.pts at all. Everything else in
-   the file anchors through sh.pts, so assemblies needed their own path
-   and got two of them.
-
-   PASS ONE  (line 47491) anchors centred shapes as sh._geoPts[0] and
-   writes sh.cx/cy back from it. It runs on four map events AND on:
-
-       setInterval(function(){ stamp(); reproject(); }, 700);
-
-   PASS TWO  (line 48104) is the later "unified engine". It anchors as
-   o._geoAnchor and also writes o.cx/cy. It runs on four map events AND on:
-
-       setInterval(function(){ standDown(); run(); }, 500);
-
-   Pass two knows pass one is redundant and tries to switch it off:
-
-       window.OmegaAssembly.reproject = function(){ return 0; };
-
-   That cannot work. The 700 ms timer closed over the LOCAL reproject
-   when the module was defined; reassigning the exported property is not
-   visible to it. So both passes are live, on 700 ms and 500 ms.
-
-   Neither pass has a drag guard — grep for asmPartDrag, S.drag or
-   shapeDrag across both modules returns nothing. And neither is ever told
-   a move was deliberate: OmegaRestampAssemblies (47524) and OmegaReanchor
-   (48218) both exist for exactly this purpose and neither is called from
-   any drag path.
-
-   So: drag an assembly, and within 500 ms a pass recomputes cx/cy from
-   the anchor you have not updated and puts it back. Hold the drag longer
-   than that and it fights you WHILE the mouse is down, which is the
-   "cannot be moved" half of it.
-
-   THE FIX
-
-   Rather than try to reach inside a closure that cannot be reached, keep
-   the anchor honest so there is nothing to fight about:
-
-     1. while a drag is in progress, re-stamp the dragged object's anchor
-        every frame. Any pass that fires mid-drag then computes the
-        position the cursor is already at, and moves nothing.
-     2. on release, re-stamp once more and drop _geoAnchor so the unified
-        engine re-derives from the pixels you left it at.
-     3. fold tx/ty into cx/cy for centred shapes — patch 4 does this for
-        pts-based shapes, but an assembly has no pts, so its drag offset
-        was never being folded anywhere.
-
-   Both passes keep running. They just agree now.
-   ═══════════════════════════════════════════════════════════════════════ */
-(function () {
-  'use strict';
-  /* OPT-IN. This module reaches into the live render/anchor loop, which is
-     where every regression in this bundle came from. It stays off unless
-     window.OMEGA_EXPERIMENTAL === true is set BEFORE this script runs. */
-  if (window.OMEGA_EXPERIMENTAL !== true) return;
-
-
-  var TAG = '[omega/move]';
-
-  function S_() { try { return (typeof S !== 'undefined' && S) ? S : null; } catch (e) { return null; } }
-
-  function viewState() {
-    try { if (typeof _liveMapState === 'function') return _liveMapState(); } catch (e) {}
-    return null;
-  }
-  function canvasSize() {
-    try { if (typeof _getCanvasSize === 'function') return _getCanvasSize(); } catch (e) {}
-    return { w: 1200, h: 800 };
-  }
-  function toGeo(x, y, ms, sz) {
-    try {
-      if (typeof _pxToLatLng !== 'function') return null;
-      return _pxToLatLng(x, y, ms, sz.w, sz.h);
-    } catch (e) { return null; }
-  }
-
-  /* ── the record follows the thing ─────────────────────────────────── */
-
-  function restamp(o) {
-    if (!o) return false;
-    var ms = viewState(); if (!ms) return false;
-    var sz = canvasSize();
-
-    /* Pass two re-derives whatever it cannot find. Leave _auxFt alone:
-       fence and bollard offsets are recorded in feet relative to the
-       anchor and are still correct after a move. */
-    delete o._geoAnchor;
-
-    /* Pass one: a centred shape carries a single-point _geoPts. */
-    if (o.cx != null && o.cy != null) {
-      var g = toGeo(o.cx, o.cy, ms, sz);
-      if (g) { o._geoPts = [{ lat: g.lat, lng: g.lng }]; o._geoCentred = true; }
-      return true;
-    }
-
-    if (o.pts && o.pts.length) {
-      o._geoPts = o.pts.map(function (p) {
-        var q = toGeo(p.x, p.y, ms, sz);
-        return q ? { lat: q.lat, lng: q.lng } : null;
-      });
-      return true;
-    }
-
-    /* A DOM element anchors on its centre. */
-    if (typeof o.x === 'number') {
-      var c = toGeo(o.x + ((o.w || 60) / 2), o.y + ((o.h || o.w || 60) / 2), ms, sz);
-      if (c) { o._geoLat = c.lat; o._geoLng = c.lng; }
-      return true;
-    }
-    return false;
-  }
-
-  function find(id) {
-    var s = S_(); if (!s || !id) return null;
-    var pools = ['shapes', 'elements', 'conduits'], i, j;
-    for (i = 0; i < pools.length; i++) {
-      var arr = s[pools[i]] || [];
-      for (j = 0; j < arr.length; j++) if (arr[j] && arr[j].id === id) return arr[j];
-    }
-    return null;
-  }
-
-  /* Every flag the file uses to mean "something is being moved". */
-  function activeIds() {
-    var s = S_(); if (!s) return [];
-    var ids = [];
-    if (s.asmPartDrag && s.asmPartId) ids.push(s.asmPartId);
-    if (s.shapeDrag) ids.push(s.shapeDrag);
-    if (s.shapeResize) ids.push(s.shapeResize);
-    if (s.shapeRotate) ids.push(s.shapeRotate);
-    if (s.groupDrag && s.groupDrag.length) ids = ids.concat(s.groupDrag);
-    if (s.drag) ids.push(s.drag);
-    if (s.resizing) ids.push(s.resizing);
-    if (s.rotating) ids.push(s.rotating);
-    return ids;
-  }
-
-  /* ── keep the anchor under the cursor while the mouse is down ─────── */
-
-  var looping = false, lastIds = [], startedAt = 0;
-
-  function pump() {
-    if (window.OMEGA_OFF) { looping = false; return; }
-    var ids = activeIds();
-    if (!ids.length || (Date.now() - startedAt) > 60000) { looping = false; return; }
-    lastIds = ids;
-    for (var i = 0; i < ids.length; i++) {
-      var o = find(ids[i]);
-      if (o) { try { restamp(o); } catch (e) {} }
-    }
-    requestAnimationFrame(pump);
-  }
-
-  function kick() {
-    if (looping) return;
-    looping = true;
-    startedAt = Date.now();
-    requestAnimationFrame(pump);
-  }
-
-  function settle() {
-    var ids = activeIds();
-    if (ids.length) lastIds = ids;
-    var take = lastIds.slice();
-    lastIds = [];
-    if (!take.length) return;
-    /* after the app's own mouseup handlers have cleared their flags */
-    setTimeout(function () {
-      for (var i = 0; i < take.length; i++) {
-        var o = find(take[i]);
-        if (o) { try { restamp(o); } catch (e) {} }
-      }
-    }, 0);
-  }
-
-  document.addEventListener('mousedown', kick, true);
-  document.addEventListener('touchstart', kick, true);
-  document.addEventListener('mouseup', settle, true);
-  document.addEventListener('touchend', settle, true);
-
-  /* ── fold the drag offset for centred shapes ──────────────────────── */
-  /* Patch 4 folds tx/ty into pts. An assembly has no pts, so its offset
-     was left dangling in a transform that no anchor knows about. */
-
-  function foldCentred(ids) {
-    var s = S_(); if (!s) return;
-    for (var i = 0; i < ids.length; i++) {
-      var sh = find(ids[i]);
-      if (!sh || sh.cx == null) continue;
-      var dx = sh.tx || 0, dy = sh.ty || 0;
-      if (!dx && !dy) { restamp(sh); continue; }
-      sh.cx += dx; sh.cy += dy;
-      sh.tx = 0; sh.ty = 0;
-      delete sh._tx0; delete sh._ty0;
-      delete sh._gtx0; delete sh._gty0;
-      restamp(sh);
-      try { if (typeof renderShape === 'function') renderShape(sh); } catch (e) {}
-    }
-  }
-
-  function hookShapeEnd() {
-    var orig = window._shapeInteractEnd;
-    if (typeof orig !== 'function' || orig.__omegaMove) return false;
-    var wrapped = function () {
-      try { foldCentred(activeIds()); } catch (e) {}
-      return orig.apply(this, arguments);
-    };
-    wrapped.__omegaMove = true;
-    window._shapeInteractEnd = wrapped;
-    return true;
-  }
-
-  function hookAsmEnd() {
-    var orig = window._asmPartInteractEnd;
-    if (typeof orig !== 'function' || orig.__omegaMove) return false;
-    var wrapped = function () {
-      var s = S_();
-      var id = (s && s.asmPartDrag) ? s.asmPartId : null;
-      var r = orig.apply(this, arguments);
-      if (id) { var o = find(id); if (o) { try { restamp(o); } catch (e) {} } }
-      return r;
-    };
-    wrapped.__omegaMove = true;
-    window._asmPartInteractEnd = wrapped;
-    return true;
-  }
-
-  var n = 0;
-  var iv = setInterval(function () {
-    var a = hookShapeEnd(), b = hookAsmEnd();
-    if (a || b) {
-      if (window.console) console.info(TAG, 'armed — placed assemblies can be dragged and will stay put');
-    }
-    if (++n > 200) clearInterval(iv);
-  }, 300);
-
-  window.OmegaMove = {
-    restamp: restamp,
-
-    /* Re-anchor everything to where it currently sits. Use after moving
-       things around on an older drawing that kept snapping back. */
-    freeAll: function () {
-      var s = S_(); if (!s) return 0;
-      var n = 0;
-      ['shapes', 'elements', 'conduits'].forEach(function (k) {
-        (s[k] || []).forEach(function (o) { if (o && restamp(o)) n++; });
-      });
-      try { if (typeof pushHist === 'function') pushHist(); } catch (e) {}
-      console.info(TAG + ' re-anchored ' + n + ' object(s) to their current positions');
-      return n;
-    },
-
-    status: function () {
-      var s = S_() || {};
-      var shapes = s.shapes || [];
-      var centred = shapes.filter(function (x) { return x && x.cx != null; });
-      var o = {
-        assemblies: shapes.filter(function (x) { return x && x.kind === 'assembly'; }).length,
-        centredShapes: centred.length,
-        anchoredPassOne: centred.filter(function (x) { return !!x._geoPts; }).length,
-        anchoredPassTwo: centred.filter(function (x) { return !!x._geoAnchor; }).length,
-        looseDragOffset: centred.filter(function (x) { return (x.tx || x.ty); }).length,
-        dragging: activeIds().length,
-        liveMap: !!viewState()
-      };
-      o.verdict = !o.centredShapes ? 'Nothing centre-based on the canvas yet.'
-        : !o.liveMap ? 'No live map state — nothing is reprojecting, so nothing will snap back.'
-          : o.looseDragOffset ? o.looseDragOffset + ' assembly(ies) hold an unfolded drag offset. Run OmegaMove.freeAll().'
-            : 'Anchors match current positions. Drags will hold.';
       if (console.table) console.table(o); else console.log(o);
       console.info(o.verdict);
       return o;
