@@ -50506,7 +50506,7 @@ window._crmToastModal=_crmToastModal;
 
 <!-- ═════════════════════════════════════════════════════════════════════
      CLEARSKY OMEGA — SITE MAP DESIGNER PRO
-     PATCH BUNDLE  ·  2026-07-28  ·  rev 37
+     PATCH BUNDLE  ·  2026-07-28  ·  rev 40
 
      Exactly ONE copy per file, immediately before </body>.
 
@@ -50536,7 +50536,7 @@ window._crmToastModal=_crmToastModal;
           pad square, spine runs the aisle. EMS move re-lanes it.
       18. Trench bands at 45% so the drawing reads through — now
           applies in ENG mode too, which is the DEFAULT style, so the
-          setting had never taken effect  [corrected rev 37]
+          setting had never taken effect  [corrected rev 40]
       19. OmegaRotate.by(deg) turns a whole layout as a rigid body —
           equipment, stencils, boundaries, solar tables and conduits
       20. 14 balance-of-plant footprints in Draw › Utility — EMS,
@@ -50561,13 +50561,19 @@ window._crmToastModal=_crmToastModal;
           (with a 22px legibility floor so small kit stays clickable)
       31. Insert icons lose the circular badge — the equipment artwork
           underneath was always right, it was sitting on a disc
+      32. View › Labels — hide drawing text by PRESENTATION, so the
+          legend, schedule and takeoff are untouched by construction
+      33. Crosshair: white core + dark outline so it reads on any
+          ground, and a ring + point marking the exact placement pixel
+      34. Utility footprint labels scale with their box (7–15pt) and
+          drop below it when they will not fit — they were a flat 8pt
       28. ONE callout per trench instead of a fanned stack, placed on
           its own line rather than 60px away on a leader
       29. 10 PV/BOP circuit types (DC source, home run, trunk, AC out,
           battery DC, bore, GEC, RSD, tracker) + TRENCH-FIRST routing:
           mark a polyline as a trench, pull circuits through it
           + the three services share one centreline so the existing
-            banking spreads them evenly inside the band  [rev 37]
+            banking spreads them evenly inside the band  [rev 40]
        7. Guided-build assemblies can be dragged and stay put
           (moved out of opt-in — this is the BESS pad fix)
 
@@ -50601,7 +50607,7 @@ window._crmToastModal=_crmToastModal;
       console.info('[omega] patch passes ON');
       return true;
     },
-    rev: 37,
+    rev: 40,
     installed: function () {
       var active = ['OmegaMapExport', 'OmegaClose', 'OmegaSolar', 'OmegaAnchor', 'OmegaRecent',
                     'OmegaSave', 'OmegaProjects', 'OmegaAutoLayout', 'OmegaBgbLeg',
@@ -57195,6 +57201,549 @@ window._crmToastModal=_crmToastModal;
         : stripped.length + ' icon(s) now read as plan-view equipment. '
           + (keys.length - stripped.length) + ' never had a badge and are unchanged.';
       if (console.table) console.table(o); else console.log(o);
+      console.info(o.verdict);
+      return o;
+    }
+  };
+})();
+
+
+/* ═══════════════════════════════════════════════════════════════════════
+   OMEGA PATCH — 32 : LABELS OFF, EVERYTHING STILL COUNTED
+   -----------------------------------------------------------------------
+   Every stencil carries its name and size on the drawing — CONCRETE PAD
+   20.3' x 18.79', BATTERY INVERTER, XFMR, AC DISCONNECT — and on a dense
+   pad they overlap into noise. But the labels are also how the drawing
+   says what a thing IS, so deleting them is not the answer.
+
+   There is already a global for one layer, window._hideConduitLabels, read
+   by renderConduit. Nothing equivalent for shapes, stencils or elements.
+
+   Doing this by DATA would be wrong. Clearing a label to hide it is
+   destructive — the legend counts by label, the takeoff groups by it, and
+   the schedule prints it. Hide the text and you would silently empty the
+   BOM, which is exactly what you asked not to happen.
+
+   So this hides text by PRESENTATION and never touches a record:
+
+       #csvg text        the drawing canvas — stencil names, dimensions
+       .omega-lab        the element name chips
+       conduit callouts  via the existing _hideConduitLabels flag
+
+   The legend (#lgd, #lgd-items), the conduit schedule and every export
+   panel are separate DOM outside #csvg, so they are untouched by
+   construction rather than by my remembering to exclude them. Nothing is
+   read from the canvas to build them — they read S.elements, S.shapes and
+   S.conduits, which this does not modify.
+
+       View > Labels          toggle
+       OmegaLabels.off()      hide
+       OmegaLabels.on()       show
+       OmegaLabels.dimsOnly() keep sizes, drop names
+   ═══════════════════════════════════════════════════════════════════════ */
+(function () {
+  'use strict';
+
+  var TAG = '[omega/labels]';
+  var STYLE_ID = 'omega-label-css';
+  var KEY = 'omegaLabels';
+  var mode = 'on';                     /* on | off | dims */
+
+  function stored() {
+    try { var v = localStorage.getItem(KEY); return (v === 'off' || v === 'dims') ? v : 'on'; }
+    catch (e) { return 'on'; }
+  }
+
+  function css(m) {
+    if (m === 'on') return '';
+    if (m === 'dims') {
+      /* A dimension is a token like 20.3'x18.79' or 6' x 5'. Names are not.
+         Keeping the size and dropping the name is the usual plan-set
+         compromise on a busy pad. */
+      return '#csvg text.omega-name{display:none!important}'
+        + '.omega-lab{display:none!important}';
+    }
+    return '#csvg text{display:none!important}'
+      + '#csvg .omega-lab,.omega-lab{display:none!important}'
+      + '#cov .omega-lab{display:none!important}';
+  }
+
+  function apply() {
+    var el = document.getElementById(STYLE_ID);
+    if (!el) {
+      el = document.createElement('style');
+      el.id = STYLE_ID;
+      (document.head || document.documentElement).appendChild(el);
+    }
+    el.textContent = css(mode);
+    /* the conduit layer already has its own flag — drive it from the same
+       switch so callouts do not survive a labels-off */
+    try { window._hideConduitLabels = (mode === 'off'); } catch (e) {}
+    try {
+      var s = (typeof S !== 'undefined') ? S : null;
+      (s && s.conduits || []).forEach(function (c) {
+        var g = document.querySelector('[data-cid="' + c.id + '"]');
+        if (g && g.parentNode) g.parentNode.removeChild(g);
+        if (typeof renderConduit === 'function') renderConduit(c);
+      });
+    } catch (e) {}
+    try { localStorage.setItem(KEY, mode); } catch (e) {}
+  }
+
+  function set(m) {
+    mode = (m === 'off' || m === 'dims') ? m : 'on';
+    apply();
+    var b = document.getElementById('rb-labels');
+    if (b) b.classList.toggle('active-tool', mode !== 'on');
+    try {
+      if (typeof showBanner === 'function') {
+        showBanner('shape', mode === 'on' ? ' Labels on'
+          : mode === 'dims' ? ' Labels: dimensions only'
+            : ' Labels off \u2014 legend, schedule and takeoff unchanged');
+      }
+    } catch (e) {}
+    console.info(TAG + ' ' + mode);
+    return mode;
+  }
+
+  /* Mark stencil NAME text so 'dimensions only' can tell the two apart.
+     A dimension carries a foot mark; a name does not. */
+  function classifyText() {
+    try {
+      var svg = document.getElementById('csvg'); if (!svg) return 0;
+      var n = 0;
+      var nodes = svg.querySelectorAll('text');
+      for (var i = 0; i < nodes.length; i++) {
+        var t = nodes[i];
+        if (t.getAttribute('data-omega-cls')) continue;
+        var s = (t.textContent || '');
+        var isDim = /[\u2032'"]\s*[x\u00d7]|\d\s*[\u2032']/.test(s) || /^\s*[\d.]+\s*(ft|')/.test(s);
+        t.setAttribute('data-omega-cls', isDim ? 'dim' : 'name');
+        if (!isDim) t.classList.add('omega-name');
+        n++;
+      }
+      return n;
+    } catch (e) { return 0; }
+  }
+
+  function addButton() {
+    if (document.getElementById('rb-labels')) return true;
+    var host = document.getElementById('rb-crosshair');
+    host = host && host.parentNode;
+    if (!host) return false;
+    var b = document.createElement('button');
+    b.className = 'rbtn';
+    b.id = 'rb-labels';
+    b.title = 'Hide the text on the drawing. The legend, schedule and takeoff are unaffected.';
+    b.innerHTML = '<span class="rb-ico">\u1d40</span><span class="rb-lbl">Labels</span>';
+    b.onclick = function () { set(mode === 'on' ? 'off' : 'on'); };
+    host.appendChild(b);
+    return true;
+  }
+
+  mode = stored();
+  apply();
+
+  var n = 0;
+  var iv = setInterval(function () {
+    addButton();
+    classifyText();
+    if (++n > 200) clearInterval(iv);
+  }, 500);
+
+  window.OmegaLabels = {
+    on: function () { return set('on'); },
+    off: function () { return set('off'); },
+    dimsOnly: function () { classifyText(); return set('dims'); },
+    toggle: function () { return set(mode === 'on' ? 'off' : 'on'); },
+    mode: function () { return mode; },
+
+    /* Prove the data is untouched. */
+    status: function () {
+      var s = null; try { s = (typeof S !== 'undefined') ? S : null; } catch (e) {}
+      var els = (s && s.elements) || [], shp = (s && s.shapes) || [], cds = (s && s.conduits) || [];
+      var withLabel = els.filter(function (e) { return e && e.label; }).length
+        + shp.filter(function (x) { return x && x.label; }).length;
+      var lgd = document.getElementById('lgd-items');
+      var o = {
+        mode: mode,
+        elements: els.length,
+        shapes: shp.length,
+        conduits: cds.length,
+        recordsStillCarryingALabel: withLabel,
+        legendRowsRendered: lgd ? lgd.children.length : 'n/a'
+      };
+      o.verdict = mode === 'on'
+        ? 'Labels shown. OmegaLabels.off() hides the drawing text only.'
+        : 'Drawing text hidden. ' + withLabel + ' record(s) still carry their label, '
+          + 'so the legend, schedule and takeoff are unchanged.';
+      if (console.table) console.table(o); else console.log(o);
+      console.info(o.verdict);
+      return o;
+    }
+  };
+
+  if (window.console) console.info(TAG, 'armed — View \u203a Labels, or OmegaLabels.off()');
+})();
+
+
+/* ═══════════════════════════════════════════════════════════════════════
+   OMEGA PATCH — 33 : A CROSSHAIR YOU CAN SEE
+   -----------------------------------------------------------------------
+   The crosshair is two 1px divs in one colour:
+
+       <div id="nn-ch-v" style="width:1px;  background:rgba(47,181,74,.55)">
+       <div id="nn-ch-h" style="height:1px; background:rgba(47,181,74,.55)">
+
+   A 55% opaque GREEN hairline. Over a green field it is very nearly
+   invisible, which is the whole problem — it has no way to contrast with
+   anything, because it is one flat colour with no outline.
+
+   And there is no centre marker at all. Two lines cross somewhere behind
+   the cursor, and the exact intersection is left for you to infer. When
+   the next click places a transformer, that is not good enough.
+
+   Two changes.
+
+   DUAL TONE. Each line becomes a white core with a dark outline, done with
+   box-shadow so it costs no extra elements:
+
+       background:#fff; box-shadow:0 0 0 1px rgba(0,0,0,.72)
+
+   White on dark ground, dark edge on light ground — legible over grass,
+   asphalt, snow, a white roof or a satellite shadow, without sampling the
+   background or guessing.
+
+   A CENTRE POINT. A small ring with a hard dot at the exact intersection,
+   in the same dual tone. The ring gives you something to aim with; the dot
+   is the pixel the element lands on.
+
+       OmegaCrosshair.size(13)       ring diameter
+       OmegaCrosshair.colour('#FF3B30')
+       OmegaCrosshair.reset()
+   ═══════════════════════════════════════════════════════════════════════ */
+(function () {
+  'use strict';
+
+  var TAG = '[omega/crosshair]';
+  var KEY = 'omegaCrosshairCfg';
+  var cfg = { core: '#FFFFFF', edge: 'rgba(0,0,0,.72)', ring: 13 };
+
+  try {
+    var saved = JSON.parse(localStorage.getItem(KEY) || 'null');
+    if (saved && saved.core) cfg = saved;
+  } catch (e) {}
+
+  function save() { try { localStorage.setItem(KEY, JSON.stringify(cfg)); } catch (e) {} }
+
+  function markup() {
+    var lineShadow = '0 0 0 1px ' + cfg.edge;
+    var r = cfg.ring, half = r / 2;
+    return ''
+      + '<div id="nn-ch-v" style="position:absolute;top:0;bottom:0;width:1px;'
+      + 'background:' + cfg.core + ';box-shadow:' + lineShadow + '"></div>'
+      + '<div id="nn-ch-h" style="position:absolute;left:0;right:0;height:1px;'
+      + 'background:' + cfg.core + ';box-shadow:' + lineShadow + '"></div>'
+      /* the ring: something to aim with */
+      + '<div id="nn-ch-ring" style="position:absolute;width:' + r + 'px;height:' + r + 'px;'
+      + 'margin-left:' + (-half) + 'px;margin-top:' + (-half) + 'px;border-radius:50%;'
+      + 'border:1.5px solid ' + cfg.core + ';box-shadow:' + lineShadow
+      + ', inset 0 0 0 1px ' + cfg.edge + ';box-sizing:border-box"></div>'
+      /* the dot: the pixel the element lands on */
+      + '<div id="nn-ch-dot" style="position:absolute;width:3px;height:3px;'
+      + 'margin-left:-1.5px;margin-top:-1.5px;border-radius:50%;'
+      + 'background:' + cfg.core + ';box-shadow:0 0 0 1px ' + cfg.edge + '"></div>';
+  }
+
+  function rebuild() {
+    var c = document.getElementById('nn-crosshair');
+    if (!c) return false;
+    if (c.getAttribute('data-omega') === String(cfg.ring) + cfg.core) return true;
+    c.innerHTML = markup();
+    c.setAttribute('data-omega', String(cfg.ring) + cfg.core);
+    return true;
+  }
+
+  /* The original _chMove only moves the two lines; the ring and dot need
+     the same coordinates. */
+  function hookMove() {
+    var orig = window._chMove;
+    if (typeof orig !== 'function' || orig.__omegaCH) return false;
+    var wrapped = function (e) {
+      var r = orig.apply(this, arguments);
+      try {
+        rebuild();
+        var sc = document.getElementById('sc'); if (!sc) return r;
+        var b = sc.getBoundingClientRect();
+        var x = e.clientX - b.left, y = e.clientY - b.top;
+        var ring = document.getElementById('nn-ch-ring');
+        var dot = document.getElementById('nn-ch-dot');
+        if (ring) { ring.style.left = x + 'px'; ring.style.top = y + 'px'; }
+        if (dot) { dot.style.left = x + 'px'; dot.style.top = y + 'px'; }
+      } catch (err) {}
+      return r;
+    };
+    wrapped.__omegaCH = true;
+    window._chMove = wrapped;
+    return true;
+  }
+
+  /* _chEnsure builds the element once; if it has already run we restyle
+     what is there, and if it has not we catch it on the next pass. */
+  function hookEnsure() {
+    var orig = window._chEnsure;
+    if (typeof orig !== 'function' || orig.__omegaCH) return false;
+    var wrapped = function () {
+      var el = orig.apply(this, arguments);
+      try { rebuild(); } catch (e) {}
+      return el;
+    };
+    wrapped.__omegaCH = true;
+    window._chEnsure = wrapped;
+    return true;
+  }
+
+  var n = 0;
+  var iv = setInterval(function () {
+    var a = hookMove(), b = hookEnsure();
+    rebuild();
+    if (a || b) {
+      if (window.console) {
+        console.info(TAG, 'armed \u2014 dual-tone lines and a centre point; '
+          + 'OmegaCrosshair.size() / .colour() to adjust');
+      }
+    }
+    if (++n > 200) clearInterval(iv);
+  }, 400);
+
+  window.OmegaCrosshair = {
+    size: function (px) {
+      px = parseFloat(px);
+      if (!(px >= 5 && px <= 40)) { console.warn(TAG, 'give a ring diameter between 5 and 40'); return cfg.ring; }
+      cfg.ring = px; save();
+      var c = document.getElementById('nn-crosshair');
+      if (c) c.removeAttribute('data-omega');
+      rebuild();
+      console.info(TAG + ' ring ' + px + 'px');
+      return cfg.ring;
+    },
+    colour: function (hex) {
+      if (typeof hex !== 'string' || !/^#|^rgb/.test(hex)) { console.warn(TAG, 'give a css colour'); return cfg.core; }
+      cfg.core = hex; save();
+      var c = document.getElementById('nn-crosshair');
+      if (c) c.removeAttribute('data-omega');
+      rebuild();
+      console.info(TAG + ' core ' + hex + ' (dark outline kept for contrast)');
+      return cfg.core;
+    },
+    color: function (h) { return window.OmegaCrosshair.colour(h); },
+    reset: function () {
+      cfg = { core: '#FFFFFF', edge: 'rgba(0,0,0,.72)', ring: 13 };
+      save();
+      var c = document.getElementById('nn-crosshair');
+      if (c) c.removeAttribute('data-omega');
+      rebuild();
+      console.info(TAG + ' reset');
+      return cfg;
+    },
+    status: function () {
+      var c = document.getElementById('nn-crosshair');
+      var o = {
+        exists: !!c,
+        visible: c ? (c.style.display !== 'none') : false,
+        core: cfg.core,
+        ringPx: cfg.ring,
+        hasCentrePoint: !!document.getElementById('nn-ch-dot'),
+        moveHooked: !!(window._chMove && window._chMove.__omegaCH)
+      };
+      o.verdict = !c ? 'Crosshair element not built yet \u2014 pick a draw tool once.'
+        : o.hasCentrePoint ? 'Dual-tone crosshair with a centre point at ' + cfg.ring + 'px.'
+          : 'Crosshair present but not restyled yet.';
+      if (console.table) console.table(o); else console.log(o);
+      console.info(o.verdict);
+      return o;
+    }
+  };
+})();
+
+
+/* ═══════════════════════════════════════════════════════════════════════
+   OMEGA PATCH — 34 : UTILITY FOOTPRINTS LABEL CONSISTENTLY
+   -----------------------------------------------------------------------
+   _renderUtility sizes the FOOTPRINT from the drawing scale:
+
+       var w = (sh.lf||3)*ppf;   var h = (sh.wf||2)*ppf;
+
+   and then sets the TEXT to a constant:
+
+       t.setAttribute('font-size','9');    // abbreviation
+       lb.setAttribute('font-size','8');   // full label
+
+   The box moves with the zoom, the text does not. At 2.5 px/ft an EMS
+   cabinet is 8 x 5 px with an 8 px label sprawling across it; at 40 px/ft
+   it is 120 x 80 px with the same 8 px label lost inside it. Only around
+   6 px/ft does it look intentional.
+
+   And because every footprint is a different size — a ground rod is
+   0.5 ft, a PCS skid is 12 — each one is wrong by a different amount at
+   the same zoom. That is the inconsistency: not one bad size, but no
+   relationship between the label and the thing it labels.
+
+   So the type scales with the box, clamped either end: never smaller than
+   readable, never larger than the footprint it belongs to. Everything then
+   holds its proportions at any zoom, and all the footprints agree with
+   each other because they are all following the same rule.
+
+   The label also moves BELOW the box when it will not fit inside, which is
+   what a drafter does, rather than overrunning the outline.
+
+   Text is tagged so View > Labels can hide it — abbreviation and full name
+   are marked separately, so 'dimensions only' keeps the glyph that
+   identifies the equipment and drops the prose.
+   ═══════════════════════════════════════════════════════════════════════ */
+(function () {
+  'use strict';
+
+  var TAG = '[omega/utillabel]';
+  var MIN_PT = 7, MAX_PT = 15;
+
+  function S_() { try { return (typeof S !== 'undefined' && S) ? S : null; } catch (e) { return null; } }
+  function ppf() { var s = S_(); return (s && s.pxPerFt > 0) ? s.pxPerFt : 6; }
+
+  function fit(sh) {
+    var p = ppf();
+    var w = (sh.lf || 3) * p, h = (sh.wf || 2) * p;
+    /* the glyph wants to fill the box; the label wants to sit under it */
+    var glyph = Math.max(MIN_PT, Math.min(h * 0.42, w * 0.5, MAX_PT + 3));
+    var label = Math.max(MIN_PT, Math.min(h * 0.30, MAX_PT));
+    return { w: w, h: h, glyph: glyph, label: label };
+  }
+
+  /* Roughly how wide the label will render, so we know if it fits. */
+  function textWidth(s, pt) { return String(s || '').length * pt * 0.56; }
+
+  function restyle(g, sh) {
+    if (!g || !sh) return false;
+    var f = fit(sh);
+    var texts = g.querySelectorAll ? g.querySelectorAll('text') : [];
+    if (!texts.length) return false;
+
+    for (var i = 0; i < texts.length; i++) {
+      var t = texts[i];
+      var s = t.textContent || '';
+      var def = null;
+      try { def = UTILITY_CATALOG[sh.utype]; } catch (e) {}
+      var isGlyph = !!(def && s === def.abbr);
+
+      if (isGlyph) {
+        t.setAttribute('font-size', f.glyph.toFixed(1));
+        t.setAttribute('font-weight', '700');
+        t.setAttribute('data-omega-cls', 'name');
+        if (t.classList) t.classList.add('omega-name', 'omega-util-glyph');
+      } else {
+        t.setAttribute('font-size', f.label.toFixed(1));
+        t.setAttribute('data-omega-cls', 'name');
+        if (t.classList) t.classList.add('omega-name', 'omega-util-label');
+        /* If it cannot fit inside, put it under the box rather than
+           letting it overrun the outline. */
+        var fits = textWidth(s, f.label) <= f.w * 0.92;
+        if (!fits) {
+          t.setAttribute('x', sh.cx);
+          t.setAttribute('y', (sh.cy + f.h / 2 + f.label * 1.15).toFixed(1));
+        }
+      }
+    }
+    return true;
+  }
+
+  function hookRender() {
+    var orig = window._renderUtility;
+    if (typeof orig !== 'function' || orig.__omegaUtilLabel) return false;
+    var wrapped = function (g, sh) {
+      var r = orig.apply(this, arguments);
+      try { restyle(g, sh); } catch (e) {}
+      return r;
+    };
+    wrapped.__omegaUtilLabel = true;
+    window._renderUtility = wrapped;
+    return true;
+  }
+
+  function redrawAll() {
+    var s = S_(); if (!s) return 0;
+    var n = 0;
+    (s.shapes || []).forEach(function (sh) {
+      if (!sh || sh.kind !== 'utility') return;
+      try {
+        var g = document.querySelector('[data-shid="' + sh.id + '"]');
+        if (g && g.parentNode) g.parentNode.removeChild(g);
+        if (typeof renderShape === 'function') { renderShape(sh); n++; }
+      } catch (e) {}
+    });
+    return n;
+  }
+
+  /* Zoom changes ppf, so the type has to be re-fitted when it settles. */
+  var lastPpf = null;
+  setInterval(function () {
+    if (window.OMEGA_OFF) return;
+    var s = S_(); if (!s) return;
+    if (s.shapeDrag || s.asmPartDrag || s.drag) return;
+    var p = ppf();
+    if (lastPpf === null) { lastPpf = p; return; }
+    if (Math.abs(p - lastPpf) < 0.01) return;
+    lastPpf = p;
+    try { redrawAll(); } catch (e) {}
+  }, 600);
+
+  var n = 0;
+  var iv = setInterval(function () {
+    if (hookRender()) {
+      redrawAll();
+      if (window.console) {
+        console.info(TAG, 'armed \u2014 utility labels scale with their footprint '
+          + '(' + MIN_PT + '\u2013' + MAX_PT + 'pt) and drop below when they will not fit');
+      }
+    }
+    if (++n > 200) clearInterval(iv);
+  }, 300);
+
+  window.OmegaUtilLabel = {
+    range: function (min, max) {
+      min = parseFloat(min); max = parseFloat(max);
+      if (!(min > 2 && max > min && max < 60)) { console.warn(TAG, 'give a sensible min and max in points'); return [MIN_PT, MAX_PT]; }
+      MIN_PT = min; MAX_PT = max;
+      redrawAll();
+      console.info(TAG + ' ' + min + '\u2013' + max + 'pt');
+      return [MIN_PT, MAX_PT];
+    },
+    refresh: redrawAll,
+    status: function () {
+      var s = S_() || {};
+      var us = (s.shapes || []).filter(function (x) { return x && x.kind === 'utility'; });
+      var p = ppf();
+      var rows = us.slice(0, 12).map(function (sh) {
+        var f = fit(sh);
+        var lbl = '';
+        try { lbl = (UTILITY_CATALOG[sh.utype] || {}).label || sh.utype; } catch (e) { lbl = sh.utype; }
+        return {
+          item: lbl,
+          feet: (sh.lf || '?') + '\u2032 \u00d7 ' + (sh.wf || '?') + '\u2032',
+          boxPx: Math.round(f.w) + ' \u00d7 ' + Math.round(f.h),
+          labelPt: f.label.toFixed(1),
+          placement: textWidth(lbl, f.label) <= f.w * 0.92 ? 'inside' : 'below'
+        };
+      });
+      if (rows.length) { if (console.table) console.table(rows); else console.log(rows); }
+      var o = {
+        utilityFootprints: us.length,
+        pxPerFt: p,
+        typeRange: MIN_PT + '\u2013' + MAX_PT + 'pt',
+        hooked: !!(window._renderUtility && window._renderUtility.__omegaUtilLabel)
+      };
+      o.verdict = !us.length ? 'No utility footprints placed yet.'
+        : us.length + ' footprint(s), all following the same type rule. '
+          + 'View \u203a Labels hides the text; the legend and takeoff keep it.';
       console.info(o.verdict);
       return o;
     }
