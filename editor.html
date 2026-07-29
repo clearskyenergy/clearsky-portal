@@ -50506,7 +50506,7 @@ window._crmToastModal=_crmToastModal;
 
 <!-- ═════════════════════════════════════════════════════════════════════
      CLEARSKY OMEGA — SITE MAP DESIGNER PRO
-     PATCH BUNDLE  ·  2026-07-28  ·  rev 40
+     PATCH BUNDLE  ·  2026-07-28  ·  rev 42
 
      Exactly ONE copy per file, immediately before </body>.
 
@@ -50536,7 +50536,7 @@ window._crmToastModal=_crmToastModal;
           pad square, spine runs the aisle. EMS move re-lanes it.
       18. Trench bands at 45% so the drawing reads through — now
           applies in ENG mode too, which is the DEFAULT style, so the
-          setting had never taken effect  [corrected rev 40]
+          setting had never taken effect  [corrected rev 42]
       19. OmegaRotate.by(deg) turns a whole layout as a rigid body —
           equipment, stencils, boundaries, solar tables and conduits
       20. 14 balance-of-plant footprints in Draw › Utility — EMS,
@@ -50567,13 +50567,15 @@ window._crmToastModal=_crmToastModal;
           ground, and a ring + point marking the exact placement pixel
       34. Utility footprint labels scale with their box (7–15pt) and
           drop below it when they will not fit — they were a flat 8pt
+      35. Engineering Mode takes effect — a stale guided-build flag was
+          pinning _engActive() false so the toggle changed nothing
       28. ONE callout per trench instead of a fanned stack, placed on
           its own line rather than 60px away on a leader
       29. 10 PV/BOP circuit types (DC source, home run, trunk, AC out,
           battery DC, bore, GEC, RSD, tracker) + TRENCH-FIRST routing:
           mark a polyline as a trench, pull circuits through it
           + the three services share one centreline so the existing
-            banking spreads them evenly inside the band  [rev 40]
+            banking spreads them evenly inside the band  [rev 42]
        7. Guided-build assemblies can be dragged and stay put
           (moved out of opt-in — this is the BESS pad fix)
 
@@ -50582,6 +50584,12 @@ window._crmToastModal=_crmToastModal;
        6. Conduit length from coordinates, not pixels
        8. Trench and conduit move together
       12. renderEl replaces its node instead of stacking a ghost
+
+     rev 42 also stops modules logging "armed" more than once. Each
+     polls for its hook targets and those appear at different points
+     during boot, so a module wrapping three functions logged three
+     times. Nothing was double-wrapped — it was noise, but it buried
+     the messages that matter.
 
      TRIAGE
        OmegaPatch.installed()     which modules are live, and the rev
@@ -50596,6 +50604,36 @@ window._crmToastModal=_crmToastModal;
 (function () {
   'use strict';
   window.OMEGA_OFF = window.OMEGA_OFF || false;
+
+  /* ── One arm message per module ────────────────────────────────────
+     Every module polls for its hook targets, and those appear at
+     different points during boot. A module that wraps three functions
+     therefore logs "armed" up to three times as each one turns up. The
+     guards hold and nothing is double-wrapped, but the repetition buries
+     the messages that matter and inflates the console issue count.
+
+     Suppress repeats of an identical omega arm line. Scoped to our own
+     tag so the app's logging is untouched. ─────────────────────────── */
+  (function () {
+    try {
+      if (console.__omegaOnce) return;
+      var seen = Object.create(null);
+      var orig = console.info ? console.info.bind(console) : null;
+      if (!orig) return;
+      console.info = function () {
+        try {
+          var s = Array.prototype.slice.call(arguments).join(' ');
+          if (s.indexOf('[omega/') === 0 && s.indexOf('armed') > -1) {
+            if (seen[s]) return;
+            seen[s] = 1;
+          }
+        } catch (e) {}
+        return orig.apply(null, arguments);
+      };
+      console.__omegaOnce = true;
+    } catch (e) {}
+  })();
+
   window.OmegaPatch = {
     off: function () {
       window.OMEGA_OFF = true;
@@ -50607,7 +50645,7 @@ window._crmToastModal=_crmToastModal;
       console.info('[omega] patch passes ON');
       return true;
     },
-    rev: 40,
+    rev: 42,
     installed: function () {
       var active = ['OmegaMapExport', 'OmegaClose', 'OmegaSolar', 'OmegaAnchor', 'OmegaRecent',
                     'OmegaSave', 'OmegaProjects', 'OmegaAutoLayout', 'OmegaBgbLeg',
@@ -57746,6 +57784,193 @@ window._crmToastModal=_crmToastModal;
           + 'View \u203a Labels hides the text; the legend and takeoff keep it.';
       console.info(o.verdict);
       return o;
+    }
+  };
+})();
+
+
+/* ═══════════════════════════════════════════════════════════════════════
+   OMEGA PATCH — 35 : ENGINEERING MODE ACTUALLY TAKES EFFECT
+   -----------------------------------------------------------------------
+   toggleEngMode() is not the problem — it flips ENG_MODE and calls
+   _refreshConduitStyle(). The problem is what the styling reads:
+
+       function _engActive(){
+         return !_guideRunning() && window.ENG_MODE!==false;
+       }
+
+       function _guideRunning(){
+         if(window.ENG_FORCE_COLOR===true) return true;
+         if(typeof BGB!=='undefined' && BGB && BGB.active) return true;
+         if(S.wizActive===true && S.wizStep < WIZARD_STEPS.length) return true;
+       }
+
+   A single stale flag pins _engActive() to false, and after that ENG_MODE
+   can flip as often as you like with no visible change. The toggle works;
+   the styling never reads it.
+
+   The guard is right in principle — colour belongs on screen while a guide
+   is walking you through a build. It is the CLEANUP that is unreliable:
+   engGuideEnd() clears ENG_FORCE_COLOR, but a guide closed by navigating
+   away, by Escape, or by an error never calls it, and BGB.active is left
+   set the same way.
+
+   So this does not remove the guard. It distinguishes a guide that is
+   genuinely running from a flag nobody cleared:
+
+       genuinely running  -> its panel is on screen, or it has a current
+                             step, and the toggle correctly does nothing
+                             yet — but now it SAYS so
+       stale              -> flag set, no panel, no step. Cleared, and the
+                             toggle takes effect
+
+   Because the toggle is an explicit instruction, it wins over a flag that
+   cannot show any evidence of a live guide behind it.
+
+       OmegaEng.why()      what is blocking, if anything
+       OmegaEng.clear()    drop stale guide flags by hand
+   ═══════════════════════════════════════════════════════════════════════ */
+(function () {
+  'use strict';
+
+  var TAG = '[omega/eng]';
+
+  function S_() { try { return (typeof S !== 'undefined' && S) ? S : null; } catch (e) { return null; } }
+
+  /* Is a guided build really on screen, or is this just a leftover flag?
+     A live guide has a visible panel. */
+  function guidePanelVisible() {
+    try {
+      var ids = ['bgb-panel', 'dcfc-panel', 'wiz-panel', 'guide-panel', 'bgb-modal'];
+      for (var i = 0; i < ids.length; i++) {
+        var el = document.getElementById(ids[i]);
+        if (el && el.offsetParent !== null && el.style.display !== 'none') return ids[i];
+      }
+      var any = document.querySelector('.bgb-panel, .guide-panel, [data-guide-panel]');
+      if (any && any.offsetParent !== null) return 'panel';
+    } catch (e) {}
+    return null;
+  }
+
+  function blockers() {
+    var out = [];
+    try { if (window.ENG_FORCE_COLOR === true) out.push('ENG_FORCE_COLOR'); } catch (e) {}
+    try { if (typeof BGB !== 'undefined' && BGB && BGB.active) out.push('BGB.active'); } catch (e) {}
+    try {
+      var s = S_();
+      if (s && s.wizActive === true && typeof WIZARD_STEPS !== 'undefined'
+          && s.wizStep < WIZARD_STEPS.length) out.push('S.wizActive');
+    } catch (e) {}
+    return out;
+  }
+
+  function clearStale(force) {
+    var b = blockers();
+    if (!b.length) return { cleared: [], live: null };
+    var panel = guidePanelVisible();
+    if (panel && !force) return { cleared: [], live: panel };
+
+    var cleared = [];
+    try { if (window.ENG_FORCE_COLOR === true) { window.ENG_FORCE_COLOR = false; cleared.push('ENG_FORCE_COLOR'); } } catch (e) {}
+    try { if (typeof BGB !== 'undefined' && BGB && BGB.active) { BGB.active = false; cleared.push('BGB.active'); } } catch (e) {}
+    try {
+      var s = S_();
+      if (s && s.wizActive === true) { s.wizActive = false; cleared.push('S.wizActive'); }
+    } catch (e) {}
+    return { cleared: cleared, live: null };
+  }
+
+  function redraw() {
+    try { if (typeof _refreshConduitStyle === 'function') _refreshConduitStyle(); } catch (e) {}
+    try {
+      var s = S_();
+      (s && s.conduits || []).forEach(function (c) {
+        var g = document.querySelector('[data-cid="' + c.id + '"]');
+        if (g && g.parentNode) g.parentNode.removeChild(g);
+        if (typeof renderConduit === 'function') renderConduit(c);
+      });
+      if (typeof renderTrenchCorridors === 'function') renderTrenchCorridors();
+      if (typeof renderLegend === 'function') renderLegend();
+    } catch (e) {}
+  }
+
+  function hookToggle() {
+    var orig = window.toggleEngMode;
+    if (typeof orig !== 'function' || orig.__omegaEng) return false;
+    var wrapped = function () {
+      /* An explicit toggle beats a flag with no live guide behind it. */
+      var res = clearStale(false);
+      var r = orig.apply(this, arguments);
+
+      var on = false;
+      try { on = (typeof _engActive === 'function') ? _engActive() : (window.ENG_MODE !== false); } catch (e) {}
+
+      if (res.live) {
+        try {
+          if (typeof showBanner === 'function') {
+            showBanner('cal', '  A guided build is open \u2014 conduits stay in colour until it closes.');
+          }
+        } catch (e) {}
+        console.info(TAG + ' toggle recorded, but a guided build is on screen ('
+          + res.live + '), so colour is held until it closes.');
+      } else {
+        if (res.cleared.length) {
+          console.info(TAG + ' cleared stale guide flag(s): ' + res.cleared.join(', '));
+        }
+        redraw();
+        console.info(TAG + ' engineering mode ' + (on ? 'ON \u2014 monochrome plan-set' : 'OFF \u2014 colour conduits'));
+      }
+      return r;
+    };
+    wrapped.__omegaEng = true;
+    window.toggleEngMode = wrapped;
+    return true;
+  }
+
+  var n = 0;
+  var iv = setInterval(function () {
+    if (hookToggle()) {
+      if (window.console) console.info(TAG, 'armed \u2014 the ENG toggle now takes effect; OmegaEng.why() explains any hold');
+    }
+    if (++n > 200) clearInterval(iv);
+  }, 300);
+
+  window.OmegaEng = {
+    why: function () {
+      var b = blockers(), panel = guidePanelVisible();
+      var on = false;
+      try { on = (typeof _engActive === 'function') ? _engActive() : (window.ENG_MODE !== false); } catch (e) {}
+      var o = {
+        ENG_MODE: (function () { try { return window.ENG_MODE; } catch (e) { return '?'; } })(),
+        engActiveNow: on,
+        blockingFlags: b.length ? b.join(', ') : 'none',
+        guidePanelOnScreen: panel || 'none',
+        conduits: (S_() && S_().conduits || []).length
+      };
+      o.verdict = !b.length
+        ? (o.conduits ? 'Nothing blocking. The toggle should change all ' + o.conduits + ' run(s).'
+                      : 'Nothing blocking, but there are no conduits to restyle \u2014 draw one and try again.')
+        : panel ? 'A guided build is genuinely open (' + panel + '). Colour is held on purpose until it closes.'
+          : 'Stale flag(s) with no guide on screen: ' + b.join(', ')
+            + '. Toggling now clears them, or OmegaEng.clear().';
+      if (console.table) console.table(o); else console.log(o);
+      console.info(o.verdict);
+      return o;
+    },
+
+    clear: function () {
+      var r = clearStale(true);
+      redraw();
+      console.info(TAG + ' cleared: ' + (r.cleared.join(', ') || 'nothing was set'));
+      return r.cleared;
+    },
+
+    set: function (on) {
+      clearStale(true);
+      try { window.ENG_MODE = !!on; } catch (e) {}
+      redraw();
+      console.info(TAG + ' engineering mode forced ' + (on ? 'ON' : 'OFF'));
+      return !!on;
     }
   };
 })();
