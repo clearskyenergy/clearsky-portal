@@ -50506,7 +50506,7 @@ window._crmToastModal=_crmToastModal;
 
 <!-- ═════════════════════════════════════════════════════════════════════
      CLEARSKY OMEGA — SITE MAP DESIGNER PRO
-     PATCH BUNDLE  ·  2026-07-28  ·  rev 28
+     PATCH BUNDLE  ·  2026-07-28  ·  rev 37
 
      Exactly ONE copy per file, immediately before </body>.
 
@@ -50534,8 +50534,9 @@ window._crmToastModal=_crmToastModal;
       17. OmegaTrench.rebuild() re-lays BESS cluster trenching in the
           cluster's OWN frame — works at any heading, taps leave the
           pad square, spine runs the aisle. EMS move re-lanes it.
-      18. Trench bands at 45% so the imagery reads through
-          (OmegaTrenchOpacity.set(0.35 – 0.55) to taste)
+      18. Trench bands at 45% so the drawing reads through — now
+          applies in ENG mode too, which is the DEFAULT style, so the
+          setting had never taken effect  [corrected rev 37]
       19. OmegaRotate.by(deg) turns a whole layout as a rigid body —
           equipment, stencils, boundaries, solar tables and conduits
       20. 14 balance-of-plant footprints in Draw › Utility — EMS,
@@ -50548,6 +50549,25 @@ window._crmToastModal=_crmToastModal;
           arrow-key or rotate it as one; trenching re-lays on release
       24. Rotate GRIP on the selection — drag to turn, Shift snaps to
           15°, live angle readout, one undo step per drag
+      25. CLUSTER TOOLS panel (Draw › Cluster Tools) — type a bearing,
+          nudge by 1/5/15/45°, move in feet, re-lay trenching
+      26. Dragging a single pad re-lays the cluster trenching — the
+          per-tap follow was axis-locked and lost the lane
+      27. Conduit endpoints snap to PADS and to-scale footprints, not
+          just elements. OmegaConnect.repair() for existing drawings.
+      29. 9 solar conduit types incl. FREE-AIR runs (PV source, trunk,
+          EGC) + draw a trench and route conduits into it
+      30. Insert drops to-scale footprints instead of 60px stickers
+          (with a 22px legibility floor so small kit stays clickable)
+      31. Insert icons lose the circular badge — the equipment artwork
+          underneath was always right, it was sitting on a disc
+      28. ONE callout per trench instead of a fanned stack, placed on
+          its own line rather than 60px away on a leader
+      29. 10 PV/BOP circuit types (DC source, home run, trunk, AC out,
+          battery DC, bore, GEC, RSD, tracker) + TRENCH-FIRST routing:
+          mark a polyline as a trench, pull circuits through it
+          + the three services share one centreline so the existing
+            banking spreads them evenly inside the band  [rev 37]
        7. Guided-build assemblies can be dragged and stay put
           (moved out of opt-in — this is the BESS pad fix)
 
@@ -50581,7 +50601,7 @@ window._crmToastModal=_crmToastModal;
       console.info('[omega] patch passes ON');
       return true;
     },
-    rev: 28,
+    rev: 37,
     installed: function () {
       var active = ['OmegaMapExport', 'OmegaClose', 'OmegaSolar', 'OmegaAnchor', 'OmegaRecent',
                     'OmegaSave', 'OmegaProjects', 'OmegaAutoLayout', 'OmegaBgbLeg',
@@ -53883,7 +53903,13 @@ window._crmToastModal=_crmToastModal;
     var ppfv = ppf();
     var halfH = 12 * ppfv / 2;                     /* half the pad depth */
     var gap = 16;
-    var offs = [{ t: 'RMC-DC', d: -5 }, { t: 'RMC-AC', d: 0 }, { t: 'EMT-BMS', d: 5 }];
+    /* All three services share ONE centreline. renderTrenchCorridors sizes
+       the band as (n-1)*9 + 22 and _bankedPts spreads the members by
+       _bankSlot * 9 — "must match _bankedPts", says the source. Baking a
+       second offset in here displaced every run a further 5px on top of
+       its bank slot, so the three sat 14px apart inside a band built for 9
+       and read as one blurred line. Let the banking do the spreading. */
+    var offs = [{ t: 'RMC-DC', d: 0 }, { t: 'RMC-AC', d: 0 }, { t: 'EMT-BMS', d: 0 }];
 
     var fu = units.map(function (u) {
       var f = toFrame(u.cx, u.cy, rad);
@@ -54085,9 +54111,19 @@ window._crmToastModal=_crmToastModal;
        OmegaTrenchOpacity.set(0.55)     heavier
        OmegaTrenchOpacity.reset()       back to the built-in look
 
-   ENG mode is left alone. That is a black-on-white drawing sheet where
-   the band is meant to be solid, and thinning it there would only make it
-   photocopy badly.
+   REV 31 CORRECTION. This originally skipped ENG mode, on the assumption
+   it was an occasional plan-set export where the band should stay solid.
+   It is not — line 9366 reads:
+
+       window.ENG_MODE = true;      // draw mode: monochrome plan-set style
+
+   ENG mode is the DEFAULT drawing style and is on unless a guided build is
+   running (_engActive). So the exclusion meant the setting never applied
+   to anything, which is exactly what you were looking at. It applies in
+   both modes now.
+
+   If you ever do want the band solid on a printed sheet:
+       OmegaTrenchOpacity.engSolid(true)
    ═══════════════════════════════════════════════════════════════════════ */
 (function () {
   'use strict';
@@ -54106,12 +54142,16 @@ window._crmToastModal=_crmToastModal;
   var level = stored();
 
   function engMode() {
-    try { return !!window.ENG_MODE; } catch (e) { return false; }
+    try {
+      if (typeof _engActive === 'function') return !!_engActive();
+      return window.ENG_MODE !== false;
+    } catch (e) { return false; }
   }
 
+  var engSolid = false;          /* opt in if you want printed bands solid */
+
   function apply() {
-    /* On the ENG sheet the band is meant to be solid — leave it. */
-    var v = engMode() ? null : level;
+    var v = (engSolid && engMode()) ? null : level;
     for (var i = 0; i < LAYERS.length; i++) {
       var g = document.getElementById(LAYERS[i]);
       if (!g) continue;
@@ -54148,6 +54188,12 @@ window._crmToastModal=_crmToastModal;
 
   window.OmegaTrenchOpacity = {
     get: function () { return level; },
+    engSolid: function (on) {
+      engSolid = !!on;
+      apply();
+      console.info(TAG + ' ENG-mode bands ' + (engSolid ? 'left solid' : 'follow the opacity setting'));
+      return engSolid;
+    },
     set: function (v) {
       v = parseFloat(v);
       if (!isFinite(v) || v <= 0 || v > 1) { console.warn(TAG, 'give a value between 0 and 1'); return level; }
@@ -55620,6 +55666,1539 @@ window._crmToastModal=_crmToastModal;
   };
 
   if (window.console) console.info(TAG, 'armed — drag the grip above a selected cluster to rotate it');
+})();
+
+
+/* ═══════════════════════════════════════════════════════════════════════
+   OMEGA PATCH — 25 : CLUSTER TOOLS PANEL
+   -----------------------------------------------------------------------
+   Rev 23 and 24 put real capability behind two gestures nobody would
+   guess: alt-click a container, then find and drag a small grip. That is
+   my fault — a feature you cannot discover is a feature you do not have.
+
+   This is the same capability with controls you can see.
+
+   A button in Draw > Equipment opens a panel that selects the cluster for
+   you and gives you:
+
+       heading readout       which way the arrangement currently points
+       rotate to N degrees   type it, or nudge by 1 / 5 / 15 / 45
+       move                  four arrows, with a step in feet
+       re-lay trenching      one button
+
+   Typing an angle matters more than the grip does. A pad is set out at a
+   surveyed bearing, not at "roughly this much" — so the panel works in
+   absolute degrees, and dragging remains available for when you just want
+   to eyeball it.
+
+   Movement is in FEET, not pixels, because that is the unit the drawing is
+   dimensioned in. It converts through S.pxPerFt, so on an uncalibrated
+   drawing it says so rather than silently nudging by a meaningless amount.
+   ═══════════════════════════════════════════════════════════════════════ */
+(function () {
+  'use strict';
+
+  var TAG = '[omega/clusterui]';
+  var heading = 0;                /* what we have applied since opening */
+
+  function S_() { try { return (typeof S !== 'undefined' && S) ? S : null; } catch (e) { return null; } }
+  function ppf() { var s = S_(); return (s && s.pxPerFt > 0) ? s.pxPerFt : 0; }
+
+  function census() {
+    var s = S_(); if (!s) return { pads: 0, ems: 0, runs: 0 };
+    return {
+      pads: (s.shapes || []).filter(function (x) { return x && (x.kind === 'assembly' || x.type === 'bess-asm'); }).length,
+      ems: (s.elements || []).filter(function (x) { return x && (x.eqId === 'ems' || x.type === 'ems'); }).length,
+      runs: (s.conduits || []).filter(function (c) { return c && c.cluster; }).length
+    };
+  }
+
+  /* Current heading, read the same way the trench router reads it. */
+  function currentHeading() {
+    var s = S_(); if (!s) return 0;
+    var pads = (s.shapes || []).filter(function (x) { return x && x.kind === 'assembly'; });
+    var rots = pads.map(function (p) { return typeof p.rot === 'number' ? p.rot : null; })
+                   .filter(function (r) { return r !== null; });
+    if (rots.length) return Math.round(rots.reduce(function (a, b) { return a + b; }, 0) / rots.length);
+    if (pads.length < 2) return 0;
+    var best = 0, bx = 1, by = 0;
+    for (var i = 0; i < pads.length; i++) {
+      for (var j = i + 1; j < pads.length; j++) {
+        var dx = (pads[j].cx || 0) - (pads[i].cx || 0), dy = (pads[j].cy || 0) - (pads[i].cy || 0);
+        var d = dx * dx + dy * dy;
+        if (d > best) { best = d; bx = dx; by = dy; }
+      }
+    }
+    return Math.round(Math.atan2(by, bx) * 180 / Math.PI);
+  }
+
+  function ensureSelected() {
+    try { if (window.OmegaCluster && OmegaCluster.select) OmegaCluster.select(); } catch (e) {}
+  }
+
+  function rotateBy(deg) {
+    deg = parseFloat(deg);
+    if (!isFinite(deg) || !deg) return;
+    ensureSelected();
+    try {
+      if (window.OmegaCluster && OmegaCluster.rotate) OmegaCluster.rotate(deg);
+      else if (window.OmegaRotate && OmegaRotate.clusterBy) OmegaRotate.clusterBy(deg);
+    } catch (e) { console.warn(TAG, e && e.message); }
+    heading = currentHeading();
+    refresh();
+  }
+
+  function rotateTo(target) {
+    target = parseFloat(target);
+    if (!isFinite(target)) { note('Enter an angle in degrees.'); return; }
+    var now = currentHeading();
+    var delta = target - now;
+    while (delta > 180) delta -= 360;
+    while (delta < -180) delta += 360;
+    if (Math.abs(delta) < 0.05) { note('Already at ' + now + '\u00b0.'); return; }
+    rotateBy(delta);
+    note('Turned ' + (delta > 0 ? '+' : '') + delta.toFixed(1) + '\u00b0 to ' + currentHeading() + '\u00b0.');
+  }
+
+  function moveFt(dxFt, dyFt) {
+    var p = ppf();
+    if (!p) { note('Drawing is not calibrated \u2014 load the site address or set a scale first.'); return; }
+    ensureSelected();
+    try { if (window.OmegaCluster && OmegaCluster.move) OmegaCluster.move(dxFt * p, dyFt * p); } catch (e) {}
+    try { if (window.OmegaTrench && OmegaTrench.rebuild) OmegaTrench.rebuild(); } catch (e) {}
+    note('Moved ' + (dxFt || dyFt) + ' ft.');
+    refresh();
+  }
+
+  function note(msg) {
+    var el = document.getElementById('ocp-note');
+    if (el) { el.textContent = msg || ''; }
+  }
+
+  var BTN = 'background:#152A45;border:1px solid rgba(255,255,255,.16);color:#E8F0FE;'
+    + 'border-radius:5px;padding:5px 0;font:700 11px/1 "IBM Plex Mono",monospace;cursor:pointer';
+
+  function build() {
+    var p = document.getElementById('omega-cluster-panel');
+    if (p) return p;
+    p = document.createElement('div');
+    p.id = 'omega-cluster-panel';
+    p.style.cssText = 'position:fixed;left:24px;bottom:120px;z-index:99990;width:236px;'
+      + 'background:#0B1E35;border:1px solid rgba(255,255,255,.14);border-radius:9px;'
+      + 'box-shadow:0 14px 40px rgba(0,0,0,.55);font-family:"IBM Plex Sans",sans-serif;color:#E8F0FE';
+    document.body.appendChild(p);
+
+    /* drag it by the header, like the compass */
+    var dragging = null;
+    p.addEventListener('mousedown', function (e) {
+      if (!e.target.closest || !e.target.closest('#ocp-head')) return;
+      dragging = { x: e.clientX, y: e.clientY, l: p.offsetLeft, t: p.offsetTop };
+      e.preventDefault();
+    });
+    document.addEventListener('mousemove', function (e) {
+      if (!dragging) return;
+      p.style.left = (dragging.l + e.clientX - dragging.x) + 'px';
+      p.style.top = (dragging.t + e.clientY - dragging.y) + 'px';
+      p.style.bottom = 'auto';
+    });
+    document.addEventListener('mouseup', function () { dragging = null; });
+    return p;
+  }
+
+  function refresh() {
+    var p = document.getElementById('omega-cluster-panel');
+    if (!p || p.style.display === 'none') return;
+    var c = census(), h = currentHeading(), cal = ppf();
+
+    p.innerHTML =
+      '<div id="ocp-head" style="display:flex;align-items:center;gap:8px;padding:9px 11px;cursor:move;'
+      + 'border-bottom:1px solid rgba(255,255,255,.1)">'
+      + '<span style="font-size:13px">\u25a3</span>'
+      + '<div style="flex:1;font-weight:700;font-size:12px">Cluster</div>'
+      + '<button id="ocp-x" style="background:none;border:none;color:#8BA3C4;font-size:17px;'
+      + 'cursor:pointer;line-height:1">\u00d7</button></div>'
+
+      + '<div style="padding:10px 11px">'
+      + (c.pads
+        ? '<div style="font-size:10px;color:#8BA3C4;margin-bottom:9px">'
+          + c.pads + ' container' + (c.pads === 1 ? '' : 's') + ' \u00b7 ' + c.ems + ' EMS \u00b7 '
+          + c.runs + ' run' + (c.runs === 1 ? '' : 's') + '</div>'
+        : '<div style="font-size:10.5px;color:#FBBF24;margin-bottom:9px">'
+          + 'No BESS cluster on this drawing yet.</div>')
+
+      /* ── heading ── */
+      + '<div style="font:700 9px/1.4 sans-serif;letter-spacing:.08em;text-transform:uppercase;'
+      + 'color:#7D95B4;margin-bottom:5px">Heading</div>'
+      + '<div style="display:flex;gap:6px;align-items:center;margin-bottom:7px">'
+      + '<input id="ocp-deg" type="number" value="' + h + '" step="1" '
+      + 'style="flex:1;background:#0F1B2E;border:1px solid rgba(255,255,255,.16);color:#E8F0FE;'
+      + 'border-radius:5px;padding:6px 7px;font:700 13px \'IBM Plex Mono\',monospace;width:100%">'
+      + '<span style="font:700 13px \'IBM Plex Mono\'">\u00b0</span>'
+      + '<button id="ocp-set" style="' + BTN + ';padding:6px 10px">Set</button></div>'
+
+      + '<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:5px;margin-bottom:5px">'
+      + ['-45', '-15', '-5', '-1'].map(function (d) {
+        return '<button class="ocp-nudge" data-d="' + d + '" style="' + BTN + '">' + d + '\u00b0</button>';
+      }).join('')
+      + '</div>'
+      + '<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:5px;margin-bottom:11px">'
+      + ['1', '5', '15', '45'].map(function (d) {
+        return '<button class="ocp-nudge" data-d="' + d + '" style="' + BTN + '">+' + d + '\u00b0</button>';
+      }).join('')
+      + '</div>'
+
+      /* ── move ── */
+      + '<div style="font:700 9px/1.4 sans-serif;letter-spacing:.08em;text-transform:uppercase;'
+      + 'color:#7D95B4;margin-bottom:5px">Move</div>'
+      + '<div style="display:flex;gap:6px;align-items:center;margin-bottom:6px">'
+      + '<input id="ocp-step" type="number" value="5" min="0.5" step="0.5" '
+      + 'style="width:62px;background:#0F1B2E;border:1px solid rgba(255,255,255,.16);color:#E8F0FE;'
+      + 'border-radius:5px;padding:5px 6px;font:700 12px \'IBM Plex Mono\',monospace">'
+      + '<span style="font-size:10px;color:#8BA3C4">ft per press</span></div>'
+      + '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:5px;margin-bottom:11px">'
+      + '<div></div><button class="ocp-mv" data-x="0" data-y="-1" style="' + BTN + '">\u2191</button><div></div>'
+      + '<button class="ocp-mv" data-x="-1" data-y="0" style="' + BTN + '">\u2190</button>'
+      + '<button class="ocp-mv" data-x="0" data-y="1" style="' + BTN + '">\u2193</button>'
+      + '<button class="ocp-mv" data-x="1" data-y="0" style="' + BTN + '">\u2192</button>'
+      + '</div>'
+
+      + '<button id="ocp-relay" style="' + BTN + ';width:100%;padding:7px 0;background:#1D4ED8;'
+      + 'border-color:#1D4ED8">Re-lay trenching</button>'
+
+      + '<div id="ocp-note" style="font-size:9.5px;color:#4ADE80;min-height:13px;margin-top:7px"></div>'
+      + (cal ? '' : '<div style="font-size:9.5px;color:#FBBF24;margin-top:4px">'
+        + 'Not calibrated \u2014 moves are disabled until the drawing has a scale.</div>')
+      + '</div>';
+
+    p.querySelector('#ocp-x').onclick = function () { p.style.display = 'none'; };
+    p.querySelector('#ocp-set').onclick = function () { rotateTo(p.querySelector('#ocp-deg').value); };
+    p.querySelector('#ocp-deg').onkeydown = function (e) {
+      if (e.key === 'Enter') { e.preventDefault(); rotateTo(this.value); }
+    };
+    Array.prototype.forEach.call(p.querySelectorAll('.ocp-nudge'), function (b) {
+      b.onclick = function () { rotateBy(this.getAttribute('d') || this.dataset.d); };
+    });
+    Array.prototype.forEach.call(p.querySelectorAll('.ocp-mv'), function (b) {
+      b.onclick = function () {
+        var st = parseFloat(p.querySelector('#ocp-step').value) || 5;
+        moveFt((+this.dataset.x) * st, (+this.dataset.y) * st);
+      };
+    });
+    p.querySelector('#ocp-relay').onclick = function () {
+      try {
+        var r = (window.OmegaTrench && OmegaTrench.rebuild) ? OmegaTrench.rebuild() : null;
+        note(r ? ('Re-laid ' + r.created + ' run(s) at ' + r.headingDeg + '\u00b0.') : 'Nothing to re-lay.');
+      } catch (e) { note('Could not re-lay.'); }
+    };
+  }
+
+  function open() {
+    var p = build();
+    p.style.display = '';
+    heading = currentHeading();
+    refresh();
+    ensureSelected();
+    return true;
+  }
+
+  /* a visible way in */
+  function addButton() {
+    if (document.getElementById('rb-cluster')) return true;
+    var host = document.getElementById('rb-recenter');
+    host = host && host.parentNode;
+    if (!host) {
+      var stalls = document.querySelector('[onclick*="ParkingStalls"], [title*="Parking"]');
+      host = stalls && stalls.parentNode;
+    }
+    if (!host) return false;
+    var b = document.createElement('button');
+    b.className = 'rbtn';
+    b.id = 'rb-cluster';
+    b.title = 'Select the BESS cluster and move or rotate it as one';
+    b.innerHTML = '<span class="rb-ico" style="color:#FBBF24">\u25a3</span>'
+      + '<span class="rb-lbl">Cluster<br>Tools</span>';
+    b.onclick = open;
+    host.appendChild(b);
+    return true;
+  }
+
+  var n = 0;
+  var iv = setInterval(function () {
+    var a = addButton();
+    if (a && window.console) console.info(TAG, 'armed — Cluster Tools button added; OmegaClusterPanel.open()');
+    if (a || ++n > 200) clearInterval(iv);
+  }, 400);
+
+  window.OmegaClusterPanel = {
+    open: open,
+    close: function () { var p = document.getElementById('omega-cluster-panel'); if (p) p.style.display = 'none'; return true; },
+    rotateTo: rotateTo,
+    rotateBy: rotateBy,
+    heading: currentHeading,
+    status: function () {
+      var c = census();
+      var o = { containers: c.pads, ems: c.ems, clusterRuns: c.runs,
+                headingDeg: currentHeading(), pxPerFt: ppf(),
+                panelOpen: !!(document.getElementById('omega-cluster-panel')
+                  && document.getElementById('omega-cluster-panel').style.display !== 'none') };
+      o.verdict = !c.pads ? 'No cluster yet — place a BESS assembly first.'
+        : 'Cluster at ' + o.headingDeg + '\u00b0. OmegaClusterPanel.open() for the controls.';
+      if (console.table) console.table(o); else console.log(o);
+      console.info(o.verdict);
+      return o;
+    }
+  };
+})();
+
+
+/* ═══════════════════════════════════════════════════════════════════════
+   OMEGA PATCH — 26 : A DRAGGED PAD TAKES ITS TRENCHING WITH IT
+   -----------------------------------------------------------------------
+   Drag one BESS pad and its conduits stay behind. There IS a follow path —
+   _rerouteShapeConduits(sh) at line 9069 — and it fails two ways at once:
+
+       var laneY = c.laneY != null ? c.laneY : (by + halfH + 16);
+       c.pts = [ {x: bx+d, y: by+halfH-2+d},        // straight DOWN
+                 {x: bx+d, y: laneY+d} ];           // to a horizontal lane
+
+   AXIS-LOCKED. The tap is redrawn straight down however the pad is turned,
+   so on a rotated pad it no longer leaves the face square. Same bug rev 26
+   fixed in the router; still here in the follow path.
+
+   AND THE LANE IS GONE. c.laneY is the lane the tap was originally laid
+   into. The rotation-aware router does not set it, so the fallback fires
+   and invents a NEW lane 16 px under the pad's new position — nowhere near
+   the spine every other tap lands on.
+
+   Result: the three taps of the pad you moved get redrawn into open ground
+   beside it, the spine is untouched and still spans the old arrangement,
+   and the other pad's runs never move. Which is exactly your screenshot.
+
+   Fixing the per-tap maths would mean re-deriving the cluster frame, which
+   side the lane goes on and how far it must span — for one pad, in
+   isolation. That is the router again, written twice.
+
+   So: when a pad settles, re-lay the cluster. OmegaTrench.rebuild() already
+   does it correctly and in the right frame. It runs on release, not during
+   the drag, so dragging stays smooth, and only when the thing you moved was
+   actually part of a cluster.
+   ═══════════════════════════════════════════════════════════════════════ */
+(function () {
+  'use strict';
+
+  var TAG = '[omega/padfollow]';
+  var pending = false;
+
+  function S_() { try { return (typeof S !== 'undefined' && S) ? S : null; } catch (e) { return null; } }
+
+  function isClusterPad(id) {
+    var s = S_(); if (!s || !id) return false;
+    for (var i = 0; i < (s.shapes || []).length; i++) {
+      var sh = s.shapes[i];
+      if (sh && sh.id === id && (sh.kind === 'assembly' || sh.type === 'bess-asm')) return true;
+    }
+    return false;
+  }
+
+  /* Anything that would leave the trenching describing an old arrangement. */
+  function draggedPadIds() {
+    var s = S_(); if (!s) return [];
+    var ids = [];
+    if (s.asmPartDrag && s.asmPartId) ids.push(s.asmPartId);
+    if (s.shapeDrag) ids.push(s.shapeDrag);
+    if (s.shapeRotate) ids.push(s.shapeRotate);
+    if (s.shapeResize) ids.push(s.shapeResize);
+    if (s.groupDrag && s.groupDrag.length) ids = ids.concat(s.groupDrag);
+    return ids.filter(isClusterPad);
+  }
+
+  function relay(why) {
+    if (pending) return;
+    pending = true;
+    setTimeout(function () {
+      pending = false;
+      try {
+        if (!(window.OmegaTrench && OmegaTrench.rebuild)) return;
+        var r = OmegaTrench.rebuild();
+        if (r && window.console) {
+          console.info(TAG + ' pad ' + why + ' \u2014 re-laid ' + r.created
+            + ' run(s) at ' + r.headingDeg + '\u00b0');
+        }
+      } catch (e) {}
+    }, 40);
+  }
+
+  /* Capture the ids BEFORE the app clears its drag flags, then re-lay after. */
+  function wrapEnd(name, label) {
+    var orig = window[name];
+    if (typeof orig !== 'function' || orig.__omegaPad) return false;
+    var wrapped = function () {
+      var hit = draggedPadIds().length > 0;
+      var r = orig.apply(this, arguments);
+      if (hit) relay(label);
+      return r;
+    };
+    wrapped.__omegaPad = true;
+    window[name] = wrapped;
+    return true;
+  }
+
+  /* A pad can also be nudged with the properties panel or the keyboard,
+     which never touches those handlers. Watch for the arrangement changing
+     shape instead of trusting one code path to tell us. */
+  function signature() {
+    var s = S_(); if (!s) return '';
+    var out = [];
+    (s.shapes || []).forEach(function (sh) {
+      if (!sh || !(sh.kind === 'assembly' || sh.type === 'bess-asm')) return;
+      out.push(Math.round((sh.cx || 0) + (sh.tx || 0)) + ','
+        + Math.round((sh.cy || 0) + (sh.ty || 0)) + ',' + Math.round(sh.rot || 0));
+    });
+    (s.elements || []).forEach(function (el) {
+      if (!el || !(el.eqId === 'ems' || el.type === 'ems')) return;
+      out.push('e' + Math.round(el.x) + ',' + Math.round(el.y));
+    });
+    return out.sort().join('|');
+  }
+
+  var lastSig = null, settleAt = 0;
+  setInterval(function () {
+    if (window.OMEGA_OFF) return;
+    var s = S_(); if (!s) return;
+    /* never while something is actively being dragged */
+    if (s.asmPartDrag || s.shapeDrag || s.drag || s.shapeRotate || s.groupDrag) { settleAt = 0; return; }
+    var sig = signature();
+    if (lastSig === null) { lastSig = sig; return; }
+    if (sig === lastSig) {
+      if (settleAt && Date.now() - settleAt > 250) { settleAt = 0; relay('moved'); }
+      return;
+    }
+    lastSig = sig;
+    settleAt = Date.now();          /* changed — wait for it to hold still */
+  }, 300);
+
+  var n = 0;
+  var iv = setInterval(function () {
+    var a = wrapEnd('_asmPartInteractEnd', 'dragged');
+    var b = wrapEnd('_shapeInteractEnd', 'moved');
+    if (a || b) {
+      if (window.console) console.info(TAG, 'armed — moving a pad re-lays the cluster trenching');
+    }
+    if (++n > 200) clearInterval(iv);
+  }, 300);
+
+  window.OmegaPadFollow = {
+    relay: function () { relay('manual'); return true; },
+    status: function () {
+      var s = S_() || {};
+      var pads = (s.shapes || []).filter(function (x) {
+        return x && (x.kind === 'assembly' || x.type === 'bess-asm');
+      });
+      var runs = (s.conduits || []).filter(function (c) { return c && c.cluster; });
+      var stale = runs.filter(function (c) { return c.tap && c.laneY == null; }).length;
+      var o = {
+        pads: pads.length,
+        clusterRuns: runs.length,
+        hookedAsmEnd: !!(window._asmPartInteractEnd && window._asmPartInteractEnd.__omegaPad),
+        hookedShapeEnd: !!(window._shapeInteractEnd && window._shapeInteractEnd.__omegaPad),
+        tapsWithNoLaneRecorded: stale
+      };
+      o.verdict = !pads.length ? 'No BESS pads on the drawing.'
+        : !runs.length ? 'No cluster runs yet — OmegaTrench.rebuild() lays them.'
+          : 'Move a pad and the trenching re-lays on release. '
+            + 'OmegaPadFollow.relay() forces it now.';
+      if (console.table) console.table(o); else console.log(o);
+      console.info(o.verdict);
+      return o;
+    }
+  };
+})();
+
+
+/* ═══════════════════════════════════════════════════════════════════════
+   OMEGA PATCH — 27 : CONDUITS CAN ATTACH TO A PAD
+   -----------------------------------------------------------------------
+   You asked whether this should be endpoint snapping, auto-connect on
+   configuration, or a button. It is none of those first — the endpoint
+   physically cannot reach a pad today:
+
+       function nearestEl(cx,cy){
+         let best=null, bestD=SNAP_R*SNAP_R;
+         S.elements.forEach(el => { ... });     // ONLY S.elements
+         return best;
+       }
+
+   A BESS pad is a SHAPE (kind:'assembly'). The EMS is an element. That is
+   the whole reason runs snap to the EMS and to nothing else in the
+   cluster — the search never looks at shapes, so there is nothing to
+   attach to and no id to record.
+
+   Attachment is also spelled three ways: fromId (26 uses), fromElId (13),
+   fromShapeId (4). Same class of mismatch that made project lists come
+   back empty and stopped conduits following equipment.
+
+   SO, ON WHICH OF THE THREE:
+
+   Snapping is the one to build. It is the general case — it works for any
+   hand-drawn run to any equipment, not just BESS clusters, and everything
+   downstream falls out of it for free: the one-line generator reads
+   fromId/toId, the follow-on-move reads them, the schedule groups by them.
+   Nothing new to learn, because it is how the tool already behaves for
+   elements.
+
+   Auto-connect on configuration already exists for clusters — that is what
+   OmegaTrench.rebuild() is. It should stay generated rather than snapped,
+   because a cluster's geometry is derived, not drawn.
+
+   A button is worth having, but as REPAIR, not as the mechanism. If you
+   need to press it every time you draw a run, the tool is wrong. So there
+   is one here for drawings already made, and it is not on the critical
+   path for anything new.
+
+   This widens the snap to include pads and every to-scale footprint, and
+   records the id under all three spellings so whichever field a code path
+   happens to read, it gets an answer.
+   ═══════════════════════════════════════════════════════════════════════ */
+(function () {
+  'use strict';
+
+  var TAG = '[omega/connect]';
+
+  function S_() { try { return (typeof S !== 'undefined' && S) ? S : null; } catch (e) { return null; } }
+  function snapR() { try { return (typeof SNAP_R === 'number') ? SNAP_R : 34; } catch (e) { return 34; } }
+
+  /* Anything a run can legitimately terminate on. */
+  function isTarget(sh) {
+    if (!sh) return false;
+    return sh.kind === 'assembly' || sh.type === 'bess-asm'
+      || sh.kind === 'utility' || sh.kind === 'dersolar' || sh.kind === 'derwind'
+      || sh.kind === 'bespad' || sh.kind === 'evcab' || sh.kind === 'evpost';
+  }
+
+  function centreOf(sh) {
+    if (sh.cx != null && sh.cy != null) return { x: sh.cx + (sh.tx || 0), y: sh.cy + (sh.ty || 0) };
+    if (sh.pts && sh.pts.length) {
+      var xs = sh.pts.map(function (p) { return p.x; }), ys = sh.pts.map(function (p) { return p.y; });
+      return { x: (Math.min.apply(null, xs) + Math.max.apply(null, xs)) / 2 + (sh.tx || 0),
+               y: (Math.min.apply(null, ys) + Math.max.apply(null, ys)) / 2 + (sh.ty || 0) };
+    }
+    return null;
+  }
+
+  /* A pad is big. Snapping only within SNAP_R of its CENTRE would mean
+     aiming at the middle of a 20 ft pad to connect to it, so a target's
+     reach grows with its footprint. */
+  function reachOf(sh) {
+    var r = snapR();
+    try {
+      var p = (S_() && S.pxPerFt > 0) ? S.pxPerFt : 0;
+      if (p && sh.lf && sh.wf) return Math.max(r, Math.min(sh.lf, sh.wf) * p * 0.6);
+      if (sh.kind === 'assembly' || sh.type === 'bess-asm') return Math.max(r, 40);
+    } catch (e) {}
+    return r;
+  }
+
+  function hookSnap() {
+    var orig = window.nearestEl;
+    if (typeof orig !== 'function' || orig.__omegaConnect) return false;
+    var wrapped = function (cx, cy) {
+      var best = null, bestD = Infinity;
+      try {
+        var e = orig.apply(this, arguments);
+        if (e) { best = e; bestD = Math.pow(cx - e.cx, 2) + Math.pow(cy - e.cy, 2); }
+      } catch (err) {}
+
+      try {
+        var s = S_();
+        (s && s.shapes || []).forEach(function (sh) {
+          if (!isTarget(sh)) return;
+          var c = centreOf(sh); if (!c) return;
+          var d = Math.pow(cx - c.x, 2) + Math.pow(cy - c.y, 2);
+          var reach = reachOf(sh);
+          if (d > reach * reach) return;
+          if (d >= bestD) return;
+          bestD = d;
+          /* Same shape the conduit tool expects back: {el:{id}, cx, cy}. */
+          best = { el: sh, cx: c.x, cy: c.y, isShape: true };
+        });
+      } catch (err) {}
+      return best;
+    };
+    wrapped.__omegaConnect = true;
+    window.nearestEl = wrapped;
+    return true;
+  }
+
+  /* Record the attachment under every spelling in use. */
+  function reconcile(c) {
+    if (!c) return false;
+    var from = (c.fromId != null) ? c.fromId
+      : (c.fromElId != null) ? c.fromElId
+        : (c.fromShapeId != null) ? c.fromShapeId : null;
+    var to = (c.toId != null) ? c.toId
+      : (c.toElId != null) ? c.toElId
+        : (c.toShapeId != null) ? c.toShapeId : null;
+    if (from == null && c.pts && c.pts.length) from = c.pts[0].elId || null;
+    if (to == null && c.pts && c.pts.length) to = c.pts[c.pts.length - 1].elId || null;
+    var changed = false;
+    ['fromId', 'fromElId'].forEach(function (k) { if (from != null && c[k] !== from) { c[k] = from; changed = true; } });
+    ['toId', 'toElId'].forEach(function (k) { if (to != null && c[k] !== to) { c[k] = to; changed = true; } });
+    return changed;
+  }
+
+  function hookFinish() {
+    var orig = window.finishConduit;
+    if (typeof orig !== 'function' || orig.__omegaConnect) return false;
+    var wrapped = function () {
+      var r = orig.apply(this, arguments);
+      try {
+        var s = S_();
+        var last = s && s.conduits && s.conduits[s.conduits.length - 1];
+        if (last) reconcile(last);
+      } catch (e) {}
+      return r;
+    };
+    wrapped.__omegaConnect = true;
+    window.finishConduit = wrapped;
+    return true;
+  }
+
+  /* ── repair, for drawings already made ───────────────────────────── */
+  function repair(tolFt) {
+    var s = S_(); if (!s) return null;
+    var p = (s.pxPerFt > 0) ? s.pxPerFt : 0;
+    var tolPx = p ? (tolFt || 8) * p : Math.max(snapR(), 40);
+
+    var targets = [];
+    (s.elements || []).forEach(function (el) {
+      var w = el.w || 60, h = el.h || el.w || 60;
+      targets.push({ id: el.id, x: el.x + w / 2, y: el.y + h / 2, reach: Math.max(tolPx, w / 2) });
+    });
+    (s.shapes || []).forEach(function (sh) {
+      if (!isTarget(sh)) return;
+      var c = centreOf(sh); if (!c) return;
+      targets.push({ id: sh.id, x: c.x, y: c.y, reach: Math.max(tolPx, reachOf(sh)) });
+    });
+
+    function nearest(pt) {
+      var best = null, bd = Infinity;
+      targets.forEach(function (t) {
+        var d = Math.hypot(pt.x - t.x, pt.y - t.y);
+        if (d > t.reach || d >= bd) return;
+        bd = d; best = t;
+      });
+      return best;
+    }
+
+    var fixed = 0, already = 0;
+    (s.conduits || []).forEach(function (c) {
+      if (!c || !c.pts || c.pts.length < 2) return;
+      var before = (c.fromId != null) + (c.toId != null);
+      if (c.fromId == null) {
+        var a = nearest(c.pts[0]);
+        if (a) { c.fromId = a.id; c.pts[0].elId = a.id; }
+      }
+      if (c.toId == null) {
+        var b = nearest(c.pts[c.pts.length - 1]);
+        if (b) { c.toId = b.id; c.pts[c.pts.length - 1].elId = b.id; }
+      }
+      reconcile(c);
+      var after = (c.fromId != null) + (c.toId != null);
+      if (after > before) fixed++; else if (before === 2) already++;
+    });
+
+    try { if (typeof pushHist === 'function') pushHist(); } catch (e) {}
+    console.info(TAG + ' attached ' + fixed + ' run end(s); ' + already + ' already connected.');
+    return { fixed: fixed, alreadyConnected: already };
+  }
+
+  var n = 0;
+  var iv = setInterval(function () {
+    var a = hookSnap(), b = hookFinish();
+    if (a || b) {
+      if (window.console) {
+        console.info(TAG, 'armed — conduit endpoints now snap to pads and to-scale footprints, not just elements');
+      }
+    }
+    if (++n > 200) clearInterval(iv);
+  }, 300);
+
+  window.OmegaConnect = {
+    repair: repair,
+    reconcile: function () {
+      var s = S_(); if (!s) return 0;
+      var n2 = 0;
+      (s.conduits || []).forEach(function (c) { if (reconcile(c)) n2++; });
+      return n2;
+    },
+    status: function () {
+      var s = S_() || {};
+      var cs = (s.conduits || []).filter(Boolean);
+      var both = cs.filter(function (c) { return c.fromId != null && c.toId != null; }).length;
+      var one = cs.filter(function (c) {
+        return (c.fromId != null) !== (c.toId != null);
+      }).length;
+      var pads = (s.shapes || []).filter(isTarget).length;
+      var o = {
+        conduitRuns: cs.length,
+        bothEndsAttached: both,
+        oneEndAttached: one,
+        floating: cs.length - both - one,
+        snappableTargets: (s.elements || []).length + pads,
+        snapHooked: !!(window.nearestEl && window.nearestEl.__omegaConnect)
+      };
+      o.verdict = !cs.length ? 'No conduit runs.'
+        : (both === cs.length) ? 'Every run is attached at both ends.'
+          : 'OmegaConnect.repair() will attach ends that already sit on equipment.';
+      if (console.table) console.table(o); else console.log(o);
+      console.info(o.verdict);
+      return o;
+    }
+  };
+})();
+
+
+/* ═══════════════════════════════════════════════════════════════════════
+   OMEGA PATCH — 28 : ONE CALLOUT PER TRENCH
+   -----------------------------------------------------------------------
+   Three causes, all pulling the same way.
+
+   NOTHING HIDES REDUNDANT LABELS. The router sets labelHidden on taps and
+   the EMS stub but not on the lane runs. DC, AC and BMS share one trench,
+   share a midpoint and share a length — and each gets its own callout.
+   That is the C7 / C9 / C11 stack.
+
+   THE FAN PUSHES THEM APART, NOT TOGETHER:
+
+       dy = -32 - slot*22;          // stack upward, 22px apart
+       dx = 60 + (slot%2 ? 18 : 0);
+
+   Runs sharing a midpoint get shoved 32, 54, 76 px up and 60 px across,
+   each trailing a leader back to its line. Three parallel runs in one
+   trench is exactly the case it fans hardest.
+
+   AND THE BASE OFFSET IS 60 px SIDEWAYS before any fanning, so even a
+   lone callout sits well off its own line — on a long diagonal that reads
+   as another line crossing the drawing.
+
+   A drawing does not label three conductors in one trench three times. It
+   labels the trench once and lets the schedule carry the detail, which
+   yours already does. So:
+
+     - runs sharing a corridor collapse to ONE callout reading "3 runs"
+     - the callout sits just off its line rather than 60 px away
+     - the schedule is untouched; every run is still listed and counted
+
+   Auto-hidden labels are marked separately from ones you hid by
+   double-clicking, so re-tidying never resurrects something you dismissed
+   and never permanently buries something it hid.
+   ═══════════════════════════════════════════════════════════════════════ */
+(function () {
+  'use strict';
+
+  var TAG = '[omega/callout]';
+
+  function S_() { try { return (typeof S !== 'undefined' && S) ? S : null; } catch (e) { return null; } }
+
+  function mid(pts) {
+    try { if (typeof midPts === 'function') return midPts(pts); } catch (e) {}
+    if (!pts || !pts.length) return null;
+    var i = Math.floor(pts.length / 2);
+    return { x: pts[i].x, y: pts[i].y };
+  }
+
+  function heading(pts) {
+    if (!pts || pts.length < 2) return 0;
+    var a = pts[0], b = pts[pts.length - 1];
+    var d = Math.atan2(b.y - a.y, b.x - a.x) * 180 / Math.PI;
+    return ((Math.round(d / 8) * 8) % 180 + 180) % 180;
+  }
+
+  /* Runs in the same corridor: same midpoint to within a bundle width,
+     same heading, same length. */
+  function bundleKey(c) {
+    var m = mid(c.pts); if (!m) return null;
+    return Math.round(m.x / 22) + '|' + Math.round(m.y / 22) + '|'
+      + heading(c.pts) + '|' + Math.round((c.pxLen || 0) / 12);
+  }
+
+  function tidy(quiet) {
+    var s = S_(); if (!s || !s.conduits) return null;
+    var groups = {}, order = [];
+    s.conduits.forEach(function (c) {
+      if (!c || !c.pts || c.pts.length < 2) return;
+      var k = bundleKey(c); if (!k) return;
+      if (!groups[k]) { groups[k] = []; order.push(k); }
+      groups[k].push(c);
+    });
+
+    var hidden = 0, kept = 0;
+    order.forEach(function (k) {
+      var g = groups[k];
+      /* Anything the user dismissed by hand stays dismissed. */
+      var candidates = g.filter(function (c) { return !(c.labelHidden && !c._autoHid); });
+      if (!candidates.length) return;
+
+      /* Prefer the widest service as the one that speaks for the trench. */
+      candidates.sort(function (a, b) { return (b.pxLen || 0) - (a.pxLen || 0); });
+      var lead = candidates[0];
+
+      candidates.forEach(function (c) {
+        if (c === lead) {
+          if (c._autoHid) { c.labelHidden = false; delete c._autoHid; }
+          c.runLabel = (g.length > 1) ? (g.length + ' runs') : null;
+          kept++;
+        } else {
+          c.labelHidden = true; c._autoHid = true;
+          hidden++;
+        }
+      });
+    });
+
+    /* Redraw whatever changed. */
+    try {
+      s.conduits.forEach(function (c) {
+        var el = document.querySelector('[data-cid="' + c.id + '"]');
+        if (el && el.parentNode) el.parentNode.removeChild(el);
+        if (typeof renderConduit === 'function') renderConduit(c);
+      });
+    } catch (e) {}
+
+    if (!quiet) {
+      console.info(TAG + ' ' + kept + ' callout(s) kept, ' + hidden
+        + ' redundant one(s) folded into them.');
+    }
+    return { kept: kept, hidden: hidden, corridors: order.length };
+  }
+
+  /* Bring the callout back to its line. The fan is what created the
+     stacks; with one label per corridor there is nothing left to fan. */
+  function hookOffset() {
+    var orig = window._calloutOffset;
+    if (typeof orig !== 'function' || orig.__omegaCallout) return false;
+    var wrapped = function (c) {
+      try {
+        if (c && c.labelDx !== undefined && c.labelDy !== undefined) {
+          return { dx: c.labelDx, dy: c.labelDy };      /* placed by hand */
+        }
+      } catch (e) {}
+      /* Sit just clear of the line, on the side away from its heading, so
+         the callout does not lie along the trench it is describing. */
+      var h = 0;
+      try { h = heading(c.pts) * Math.PI / 180; } catch (e) {}
+      var off = 20;
+      return { dx: Math.round(-Math.sin(h) * off), dy: Math.round(Math.cos(h) * off) - 12 };
+    };
+    wrapped.__omegaCallout = true;
+    window._calloutOffset = wrapped;
+    return true;
+  }
+
+  /* Re-tidy when the run set changes, but never mid-drag. */
+  var lastSig = '';
+  setInterval(function () {
+    if (window.OMEGA_OFF) return;
+    var s = S_(); if (!s || !s.conduits) return;
+    if (s.condDrawing || s.asmPartDrag || s.shapeDrag || s.drag) return;
+    var sig = s.conduits.map(function (c) {
+      return c ? (c.id + ':' + Math.round(c.pxLen || 0)) : '';
+    }).join(',');
+    if (sig === lastSig) return;
+    lastSig = sig;
+    try { tidy(true); } catch (e) {}
+  }, 700);
+
+  var n = 0;
+  var iv = setInterval(function () {
+    if (hookOffset()) {
+      if (window.console) console.info(TAG, 'armed — one callout per trench, placed on its line');
+      try { tidy(true); } catch (e) {}
+    }
+    if (++n > 200) clearInterval(iv);
+  }, 300);
+
+  window.OmegaCallout = {
+    tidy: function () { return tidy(false); },
+
+    /* Put every auto-hidden callout back, if you want them all visible. */
+    showAll: function () {
+      var s = S_(); if (!s) return 0;
+      var n2 = 0;
+      (s.conduits || []).forEach(function (c) {
+        if (c && c._autoHid) { c.labelHidden = false; delete c._autoHid; c.runLabel = null; n2++; }
+      });
+      try {
+        (s.conduits || []).forEach(function (c) {
+          var el = document.querySelector('[data-cid="' + c.id + '"]');
+          if (el && el.parentNode) el.parentNode.removeChild(el);
+          if (typeof renderConduit === 'function') renderConduit(c);
+        });
+      } catch (e) {}
+      console.info(TAG + ' restored ' + n2 + ' callout(s)');
+      return n2;
+    },
+
+    status: function () {
+      var s = S_() || {};
+      var cs = (s.conduits || []).filter(Boolean);
+      var groups = {};
+      cs.forEach(function (c) { var k = bundleKey(c); if (k) groups[k] = (groups[k] || 0) + 1; });
+      var o = {
+        conduitRuns: cs.length,
+        corridors: Object.keys(groups).length,
+        calloutsShown: cs.filter(function (c) { return !c.labelHidden; }).length,
+        autoHidden: cs.filter(function (c) { return c._autoHid; }).length,
+        hiddenByYou: cs.filter(function (c) { return c.labelHidden && !c._autoHid; }).length
+      };
+      o.verdict = !cs.length ? 'No conduit runs.'
+        : o.calloutsShown + ' callout(s) for ' + o.corridors + ' corridor(s). '
+          + 'OmegaCallout.showAll() to label every run individually.';
+      if (console.table) console.table(o); else console.log(o);
+      console.info(o.verdict);
+      return o;
+    }
+  };
+})();
+
+
+/* ═══════════════════════════════════════════════════════════════════════
+   OMEGA PATCH — 29 : SOLAR CONDUIT TYPES  +  TRENCH-FIRST ROUTING
+   -----------------------------------------------------------------------
+   PART A — THE AUDIT
+
+   Ten types, all built for the AC side of a utility BESS or EV job: 2 to
+   4 inch raceway carrying power between large equipment. A solar array is
+   largely the opposite — small conductors, much of it in FREE AIR on the
+   racking, DC rather than AC.
+
+   There is no free-air type at all. So a PV source circuit or a
+   microinverter trunk has to be drawn as 2" RMC, and then it prices as
+   2" RMC. That is the real cost: not that the drawing looks wrong, but
+   that the takeoff is wrong.
+
+   Nine things appear on the conductor schedules of the drawings you sent
+   with nothing in the catalogue to match:
+
+       10 AWG PV WIRE        FREE AIR         module -> combiner
+       12 AWG Q-CABLE        FREE AIR         microinverter trunk
+       06 AWG BARE COPPER    not in conduit   EGC / racking bond
+       6 AWG THWN-2          1.5" PVC-40      DC homerun
+       6 AWG THWN-2          2" HDPE SDR-11   directional bore
+       8 AWG THWN-2          3/4" EMT         inverter AC output
+       3/0 AWG THWN-2        2" EMT           AC feeder
+       4/0 AWG               2" EMT           battery DC
+       CAT6                  3/4" EMT         gateway / comms
+
+   Added, nothing removed. Existing ids are untouched, so drawings already
+   made read exactly the same.
+
+   PART B — TRENCH FIRST
+
+   Today a trench is DERIVED: renderTrenchCorridors groups conduits that
+   happen to run near each other and draws an excavation round them. You
+   cannot put a trench down and then fill it.
+
+   _snapToTrench(p) exists but works off S._trench — one straight spine,
+   ax/ay to bx/by, belonging to the DCFC guided flow. Not a general trench.
+
+   The useful realisation: corridors are grouped by PROXIMITY. A drawn
+   trench therefore needs no grouping mechanism of its own — it only needs
+   conduit vertices to land on it. Once several runs share a path, the
+   existing logic groups them, sizes the band and banks them exactly as it
+   does now.
+
+   So: draw a trench, and conduit points snap onto it as you route. The
+   corridor falls out for free.
+   ═══════════════════════════════════════════════════════════════════════ */
+(function () {
+  'use strict';
+
+  var TAG = '[omega/routing]';
+  function S_() { try { return (typeof S !== 'undefined' && S) ? S : null; } catch (e) { return null; } }
+
+  /* ───────── PART A ───────── */
+  var SOLAR_TYPES = [
+    { id: 'PV-SRC',    label: 'PV Source (free air)', color: '#EF4444', dash: '',     sw: 1.6, size: '10 AWG PV Wire, free air' },
+    { id: 'PV-TRUNK',  label: 'Microinverter Trunk',  color: '#F97316', dash: '',     sw: 2,   size: '12 AWG trunk cable, free air' },
+    { id: 'PV-HOME',   label: 'DC Homerun',           color: '#DC2626', dash: '',     sw: 2.6, size: '6 AWG THWN-2, 1.5" PVC-40' },
+    { id: 'PV-EGC',    label: 'EGC / Racking Bond',   color: '#16A34A', dash: '3 3',  sw: 1.4, size: '6 AWG bare Cu, not in conduit' },
+    { id: 'INV-AC',    label: 'Inverter AC Output',   color: '#F59E0B', dash: '',     sw: 2.4, size: '8 AWG THWN-2, 3/4" EMT' },
+    { id: 'AC-FEED',   label: 'AC Feeder',            color: '#EA580C', dash: '',     sw: 3.2, size: '3/0 AWG THWN-2, 2" EMT' },
+    { id: 'BAT-DC',    label: 'Battery DC',           color: '#B91C1C', dash: '',     sw: 3.8, size: '4/0 AWG battery cable, 2" EMT' },
+    { id: 'HDPE-BORE', label: 'Directional Bore',     color: '#7C3AED', dash: '10 4', sw: 3.4, size: '2" HDPE SDR-11' },
+    { id: 'COMMS',     label: 'Comms / Ethernet',     color: '#2563EB', dash: '2 4',  sw: 1.6, size: 'Cat6, 3/4" EMT' }
+  ];
+
+  function addTypes() {
+    if (typeof CTYPES === 'undefined' || !CTYPES.push) return false;
+    if (window.__omegaSolarTypes) return false;
+    var have = {};
+    CTYPES.forEach(function (c) { have[c.id] = 1; });
+    var added = 0;
+    SOLAR_TYPES.forEach(function (t) {
+      if (have[t.id]) return;
+      var ci = -1;
+      for (var i = 0; i < CTYPES.length; i++) if (CTYPES[i].id === 'custom') { ci = i; break; }
+      if (ci >= 0) CTYPES.splice(ci, 0, t); else CTYPES.push(t);
+      added++;
+    });
+    window.__omegaSolarTypes = true;
+    if (added && window.console) {
+      console.info(TAG, added + ' solar conduit type(s) added \u2014 ' + CTYPES.length + ' total');
+    }
+    return true;
+  }
+
+  /* ───────── PART B ───────── */
+  function trenches() {
+    var s = S_(); if (!s) return [];
+    return (s.shapes || []).filter(function (sh) {
+      return sh && sh.isTrench && sh.pts && sh.pts.length > 1;
+    });
+  }
+
+  function drawTrench() {
+    var s = S_(); if (!s) return false;
+    try {
+      window.__omegaNextIsTrench = true;
+      if (typeof setMode === 'function') setMode('polyline');
+      else { s.mode = 'polyline'; s.shapeDrawing = false; s.shapePts = []; }
+      if (typeof showBanner === 'function') {
+        showBanner('shape', ' Trench \u2014 click a path, Enter to finish. '
+          + 'Conduits drawn afterwards snap into it.');
+      }
+    } catch (e) { return false; }
+    return true;
+  }
+
+  function hookFinishPolyline() {
+    var orig = window.finishPolyline;
+    if (typeof orig !== 'function' || orig.__omegaTrenchDraw) return false;
+    var wrapped = function () {
+      var r = orig.apply(this, arguments);
+      try {
+        if (window.__omegaNextIsTrench) {
+          window.__omegaNextIsTrench = false;
+          var s = S_();
+          var sh = s && s.shapes && s.shapes[s.shapes.length - 1];
+          if (sh && sh.kind === 'polyline') {
+            sh.isTrench = true;
+            sh.label = sh.label || 'TRENCH';
+            if (typeof renderShape === 'function') renderShape(sh);
+            console.info(TAG + ' trench drawn \u2014 ' + (sh.pts.length - 1)
+              + ' segment(s). Conduits will snap to it.');
+          }
+        }
+      } catch (e) {}
+      return r;
+    };
+    wrapped.__omegaTrenchDraw = true;
+    window.finishPolyline = wrapped;
+    return true;
+  }
+
+  function snapToAnyTrench(x, y, tolPx) {
+    var best = null, bd = tolPx;
+    trenches().forEach(function (t) {
+      var p = t.pts;
+      for (var i = 1; i < p.length; i++) {
+        var ax = p[i - 1].x + (t.tx || 0), ay = p[i - 1].y + (t.ty || 0);
+        var bx = p[i].x + (t.tx || 0), by = p[i].y + (t.ty || 0);
+        var dx = bx - ax, dy = by - ay;
+        var L = dx * dx + dy * dy; if (!L) continue;
+        var u = ((x - ax) * dx + (y - ay) * dy) / L;
+        u = Math.max(0, Math.min(1, u));
+        var cx = ax + u * dx, cy = ay + u * dy;
+        var d = Math.hypot(x - cx, y - cy);
+        if (d < bd) { bd = d; best = { x: cx, y: cy, trenchId: t.id }; }
+      }
+    });
+    return best;
+  }
+
+  function tolerance() {
+    var s = S_();
+    try { if (s && s.pxPerFt > 0) return Math.max(20, 6 * s.pxPerFt); } catch (e) {}
+    return 26;
+  }
+
+  /* Pull a freshly-clicked conduit point onto the trench — but never over
+     a snap to actual equipment, which is the stronger intent. */
+  function hookCondClick() {
+    var orig = window.condCovClick;
+    if (typeof orig !== 'function' || orig.__omegaTrenchSnap) return false;
+    var wrapped = function () {
+      var r = orig.apply(this, arguments);
+      try {
+        var s = S_();
+        if (!s || !s.condDrawing || !s.condPts || !s.condPts.length) return r;
+        var last = s.condPts[s.condPts.length - 1];
+        if (last.elId) return r;
+        var hit = snapToAnyTrench(last.x, last.y, tolerance());
+        if (hit) {
+          last.x = hit.x; last.y = hit.y; last.trenchId = hit.trenchId;
+          if (typeof _condPreview === 'function') _condPreview();
+        }
+      } catch (e) {}
+      return r;
+    };
+    wrapped.__omegaTrenchSnap = true;
+    window.condCovClick = wrapped;
+    return true;
+  }
+
+  var n = 0;
+  var iv = setInterval(function () {
+    var a = addTypes(), b = hookFinishPolyline(), c = hookCondClick();
+    if (b || c) {
+      if (window.console) console.info(TAG, 'armed \u2014 OmegaRouting.drawTrench(), then run conduits into it');
+    }
+    if (++n > 200) clearInterval(iv);
+  }, 300);
+
+  window.OmegaRouting = {
+    drawTrench: drawTrench,
+    types: SOLAR_TYPES,
+    snapPoint: snapToAnyTrench,
+
+    snapExisting: function (tolFt) {
+      var s = S_(); if (!s) return 0;
+      var tol = (s.pxPerFt > 0) ? (tolFt || 6) * s.pxPerFt : 26;
+      var moved = 0;
+      (s.conduits || []).forEach(function (c) {
+        if (!c || !c.pts) return;
+        var touched = false;
+        c.pts.forEach(function (p) {
+          if (p.elId) return;
+          var hit = snapToAnyTrench(p.x, p.y, tol);
+          if (hit) { p.x = hit.x; p.y = hit.y; p.trenchId = hit.trenchId; touched = true; }
+        });
+        if (!touched) return;
+        moved++;
+        try {
+          if (typeof _polyLen === 'function') {
+            c.pxLen = _polyLen(c.pts);
+            c.ftLen = +(c.pxLen / (s.pxPerFt || 6)).toFixed(1);
+          }
+          var g = document.querySelector('[data-cid="' + c.id + '"]');
+          if (g && g.parentNode) g.parentNode.removeChild(g);
+          if (typeof renderConduit === 'function') renderConduit(c);
+        } catch (e) {}
+      });
+      try { if (typeof _refreshConduitStyle === 'function') _refreshConduitStyle(); } catch (e) {}
+      try { if (typeof pushHist === 'function') pushHist(); } catch (e) {}
+      console.info(TAG + ' pulled ' + moved + ' run(s) onto a trench');
+      return moved;
+    },
+
+    status: function () {
+      var s = S_() || {};
+      var t = trenches();
+      var onT = (s.conduits || []).filter(function (c) {
+        return c && (c.pts || []).some(function (p) { return p.trenchId; });
+      }).length;
+      var o = {
+        conduitTypes: (typeof CTYPES !== 'undefined') ? CTYPES.length : 0,
+        solarTypesAdded: SOLAR_TYPES.length,
+        trenchesDrawn: t.length,
+        runsUsingATrench: onT,
+        snapTolerancePx: Math.round(tolerance()),
+        snapHooked: !!(window.condCovClick && window.condCovClick.__omegaTrenchSnap)
+      };
+      o.verdict = !t.length
+        ? 'No trench drawn. OmegaRouting.drawTrench(), then click a path.'
+        : t.length + ' trench(es). Draw conduits near one and they snap in; '
+          + 'OmegaRouting.snapExisting() pulls existing runs on.';
+      if (console.table) console.table(o); else console.log(o);
+      console.info(o.verdict);
+      return o;
+    }
+  };
+})();
+
+
+/* ═══════════════════════════════════════════════════════════════════════
+   OMEGA PATCH — 30 : INSERT PLACES THE SAME THING THE GUIDED BUILD DOES
+   -----------------------------------------------------------------------
+   The Insert catalogue carries a label and nothing else:
+
+       const EQ = [
+         {id:'bess',  label:'BESS Cabinet'},
+         {id:'pcs',   label:'PCS/Inverter'},
+         {id:'xfmr',  label:'Transformer'},
+         ...
+
+   No dimensions. So _eqDropW() falls through to a constant:
+
+       var dc = DC_CATALOG[id];
+       if (dc && S.pxPerFt > 0) return Math.max(40, dc.lf * S.pxPerFt);
+       if (dc) return 90;
+       return 60;                          // <- everything else
+
+   Eighteen items, and only the ones that happen to be in DC_CATALOG get a
+   real size. The rest drop at 60 px regardless of what they are or what
+   the drawing scale is. A 1000 kVA pad-mount transformer and a junction
+   box land the same size.
+
+   Meanwhile Draw > Utility places xfmr as a 6' x 5' footprint, and the
+   guided build places a BESS as a to-scale assembly on a sized pad. Same
+   equipment, three different objects, three different sizes — and only
+   the footprint version takes off correctly, because 60 px is not a
+   dimension, it is a sticker.
+
+   This gives every Insert item a real footprint in feet, drawn from the
+   catalogues already in the file where one exists and from equipment cut
+   sheets where it does not. Insert now drops the same to-scale object
+   Draw and the guided build do, so a drawing reads consistently however
+   the equipment got onto it.
+
+   Uncalibrated drawings still get a sensible pixel size — but it is
+   derived from the real footprint rather than a flat 60, so relative
+   sizes are right even before a scale is set.
+   ═══════════════════════════════════════════════════════════════════════ */
+(function () {
+  'use strict';
+
+  var TAG = '[omega/insert]';
+
+  /* lf = length along the front, wf = depth, in FEET.
+     Sourced from UTILITY_CATALOG where it exists, otherwise from typical
+     cut sheets. Every one is a real object you can check. */
+  var FOOTPRINT = {
+    bess:     { lf: 7.9,  wf: 4.6,  note: 'C&I battery cabinet' },
+    pcs:      { lf: 12.0, wf: 8.0,  note: 'PCS / inverter skid' },
+    xfmr:     { lf: 6.0,  wf: 5.0,  note: 'pad-mount transformer' },
+    disco:    { lf: 2.5,  wf: 1.5,  note: 'AC disconnect' },
+    panel:    { lf: 2.5,  wf: 1.2,  note: 'panelboard' },
+    meter:    { lf: 2.0,  wf: 1.0,  note: 'utility meter' },
+    building: { lf: 40.0, wf: 30.0, note: 'facility load block' },
+    hydrant:  { lf: 1.5,  wf: 1.5,  note: 'fire hydrant' },
+    genset:   { lf: 20.0, wf: 8.0,  note: 'standby generator' },
+    solar:    { lf: 20.0, wf: 12.0, note: 'PV table' },
+    pad:      { lf: 20.3, wf: 18.8, note: 'concrete pad' },
+    bollard:  { lf: 0.75, wf: 0.75, note: 'bollard' },
+    fence:    { lf: 10.0, wf: 0.3,  note: 'fence section' },
+    jbox:     { lf: 1.0,  wf: 0.8,  note: 'junction box' },
+    charger:  { lf: 3.0,  wf: 2.0,  note: 'EV charger' },
+    camera:   { lf: 0.8,  wf: 0.8,  note: 'camera' },
+    ups:      { lf: 5.0,  wf: 2.5,  note: 'UPS cabinet' },
+    pole:     { lf: 1.5,  wf: 1.5,  note: 'utility pole' }
+  };
+
+  function S_() { try { return (typeof S !== 'undefined' && S) ? S : null; } catch (e) { return null; } }
+  function ppf() { var s = S_(); return (s && s.pxPerFt > 0) ? s.pxPerFt : 0; }
+
+  /* Prefer whatever the file already knows, so Insert and Draw can never
+     disagree about the same piece of equipment. */
+  function footprintOf(id) {
+    try {
+      if (typeof DC_CATALOG !== 'undefined' && DC_CATALOG[id] && DC_CATALOG[id].lf) {
+        return { lf: DC_CATALOG[id].lf, wf: DC_CATALOG[id].wf || DC_CATALOG[id].lf * 0.6, src: 'DC_CATALOG' };
+      }
+    } catch (e) {}
+    try {
+      if (typeof UTILITY_CATALOG !== 'undefined' && UTILITY_CATALOG[id] && UTILITY_CATALOG[id].lf) {
+        return { lf: UTILITY_CATALOG[id].lf, wf: UTILITY_CATALOG[id].wf, src: 'UTILITY_CATALOG' };
+      }
+    } catch (e) {}
+    if (FOOTPRINT[id]) return { lf: FOOTPRINT[id].lf, wf: FOOTPRINT[id].wf, src: 'cut sheet' };
+    return null;
+  }
+
+  function hookDropW() {
+    var orig = window._eqDropW;
+    if (typeof orig !== 'function' || orig.__omegaInsert) return false;
+    var wrapped = function (id) {
+      var f = footprintOf(id);
+      if (!f) return orig.apply(this, arguments);
+      var p = ppf();
+      /* True to scale, but with a floor. At 2.5 px/ft a 0.75 ft bollard is
+         2 px — correct, and impossible to see or click. CAD symbols carry a
+         minimum display size for exactly this reason; large equipment stays
+         true, small equipment clamps so it stays usable. */
+      if (p) return Math.max(22, Math.round(f.lf * p));
+      /* Uncalibrated: still scale RELATIVE sizes off the real footprint so
+         a transformer is visibly bigger than a junction box. */
+      return Math.max(18, Math.round(14 + f.lf * 3.2));
+    };
+    wrapped.__omegaInsert = true;
+    window._eqDropW = wrapped;
+    return true;
+  }
+
+  /* Carry the real dimensions onto the placed element so the takeoff,
+     the summary and the export all see a footprint rather than a sticker. */
+  function hookAddEl() {
+    var orig = window.addEl;
+    if (typeof orig !== 'function' || orig.__omegaInsert) return false;
+    var wrapped = function (el) {
+      try {
+        if (el && el.type === 'eq' && el.eqId) {
+          var f = footprintOf(el.eqId);
+          if (f) {
+            if (el.lf == null) el.lf = f.lf;
+            if (el.wf == null) el.wf = f.wf;
+            var p = ppf();
+            if (p && el.h == null) el.h = Math.max(10, Math.round(f.wf * p));
+          }
+        }
+      } catch (e) {}
+      return orig.apply(this, arguments);
+    };
+    wrapped.__omegaInsert = true;
+    window.addEl = wrapped;
+    return true;
+  }
+
+  /* Anything already dropped at the old flat 60 px. */
+  function rescaleExisting() {
+    var s = S_(); if (!s) return 0;
+    var p = ppf();
+    var n = 0;
+    (s.elements || []).forEach(function (el) {
+      if (!el || el.type !== 'eq' || !el.eqId) return;
+      var f = footprintOf(el.eqId); if (!f) return;
+      if (el.lf == null) el.lf = f.lf;
+      if (el.wf == null) el.wf = f.wf;
+      var want = p ? Math.max(22, Math.round(f.lf * p)) : Math.max(18, Math.round(14 + f.lf * 3.2));
+      if (Math.abs((el.w || 0) - want) > 1) {
+        /* grow about the centre so nothing jumps across the drawing */
+        var cx = el.x + (el.w || 60) / 2, cy = el.y + (el.h || el.w || 60) / 2;
+        el.w = want;
+        el.h = p ? Math.max(10, Math.round(f.wf * p)) : Math.max(12, Math.round(10 + f.wf * 3.2));
+        el.x = cx - el.w / 2; el.y = cy - el.h / 2;
+        n++;
+        try { if (typeof renderEl === 'function') renderEl(el); } catch (e) {}
+      }
+    });
+    try { if (typeof pushHist === 'function') pushHist(); } catch (e) {}
+    console.info(TAG + ' resized ' + n + ' placed item(s) to their real footprint');
+    return n;
+  }
+
+  var n = 0;
+  var iv = setInterval(function () {
+    var a = hookDropW(), b = hookAddEl();
+    if (a || b) {
+      if (window.console) {
+        console.info(TAG, 'armed \u2014 Insert now drops to-scale footprints, '
+          + 'matching Draw and the guided build');
+      }
+    }
+    if (++n > 200) clearInterval(iv);
+  }, 300);
+
+  window.OmegaInsert = {
+    footprint: footprintOf,
+    rescaleExisting: rescaleExisting,
+
+    list: function () {
+      var p = ppf();
+      var rows = Object.keys(FOOTPRINT).map(function (id) {
+        var f = footprintOf(id);
+        return {
+          item: id,
+          feet: f ? (f.lf + '\u2032 \u00d7 ' + f.wf + '\u2032') : '\u2014',
+          source: f ? f.src : 'none',
+          dropsAtPx: f ? (p ? Math.round(f.lf * p) : Math.round(14 + f.lf * 3.2)) : 60,
+          wasPx: 60
+        };
+      });
+      if (console.table) console.table(rows); else console.log(rows);
+      console.info(TAG + ' every Insert item now has a real footprint. '
+        + (p ? '' : 'Set a scale and these become true dimensions.'));
+      return rows;
+    },
+
+    status: function () {
+      var s = S_() || {};
+      var eqs = (s.elements || []).filter(function (e) { return e && e.type === 'eq'; });
+      var sized = eqs.filter(function (e) { return e.lf != null; }).length;
+      var o = {
+        placedEquipment: eqs.length,
+        carryingRealDimensions: sized,
+        stillStickers: eqs.length - sized,
+        pxPerFt: ppf(),
+        hooked: !!(window._eqDropW && window._eqDropW.__omegaInsert)
+      };
+      o.verdict = !eqs.length ? 'Nothing placed from Insert yet.'
+        : (eqs.length - sized) ? (eqs.length - sized) + ' item(s) predate this \u2014 '
+          + 'OmegaInsert.rescaleExisting() gives them their real size.'
+          : 'All placed equipment carries a real footprint.';
+      if (console.table) console.table(o); else console.log(o);
+      console.info(o.verdict);
+      return o;
+    }
+  };
+})();
+
+
+/* ═══════════════════════════════════════════════════════════════════════
+   OMEGA PATCH — 31 : INSERT ICONS LOSE THE CIRCLE
+   -----------------------------------------------------------------------
+   The artwork was never the problem. ICONS.bess is a Great Power
+   MAX-20HC container drawn properly — three bays, cell stacks, vents, a
+   GP mark. What is wrong is the first line of it:
+
+       bess:(s=60)=>`<svg viewBox="0 0 56 56">
+         <circle cx="28" cy="28" r="28" fill="#0D3A6B"/>     <- the badge
+         <rect x="8" y="15" width="40" height="26" .../>     <- the real thing
+         ...
+
+   Seventeen of the twenty-one icons open with that same circle. It turns
+   a plan-view piece of equipment into a round app-style badge, which is
+   why Insert items read as stickers next to the guided build's
+   equipment — the container underneath is fine, it is sitting on a
+   coloured disc.
+
+   So this strips the disc and lets the artwork stand on its own, which is
+   how the guided build draws the same equipment. Nothing is redrawn and
+   no detail is lost; one element is removed from each icon.
+
+   The artwork is also re-framed to the extents of what is left. Without
+   the circle the drawing occupies the middle of a 56x56 box that was
+   sized for a disc, so it would otherwise render smaller than before with
+   dead margin round it.
+
+       OmegaIcons.badges(true)     put the discs back
+       OmegaIcons.preview('bess')  see the markup for one
+   ═══════════════════════════════════════════════════════════════════════ */
+(function () {
+  'use strict';
+
+  var TAG = '[omega/icons]';
+  var wantBadges = false;
+  var original = {};
+
+  /* The badge is always the first <circle> centred in the 56x56 box. Only
+     that one — icons that legitimately use circles as ARTWORK (a bollard
+     cap, a camera lens) must keep them. */
+  var BADGE = /<circle\s+cx="28"\s+cy="28"\s+r="28"[^>]*\/>\s*/;
+
+  function strip(markup) {
+    if (typeof markup !== 'string') return markup;
+    if (!BADGE.test(markup)) return markup;
+    var out = markup.replace(BADGE, '');
+
+    /* Re-frame to what remains. The 56x56 viewBox was sized for the disc;
+       with it gone the artwork sits in the middle with dead margin. Pull
+       the box in to the drawn extents so it fills the same footprint. */
+    var xs = [], ys = [];
+    var re = /<(rect|circle|ellipse|line|path|text|polygon|polyline)\b[^>]*>/g, m;
+    while ((m = re.exec(out))) {
+      var tag = m[0];
+      function num(attr) {
+        var r = new RegExp(attr + '="(-?[\\d.]+)"').exec(tag);
+        return r ? parseFloat(r[1]) : null;
+      }
+      var x = num('x'), y = num('y'), w = num('width'), h = num('height');
+      if (x != null && y != null) {
+        xs.push(x); ys.push(y);
+        if (w != null) xs.push(x + w);
+        if (h != null) ys.push(y + h);
+      }
+      var cx = num('cx'), cy = num('cy'), r2 = num('r');
+      if (cx != null && cy != null) {
+        var rr = r2 || 0;
+        xs.push(cx - rr, cx + rr); ys.push(cy - rr, cy + rr);
+      }
+      var x1 = num('x1'), y1 = num('y1'), x2 = num('x2'), y2 = num('y2');
+      if (x1 != null) { xs.push(x1, x2); ys.push(y1, y2); }
+    }
+    if (xs.length && ys.length) {
+      var pad = 1.5;
+      var minX = Math.max(0, Math.min.apply(null, xs) - pad);
+      var minY = Math.max(0, Math.min.apply(null, ys) - pad);
+      var maxX = Math.min(56, Math.max.apply(null, xs) + pad);
+      var maxY = Math.min(56, Math.max.apply(null, ys) + pad);
+      var bw = maxX - minX, bh = maxY - minY;
+      if (bw > 4 && bh > 4) {
+        /* keep it square so nothing distorts */
+        var side = Math.max(bw, bh);
+        var ox = minX - (side - bw) / 2, oy = minY - (side - bh) / 2;
+        out = out.replace(/viewBox="0 0 56 56"/,
+          'viewBox="' + ox.toFixed(1) + ' ' + oy.toFixed(1) + ' '
+          + side.toFixed(1) + ' ' + side.toFixed(1) + '"');
+      }
+    }
+    return out;
+  }
+
+  function install() {
+    if (typeof ICONS === 'undefined' || !ICONS) return false;
+    if (window.__omegaIcons) return false;
+
+    var n = 0;
+    Object.keys(ICONS).forEach(function (k) {
+      var fn = ICONS[k];
+      if (typeof fn !== 'function') return;
+      original[k] = fn;
+      ICONS[k] = function (s) {
+        var markup = original[k].apply(this, arguments);
+        return wantBadges ? markup : strip(markup);
+      };
+      n++;
+    });
+
+    window.__omegaIcons = true;
+    if (window.console) {
+      console.info(TAG, 'armed \u2014 circular badge removed from ' + n
+        + ' Insert icon(s); the equipment artwork is untouched');
+    }
+    return true;
+  }
+
+  function repaint() {
+    try {
+      var s = (typeof S !== 'undefined') ? S : null;
+      (s && s.elements || []).forEach(function (el) {
+        if (typeof renderEl === 'function') renderEl(el);
+      });
+    } catch (e) {}
+  }
+
+  var n = 0;
+  var iv = setInterval(function () {
+    if (install()) repaint();
+    if (++n > 200) clearInterval(iv);
+  }, 300);
+
+  window.OmegaIcons = {
+    badges: function (on) {
+      wantBadges = !!on;
+      repaint();
+      console.info(TAG + ' circular badges ' + (wantBadges ? 'restored' : 'removed'));
+      return wantBadges;
+    },
+
+    preview: function (key) {
+      if (!original[key]) { console.warn(TAG, 'no icon "' + key + '". ' + Object.keys(original).join(', ')); return null; }
+      var was = original[key](60), now = strip(was);
+      console.info(TAG + ' ' + key + ': ' + was.length + ' chars -> ' + now.length
+        + ' (badge ' + (was.length === now.length ? 'not present' : 'removed') + ')');
+      return now;
+    },
+
+    status: function () {
+      var keys = Object.keys(original);
+      var stripped = keys.filter(function (k) {
+        try { return original[k](60) !== strip(original[k](60)); } catch (e) { return false; }
+      });
+      var o = {
+        icons: keys.length,
+        hadACircularBadge: stripped.length,
+        keptTheirCircles: keys.length - stripped.length,
+        badgesCurrently: wantBadges ? 'shown' : 'removed'
+      };
+      o.verdict = wantBadges
+        ? 'Badges are on. OmegaIcons.badges(false) to remove them again.'
+        : stripped.length + ' icon(s) now read as plan-view equipment. '
+          + (keys.length - stripped.length) + ' never had a badge and are unchanged.';
+      if (console.table) console.table(o); else console.log(o);
+      console.info(o.verdict);
+      return o;
+    }
+  };
 })();
 
 
