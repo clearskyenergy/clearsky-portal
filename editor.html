@@ -50506,7 +50506,7 @@ window._crmToastModal=_crmToastModal;
 
 <!-- ═════════════════════════════════════════════════════════════════════
      CLEARSKY OMEGA — SITE MAP DESIGNER PRO
-     PATCH BUNDLE  ·  2026-07-28  ·  rev 42
+     PATCH BUNDLE  ·  2026-07-28  ·  rev 44
 
      Exactly ONE copy per file, immediately before </body>.
 
@@ -50536,7 +50536,7 @@ window._crmToastModal=_crmToastModal;
           pad square, spine runs the aisle. EMS move re-lanes it.
       18. Trench bands at 45% so the drawing reads through — now
           applies in ENG mode too, which is the DEFAULT style, so the
-          setting had never taken effect  [corrected rev 42]
+          setting had never taken effect  [corrected rev 44]
       19. OmegaRotate.by(deg) turns a whole layout as a rigid body —
           equipment, stencils, boundaries, solar tables and conduits
       20. 14 balance-of-plant footprints in Draw › Utility — EMS,
@@ -50569,13 +50569,16 @@ window._crmToastModal=_crmToastModal;
           drop below it when they will not fit — they were a flat 8pt
       35. Engineering Mode takes effect — a stale guided-build flag was
           pinning _engActive() false so the toggle changed nothing
+      36. ENGINEERING BUILD — guided BESS flow that places the to-scale
+          Draw footprints, forces plan-set style, and runs the right
+          conduit for each leg (Build › Engineering Build)
       28. ONE callout per trench instead of a fanned stack, placed on
           its own line rather than 60px away on a leader
       29. 10 PV/BOP circuit types (DC source, home run, trunk, AC out,
           battery DC, bore, GEC, RSD, tracker) + TRENCH-FIRST routing:
           mark a polyline as a trench, pull circuits through it
           + the three services share one centreline so the existing
-            banking spreads them evenly inside the band  [rev 42]
+            banking spreads them evenly inside the band  [rev 44]
        7. Guided-build assemblies can be dragged and stay put
           (moved out of opt-in — this is the BESS pad fix)
 
@@ -50585,7 +50588,7 @@ window._crmToastModal=_crmToastModal;
        8. Trench and conduit move together
       12. renderEl replaces its node instead of stacking a ghost
 
-     rev 42 also stops modules logging "armed" more than once. Each
+     rev 44 also stops modules logging "armed" more than once. Each
      polls for its hook targets and those appear at different points
      during boot, so a module wrapping three functions logged three
      times. Nothing was double-wrapped — it was noise, but it buried
@@ -50645,7 +50648,7 @@ window._crmToastModal=_crmToastModal;
       console.info('[omega] patch passes ON');
       return true;
     },
-    rev: 42,
+    rev: 44,
     installed: function () {
       var active = ['OmegaMapExport', 'OmegaClose', 'OmegaSolar', 'OmegaAnchor', 'OmegaRecent',
                     'OmegaSave', 'OmegaProjects', 'OmegaAutoLayout', 'OmegaBgbLeg',
@@ -57971,6 +57974,332 @@ window._crmToastModal=_crmToastModal;
       redraw();
       console.info(TAG + ' engineering mode forced ' + (on ? 'ON' : 'OFF'));
       return !!on;
+    }
+  };
+})();
+
+
+/* ═══════════════════════════════════════════════════════════════════════
+   OMEGA PATCH — 36 : ENGINEERING BUILD
+   -----------------------------------------------------------------------
+   The existing guided build places decorative assemblies. Draw > Utility
+   places to-scale footprints. Engineering Mode draws conduits monochrome
+   with keyed callouts. All three exist; nothing joins them up, so the
+   drawing in your screenshot has to be assembled by hand one piece at a
+   time.
+
+   This is that sequence as a guided flow. It reuses what is already there
+   rather than adding a fourth way to place equipment:
+
+     UTILITY_CATALOG     the footprints Draw places, at their real size
+     setUtilityType()    the placer Draw arms
+     ENG_MODE            forced on for the duration, so every run is drawn
+                         plan-set style as it appears
+     OmegaConnect        each leg records fromId/toId, so the one-line
+                         generator and the follow-on-move both work
+     OmegaTrench         corridors group by proximity as usual
+
+   The sequence follows the one-line from the point of interconnect inward,
+   because that is the order an engineer checks it:
+
+       Utility POI  ->  Utility XFMR  ->  Main Switchgear
+                    ->  PCS / Inverter  ->  BESS Container
+                                        ->  EMS Cabinet
+
+   and each leg gets the conduit its service actually calls for — MV to the
+   transformer, AC feeder through the gear, battery DC to the cabinet, Cat6
+   to the EMS — rather than one type for everything.
+
+       OmegaEngBuild.start()    begin
+       OmegaEngBuild.skip()     leave a step out
+       OmegaEngBuild.cancel()
+   ═══════════════════════════════════════════════════════════════════════ */
+(function () {
+  'use strict';
+
+  var TAG = '[omega/engbuild]';
+
+  /* A BESS container is not in UTILITY_CATALOG — add one so the flow does
+     not have to reach into a different placement system halfway through. */
+  var EXTRA = {
+    bessctr: { label: 'BESS CONTAINER', lf: 7.9, wf: 4.6, abbr: 'BESS' }
+  };
+
+  var SEQ = [
+    { key: 'mpoi',    prompt: 'Utility point of interconnect', cond: null },
+    { key: 'xfmr',    prompt: 'Utility transformer',           cond: 'MV-UG' },
+    { key: 'mdp',     prompt: 'Main switchgear',               cond: 'AC-FEED' },
+    { key: 'pcs',     prompt: 'PCS / inverter skid',           cond: 'AC-FEED' },
+    { key: 'bessctr', prompt: 'BESS container',                cond: 'BAT-DC' },
+    { key: 'ems',     prompt: 'EMS cabinet',                   cond: 'COMMS', from: 'pcs' }
+  ];
+
+  var run = null;      /* {i, placed:{key:shapeId}, engWas} */
+
+  function S_() { try { return (typeof S !== 'undefined' && S) ? S : null; } catch (e) { return null; } }
+  function ppf() { var s = S_(); return (s && s.pxPerFt > 0) ? s.pxPerFt : 6; }
+
+  function seedCatalog() {
+    try {
+      if (typeof UTILITY_CATALOG === 'undefined') return false;
+      for (var k in EXTRA) {
+        if (Object.prototype.hasOwnProperty.call(EXTRA, k) && !UTILITY_CATALOG[k]) {
+          UTILITY_CATALOG[k] = EXTRA[k];
+        }
+      }
+      return true;
+    } catch (e) { return false; }
+  }
+
+  function utilityShapes() {
+    var s = S_(); if (!s) return [];
+    return (s.shapes || []).filter(function (x) { return x && x.kind === 'utility'; });
+  }
+
+  function centreOf(sh) {
+    if (!sh) return null;
+    if (sh.cx != null) return { x: sh.cx + (sh.tx || 0), y: sh.cy + (sh.ty || 0) };
+    if (sh.pts && sh.pts.length) return { x: sh.pts[0].x, y: sh.pts[0].y };
+    return null;
+  }
+
+  /* Draw the leg between two placements. Orthogonal, because a plan-set
+     run does not go diagonally across a yard. */
+  function link(fromSh, toSh, condType) {
+    var s = S_(); if (!s || !fromSh || !toSh) return null;
+    var a = centreOf(fromSh), b = centreOf(toSh);
+    if (!a || !b) return null;
+
+    var mid = { x: b.x, y: a.y };
+    var pts = [{ x: a.x, y: a.y, elId: fromSh.id }];
+    if (Math.abs(b.x - a.x) > 2 && Math.abs(b.y - a.y) > 2) pts.push(mid);
+    pts.push({ x: b.x, y: b.y, elId: toSh.id });
+
+    var len = 0;
+    for (var i = 1; i < pts.length; i++) len += Math.hypot(pts[i].x - pts[i - 1].x, pts[i].y - pts[i - 1].y);
+
+    var c = {
+      id: (typeof uid === 'function') ? uid() : ('c' + Date.now()),
+      condType: condType,
+      pts: pts,
+      pxLen: len,
+      ftLen: +(len / (ppf() || 6)).toFixed(1),
+      fromId: fromSh.id, toId: toSh.id,
+      fromElId: fromSh.id, toElId: toSh.id,
+      engBuild: true
+    };
+    try {
+      var ct = null;
+      for (var j = 0; j < CTYPES.length; j++) if (CTYPES[j].id === condType) { ct = CTYPES[j]; break; }
+      if (ct) { c.color = ct.color; c.dash = ct.dash || false; }
+    } catch (e) {}
+
+    s.conduits = s.conduits || [];
+    s.conduits.push(c);
+    try { if (typeof renderConduit === 'function') renderConduit(c); } catch (e) {}
+    return c;
+  }
+
+  function panel() {
+    var p = document.getElementById('omega-engbuild');
+    if (p) return p;
+    p = document.createElement('div');
+    p.id = 'omega-engbuild';
+    p.style.cssText = 'position:fixed;right:24px;top:120px;z-index:99991;width:262px;'
+      + 'background:#0B1E35;border:1px solid rgba(255,255,255,.16);border-radius:9px;'
+      + 'box-shadow:0 14px 40px rgba(0,0,0,.55);font-family:"IBM Plex Sans",sans-serif;color:#E8F0FE';
+    document.body.appendChild(p);
+    return p;
+  }
+
+  function paint() {
+    if (!run) { var old = document.getElementById('omega-engbuild'); if (old) old.remove(); return; }
+    var p = panel();
+    var rows = SEQ.map(function (st, i) {
+      var done = !!run.placed[st.key];
+      var cur = i === run.i;
+      var def = null;
+      try { def = UTILITY_CATALOG[st.key]; } catch (e) {}
+      var size = def ? (def.lf + '\u2032\u00d7' + def.wf + '\u2032') : '';
+      return '<div style="display:flex;gap:8px;align-items:baseline;padding:5px 0;'
+        + (cur ? 'color:#FBBF24;font-weight:700' : done ? 'color:#4ADE80' : 'color:#7D95B4') + '">'
+        + '<span style="width:14px;flex:0 0 14px;text-align:center">'
+        + (done ? '\u2713' : cur ? '\u25b6' : (i + 1)) + '</span>'
+        + '<span style="flex:1;font-size:11.5px">' + (def ? def.label : st.key) + '</span>'
+        + '<span style="font-size:9px;opacity:.65">' + size + '</span></div>';
+    }).join('');
+
+    var st = SEQ[run.i];
+    var def = null; try { def = st && UTILITY_CATALOG[st.key]; } catch (e) {}
+
+    p.innerHTML =
+      '<div style="padding:9px 11px;border-bottom:1px solid rgba(255,255,255,.1);display:flex;gap:8px">'
+      + '<span style="font-size:13px">\u25a4</span>'
+      + '<div style="flex:1;font-weight:700;font-size:12px">Engineering Build</div>'
+      + '<button id="oeb-x" style="background:none;border:none;color:#8BA3C4;font-size:17px;cursor:pointer;line-height:1">\u00d7</button></div>'
+      + '<div style="padding:9px 11px">' + rows
+      + (st
+        ? '<div style="margin-top:9px;padding:8px;background:rgba(251,191,36,.1);'
+          + 'border-left:2px solid #FBBF24;font-size:10.5px;line-height:1.45">'
+          + 'Click the map to place the <b>' + (def ? def.label : st.key) + '</b>'
+          + (def ? ' (' + def.lf + '\u2032 \u00d7 ' + def.wf + '\u2032)' : '') + '.'
+          + (st.cond ? '<br>A ' + st.cond + ' run will follow automatically.' : '')
+          + '</div>'
+          + '<button id="oeb-skip" style="margin-top:8px;width:100%;background:#152A45;'
+          + 'border:1px solid rgba(255,255,255,.16);color:#E8F0FE;border-radius:5px;padding:6px 0;'
+          + 'font:700 11px/1 \'IBM Plex Mono\',monospace;cursor:pointer">Skip this step</button>'
+        : '<div style="margin-top:9px;padding:8px;background:rgba(74,222,128,.1);'
+          + 'border-left:2px solid #4ADE80;font-size:10.5px">Build complete. '
+          + 'Engineering Mode is on and every run is keyed to the schedule.</div>')
+      + '</div>';
+
+    p.querySelector('#oeb-x').onclick = cancel;
+    var sk = p.querySelector('#oeb-skip');
+    if (sk) sk.onclick = skip;
+  }
+
+  function arm() {
+    if (!run) return;
+    var st = SEQ[run.i];
+    if (!st) { finish(); return; }
+    try { if (typeof setUtilityType === 'function') setUtilityType(st.key); } catch (e) {}
+    try {
+      if (typeof showBanner === 'function') {
+        showBanner('shape', ' Engineering Build \u2014 click to place the ' + st.prompt + '.');
+      }
+    } catch (e) {}
+    paint();
+  }
+
+  /* Watch for the placer producing a shape, then wire it up. */
+  var lastCount = 0;
+  setInterval(function () {
+    if (!run || window.OMEGA_OFF) return;
+    var us = utilityShapes();
+    if (us.length <= lastCount) { lastCount = us.length; return; }
+    lastCount = us.length;
+
+    var st = SEQ[run.i]; if (!st) return;
+    var fresh = us[us.length - 1];
+    if (!fresh || fresh.utype !== st.key) return;      /* something else was placed */
+
+    run.placed[st.key] = fresh.id;
+
+    if (st.cond) {
+      var fromKey = st.from || SEQ[run.i - 1] && SEQ[run.i - 1].key;
+      var fromId = fromKey && run.placed[fromKey];
+      var fromSh = fromId && utilityShapes().filter(function (x) { return x.id === fromId; })[0];
+      if (fromSh) {
+        var c = link(fromSh, fresh, st.cond);
+        if (c) console.info(TAG + ' ' + st.cond + ' \u2014 ' + c.ftLen + ' ft');
+      }
+    }
+
+    run.i++;
+    try { if (typeof _refreshConduitStyle === 'function') _refreshConduitStyle(); } catch (e) {}
+    try { if (typeof pushHist === 'function') pushHist(); } catch (e) {}
+    if (run.i >= SEQ.length) finish(); else arm();
+  }, 350);
+
+  function start() {
+    seedCatalog();
+    if (typeof setUtilityType !== 'function') { console.warn(TAG, 'the utility placer is not available'); return null; }
+    run = { i: 0, placed: {}, engWas: (function () { try { return window.ENG_MODE; } catch (e) { return true; } })() };
+    lastCount = utilityShapes().length;
+    /* plan-set style for the whole flow, and no stale guide flag holding it */
+    try { if (window.OmegaEng && OmegaEng.set) OmegaEng.set(true); else window.ENG_MODE = true; } catch (e) {}
+    console.info(TAG + ' started \u2014 ' + SEQ.length + ' steps, Engineering Mode on');
+    arm();
+    return { steps: SEQ.length };
+  }
+
+  function skip() {
+    if (!run) return null;
+    console.info(TAG + ' skipped ' + SEQ[run.i].key);
+    run.i++;
+    if (run.i >= SEQ.length) finish(); else arm();
+    return run.i;
+  }
+
+  function finish() {
+    if (!run) return null;
+    var placed = Object.keys(run.placed).length;
+    run.i = SEQ.length;
+    paint();
+    try { if (window.OmegaConnect && OmegaConnect.reconcile) OmegaConnect.reconcile(); } catch (e) {}
+    try { if (window.OmegaCallout && OmegaCallout.tidy) OmegaCallout.tidy(); } catch (e) {}
+    console.info(TAG + ' complete \u2014 ' + placed + ' footprint(s) placed and linked. '
+      + 'OmegaSLD.generate() will now build the one-line from it.');
+    var keep = run; run = null;
+    setTimeout(function () { var p = document.getElementById('omega-engbuild'); if (p) p.remove(); }, 6000);
+    return { placed: placed };
+  }
+
+  function cancel() {
+    if (!run) return null;
+    try { if (window.ENG_MODE !== run.engWas && window.OmegaEng && OmegaEng.set) OmegaEng.set(run.engWas); } catch (e) {}
+    run = null;
+    var p = document.getElementById('omega-engbuild'); if (p) p.remove();
+    console.info(TAG + ' cancelled');
+    return true;
+  }
+
+  function addButton() {
+    if (document.getElementById('rb-engbuild')) return true;
+    /* The Build tab buttons carry no ids — they are identified by their
+       onclick. Find the BESS Build button the way the DOM actually
+       describes it rather than by an id I assumed existed. */
+    var host = null;
+    try {
+      var all = document.querySelectorAll('button.rbtn');
+      for (var i = 0; i < all.length; i++) {
+        var oc = all[i].getAttribute('onclick') || '';
+        if (/_guidedPick\('standard'\)|openBessGuidedBuild/.test(oc)) { host = all[i].parentNode; break; }
+      }
+      /* fall back to the group holding BESS Config */
+      if (!host) {
+        for (var j = 0; j < all.length; j++) {
+          if (/openBessModal/.test(all[j].getAttribute('onclick') || '')) { host = all[j].parentNode; break; }
+        }
+      }
+    } catch (e) {}
+    if (!host) return false;
+    var b = document.createElement('button');
+    b.className = 'rbtn';
+    b.id = 'rb-engbuild';
+    b.title = 'Guided BESS build using the to-scale Draw footprints and plan-set conduits';
+    b.innerHTML = '<span class="rb-ico" style="color:#FBBF24">\u25a4</span>'
+      + '<span class="rb-lbl">Engineering<br>Build</span>';
+    b.onclick = start;
+    host.appendChild(b);
+    return true;
+  }
+
+  var n = 0;
+  var iv = setInterval(function () {
+    seedCatalog();
+    var a = addButton();
+    if (a && window.console) console.info(TAG, 'armed \u2014 Build \u203a Engineering Build, or OmegaEngBuild.start()');
+    if (a || ++n > 200) clearInterval(iv);
+  }, 400);
+
+  window.OmegaEngBuild = {
+    start: start, skip: skip, cancel: cancel,
+    sequence: SEQ,
+    status: function () {
+      var o = {
+        running: !!run,
+        step: run ? (run.i + 1) + ' of ' + SEQ.length : '\u2014',
+        placed: run ? Object.keys(run.placed).length : 0,
+        engMode: (function () { try { return window.ENG_MODE; } catch (e) { return '?'; } })(),
+        catalogHasBessContainer: (function () { try { return !!UTILITY_CATALOG.bessctr; } catch (e) { return false; } })()
+      };
+      o.verdict = run
+        ? 'On step ' + o.step + ' \u2014 click the map to place it.'
+        : 'Not running. OmegaEngBuild.start() walks POI \u2192 XFMR \u2192 gear \u2192 PCS \u2192 BESS \u2192 EMS.';
+      if (console.table) console.table(o); else console.log(o);
+      console.info(o.verdict);
+      return o;
     }
   };
 })();
