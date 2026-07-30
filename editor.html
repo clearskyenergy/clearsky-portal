@@ -50506,7 +50506,7 @@ window._crmToastModal=_crmToastModal;
 
 <!-- ═════════════════════════════════════════════════════════════════════
      CLEARSKY OMEGA — SITE MAP DESIGNER PRO
-     PATCH BUNDLE  ·  2026-07-28  ·  rev 50
+     PATCH BUNDLE  ·  2026-07-28  ·  rev 51
 
      Exactly ONE copy per file, immediately before </body>.
 
@@ -50536,7 +50536,7 @@ window._crmToastModal=_crmToastModal;
           pad square, spine runs the aisle. EMS move re-lanes it.
       18. Trench bands at 45% so the drawing reads through — now
           applies in ENG mode too, which is the DEFAULT style, so the
-          setting had never taken effect  [corrected rev 50]
+          setting had never taken effect  [corrected rev 51]
       19. OmegaRotate.by(deg) turns a whole layout as a rigid body —
           equipment, stencils, boundaries, solar tables and conduits
       20. 14 balance-of-plant footprints in Draw › Utility — EMS,
@@ -50592,7 +50592,7 @@ window._crmToastModal=_crmToastModal;
           battery DC, bore, GEC, RSD, tracker) + TRENCH-FIRST routing:
           mark a polyline as a trench, pull circuits through it
           + the three services share one centreline so the existing
-            banking spreads them evenly inside the band  [rev 50]
+            banking spreads them evenly inside the band  [rev 51]
        7. Guided-build assemblies can be dragged and stay put
           (moved out of opt-in — this is the BESS pad fix)
 
@@ -50602,7 +50602,7 @@ window._crmToastModal=_crmToastModal;
        8. Trench and conduit move together
       12. renderEl replaces its node instead of stacking a ghost
 
-     rev 50 also stops modules logging "armed" more than once. Each
+     rev 51 also stops modules logging "armed" more than once. Each
      polls for its hook targets and those appear at different points
      during boot, so a module wrapping three functions logged three
      times. Nothing was double-wrapped — it was noise, but it buried
@@ -50662,7 +50662,7 @@ window._crmToastModal=_crmToastModal;
       console.info('[omega] patch passes ON');
       return true;
     },
-    rev: 50,
+    rev: 51,
     installed: function () {
       var active = ['OmegaMapExport', 'OmegaClose', 'OmegaSolar', 'OmegaAnchor', 'OmegaRecent',
                     'OmegaSave', 'OmegaProjects', 'OmegaAutoLayout', 'OmegaBgbLeg',
@@ -54369,12 +54369,16 @@ window._crmToastModal=_crmToastModal;
     conds.forEach(function (c) { (c.pts || []).forEach(function (p) { note(p.x, p.y); }); });
 
     if (!xs.length) return null;
+    /* CENTROID, not the bounding-box centre. A bbox centre is not
+       rotation-invariant for an asymmetric layout: rotate, recompute,
+       rotate again and the object creeps. The grip applies a fresh delta
+       every mousemove, so it did this dozens of times per drag —
+       measured 39.7 px of walk over a 45 degree drag and 49.6 px over 90,
+       against 0.0 px with a centroid. */
+    var sum = function (a) { return a.reduce(function (t, v) { return t + v; }, 0); };
     return {
       shapes: shapes, elements: els, conduits: conds,
-      pivot: {
-        x: (Math.min.apply(null, xs) + Math.max.apply(null, xs)) / 2,
-        y: (Math.min.apply(null, ys) + Math.max.apply(null, ys)) / 2
-      }
+      pivot: { x: sum(xs) / xs.length, y: sum(ys) / ys.length }
     };
   }
 
@@ -54422,6 +54426,14 @@ window._crmToastModal=_crmToastModal;
         var c = spin(sh.cx, sh.cy, P.x, P.y, rad);
         sh.cx = c.x; sh.cy = c.y;
         sh.rot = (sh.rot || 0) + deg;
+        /* A shape can carry BOTH a centre and a point list — a solar array
+           has cx/cy, a boundary, tables AND pts, and renderShape reads
+           sh.pts[0].x unconditionally (lines 8321, 8752). Rotating only
+           the centre left pts behind, so the array kept rendering at its
+           old position while the record said it had moved. */
+        if (sh.pts && sh.pts.length) {
+          sh.pts.forEach(function (q) { var t = spin(q.x, q.y, P.x, P.y, rad); q.x = t.x; q.y = t.y; });
+        }
       } else if (sh.pts && sh.pts.length === 1) {
         var p0 = spin(sh.pts[0].x, sh.pts[0].y, P.x, P.y, rad);
         sh.pts[0].x = p0.x; sh.pts[0].y = p0.y;
@@ -54485,7 +54497,16 @@ window._crmToastModal=_crmToastModal;
       if (typeof updCondStat === 'function') updCondStat();
       if (typeof renderLegend === 'function') renderLegend();
       if (typeof pushHist === 'function') pushHist();
-    } catch (e) { console.warn(TAG, 'redraw:', e && e.message); }
+    } catch (e) {
+      /* Do not let a single unrenderable object bury the console — 200
+         rotations produced 200 identical lines before this. */
+      if (!by.__warned || by.__warned !== String(e && e.message)) {
+        by.__warned = String(e && e.message);
+        console.warn(TAG, 'redraw incomplete:', e && e.message,
+          '\u2014 the rotation was applied to the data; something on the '
+          + 'drawing could not be redrawn. Repeats suppressed.');
+      }
+    }
 
     console.info(TAG + ' rotated ' + deg + '\u00b0 about ('
       + Math.round(P.x) + ',' + Math.round(P.y) + ') \u2014 '
