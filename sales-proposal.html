@@ -226,7 +226,7 @@ body{font-family:'Inter',-apple-system,Arial,sans-serif;background:#F1F4F8;color
 <body>
 
 <div class="hdr">
-  <a href="/" class="hdr-back">← Portal</a>
+  <a href="/" id="hdr-back-link" class="hdr-back" onclick="return _goPortal(event)">← Portal</a>
   <div class="hdr-title">📄 SALES PROPOSAL BUILDER</div>
   <div class="hdr-sub">NextNRG</div>
 </div>
@@ -717,17 +717,33 @@ var BRANDS = {
 };
 var DEFAULT_BRAND = { name:'ClearSky-OMEGA', logo:'/clearsky-omega-mark-white.png', accent:'#1D4ED8', tagline:'DISTRIBUTED ENERGY PLATFORM' };
 
+// Resolve the tenant from ?org=  →  ?brand=  →  hostname (in that order),
+// so the proposal can live on tools.csebuilders.com and still brand itself to
+// whatever tenant launched it via ?org=<domain> (e.g. ?org=nextnrg.com).
+function _orgToSlug(org) {
+  if (!org) return '';
+  org = String(org).toLowerCase().trim().replace(/^https?:\/\//,'').split('/')[0];
+  return org.split('.')[0] || '';   // "nextnrg.com" -> "nextnrg"
+}
+function _tenantOrg() {
+  try { var m = (location.search||'').match(/[?&]org=([^&]+)/); if (m) return decodeURIComponent(m[1]).toLowerCase(); } catch(e){}
+  return '';
+}
 function _slugFromHost() {
   try {
-    var h = (location.hostname || '').toLowerCase();
-    // e.g. nextnrg.csebuilders.com -> "nextnrg"
-    var parts = h.split('.');
+    var org = _tenantOrg(); if (org) { var s = _orgToSlug(org); if (s) return s; }
+    var m = (location.search||'').match(/[?&]brand=([^&]+)/); if (m) return decodeURIComponent(m[1]).toLowerCase();
+    var h = (location.hostname || '').toLowerCase(); var parts = h.split('.');
     if (parts.length >= 3 && parts[parts.length-2] === 'csebuilders') return parts[0];
-    // allow ?brand= override for local/testing
-    var m = (location.search||'').match(/[?&]brand=([^&]+)/);
-    if (m) return decodeURIComponent(m[1]).toLowerCase();
     return '';
   } catch(e){ return ''; }
+}
+// Portal URL for the tenant the user came from.
+function _portalUrl() {
+  var org = _tenantOrg();
+  var slug = org ? _orgToSlug(org) : _slugFromHost();
+  if (slug) return 'https://' + slug + '.csebuilders.com/';
+  return '/';
 }
 function resolveBrand() {
   var slug = _slugFromHost();
@@ -795,8 +811,19 @@ var _ppaCalc = {};  // populated each update()
 // ══════════════════════════════════════════════════════════════════
 // INIT
 // ══════════════════════════════════════════════════════════════════
+// Navigate back to the tenant portal the user came from (not the admin/tools root).
+function _goPortal(ev){
+  if (ev && ev.preventDefault) ev.preventDefault();
+  window.location.href = _portalUrl();
+  return false;
+}
+function _wireBackLink(){
+  var a = document.getElementById('hdr-back-link');
+  if (a) a.setAttribute('href', _portalUrl());
+}
 window.onload = function() {
   applyBrand();
+  _wireBackLink();
   // Set today's date
   var today = new Date().toISOString().split('T')[0];
   document.getElementById('proposal-date').value = today;
