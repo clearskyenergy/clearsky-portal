@@ -50506,7 +50506,7 @@ window._crmToastModal=_crmToastModal;
 
 <!-- ═════════════════════════════════════════════════════════════════════
      CLEARSKY OMEGA — SITE MAP DESIGNER PRO
-     PATCH BUNDLE  ·  2026-07-28  ·  rev 45
+     PATCH BUNDLE  ·  2026-07-28  ·  rev 46
 
      Exactly ONE copy per file, immediately before </body>.
 
@@ -50536,7 +50536,7 @@ window._crmToastModal=_crmToastModal;
           pad square, spine runs the aisle. EMS move re-lanes it.
       18. Trench bands at 45% so the drawing reads through — now
           applies in ENG mode too, which is the DEFAULT style, so the
-          setting had never taken effect  [corrected rev 45]
+          setting had never taken effect  [corrected rev 46]
       19. OmegaRotate.by(deg) turns a whole layout as a rigid body —
           equipment, stencils, boundaries, solar tables and conduits
       20. 14 balance-of-plant footprints in Draw › Utility — EMS,
@@ -50569,6 +50569,9 @@ window._crmToastModal=_crmToastModal;
           drop below it when they will not fit — they were a flat 8pt
       35. Engineering Mode takes effect — a stale guided-build flag was
           pinning _engActive() false so the toggle changed nothing
+      38. E2.0 no longer drops the PV array. _olDetectMode() can only
+          return bess / ev / both — solar was invisible end to end. The
+          sheet now synthesises when PV is present.
       37. OmegaSLD.auto() — censuses the map, picks which of 7 standard
           interconnections it is, and synthesises that one-line at the
           real counts. Use .generate() once conduits are drawn.
@@ -50581,7 +50584,7 @@ window._crmToastModal=_crmToastModal;
           battery DC, bore, GEC, RSD, tracker) + TRENCH-FIRST routing:
           mark a polyline as a trench, pull circuits through it
           + the three services share one centreline so the existing
-            banking spreads them evenly inside the band  [rev 45]
+            banking spreads them evenly inside the band  [rev 46]
        7. Guided-build assemblies can be dragged and stay put
           (moved out of opt-in — this is the BESS pad fix)
 
@@ -50591,7 +50594,7 @@ window._crmToastModal=_crmToastModal;
        8. Trench and conduit move together
       12. renderEl replaces its node instead of stacking a ghost
 
-     rev 45 also stops modules logging "armed" more than once. Each
+     rev 46 also stops modules logging "armed" more than once. Each
      polls for its hook targets and those appear at different points
      during boot, so a module wrapping three functions logged three
      times. Nothing was double-wrapped — it was noise, but it buried
@@ -50651,7 +50654,7 @@ window._crmToastModal=_crmToastModal;
       console.info('[omega] patch passes ON');
       return true;
     },
-    rev: 45,
+    rev: 46,
     installed: function () {
       var active = ['OmegaMapExport', 'OmegaClose', 'OmegaSolar', 'OmegaAnchor', 'OmegaRecent',
                     'OmegaSave', 'OmegaProjects', 'OmegaAutoLayout', 'OmegaBgbLeg',
@@ -58657,6 +58660,175 @@ window._crmToastModal=_crmToastModal;
 
   var n = 0;
   var iv = setInterval(function () { if (attach() || ++n > 200) clearInterval(iv); }, 350);
+})();
+
+
+/* ═══════════════════════════════════════════════════════════════════════
+   OMEGA PATCH — 38 : THE ONE-LINE CAN NOW SEE SOLAR
+   -----------------------------------------------------------------------
+   Your E2.0 is missing the PV array because the built-in generator has no
+   concept of one. There are three possible outcomes and solar is not among
+   them:
+
+       function _olDetectMode(){
+         var nodes=_olGatherNodes();
+         var hasBess=false, hasEv=false;
+         nodes.forEach(function(n){
+           if(n.role==='bess'||n.role==='pcs') hasBess=true;
+           if(n.role==='charger')              hasEv=true;
+         });
+         if(hasBess&&hasEv) return 'both';
+         if(hasEv&&!hasBess) return 'ev';
+         if(hasBess&&!hasEv) return 'bess';
+         return 'bess';
+       }
+
+   A PV array cannot influence that result, the dialog offers only
+   Auto-detect / BESS / EV Charging / Both, and _olRender has no PV branch
+   to draw. So a 364 kW-DC array with 110 tables is invisible from end to
+   end — which is why your sheet reads ESS CONTAINER -> DC/AC -> COLLECTOR
+   BUS -> MDP -> METER -> POI with nothing above it.
+
+   _olGatherNodes DOES collect the array — as role 'der' — so the
+   information is present and simply never consulted.
+
+   Two changes, and neither rewrites the built-in generator.
+
+   IT TELLS THE TRUTH NOW. The dialog's detection line reports solar when
+   it is there, instead of saying "BESS \u2014 nothing placed yet" on a
+   drawing with an array and five conduit runs on it.
+
+   AND E2.0 SYNTHESISES WHEN THE TEMPLATE CANNOT COPE. If solar is on the
+   map and no one-line has been generated, exporting E2.0 now runs
+   OmegaSLD.auto() first, so the sheet shows the array, its inverter, the
+   collector bus and the battery in their correct relationship. You should
+   not have to know a console command to get your own PV onto your own
+   drawing.
+
+   If there is no solar, nothing changes — the built-in template handles
+   BESS and EV perfectly well and continues to.
+   ═══════════════════════════════════════════════════════════════════════ */
+(function () {
+  'use strict';
+
+  var TAG = '[omega/olsolar]';
+
+  function S_() { try { return (typeof S !== 'undefined' && S) ? S : null; } catch (e) { return null; } }
+
+  /* PV on the drawing, by any of the ways it can get there. */
+  function solarCensus() {
+    var s = S_(); if (!s) return { arrays: 0, kw: 0, tables: 0 };
+    var arrays = 0, kw = 0, tables = 0;
+    (s.shapes || []).forEach(function (sh) {
+      if (!sh) return;
+      var isPv = sh.kind === 'dersolar' || sh.kind === 'derwind'
+        || (sh.kind === 'utility' && (sh.utype === 'inverter' || sh.utype === 'strinv'))
+        || !!(sh.tables && sh.tables.length);
+      if (!isPv) return;
+      if (sh.kind === 'dersolar' || (sh.tables && sh.tables.length)) {
+        arrays++;
+        kw += (sh.kw || 0);
+        tables += (sh.tables && sh.tables.length) || 0;
+      }
+    });
+    (s.elements || []).forEach(function (el) {
+      if (el && (el.eqId === 'solar' || el.type === 'solar')) { arrays++; kw += (el.kw || 0); }
+    });
+    return { arrays: arrays, kw: +kw.toFixed(1), tables: tables };
+  }
+
+  /* ── 1. report solar in the detection line ─────────────────────── */
+  function hookDetect() {
+    var orig = window._olDetectMode;
+    if (typeof orig !== 'function' || orig.__omegaSolar) return false;
+    var wrapped = function () {
+      var m = orig.apply(this, arguments);
+      try { window.__omegaOlSolar = solarCensus(); } catch (e) {}
+      return m;                          /* the mode itself is unchanged */
+    };
+    wrapped.__omegaSolar = true;
+    window._olDetectMode = wrapped;
+    return true;
+  }
+
+  /* The dialog writes its own summary; append the truth about solar. */
+  function annotate() {
+    try {
+      var note = document.getElementById('ol-detect-note')
+        || document.querySelector('[id^="ol-"][id$="note"]');
+      if (!note) return false;
+      var sc = solarCensus();
+      if (!sc.arrays) return false;
+      var txt = note.textContent || '';
+      if (txt.indexOf('PV') > -1) return true;         /* already said */
+      var add = ' \u2022 PV: ' + sc.arrays + ' array'
+        + (sc.arrays > 1 ? 's' : '')
+        + (sc.kw ? ' \u00b7 ' + sc.kw + ' kW-DC' : '')
+        + (sc.tables ? ' \u00b7 ' + sc.tables + ' tables' : '')
+        + ' (the built-in template cannot draw PV \u2014 E2.0 will synthesise)';
+      note.textContent = txt.replace(' \u2014 nothing placed yet', '') + add;
+      return true;
+    } catch (e) { return false; }
+  }
+
+  /* ── 2. synthesise for the sheet when the template would miss PV ── */
+  function hookSheet() {
+    var orig = window._olRender;
+    if (typeof orig !== 'function' || orig.__omegaOlSolar) return false;
+    var wrapped = function (sizeKey, withSched) {
+      try {
+        var sc = solarCensus();
+        var haveGenerated = false;
+        try { haveGenerated = (_sld.nodes || []).some(function (n) { return n && n._omegaGen; }); } catch (e) {}
+        if (sc.arrays && !haveGenerated && window.OmegaSLD && OmegaSLD.auto) {
+          var r = OmegaSLD.auto({ force: true });
+          if (r) {
+            console.info(TAG + ' PV is on the map and the template cannot draw it \u2014 '
+              + 'synthesised a ' + r.label + ' one-line for E2.0.');
+          }
+        }
+      } catch (e) {}
+      return orig.apply(this, arguments);   /* patch 22 renders the generated one */
+    };
+    wrapped.__omegaOlSolar = true;
+    window._olRender = wrapped;
+    return true;
+  }
+
+  var n = 0;
+  var iv = setInterval(function () {
+    var a = hookDetect(), b = hookSheet();
+    annotate();
+    if (a || b) {
+      if (window.console) console.info(TAG, 'armed \u2014 solar is reported, and E2.0 synthesises when the template cannot draw it');
+    }
+    if (++n > 300) clearInterval(iv);
+  }, 500);
+
+  window.OmegaOlSolar = {
+    census: solarCensus,
+    status: function () {
+      var sc = solarCensus();
+      var mode = null;
+      try { mode = (typeof _olDetectMode === 'function') ? _olDetectMode() : null; } catch (e) {}
+      var gen = false;
+      try { gen = (_sld.nodes || []).some(function (x) { return x && x._omegaGen; }); } catch (e) {}
+      var o = {
+        pvArrays: sc.arrays, pvKwDc: sc.kw, pvTables: sc.tables,
+        builtInModeSays: mode,
+        builtInCanDrawPv: false,
+        generatedOneLinePresent: gen,
+        sheetHooked: !!(window._olRender && window._olRender.__omegaOlSolar)
+      };
+      o.verdict = !sc.arrays
+        ? 'No PV on the drawing \u2014 the built-in BESS/EV template is the right one.'
+        : gen ? 'PV present and a generated one-line exists \u2014 E2.0 will print that.'
+          : 'PV present. Exporting E2.0 will synthesise a one-line that includes it.';
+      if (console.table) console.table(o); else console.log(o);
+      console.info(o.verdict);
+      return o;
+    }
+  };
 })();
 
 
