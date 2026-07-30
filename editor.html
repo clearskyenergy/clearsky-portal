@@ -50506,7 +50506,7 @@ window._crmToastModal=_crmToastModal;
 
 <!-- ═════════════════════════════════════════════════════════════════════
      CLEARSKY OMEGA — SITE MAP DESIGNER PRO
-     PATCH BUNDLE  ·  2026-07-28  ·  rev 44
+     PATCH BUNDLE  ·  2026-07-28  ·  rev 45
 
      Exactly ONE copy per file, immediately before </body>.
 
@@ -50536,7 +50536,7 @@ window._crmToastModal=_crmToastModal;
           pad square, spine runs the aisle. EMS move re-lanes it.
       18. Trench bands at 45% so the drawing reads through — now
           applies in ENG mode too, which is the DEFAULT style, so the
-          setting had never taken effect  [corrected rev 44]
+          setting had never taken effect  [corrected rev 45]
       19. OmegaRotate.by(deg) turns a whole layout as a rigid body —
           equipment, stencils, boundaries, solar tables and conduits
       20. 14 balance-of-plant footprints in Draw › Utility — EMS,
@@ -50569,6 +50569,9 @@ window._crmToastModal=_crmToastModal;
           drop below it when they will not fit — they were a flat 8pt
       35. Engineering Mode takes effect — a stale guided-build flag was
           pinning _engActive() false so the toggle changed nothing
+      37. OmegaSLD.auto() — censuses the map, picks which of 7 standard
+          interconnections it is, and synthesises that one-line at the
+          real counts. Use .generate() once conduits are drawn.
       36. ENGINEERING BUILD — guided BESS flow that places the to-scale
           Draw footprints, forces plan-set style, and runs the right
           conduit for each leg (Build › Engineering Build)
@@ -50578,7 +50581,7 @@ window._crmToastModal=_crmToastModal;
           battery DC, bore, GEC, RSD, tracker) + TRENCH-FIRST routing:
           mark a polyline as a trench, pull circuits through it
           + the three services share one centreline so the existing
-            banking spreads them evenly inside the band  [rev 44]
+            banking spreads them evenly inside the band  [rev 45]
        7. Guided-build assemblies can be dragged and stay put
           (moved out of opt-in — this is the BESS pad fix)
 
@@ -50588,7 +50591,7 @@ window._crmToastModal=_crmToastModal;
        8. Trench and conduit move together
       12. renderEl replaces its node instead of stacking a ghost
 
-     rev 44 also stops modules logging "armed" more than once. Each
+     rev 45 also stops modules logging "armed" more than once. Each
      polls for its hook targets and those appear at different points
      during boot, so a module wrapping three functions logged three
      times. Nothing was double-wrapped — it was noise, but it buried
@@ -50648,7 +50651,7 @@ window._crmToastModal=_crmToastModal;
       console.info('[omega] patch passes ON');
       return true;
     },
-    rev: 44,
+    rev: 45,
     installed: function () {
       var active = ['OmegaMapExport', 'OmegaClose', 'OmegaSolar', 'OmegaAnchor', 'OmegaRecent',
                     'OmegaSave', 'OmegaProjects', 'OmegaAutoLayout', 'OmegaBgbLeg',
@@ -58302,6 +58305,358 @@ window._crmToastModal=_crmToastModal;
       return o;
     }
   };
+})();
+
+
+/* ═══════════════════════════════════════════════════════════════════════
+   OMEGA PATCH — 37 : ONE-LINE FROM WHAT IS ON THE MAP
+   -----------------------------------------------------------------------
+   Patch 21 builds the one-line from DRAWN CONDUITS. That is right when the
+   runs exist, and useless before they do — place two BESS and a solar
+   array with no conduit between them and you get boxes and no wires.
+
+   The SES schematics you pointed at are six cases, and what separates them
+   is not the equipment list, it is the INTERCONNECTION:
+
+     Grid tie, MSP breaker      120% bus rule applies at the panel
+     Grid tie, line-side tap    supply-side, no bus limit
+     Solar + storage, AC        PV and battery meet on the AC bus
+     Solar + storage, DC        PV and battery meet on the DC bus, one
+                                hybrid inverter
+     Storage only               no PV source circuits at all
+     Utility scale / FOM        collector bus, step-up, MV gear
+
+   So "two BESS and a solar" is not one diagram. Its SHAPE depends on
+   whether those batteries are AC-coupled behind a PCS or DC-coupled into
+   hybrids, and on whether the point of common coupling is a panel breaker
+   or a service tap.
+
+   This censuses the map, picks the case, and synthesises the canonical
+   chain for it at the real counts — two BESS become two battery blocks,
+   three chargers become three branches off the EV panel. Where you HAVE
+   drawn conduits, patch 21 remains the better answer because it reflects
+   what you actually routed; this is for the stage before that, and for
+   checking that what you routed matches a standard interconnection.
+
+       OmegaSLD.auto()        classify and synthesise
+       OmegaSLD.scenario()    which case it reads, and why
+       OmegaSLD.cases()       all six, and what each needs
+   ═══════════════════════════════════════════════════════════════════════ */
+(function () {
+  'use strict';
+
+  var TAG = '[omega/sldauto]';
+
+  function S_() { try { return (typeof S !== 'undefined' && S) ? S : null; } catch (e) { return null; } }
+
+  /* ── what is on the map ─────────────────────────────────────────── */
+  function census() {
+    var s = S_(); if (!s) return null;
+    var c = { solar: 0, solarKw: 0, bess: 0, bessKwh: 0, ev: 0, evPanel: 0,
+              inverter: 0, hybrid: 0, pcs: 0, microinv: 0, combiner: 0,
+              xfmr: 0, mvGear: 0, poi: 0, meter: 0, prodMeter: 0,
+              msp: 0, subPanel: 0, critPanel: 0, gen: 0, ats: 0, ems: 0, gutter: 0 };
+
+    function bump(k, n) { if (c[k] != null) c[k] += (n || 1); }
+
+    (s.shapes || []).forEach(function (sh) {
+      if (!sh) return;
+      if (sh.kind === 'dersolar') { bump('solar'); c.solarKw += (sh.kw || 0); return; }
+      if (sh.kind === 'assembly' || sh.type === 'bess-asm') { bump('bess'); c.bessKwh += (sh.kwh || 0); return; }
+      if (sh.kind !== 'utility') return;
+      var u = sh.utype;
+      if (u === 'bessctr') { bump('bess'); return; }
+      if (u === 'pcs') return bump('pcs');
+      if (u === 'inverter' || u === 'strinv') return bump('inverter');
+      if (u === 'combiner' || u === 'combiner5c') return bump('combiner');
+      if (u === 'xfmr' || u === 'padxfmr') return bump('xfmr');
+      if (u === 'mvswgr') return bump('mvGear');
+      if (u === 'mpoi') return bump('poi');
+      if (u === 'meter') return bump('meter');
+      if (u === 'prodmeter') return bump('prodMeter');
+      if (u === 'msp' || u === 'mdp' || u === 'swbd') return bump('msp');
+      if (u === 'subpanel' || u === 'loadctr') return bump('subPanel');
+      if (u === 'critpanel') return bump('critPanel');
+      if (u === 'genset') return bump('gen');
+      if (u === 'ats' || u === 'gts' || u === 'mts') return bump('ats');
+      if (u === 'ems' || u === 'sysctrl' || u === 'scada') return bump('ems');
+      if (u === 'gutter') return bump('gutter');
+      if (u === 'panel') return bump('evPanel');
+    });
+
+    (s.elements || []).forEach(function (el) {
+      if (!el) return;
+      var q = el.eqId || el.type;
+      if (q === 'charger' || q === 'evse' || q === 'evdcfc' || q === 'evl2') return bump('ev');
+      if (q === 'ems') return bump('ems');
+      if (q === 'bess') { bump('bess'); return; }
+      if (q === 'solar') return bump('solar');
+      if (q === 'pcs') return bump('pcs');
+      if (q === 'xfmr') return bump('xfmr');
+      if (q === 'meter') return bump('meter');
+      if (q === 'panel') return bump('msp');
+      if (q === 'genset') return bump('gen');
+    });
+    return c;
+  }
+
+  /* ── which of the six ───────────────────────────────────────────── */
+  function classify(c) {
+    if (!c) return null;
+    var mv = c.mvGear > 0 || (c.xfmr > 0 && c.poi > 0);
+    if (mv && c.bess) return { id: 'FOM', label: 'Utility scale / front-of-meter BESS',
+      why: 'MV gear or a POI with a step-up transformer is present' };
+    if (c.bess && !c.solar) return { id: 'STORAGE', label: 'Storage only',
+      why: 'batteries with no PV array on the map' };
+    if (c.bess && c.solar) {
+      var dc = c.hybrid > 0 || (c.pcs === 0 && c.inverter > 0 && c.combiner === 0);
+      return dc
+        ? { id: 'SS_DC', label: 'Solar + storage, DC-coupled', why: 'a hybrid/string inverter with no separate PCS or AC combiner' }
+        : { id: 'SS_AC', label: 'Solar + storage, AC-coupled', why: (c.combiner ? 'an AC combiner is present' : 'a PCS is present') };
+    }
+    if (c.solar && !c.bess) {
+      return c.msp
+        ? { id: 'GT_MSP', label: 'Grid tie only, MSP breaker', why: 'a main service panel is on the map' }
+        : { id: 'GT_TAP', label: 'Grid tie only, line-side tap', why: 'no main panel — interconnection is supply-side' };
+    }
+    if (c.ev) return { id: 'EV', label: 'EV charging only', why: 'chargers with no generation or storage' };
+    return null;
+  }
+
+  /* ── the canonical chain for each case ──────────────────────────── */
+  function chainFor(sc, c) {
+    var n = [];
+    function add(t, label, sub, opts) {
+      n.push(Object.assign({ type: t, label: label + (sub ? '\n' + sub : '') }, opts || {}));
+      return n.length - 1;
+    }
+    function repeat(count, t, label, sub) {
+      var out = [];
+      for (var i = 0; i < Math.max(1, count); i++) {
+        out.push(add(t, label + (count > 1 ? ' #' + (i + 1) : ''), sub));
+      }
+      return out;
+    }
+    var links = [];
+    function wire(a, b, lbl) { if (a != null && b != null) links.push({ a: a, b: b, label: lbl || '' }); }
+
+    var pv = null, bat = [], inv = null, bus = null, poi = null;
+
+    if (sc.id === 'GT_MSP' || sc.id === 'GT_TAP') {
+      pv = add('dersolar', 'PV ARRAY', c.solarKw ? c.solarKw + ' kW-DC' : (c.solar + ' array(s)'));
+      var invs = repeat(Math.max(1, c.inverter), 'inv', 'INVERTER', 'grid-tied');
+      var disc = add('disco', 'AC DISCONNECT');
+      invs.forEach(function (i) { wire(pv, i, 'PV source'); wire(i, disc, 'inverter AC'); });
+      if (c.prodMeter) { var pm = add('meter', 'PV PRODUCTION METER'); wire(disc, pm, ''); disc = pm; }
+      if (sc.id === 'GT_MSP') {
+        bus = add('panel', 'MAIN SERVICE PANEL', '120% bus rule applies');
+        wire(disc, bus, 'backfed breaker');
+      } else {
+        bus = add('disco', 'LINE-SIDE TAP', 'supply side of service');
+        wire(disc, bus, 'tap conductors');
+      }
+      var mtr = add('meter', 'UTILITY METER', 'bi-directional');
+      poi = add('utility', 'UTILITY GRID');
+      wire(bus, mtr, ''); wire(mtr, poi, '');
+    }
+
+    else if (sc.id === 'SS_AC') {
+      pv = add('dersolar', 'PV ARRAY', c.solarKw ? c.solarKw + ' kW-DC' : (c.solar + ' array(s)'));
+      var mi = add('inv', c.combiner ? 'MICROINVERTERS' : 'PV INVERTER', 'AC output');
+      wire(pv, mi, 'PV source');
+      var comb = add('evpanel', c.combiner ? 'AC COMBINER' : 'AC COLLECTION');
+      wire(mi, comb, 'trunk / branch');
+      var ctl = add('pcs', c.ems ? 'SYSTEM CONTROLLER' : 'PCS', 'AC-coupled');
+      wire(comb, ctl, '');
+      bat = repeat(c.bess, 'bess', 'BATTERY', c.bessKwh ? (c.bessKwh / Math.max(1, c.bess)).toFixed(0) + ' kWh' : '');
+      bat.forEach(function (b) { wire(ctl, b, 'battery AC'); });
+      if (c.critPanel) { var cp = add('evpanel', 'CRITICAL LOADS PANEL', 'backed up'); wire(ctl, cp, ''); }
+      bus = add('panel', 'MAIN SERVICE PANEL');
+      wire(ctl, bus, '');
+      var m2 = add('meter', 'UTILITY METER'); poi = add('utility', 'UTILITY GRID');
+      wire(bus, m2, ''); wire(m2, poi, '');
+    }
+
+    else if (sc.id === 'SS_DC') {
+      pv = add('dersolar', 'PV ARRAY', c.solarKw ? c.solarKw + ' kW-DC' : (c.solar + ' array(s)'));
+      var dcd = add('disco', 'DC DISCONNECT');
+      wire(pv, dcd, 'PV source');
+      inv = add('inv', 'HYBRID INVERTER', 'DC-coupled');
+      wire(dcd, inv, 'DC');
+      bat = repeat(c.bess, 'bess', 'BATTERY BANK', c.bessKwh ? (c.bessKwh / Math.max(1, c.bess)).toFixed(0) + ' kWh' : '');
+      bat.forEach(function (b) { wire(b, inv, 'battery DC'); });
+      var acp = add('evpanel', 'AC DISTRIBUTION PANEL');
+      wire(inv, acp, 'inverter AC');
+      if (c.gen) {
+        var g = add('dergen', 'GENERATOR');
+        var t = add('disco', c.ats ? 'TRANSFER SWITCH' : 'GEN INPUT');
+        wire(g, t, ''); wire(t, inv, 'gen input');
+      }
+      bus = add('panel', 'MAIN SERVICE PANEL');
+      wire(acp, bus, '');
+      var m3 = add('meter', 'UTILITY METER'); poi = add('utility', 'UTILITY GRID');
+      wire(bus, m3, ''); wire(m3, poi, '');
+    }
+
+    else if (sc.id === 'STORAGE') {
+      bat = repeat(c.bess, 'bess', 'BESS', c.bessKwh ? (c.bessKwh / Math.max(1, c.bess)).toFixed(0) + ' kWh' : '');
+      var pcs = add('inv', 'PCS / INVERTER', c.pcs > 1 ? c.pcs + ' units' : '');
+      bat.forEach(function (b) { wire(b, pcs, 'battery DC'); });
+      var d2 = add('disco', 'AC DISCONNECT'); wire(pcs, d2, '');
+      bus = add('panel', c.msp ? 'MAIN SWITCHGEAR' : 'SERVICE PANEL');
+      wire(d2, bus, '');
+      var m4 = add('meter', 'REVENUE METER'); poi = add('utility', 'UTILITY POI');
+      wire(bus, m4, ''); wire(m4, poi, '');
+    }
+
+    else if (sc.id === 'FOM') {
+      bat = repeat(c.bess, 'bess', 'BESS BLOCK', c.bessKwh ? (c.bessKwh / Math.max(1, c.bess)).toFixed(0) + ' kWh' : '');
+      var pcsN = repeat(Math.max(1, c.pcs || c.bess), 'inv', 'PCS');
+      bat.forEach(function (b, i) { wire(b, pcsN[Math.min(i, pcsN.length - 1)], 'battery DC'); });
+      var coll = add('panel', 'COLLECTOR BUS', '480V');
+      pcsN.forEach(function (p) { wire(p, coll, 'AC'); });
+      if (c.solar) { var s2 = add('dersolar', 'PV ARRAY', c.solarKw ? c.solarKw + ' kW-DC' : ''); wire(s2, coll, 'PV AC'); }
+      var su = add('xfmr', 'STEP-UP XFMR', '480V \u2192 MV');
+      wire(coll, su, '');
+      var mvg = add('panel', 'MV SWITCHGEAR'); wire(su, mvg, 'MV');
+      var m5 = add('meter', 'REVENUE METER'); poi = add('utility', 'UTILITY POI');
+      wire(mvg, m5, ''); wire(m5, poi, '');
+      bus = mvg;
+    }
+
+    else if (sc.id === 'EV') {
+      bus = add('panel', 'SERVICE PANEL');
+      var m6 = add('meter', 'UTILITY METER'); poi = add('utility', 'UTILITY GRID');
+      wire(bus, m6, ''); wire(m6, poi, '');
+    }
+
+    /* EV branches hang off whatever the AC bus turned out to be. */
+    if (c.ev && bus != null) {
+      var ep = add('evpanel', 'EV PANEL', c.ev + ' circuit(s)');
+      wire(bus, ep, 'feeder');
+      for (var i = 0; i < c.ev; i++) {
+        var ch = add('evdcfc', 'EV CHARGER' + (c.ev > 1 ? ' #' + (i + 1) : ''));
+        wire(ep, ch, 'branch');
+      }
+    }
+
+    return { nodes: n, links: links };
+  }
+
+  /* ── lay it out and write it into _sld ──────────────────────────── */
+  function auto(opts) {
+    var c = census();
+    if (!c) { console.warn(TAG, 'no session'); return null; }
+    var sc = classify(c);
+    if (!sc) {
+      console.warn(TAG, 'nothing on the map that forms a one-line yet \u2014 place '
+        + 'a PV array, a battery, or a charger first.');
+      return null;
+    }
+
+    var existing = 0;
+    try { existing = (_sld.nodes || []).filter(function (x) { return !x._omegaGen; }).length; } catch (e) {}
+    if (existing && !(opts && opts.force)) {
+      console.warn(TAG, 'the one-line has ' + existing + ' hand-placed node(s). '
+        + 'OmegaSLD.auto({force:true}) replaces them.');
+      return null;
+    }
+
+    var built = chainFor(sc, c);
+
+    /* Depth from the grid backwards, so power reads left to right. */
+    var adj = {};
+    built.links.forEach(function (l) {
+      (adj[l.a] = adj[l.a] || []).push(l.b);
+      (adj[l.b] = adj[l.b] || []).push(l.a);
+    });
+    var gridIx = built.nodes.reduce(function (acc, n, i) { return n.type === 'utility' ? i : acc; }, 0);
+    var depth = {}, q = [gridIx], seen = {}; seen[gridIx] = 1; depth[gridIx] = 0;
+    while (q.length) {
+      var k = q.shift();
+      (adj[k] || []).forEach(function (nx) {
+        if (seen[nx]) return; seen[nx] = 1; depth[nx] = depth[k] + 1; q.push(nx);
+      });
+    }
+    var maxD = 0; Object.keys(depth).forEach(function (k) { maxD = Math.max(maxD, depth[k]); });
+    built.nodes.forEach(function (n, i) { if (depth[i] == null) depth[i] = maxD + 1; });
+
+    var cols = {};
+    built.nodes.forEach(function (n, i) {
+      var d = maxD - depth[i];                       /* grid on the right */
+      (cols[d] = cols[d] || []).push(i);
+    });
+
+    var COLW = 235, ROWH = 108, X0 = 60, Y0 = 60;
+    var placed = built.nodes.map(function (n, i) { return null; });
+    Object.keys(cols).sort(function (a, b) { return a - b; }).forEach(function (d) {
+      cols[d].forEach(function (ix, row) {
+        var meta = null; try { meta = SLD_TYPES[built.nodes[ix].type]; } catch (e) {}
+        placed[ix] = {
+          id: 'a' + (ix + 1), type: built.nodes[ix].type,
+          x: X0 + (+d) * COLW, y: Y0 + row * ROWH,
+          label: built.nodes[ix].label,
+          w: (meta && meta.w) || 150, h: (meta && meta.h) || 58,
+          _omegaGen: true, _synth: true
+        };
+      });
+    });
+
+    try {
+      _sld.nodes = placed.filter(Boolean);
+      _sld.wires = built.links.map(function (l, i) {
+        return { id: 'aw' + (i + 1), fromId: placed[l.a] && placed[l.a].id,
+                 toId: placed[l.b] && placed[l.b].id, label: l.label,
+                 style: 'solid', _omegaGen: true, _synth: true };
+      }).filter(function (w) { return w.fromId && w.toId; });
+      _sld.nextId = _sld.nodes.length + _sld.wires.length + 1;
+      _sld.sel = null;
+    } catch (e) { console.warn(TAG, 'could not write the one-line:', e && e.message); return null; }
+
+    try { if (typeof sldRender === 'function') sldRender(); } catch (e) {}
+    try { if (typeof pushHist === 'function') pushHist(); } catch (e) {}
+
+    console.info(TAG + ' ' + sc.label + ' \u2014 ' + _sld.nodes.length + ' node(s), '
+      + _sld.wires.length + ' circuit(s). Because: ' + sc.why + '.');
+    return { scenario: sc.id, label: sc.label, nodes: _sld.nodes.length, wires: _sld.wires.length };
+  }
+
+  /* extend the patch-21 namespace rather than replacing it */
+  function attach() {
+    if (!window.OmegaSLD) return false;
+    if (window.OmegaSLD.auto) return true;
+    window.OmegaSLD.auto = auto;
+    window.OmegaSLD.census = census;
+    window.OmegaSLD.scenario = function () {
+      var c = census(), sc = classify(c);
+      var o = { solarArrays: c.solar, solarKw: c.solarKw, batteries: c.bess, batteryKwh: c.bessKwh,
+                chargers: c.ev, pcs: c.pcs, inverters: c.inverter, transformers: c.xfmr,
+                mvGear: c.mvGear, mainPanels: c.msp, meters: c.meter, generators: c.gen };
+      if (console.table) console.table(o); else console.log(o);
+      console.info(sc ? (TAG + ' reads as: ' + sc.label + ' \u2014 ' + sc.why + '. OmegaSLD.auto() draws it.')
+                      : (TAG + ' nothing on the map forms a one-line yet.'));
+      return sc ? Object.assign({}, sc, { census: c }) : null;
+    };
+    window.OmegaSLD.cases = function () {
+      var rows = [
+        { id: 'GT_MSP',  case_: 'Grid tie, MSP breaker',       needs: 'PV + main service panel' },
+        { id: 'GT_TAP',  case_: 'Grid tie, line-side tap',     needs: 'PV, no main panel' },
+        { id: 'SS_AC',   case_: 'Solar + storage, AC-coupled', needs: 'PV + battery + PCS or AC combiner' },
+        { id: 'SS_DC',   case_: 'Solar + storage, DC-coupled', needs: 'PV + battery + string/hybrid inverter' },
+        { id: 'STORAGE', case_: 'Storage only',                needs: 'battery, no PV' },
+        { id: 'FOM',     case_: 'Utility scale / FOM',         needs: 'battery + MV gear or POI with step-up' },
+        { id: 'EV',      case_: 'EV charging only',            needs: 'chargers, no generation' }
+      ];
+      if (console.table) console.table(rows); else console.log(rows);
+      console.info(TAG + ' EV chargers add a branch to any of the above.');
+      return rows;
+    };
+    if (window.console) console.info(TAG, 'armed \u2014 OmegaSLD.auto() synthesises the one-line from the map census');
+    return true;
+  }
+
+  var n = 0;
+  var iv = setInterval(function () { if (attach() || ++n > 200) clearInterval(iv); }, 350);
 })();
 
 
