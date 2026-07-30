@@ -50506,7 +50506,7 @@ window._crmToastModal=_crmToastModal;
 
 <!-- ═════════════════════════════════════════════════════════════════════
      CLEARSKY OMEGA — SITE MAP DESIGNER PRO
-     PATCH BUNDLE  ·  2026-07-28  ·  rev 46
+     PATCH BUNDLE  ·  2026-07-28  ·  rev 50
 
      Exactly ONE copy per file, immediately before </body>.
 
@@ -50536,7 +50536,7 @@ window._crmToastModal=_crmToastModal;
           pad square, spine runs the aisle. EMS move re-lanes it.
       18. Trench bands at 45% so the drawing reads through — now
           applies in ENG mode too, which is the DEFAULT style, so the
-          setting had never taken effect  [corrected rev 46]
+          setting had never taken effect  [corrected rev 50]
       19. OmegaRotate.by(deg) turns a whole layout as a rigid body —
           equipment, stencils, boundaries, solar tables and conduits
       20. 14 balance-of-plant footprints in Draw › Utility — EMS,
@@ -50569,6 +50569,14 @@ window._crmToastModal=_crmToastModal;
           drop below it when they will not fit — they were a flat 8pt
       35. Engineering Mode takes effect — a stale guided-build flag was
           pinning _engActive() false so the toggle changed nothing
+      41. Analyze › VALUE STACK — reads the battery on the map, derives
+          the ISO/RTO from the zip, and values each stream. The zip
+          fixes the MARKET; the demand charge stays an assumption.
+      40. The dead "BESS BTM" ribbon button is removed. BTM is already a
+          working mode of BESS Build; that one opened an apology.
+      39. Circuits are traced through shared trenches. A tap ends in the
+          LANE, not on equipment, so generate() discarded every cluster
+          run and drew boxes with no wires. Found in a real DOM.
       38. E2.0 no longer drops the PV array. _olDetectMode() can only
           return bess / ev / both — solar was invisible end to end. The
           sheet now synthesises when PV is present.
@@ -50584,7 +50592,7 @@ window._crmToastModal=_crmToastModal;
           battery DC, bore, GEC, RSD, tracker) + TRENCH-FIRST routing:
           mark a polyline as a trench, pull circuits through it
           + the three services share one centreline so the existing
-            banking spreads them evenly inside the band  [rev 46]
+            banking spreads them evenly inside the band  [rev 50]
        7. Guided-build assemblies can be dragged and stay put
           (moved out of opt-in — this is the BESS pad fix)
 
@@ -50594,7 +50602,7 @@ window._crmToastModal=_crmToastModal;
        8. Trench and conduit move together
       12. renderEl replaces its node instead of stacking a ghost
 
-     rev 46 also stops modules logging "armed" more than once. Each
+     rev 50 also stops modules logging "armed" more than once. Each
      polls for its hook targets and those appear at different points
      during boot, so a module wrapping three functions logged three
      times. Nothing was double-wrapped — it was noise, but it buried
@@ -50654,7 +50662,7 @@ window._crmToastModal=_crmToastModal;
       console.info('[omega] patch passes ON');
       return true;
     },
-    rev: 46,
+    rev: 50,
     installed: function () {
       var active = ['OmegaMapExport', 'OmegaClose', 'OmegaSolar', 'OmegaAnchor', 'OmegaRecent',
                     'OmegaSave', 'OmegaProjects', 'OmegaAutoLayout', 'OmegaBgbLeg',
@@ -58827,6 +58835,851 @@ window._crmToastModal=_crmToastModal;
       if (console.table) console.table(o); else console.log(o);
       console.info(o.verdict);
       return o;
+    }
+  };
+})();
+
+
+/* ═══════════════════════════════════════════════════════════════════════
+   OMEGA PATCH — 39 : A CIRCUIT THROUGH A TRENCH IS STILL A CIRCUIT
+   -----------------------------------------------------------------------
+   Found by loading the shipped file in a real DOM and exercising it, which
+   I should have been doing all along instead of trusting hand-built stubs.
+
+   On a cluster laid by OmegaTrench, OmegaSLD.generate() returns 5 nodes and
+   ZERO wires. The reason is visible once you print the records:
+
+       role     from      to
+       tap      pad1      —
+       tap      pad1      —
+       tap      pad1      —
+       tap      pad2      —
+       tap      pad2      —
+       tap      pad2      —
+       spine    —         —          <- the lane itself
+       spine    —         ems1       <- the EMS stub
+
+   Twelve runs: none with both ends attached, three with one end, nine with
+   neither. readTopology() requires BOTH ends to resolve to a node, so every
+   cluster run is discarded and you get boxes with no wires.
+
+   Nothing is wrong with the data. A tap genuinely starts on a pad and ends
+   in open ground, because what it ends in is a TRENCH. The circuit is
+   pad -> lane -> EMS spread across three separate records, exactly as it is
+   in the field, and the reader only understood point-to-point runs.
+
+   So this teaches it to follow a corridor. Runs of the same service whose
+   ends meet in the same lane are one electrical path; walk it from whatever
+   equipment is at one end to whatever is at the other, and emit a single
+   wire for the whole thing carrying the summed length.
+
+   Point-to-point runs are unaffected — they already resolve directly.
+   ═══════════════════════════════════════════════════════════════════════ */
+(function () {
+  'use strict';
+
+  var TAG = '[omega/trace]';
+  var TOL = 3;                         /* px: ends "meet" within this */
+
+  function S_() { try { return (typeof S !== 'undefined' && S) ? S : null; } catch (e) { return null; } }
+
+  function ends(c) {
+    if (!c || !c.pts || c.pts.length < 2) return null;
+    return { a: c.pts[0], b: c.pts[c.pts.length - 1] };
+  }
+  function near(p, q) { return p && q && Math.hypot(p.x - q.x, p.y - q.y) <= TOL; }
+
+  function anchorOf(c, which) {
+    /* which = 'a' | 'b' — the equipment id at that end, if any */
+    if (which === 'a') return (c.fromId != null) ? c.fromId : (c.fromShapeId != null ? c.fromShapeId : (c.pts[0].elId || null));
+    return (c.toId != null) ? c.toId : (c.pts[c.pts.length - 1].elId || null);
+  }
+
+  /* Walk from one run through every run that meets it, same service, and
+     report the equipment found at the far side. */
+  function traceCircuits() {
+    var s = S_(); if (!s) return [];
+    var runs = (s.conduits || []).filter(function (c) { return c && c.pts && c.pts.length >= 2; });
+
+    var used = {}, out = [];
+    runs.forEach(function (seed) {
+      if (used[seed.id]) return;
+      var svc = seed.condType || '';
+      var group = [], queue = [seed];
+      used[seed.id] = 1;
+      while (queue.length) {
+        var c = queue.shift();
+        group.push(c);
+        var e = ends(c); if (!e) continue;
+        runs.forEach(function (o) {
+          if (used[o.id]) return;
+          if ((o.condType || '') !== svc) return;      /* a DC run is not an AC run */
+          var oe = ends(o); if (!oe) return;
+          if (near(e.a, oe.a) || near(e.a, oe.b) || near(e.b, oe.a) || near(e.b, oe.b)) {
+            used[o.id] = 1; queue.push(o);
+          }
+        });
+      }
+
+      /* every distinct piece of equipment this group touches */
+      var kit = {}, ft = 0;
+      group.forEach(function (c) {
+        ft += (c.ftLen || 0);
+        var a = anchorOf(c, 'a'), b = anchorOf(c, 'b');
+        if (a != null) kit[a] = 1;
+        if (b != null) kit[b] = 1;
+      });
+      var ids = Object.keys(kit);
+      if (ids.length < 2) return;                      /* nothing to join */
+
+      /* one wire per pair, so 2 pads on one lane to an EMS gives 2 circuits */
+      for (var i = 0; i < ids.length; i++) {
+        for (var j = i + 1; j < ids.length; j++) {
+          out.push({ from: ids[i], to: ids[j], service: svc,
+                     ft: +ft.toFixed(1), runs: group.length, viaTrench: group.length > 1 });
+        }
+      }
+    });
+    return out;
+  }
+
+  /* Feed those into patch 21's reader by adding the missing endpoint ids
+     to a shadow list it consults. Cleanest hook: wrap generate() so the
+     traced circuits are present as real fromId/toId before it reads. */
+  function hookGenerate() {
+    if (!window.OmegaSLD || !window.OmegaSLD.generate) return false;
+    if (window.OmegaSLD.generate.__omegaTrace) return true;
+    var orig = window.OmegaSLD.generate;
+
+    var wrapped = function (opts) {
+      var s = S_();
+      var synthetic = [];
+      try {
+        var circuits = traceCircuits();
+        /* Only add a synthetic edge where no direct run already joins the
+           pair, so a properly drawn point-to-point run always wins. */
+        var have = {};
+        (s.conduits || []).forEach(function (c) {
+          if (c && c.fromId != null && c.toId != null) {
+            have[c.fromId + '>' + c.toId] = 1; have[c.toId + '>' + c.fromId] = 1;
+          }
+        });
+        circuits.forEach(function (ck) {
+          if (have[ck.from + '>' + ck.to]) return;
+          var e = {
+            id: '__trace_' + synthetic.length,
+            condType: ck.service,
+            pts: [{ x: 0, y: 0 }, { x: 0, y: 0 }],
+            fromId: ck.from, toId: ck.to,
+            fromElId: ck.from, toElId: ck.to,
+            ftLen: ck.ft, pxLen: 0,
+            _traced: true, labelHidden: true,
+            _viaTrench: ck.viaTrench, _runCount: ck.runs
+          };
+          synthetic.push(e);
+          s.conduits.push(e);
+        });
+      } catch (e) {}
+
+      var r;
+      try { r = orig.apply(this, arguments); }
+      finally {
+        /* never leave the synthetic records on the drawing */
+        try {
+          if (synthetic.length && s && s.conduits) {
+            s.conduits = s.conduits.filter(function (c) { return !c || !c._traced; });
+          }
+        } catch (e) {}
+      }
+      if (r && synthetic.length) {
+        console.info(TAG + ' traced ' + synthetic.length + ' circuit(s) through shared trench(es)');
+      }
+      return r;
+    };
+    wrapped.__omegaTrace = true;
+    window.OmegaSLD.generate = wrapped;
+    window.OmegaSLD.trace = traceCircuits;
+    window.OmegaSLD.circuits = function () {
+      var c = traceCircuits();
+      var s = S_() || {};
+      function nameOf(id) {
+        var hit = (s.shapes || []).concat(s.elements || []).filter(function (x) { return x && x.id === id; })[0];
+        if (!hit) return id;
+        return hit.label || hit.model || hit.utype || hit.eqId || hit.kind || id;
+      }
+      var rows = c.map(function (x) {
+        return { from: nameOf(x.from), to: nameOf(x.to), service: x.service,
+                 feet: x.ft, records: x.runs, viaTrench: x.viaTrench ? 'yes' : 'direct' };
+      });
+      if (rows.length) { if (console.table) console.table(rows); else console.log(rows); }
+      console.info(TAG + ' ' + rows.length + ' circuit(s) resolved from '
+        + ((s.conduits || []).length) + ' conduit record(s)');
+      return rows;
+    };
+    return true;
+  }
+
+  var n = 0;
+  var iv = setInterval(function () {
+    if (hookGenerate()) {
+      if (window.console) console.info(TAG, 'armed \u2014 circuits are traced through shared trenches');
+      clearInterval(iv);
+    }
+    if (++n > 300) clearInterval(iv);
+  }, 400);
+})();
+
+
+/* ═══════════════════════════════════════════════════════════════════════
+   OMEGA PATCH — 40 : REMOVE THE REDUNDANT "BESS BTM" BUTTON
+   -----------------------------------------------------------------------
+   Build > 3 · Size & Configure carries a BESS BTM button:
+
+       <button class="rbtn" onclick="homeStartWizard('BTM')"
+               title="Behind-the-meter guided flow — coming soon"
+               style="opacity:.72"> ... <span>SOON</span></button>
+
+   It goes nowhere. The file says so itself, above comingSoon():
+
+       "The Solar+Storage and BESS BTM guided builds aren't implemented
+        yet. They previously fell through to openBessGuidedBuild(), which
+        opened a generic modal that didn't match what the button promised."
+
+   Meanwhile BTM is already a real, working mode of the BESS Build flow —
+   BGB_PRESETS has BTM, FOM and SOLAR_BESS, and BGB.mode='BTM' is set and
+   used. That is the flow that produced your "BESS Build · BTM" panel with
+   BESS Assembly, Step-Up Transformer, AC Disconnect, Switchgear/MDP,
+   Revenue Meter and Utility POI.
+
+   So the ribbon offers two BTM entries: one that works, inside BESS Build,
+   and one greyed out at 72% opacity that opens an apology. Removing the
+   dead one is not a loss of capability — it is removing a promise the app
+   cannot keep, and pointing at the one it can.
+
+   The button is removed rather than hidden, so it cannot be tabbed to or
+   clicked by a screen reader either. homeStartWizard('BTM') is left intact
+   in case anything else calls it.
+
+       OmegaRibbon.restore()   put it back
+       OmegaRibbon.status()    what was removed, and why
+   ═══════════════════════════════════════════════════════════════════════ */
+(function () {
+  'use strict';
+
+  var TAG = '[omega/ribbon]';
+  var removed = [];
+
+  /* Identified by what it does, not by an id — these buttons have none. */
+  var DEAD = [
+    { match: /homeStartWizard\(\s*['"]BTM['"]\s*\)/, label: 'BESS BTM',
+      because: 'BTM is already a working mode of BESS Build (BGB_PRESETS.BTM)' }
+  ];
+
+  function sweep() {
+    var btns;
+    try { btns = document.querySelectorAll('button.rbtn'); } catch (e) { return false; }
+    if (!btns || !btns.length) return false;
+
+    var hit = false;
+    for (var i = 0; i < btns.length; i++) {
+      var b = btns[i];
+      var oc = b.getAttribute('onclick') || '';
+      for (var j = 0; j < DEAD.length; j++) {
+        if (!DEAD[j].match.test(oc)) continue;
+        /* keep enough to put it back */
+        removed.push({
+          label: DEAD[j].label, because: DEAD[j].because,
+          html: b.outerHTML, parentSel: b.parentNode ? (b.parentNode.id || b.parentNode.className) : '',
+          parent: b.parentNode, nextSibling: b.nextSibling
+        });
+        if (b.parentNode) b.parentNode.removeChild(b);
+        hit = true;
+        break;
+      }
+    }
+    if (hit && window.console) {
+      console.info(TAG, 'removed ' + removed.length + ' dead ribbon button(s): '
+        + removed.map(function (r) { return r.label; }).join(', '));
+    }
+    return hit;
+  }
+
+  /* The ribbon is rebuilt when tabs change, so keep sweeping for a while. */
+  var n = 0;
+  var iv = setInterval(function () {
+    sweep();
+    if (++n > 400) clearInterval(iv);
+  }, 500);
+
+  window.OmegaRibbon = {
+    restore: function () {
+      var back = 0;
+      removed.forEach(function (r) {
+        try {
+          if (!r.parent) return;
+          var tmp = document.createElement('div');
+          tmp.innerHTML = r.html;
+          var el = tmp.firstChild;
+          if (r.nextSibling && r.nextSibling.parentNode === r.parent) r.parent.insertBefore(el, r.nextSibling);
+          else r.parent.appendChild(el);
+          back++;
+        } catch (e) {}
+      });
+      removed = [];
+      console.info(TAG + ' restored ' + back + ' button(s). They will be removed again on the next sweep '
+        + '\u2014 OmegaPatch.off() first if you want them to stay.');
+      return back;
+    },
+
+    status: function () {
+      var rows = removed.map(function (r) { return { removed: r.label, because: r.because }; });
+      if (rows.length) { if (console.table) console.table(rows); else console.log(rows); }
+      var stillThere = 0;
+      try {
+        var btns = document.querySelectorAll('button.rbtn');
+        for (var i = 0; i < btns.length; i++) {
+          if (/homeStartWizard\(\s*['"]BTM['"]\s*\)/.test(btns[i].getAttribute('onclick') || '')) stillThere++;
+        }
+      } catch (e) {}
+      console.info(TAG + ' ' + removed.length + ' removed; ' + stillThere
+        + ' dead BTM button(s) still on the ribbon. BTM lives in BESS Build.');
+      return { removed: removed.length, stillPresent: stillThere };
+    }
+  };
+})();
+
+
+/* ═══════════════════════════════════════════════════════════════════════
+   OMEGA PATCH — 41 : VALUE STACK
+   -----------------------------------------------------------------------
+   Analyze > Value Stack. Reads the battery that is actually on the site
+   map, derives the market from the zip code, and puts a first-pass annual
+   value against each revenue stream.
+
+   WHAT THE ZIP CODE CAN AND CANNOT TELL YOU
+
+   It reliably gives the state, and from that the ISO or RTO — those
+   boundaries are stable and public. That is genuinely useful, because
+   which streams even EXIST depends on the market: frequency regulation is
+   a PJM/CAISO/ERCOT product, ConnectedSolutions only exists in New
+   England, SGIP only in California.
+
+   It does NOT tell you the demand charge. That comes from the utility's
+   rate schedule and varies from roughly $5/kW to $40/kW inside a single
+   state, sometimes inside a single utility. Any tool that prints a dollar
+   figure from a zip alone is guessing, and a guess dressed as an answer is
+   worse than no answer on a number that drives the whole model.
+
+   So this does two things instead of one:
+
+     - the STRUCTURE comes from the zip: which streams apply, which
+       programs exist, what the market is
+     - the RATES default to a documented regional typical, are labelled as
+       assumptions, and are all editable. If Analyze > Bill Import has a
+       bill loaded, the demand charge comes from that instead, and the
+       panel says so.
+
+   Every figure shows its own arithmetic, so a number you disagree with can
+   be traced rather than argued with.
+
+   PLANNING GRADE. This sizes an opportunity and tells you which streams to
+   chase. It is not a tariff study and must not go to a customer as one.
+   ═══════════════════════════════════════════════════════════════════════ */
+(function () {
+  'use strict';
+
+  var TAG = '[omega/value]';
+
+  /* ── zip → state. 3-digit prefix ranges; stable public data. ────── */
+  var ZIP = [
+    [995,999,'AK'],[350,369,'AL'],[716,729,'AR'],[850,865,'AZ'],[900,961,'CA'],
+    [800,816,'CO'],[60,69,'CT'],[200,205,'DC'],[197,199,'DE'],[320,349,'FL'],
+    [300,319,'GA'],[967,968,'HI'],[500,528,'IA'],[832,838,'ID'],[600,629,'IL'],
+    [460,479,'IN'],[660,679,'KS'],[400,427,'KY'],[700,714,'LA'],[10,27,'MA'],
+    [206,219,'MD'],[39,49,'ME'],[480,499,'MI'],[550,567,'MN'],[630,658,'MO'],
+    [386,397,'MS'],[590,599,'MT'],[270,289,'NC'],[580,588,'ND'],[680,693,'NE'],
+    [30,38,'NH'],[70,89,'NJ'],[870,884,'NM'],[889,898,'NV'],[100,149,'NY'],
+    [430,459,'OH'],[730,749,'OK'],[970,979,'OR'],[150,196,'PA'],[28,29,'RI'],
+    [290,299,'SC'],[570,577,'SD'],[370,385,'TN'],[750,799,'TX'],[840,847,'UT'],
+    [220,246,'VA'],[50,59,'VT'],[980,994,'WA'],[530,549,'WI'],[247,268,'WV'],
+    [820,831,'WY']
+  ];
+  function stateOf(zip) {
+    var p = parseInt(String(zip || '').replace(/\D/g, '').slice(0, 3), 10);
+    if (!isFinite(p)) return null;
+    for (var i = 0; i < ZIP.length; i++) if (p >= ZIP[i][0] && p <= ZIP[i][1]) return ZIP[i][2];
+    return null;
+  }
+
+  /* ── state → market. Which streams exist at all. ───────────────── */
+  var MARKET = {
+    CA:'CAISO', TX:'ERCOT', NY:'NYISO',
+    MA:'ISO-NE', CT:'ISO-NE', RI:'ISO-NE', NH:'ISO-NE', VT:'ISO-NE', ME:'ISO-NE',
+    PA:'PJM', NJ:'PJM', MD:'PJM', DE:'PJM', DC:'PJM', VA:'PJM', WV:'PJM', OH:'PJM', KY:'PJM',
+    IL:'MISO', IN:'MISO', MI:'MISO', MN:'MISO', IA:'MISO', WI:'MISO', MO:'MISO',
+    AR:'MISO', LA:'MISO', MS:'MISO', ND:'MISO', SD:'MISO', MT:'MISO',
+    KS:'SPP', OK:'SPP', NE:'SPP',
+    AZ:'Non-ISO', NV:'Non-ISO', NM:'Non-ISO', UT:'Non-ISO', CO:'Non-ISO', WY:'Non-ISO',
+    ID:'Non-ISO', OR:'Non-ISO', WA:'Non-ISO',
+    GA:'Non-ISO', AL:'Non-ISO', FL:'Non-ISO', SC:'Non-ISO', NC:'Non-ISO', TN:'Non-ISO',
+    AK:'Non-ISO', HI:'Non-ISO'
+  };
+
+  /* ── regional typicals. ASSUMPTIONS, all editable in the panel. ── */
+  /* ── RESEARCHED, with vintage. Anything undated is my estimate. ──
+     PJM capacity: 2027/28 Base Residual Auction cleared at the FERC cap,
+     $333.44/MW-day UCAP (Dec 2025) = $10.14/kW-month. The 2026/27 auction
+     was $329.17 and 2025/26 was $269.92, up from $28.92 in 2024/25 — my
+     original $2.50 default predated that spike by three auctions and was
+     4x low.
+
+     ConnectedSolutions: MA C&I pays ~$200/kW of average summer performance,
+     RI ~$275/kW, Eversource NH ~$175/kW summer-only. BTM ONLY — front-of-
+     meter assets are explicitly excluded — and capped at 150% of the site's
+     annual peak load. I had this named and valued at zero, which on a
+     760 kW system left $152,000/yr out of a New England number. */
+  var TYPICAL = {
+    CAISO:    { demandLo:18, demandHi:38, touSpread:0.22, capacity:0,     ancillary:45,
+                capNote:'RA is bilateral in CA, not an auction',
+                program:'SGIP', programKwYr:0, programOneTimeKwh:150,
+                programNote:'One-time capacity incentive, tiered and declining — check the current step' },
+    'ISO-NE': { demandLo:12, demandHi:22, touSpread:0.10, capacity:2.6,  ancillary:25,
+                capNote:'FCA, softer than PJM',
+                program:'ConnectedSolutions', programKwYr:200, programOneTimeKwh:0,
+                programNote:'MA ~$200/kW-summer, RI ~$275, NH ~$175. BTM only. Capped at 150% of site peak load' },
+    NYISO:    { demandLo:15, demandHi:32, touSpread:0.12, capacity:5.0,  ancillary:30,
+                capNote:'ICAP, zone dependent',
+                program:'NYSERDA + VDER', programKwYr:0, programOneTimeKwh:120,
+                programNote:'Bulk/retail storage incentive stacked with VDER value-stack compensation' },
+    PJM:      { demandLo:8,  demandHi:18, touSpread:0.07, capacity:10.14, ancillary:35,
+                capNote:'2027/28 BRA cleared at the cap, $333.44/MW-day (Dec 2025)',
+                program:null, programKwYr:0, programOneTimeKwh:0, programNote:null },
+    ERCOT:    { demandLo:6,  demandHi:14, touSpread:0.14, capacity:0,     ancillary:55,
+                capNote:'no capacity market — ancillary and scarcity pricing are the play',
+                program:null, programKwYr:0, programOneTimeKwh:0, programNote:null },
+    MISO:     { demandLo:7,  demandHi:15, touSpread:0.06, capacity:1.5,  ancillary:20,
+                capNote:'PRA; third-party aggregated DR is state-by-state and only recently opening',
+                program:null, programKwYr:0, programOneTimeKwh:0, programNote:null },
+    SPP:      { demandLo:6,  demandHi:13, touSpread:0.05, capacity:1.0,  ancillary:18,
+                capNote:'my estimate', program:null, programKwYr:0, programOneTimeKwh:0, programNote:null },
+    'Non-ISO':{ demandLo:8,  demandHi:20, touSpread:0.06, capacity:0,     ancillary:0,
+                capNote:'no organised market — utility tariff and any bilateral only',
+                program:null, programKwYr:0, programOneTimeKwh:0, programNote:null }
+  };
+
+  /* ── WHO RUNS IT. Which streams you can actually reach depends on this. ──
+     Curtailment service providers keep a share of gross market revenue;
+     the C&I customer typically sees 60–80% of it. Portfolio and market
+     strengths from published 2026 vendor comparisons. */
+  var PARTNERS = {
+    self: { name:'Self-managed (direct)', keep:1.00,
+      streams:['demand','tou'],
+      markets:'any',
+      note:'You keep everything, but you are doing enrolment, bidding, telemetry and settlement yourself. Realistically that limits you to bill-side value: demand charge and TOU. Wholesale capacity and ancillary need a registered market participant.' },
+    utility: { name:'Utility program direct (BYOD)', keep:1.00,
+      streams:['demand','tou','program'],
+      markets:'ISO-NE, NYISO, CAISO',
+      note:'Where a utility runs a bring-your-own-device programme you can enrol without an aggregator. ConnectedSolutions is the clearest case. No revenue share, but only the one programme.' },
+    voltus: { name:'Voltus', keep:0.70,
+      streams:['demand','tou','capacity','ancillary','program'],
+      markets:'all 9 North American wholesale markets; strongest ERCOT and MISO',
+      note:'~5.2 GW portfolio. Strong on heavy industrial and crypto/flexible load. Runs a 100 MW VPP with Google on PJM. Aggressive revenue split — assume nearer 70% to you than 80%.' },
+    cpower: { name:'CPower Energy', keep:0.75,
+      streams:['demand','tou','capacity','ancillary','program'],
+      markets:'strongest PJM and ERCOT',
+      note:'~6.5 GW portfolio, Enerwise platform. Deep in commercial and education. Partnered with Vertiv on a standard path for data centres to monetise on-site assets. Revenue share is negotiable and tiered — 75% is a mid estimate.' },
+    enel: { name:'Enel North America', keep:0.78,
+      streams:['demand','tou','capacity','ancillary','program'],
+      markets:'strongest PJM and NYISO',
+      note:'~9 GW, the largest of the three. Client-favourable split at volume, so a large site can do better than the others; a small one usually cannot.' },
+    molecule: { name:'Molecule Systems (EMS + VPP)', keep:0.92,
+      streams:['demand','tou','capacity','ancillary','program','compute'],
+      markets:'market-agnostic via single-API VPP integration',
+      note:'Not a curtailment provider — a control and optimisation layer. Co-optimises bill-side and wholesale value simultaneously rather than picking one, and their own material argues most VPPs deliver about 50% of modelled capability, which is the gap it targets. Platform fee rather than a large revenue share, so the retained share is high; you still need a route to market underneath it.' }
+  };
+
+  /* Emerging and deliberately unpriced. */
+  var COMPUTE_NOTE = 'Co-optimising energy markets against COMPUTE markets — running flexible '
+    + 'AI/HPC load when power is cheap and selling flexibility when it is not. Real but early: '
+    + 'Google/Voltus on PJM, Vertiv/CPower for data centres. There is no defensible $/kW yet, '
+    + 'so it is listed at zero rather than guessed at.';
+
+  function S_() { try { return (typeof S !== 'undefined' && S) ? S : null; } catch (e) { return null; } }
+
+  /* ── the battery that is actually drawn ─────────────────────────── */
+  function battery() {
+    var s = S_(); if (!s) return { units: 0, kwh: 0, kw: 0 };
+    var units = 0, kwh = 0, kw = 0;
+    (s.shapes || []).forEach(function (sh) {
+      if (!sh) return;
+      var isB = sh.kind === 'assembly' || sh.type === 'bess-asm'
+        || (sh.kind === 'utility' && sh.utype === 'bessctr');
+      if (!isB) return;
+      units++;
+      kwh += (sh.kwh || sh.unitKwh || 0);
+      kw += (sh.kw || sh.unitKw || 0);
+    });
+    (s.elements || []).forEach(function (el) {
+      if (el && el.eqId === 'bess') { units++; kwh += (el.kwh || 0); kw += (el.kw || 0); }
+    });
+    /* if power was never entered, a 2-hour system is the common C&I default */
+    if (kwh && !kw) kw = +(kwh / 2).toFixed(1);
+    return { units: units, kwh: +kwh.toFixed(1), kw: +kw.toFixed(1) };
+  }
+
+  function solarKw() {
+    var s = S_(); if (!s) return 0;
+    var kw = 0;
+    (s.shapes || []).forEach(function (sh) { if (sh && sh.kind === 'dersolar') kw += (sh.kw || 0); });
+    return +kw.toFixed(1);
+  }
+
+  /* a bill loaded by Analyze > Bill Import beats any regional typical */
+  function billDemandCharge() {
+    try {
+      var cands = [window._billDemandRate, window._importedBill && window._importedBill.demandRate,
+                   window.BILL && window.BILL.demandRate];
+      for (var i = 0; i < cands.length; i++) {
+        var v = parseFloat(cands[i]);
+        if (isFinite(v) && v > 0) return v;
+      }
+    } catch (e) {}
+    return null;
+  }
+
+  /* ── the model ──────────────────────────────────────────────────── */
+  var cfg = { zip:'', dod:0.90, rte:0.88, cycles:250, peakShaveFrac:0.60,
+              demand:null, touSpread:null, capacity:null, ancillary:null, mode:'BTM',
+              partner:'self' };
+
+  function compute() {
+    var b = battery();
+    var st = stateOf(cfg.zip);
+    var mkt = st ? (MARKET[st] || 'Non-ISO') : null;
+    var T = mkt ? TYPICAL[mkt] : null;
+    var billed = billDemandCharge();
+
+    var demand = cfg.demand != null ? cfg.demand : (billed != null ? billed : (T ? T.demandLo : 0));
+    var spread = cfg.touSpread != null ? cfg.touSpread : (T ? T.touSpread : 0);
+    var cap    = cfg.capacity  != null ? cfg.capacity  : (T ? T.capacity : 0);
+    var anc    = cfg.ancillary != null ? cfg.ancillary : (T ? T.ancillary : 0);
+
+    var usable = b.kwh * cfg.dod;
+    var deliverable = usable * cfg.rte;
+
+    var P = PARTNERS[cfg.partner] || PARTNERS.self;
+    var can = function (k) { return P.streams.indexOf(k) > -1; };
+    var rows = [];
+
+    /* 1 demand charge management — BTM only, bill-side, never shared */
+    if (cfg.mode === 'BTM' && can('demand')) {
+      var kwShaved = b.kw * cfg.peakShaveFrac;
+      rows.push({ stream:'Demand charge reduction', shared:false,
+        gross: kwShaved * demand * 12,
+        how: b.kw + ' kW \u00d7 ' + (cfg.peakShaveFrac * 100).toFixed(0) + '% coincident \u00d7 $'
+             + demand.toFixed(2) + '/kW-mo \u00d7 12',
+        source: billed != null ? 'from your imported bill' : 'regional typical \u2014 CHECK YOUR TARIFF' });
+    }
+    /* 2 energy arbitrage — bill-side */
+    if (can('tou')) rows.push({ stream:'Energy arbitrage (TOU)', shared:false,
+      gross: deliverable * spread * cfg.cycles,
+      how: deliverable.toFixed(0) + ' kWh deliverable \u00d7 $' + spread.toFixed(3)
+           + '/kWh spread \u00d7 ' + cfg.cycles + ' cycles',
+      source: 'regional typical' });
+    /* 3 wholesale capacity — needs a market participant, so shared */
+    if (cap > 0 && can('capacity')) rows.push({ stream:'Capacity / resource adequacy', shared:true,
+      gross: b.kw * cap * 12,
+      how: b.kw + ' kW \u00d7 $' + cap.toFixed(2) + '/kW-mo \u00d7 12',
+      source: mkt + (T && T.capNote ? ' \u2014 ' + T.capNote : '') });
+    /* 4 ancillary — FOM, shared */
+    if (cfg.mode === 'FOM' && anc > 0 && can('ancillary')) rows.push({ stream:'Frequency regulation', shared:true,
+      gross: b.kw * anc,
+      how: b.kw + ' kW \u00d7 $' + anc.toFixed(0) + '/kW-yr',
+      source: mkt + ' ancillary market' });
+    /* 5 utility DR programme — BTM only where one exists */
+    if (T && T.programKwYr > 0 && can('program')) {
+      var eligible = (cfg.mode === 'BTM');
+      if (eligible) rows.push({ stream:T.program, shared:cfg.partner !== 'utility' && cfg.partner !== 'self',
+        gross: b.kw * T.programKwYr,
+        how: b.kw + ' kW \u00d7 $' + T.programKwYr + '/kW-summer',
+        source: T.programNote || '' });
+    }
+    /* 6 compute co-optimisation — real, unpriced */
+    if (can('compute')) rows.push({ stream:'Compute co-optimisation', shared:true,
+      gross: 0, how: 'no defensible rate yet \u2014 deliberately zero',
+      source: COMPUTE_NOTE });
+
+    rows.forEach(function (r) {
+      r.annual = r.shared ? r.gross * P.keep : r.gross;
+    });
+    var total = rows.reduce(function (a, r) { return a + r.annual; }, 0);
+    var grossTotal = rows.reduce(function (a, r) { return a + r.gross; }, 0);
+    var oneTime = (T && T.programOneTimeKwh) ? T.programOneTimeKwh * b.kwh : 0;
+    return { battery:b, solarKw:solarKw(), state:st, market:mkt, typical:T,
+             usable:usable, deliverable:deliverable, rows:rows, total:total,
+             grossTotal:grossTotal, oneTime:oneTime, partner:P, partnerKey:cfg.partner,
+             billed:billed, program: T && T.program };
+  }
+
+  /* ── panel ──────────────────────────────────────────────────────── */
+  var IN = 'background:#0F1B2E;border:1px solid rgba(255,255,255,.16);color:#E8F0FE;'
+    + 'border-radius:5px;padding:5px 7px;font:600 12px "IBM Plex Mono",monospace;width:100%';
+
+  function open() {
+    var p = document.getElementById('omega-valuestack');
+    if (!p) {
+      p = document.createElement('div');
+      p.id = 'omega-valuestack';
+      p.style.cssText = 'position:fixed;right:22px;top:110px;z-index:99992;width:414px;'
+        + 'max-height:78vh;overflow:auto;background:#0B1E35;border:1px solid rgba(255,255,255,.16);'
+        + 'border-radius:10px;box-shadow:0 18px 48px rgba(0,0,0,.6);'
+        + 'font-family:"IBM Plex Sans",sans-serif;color:#E8F0FE';
+      document.body.appendChild(p);
+    }
+    p.style.display = '';
+    if (!cfg.zip) { try { cfg.zip = guessZip() || ''; } catch (e) {} }
+    paint();
+    return true;
+  }
+
+  function guessZip() {
+    try {
+      var ids = ['proj-address', 'site-address', 'sc-lbl', 'proj-zip'];
+      for (var i = 0; i < ids.length; i++) {
+        var el = document.getElementById(ids[i]);
+        var t = el && (el.value || el.textContent) || '';
+        var m = /\b(\d{5})(?:-\d{4})?\b/.exec(t);
+        if (m) return m[1];
+      }
+      var m2 = /\b(\d{5})(?:-\d{4})?\b/.exec(document.title || '');
+      return m2 ? m2[1] : null;
+    } catch (e) { return null; }
+  }
+
+  function money(v) {
+    return '$' + Math.round(v).toLocaleString();
+  }
+
+  function paint() {
+    var p = document.getElementById('omega-valuestack');
+    if (!p || p.style.display === 'none') return;
+    var r = compute();
+    var b = r.battery;
+
+    var head = '<div id="ovs-head" style="padding:10px 12px;border-bottom:1px solid rgba(255,255,255,.1);'
+      + 'display:flex;gap:8px;align-items:center"><span style="font-size:14px">\u2211</span>'
+      + '<div style="flex:1;font-weight:700;font-size:13px">Value Stack</div>'
+      + '<button id="ovs-x" style="background:none;border:none;color:#8BA3C4;font-size:18px;cursor:pointer;line-height:1">\u00d7</button></div>';
+
+    if (!b.units) {
+      p.innerHTML = head + '<div style="padding:14px 12px;font-size:11.5px;color:#FBBF24;line-height:1.5">'
+        + 'No battery on the site map. Place a BESS assembly or container first \u2014 '
+        + 'this reads the system you have actually drawn, not a hypothetical one.</div>';
+      p.querySelector('#ovs-x').onclick = function () { p.style.display = 'none'; };
+      return;
+    }
+
+    var lbl = 'font:700 9px/1.5 sans-serif;letter-spacing:.08em;text-transform:uppercase;color:#7D95B4';
+
+    p.innerHTML = head + '<div style="padding:11px 12px">'
+
+      /* system as drawn */
+      + '<div style="' + lbl + ';margin-bottom:5px">System on the drawing</div>'
+      + '<div style="font-size:11.5px;line-height:1.6;margin-bottom:10px">'
+      + b.units + ' unit' + (b.units > 1 ? 's' : '') + ' \u00b7 <b>' + b.kwh.toLocaleString() + ' kWh</b> \u00b7 <b>'
+      + b.kw.toLocaleString() + ' kW</b>'
+      + (r.solarKw ? ' \u00b7 ' + r.solarKw + ' kW-DC solar' : '')
+      + '<br><span style="color:#8BA3C4;font-size:10px">' + Math.round(r.usable).toLocaleString()
+      + ' kWh usable at ' + (cfg.dod * 100).toFixed(0) + '% DoD \u00b7 '
+      + Math.round(r.deliverable).toLocaleString() + ' kWh deliverable at '
+      + (cfg.rte * 100).toFixed(0) + '% RTE</span></div>'
+
+      /* market */
+      + '<div style="' + lbl + ';margin-bottom:5px">Market</div>'
+      + '<div style="display:flex;gap:7px;align-items:center;margin-bottom:4px">'
+      + '<input id="ovs-zip" value="' + cfg.zip + '" placeholder="ZIP" maxlength="5" style="' + IN + ';width:78px">'
+      + '<select id="ovs-mode" style="' + IN + ';width:104px">'
+      + '<option value="BTM"' + (cfg.mode === 'BTM' ? ' selected' : '') + '>Behind meter</option>'
+      + '<option value="FOM"' + (cfg.mode === 'FOM' ? ' selected' : '') + '>Front of meter</option></select>'
+      + '<div style="flex:1;font-size:11px;text-align:right">'
+      + (r.state ? ('<b>' + r.state + '</b> \u00b7 ' + r.market) : '<span style="color:#FBBF24">enter a ZIP</span>')
+      + '</div></div>'
+
+      /* who runs it */
+      + '<div style="' + lbl + ';margin:9px 0 4px">Who monetises it</div>'
+      + '<select id="ovs-partner" style="' + IN + ';margin-bottom:4px">'
+      + Object.keys(PARTNERS).map(function (k) {
+        return '<option value="' + k + '"' + (cfg.partner === k ? ' selected' : '') + '>'
+          + PARTNERS[k].name + ' \u2014 you keep ' + Math.round(PARTNERS[k].keep * 100) + '%</option>';
+      }).join('') + '</select>'
+      + '<div style="font-size:9.5px;color:#8BA3C4;line-height:1.5;margin-bottom:4px">'
+      + r.partner.note + '</div>'
+      + '<div style="font-size:9px;color:#6B8AAD;margin-bottom:9px">Markets: ' + r.partner.markets + '</div>'
+      + (r.program ? '<div style="font-size:9.5px;color:#4ADE80;margin-bottom:9px">Program available: '
+          + r.program + ((r.typical && r.typical.programNote) ? ' \u2014 ' + r.typical.programNote : '') + '</div>'
+        : '<div style="height:6px"></div>')
+
+      /* the stack */
+      + (r.state
+        ? '<div style="' + lbl + ';margin-bottom:5px">Annual value, first pass</div>'
+          + r.rows.map(function (row) {
+            return '<div style="padding:7px 0;border-bottom:1px solid rgba(255,255,255,.07)">'
+              + '<div style="display:flex;justify-content:space-between;font-size:11.5px;font-weight:600">'
+              + '<span>' + row.stream + '</span><span>' + money(row.annual) + '</span></div>'
+              + '<div style="font-size:9.5px;color:#8BA3C4;margin-top:2px">' + row.how
+              + (row.shared && row.gross > 0
+                 ? ' \u2014 gross $' + Math.round(row.gross).toLocaleString()
+                   + ', you keep ' + Math.round(r.partner.keep * 100) + '%'
+                 : row.shared ? '' : ' \u00b7 bill-side, not shared') + '</div>'
+              + '<div style="font-size:9px;color:' + (/CHECK/.test(row.source) ? '#FBBF24' : '#6B8AAD')
+              + ';margin-top:1px">' + row.source + '</div></div>';
+          }).join('')
+          + '<div style="display:flex;justify-content:space-between;padding:9px 0 3px;'
+          + 'font-size:13px;font-weight:800"><span>Total / year</span><span>' + money(r.total) + '</span></div>'
+          + '<div style="font-size:10px;color:#8BA3C4">'
+          + money(r.total / Math.max(1, b.kwh)) + ' per kWh installed \u00b7 '
+          + money(r.total / Math.max(1, b.kw)) + ' per kW</div>'
+        : '')
+
+      /* assumptions */
+      + '<div style="' + lbl + ';margin:12px 0 5px">Assumptions \u2014 edit any of these</div>'
+      + '<div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;font-size:9.5px;color:#8BA3C4">'
+      + [['ovs-demand','Demand $/kW-mo', cfg.demand != null ? cfg.demand : (r.billed != null ? r.billed : (r.typical ? r.typical.demandLo : 0))],
+         ['ovs-spread','TOU spread $/kWh', cfg.touSpread != null ? cfg.touSpread : (r.typical ? r.typical.touSpread : 0)],
+         ['ovs-cycles','Cycles / year', cfg.cycles],
+         ['ovs-shave','Peak shaved %', (cfg.peakShaveFrac * 100).toFixed(0)],
+         ['ovs-dod','Depth of discharge %', (cfg.dod * 100).toFixed(0)],
+         ['ovs-rte','Round-trip eff %', (cfg.rte * 100).toFixed(0)]].map(function (f) {
+        return '<label>' + f[1] + '<input id="' + f[0] + '" value="' + f[2] + '" style="' + IN + ';margin-top:2px"></label>';
+      }).join('') + '</div>'
+
+      + (r.typical ? '<div style="font-size:9.5px;color:#8BA3C4;margin-top:8px;line-height:1.5">'
+          + 'Demand charges in ' + r.state + ' typically run $' + r.typical.demandLo
+          + '\u2013$' + r.typical.demandHi + '/kW-mo. Defaulted to the LOW end. '
+          + (r.billed != null ? 'Your imported bill says $' + r.billed.toFixed(2) + ' and is being used instead.'
+             : 'Import a bill in Analyze for the real number.') + '</div>' : '')
+
+      /* what is being left on the table */
+      + (r.state ? (function () {
+          var P = r.partner, missing = [];
+          ['capacity','ancillary','program','compute'].forEach(function (k) {
+            if (P.streams.indexOf(k) > -1) return;
+            var best = null;
+            Object.keys(PARTNERS).forEach(function (pk) {
+              if (PARTNERS[pk].streams.indexOf(k) > -1 && (!best || PARTNERS[pk].keep > PARTNERS[best].keep)) best = pk;
+            });
+            if (!best) return;
+            var nm = { capacity:'wholesale capacity', ancillary:'frequency regulation',
+                       program: (r.typical && r.typical.program) || 'the utility programme',
+                       compute:'compute co-optimisation' }[k];
+            if (k === 'program' && !(r.typical && r.typical.programKwYr > 0)) return;
+            if (k === 'capacity' && !(r.typical && r.typical.capacity > 0)) return;
+            if (k === 'ancillary' && cfg.mode !== 'FOM') return;
+            missing.push(nm + ' (' + PARTNERS[best].name + ')');
+          });
+          if (!missing.length) return '<div style="' + lbl + ';margin:11px 0 4px">Optimisation</div>'
+            + '<div style="font-size:10px;color:#4ADE80;line-height:1.5">This partner can reach every '
+            + 'stream available in ' + r.market + ' for a ' + cfg.mode + ' asset.</div>';
+          return '<div style="' + lbl + ';margin:11px 0 4px">Not reachable this way</div>'
+            + '<div style="font-size:10px;color:#FBBF24;line-height:1.55">'
+            + missing.join('<br>') + '</div>';
+        })() : '')
+      + (r.oneTime ? '<div style="font-size:10px;color:#4ADE80;margin-top:7px">Plus a one-time '
+          + r.typical.program + ' incentive of about ' + money(r.oneTime)
+          + ' (' + r.typical.programOneTimeKwh + '/kWh \u00d7 ' + r.battery.kwh + ' kWh) \u2014 verify the current step</div>' : '')
+
+      + '<div style="margin-top:10px;padding:8px;background:rgba(251,191,36,.1);border-left:2px solid #FBBF24;'
+      + 'font-size:10px;line-height:1.5">Planning grade. The zip fixes the market and which streams exist; '
+      + 'it cannot tell you a demand charge \u2014 that is on the tariff, and it varies several-fold within '
+      + 'one state. Do not send this to a customer as a savings figure.</div>'
+      + '</div>';
+
+    p.querySelector('#ovs-x').onclick = function () { p.style.display = 'none'; };
+    function bind(id, fn) { var e = p.querySelector('#' + id); if (e) e.onchange = function () { fn(this.value); paint(); }; }
+    bind('ovs-zip', function (v) { cfg.zip = String(v).trim(); });
+    bind('ovs-mode', function (v) { cfg.mode = v; });
+    bind('ovs-partner', function (v) { if (PARTNERS[v]) cfg.partner = v; });
+    bind('ovs-demand', function (v) { var n = parseFloat(v); cfg.demand = isFinite(n) ? n : null; });
+    bind('ovs-spread', function (v) { var n = parseFloat(v); cfg.touSpread = isFinite(n) ? n : null; });
+    bind('ovs-cycles', function (v) { var n = parseInt(v, 10); if (n > 0) cfg.cycles = n; });
+    bind('ovs-shave', function (v) { var n = parseFloat(v); if (n > 0 && n <= 100) cfg.peakShaveFrac = n / 100; });
+    bind('ovs-dod', function (v) { var n = parseFloat(v); if (n > 0 && n <= 100) cfg.dod = n / 100; });
+    bind('ovs-rte', function (v) { var n = parseFloat(v); if (n > 0 && n <= 100) cfg.rte = n / 100; });
+  }
+
+  function addButton() {
+    if (document.getElementById('rb-valuestack')) return true;
+    var host = null;
+    try {
+      var all = document.querySelectorAll('button.rbtn');
+      for (var i = 0; i < all.length; i++) {
+        var oc = all[i].getAttribute('onclick') || '';
+        if (/openSitePreQual|openBillImport|openScorePanel/.test(oc)) { host = all[i].parentNode; break; }
+      }
+    } catch (e) {}
+    if (!host) return false;
+    var b = document.createElement('button');
+    b.className = 'rbtn'; b.id = 'rb-valuestack';
+    b.title = 'First-pass annual value stack for the battery on the site map';
+    b.innerHTML = '<span class="rb-ico" style="color:#4ADE80">\u2211</span>'
+      + '<span class="rb-lbl">Value<br>Stack</span>';
+    b.onclick = open;
+    host.appendChild(b);
+    return true;
+  }
+
+  var n = 0;
+  var iv = setInterval(function () {
+    var a = addButton();
+    if (a && window.console) console.info(TAG, 'armed \u2014 Analyze \u203a Value Stack, or OmegaValue.open()');
+    if (a || ++n > 300) clearInterval(iv);
+  }, 500);
+
+  window.OmegaValue = {
+    open: open,
+    close: function () { var p = document.getElementById('omega-valuestack'); if (p) p.style.display = 'none'; return true; },
+    zip: function (z) { if (z != null) { cfg.zip = String(z); paint(); } return cfg.zip; },
+    mode: function (m) { if (m === 'BTM' || m === 'FOM') { cfg.mode = m; paint(); } return cfg.mode; },
+    partner: function (k) { if (k && PARTNERS[k]) { cfg.partner = k; paint(); } return cfg.partner; },
+    partners: function () {
+      var rows = Object.keys(PARTNERS).map(function (k) {
+        return { key:k, name:PARTNERS[k].name, youKeep:Math.round(PARTNERS[k].keep*100)+'%',
+                 streams:PARTNERS[k].streams.join(', '), markets:PARTNERS[k].markets };
+      });
+      if (console.table) console.table(rows); else console.log(rows);
+      return rows;
+    },
+    compare: function () {
+      var was = cfg.partner, out = [];
+      Object.keys(PARTNERS).forEach(function (k) {
+        cfg.partner = k;
+        var r = compute();
+        out.push({ partner:PARTNERS[k].name, streams:r.rows.length,
+                   gross:'$'+Math.round(r.grossTotal).toLocaleString(),
+                   youKeep:'$'+Math.round(r.total).toLocaleString(),
+                   share:Math.round(PARTNERS[k].keep*100)+'%' });
+      });
+      cfg.partner = was; paint();
+      if (console.table) console.table(out); else console.log(out);
+      console.info(TAG + ' gross is what the streams are worth; \"you keep\" is after the revenue share.');
+      return out;
+    },
+    compute: compute,
+    stateOf: stateOf,
+    market: function (z) { var s = stateOf(z || cfg.zip); return s ? { state: s, market: MARKET[s] || 'Non-ISO' } : null; },
+    report: function () {
+      var r = compute();
+      if (!r.battery.units) { console.warn(TAG, 'no battery on the site map'); return null; }
+      if (!r.state) { console.warn(TAG, 'set a zip first: OmegaValue.zip("60606")'); return null; }
+      console.info(TAG + ' ' + r.state + ' / ' + r.market + ' \u2014 ' + r.battery.kwh + ' kWh, ' + r.battery.kw + ' kW');
+      var rows = r.rows.map(function (x) {
+        return { stream: x.stream, annual: '$' + Math.round(x.annual).toLocaleString(), basis: x.how, source: x.source };
+      });
+      if (console.table) console.table(rows); else console.log(rows);
+      console.info('  total $' + Math.round(r.total).toLocaleString() + '/yr  \u00b7  $'
+        + Math.round(r.total / Math.max(1, r.battery.kwh)) + ' per kWh installed');
+      console.info('  PLANNING GRADE \u2014 the demand charge is an assumption, not a tariff.');
+      return r;
     }
   };
 })();
