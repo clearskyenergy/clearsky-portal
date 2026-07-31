@@ -528,6 +528,7 @@ body{font-family:'DM Sans',sans-serif;background:var(--cs-bg);color:var(--cs-tex
         </div>
         <input class="ct-search" id="ct-q" placeholder="Search clients&hellip;" oninput="ctSearch()">
         <button class="btn-ghost" onclick="ctSyncCrm()">&#8635; Sync from CRM</button>
+        <button class="btn-ghost" id="ct-clean" style="display:none;border-color:rgba(229,57,53,.35);color:var(--cs-red)" onclick="ctCleanup()">&#9888; Clean up duplicates</button>
         <button class="btn-ghost" onclick="switchTab('crm')">Open CRM &rarr;</button>
       </div>
       <div class="ct-link-note" id="ct-link-note"></div>
@@ -1315,7 +1316,7 @@ function normClient(r){
   return {
     id: String(id), name: String(name || id), tier: r.tier || '',
     owner: r.owner || '', soldBy: r.soldBy || r.soldby || '',
-    domain: r.domain || '', dom: false
+    domain: r.domain || '', dom: false, raw: r
   };
 }
 function firstText(el){
@@ -1416,6 +1417,40 @@ function crmNameById(id){
   for(var i=0;i<crmCache.length;i++){ if(crmCache[i].id === id) return crmCache[i].name; }
   return '';
 }
+/* normalized name - the only identity we can trust across id schemes */
+function nkey(v){ return String(v===null||v===undefined?'':v).toLowerCase().replace(/[^a-z0-9]+/g,''); }
+
+function rosterIdMap(){
+  var r = crmRoster(), m = {}, i;
+  for(i=0;i<r.length;i++) m[r[i].id] = 1;
+  return m;
+}
+function rosterEntry(id){
+  var r = crmRoster(), i;
+  for(i=0;i<r.length;i++){ if(r[i].id === id) return r[i]; }
+  return null;
+}
+/* admin-console.js appended a copy instead of updating the record we were
+   editing - fold the copy's values back onto the original and drop it */
+function mergeDuplicateClient(dup, keepId){
+  var keep = rosterEntry(keepId);
+  if(!dup || !keep || !dup.raw || !keep.raw) return false;
+  var k;
+  for(k in dup.raw){
+    if(!dup.raw.hasOwnProperty(k)) continue;
+    if(k === 'id' || k === 'key' || k === '_id' || k === 'docId') continue;
+    keep.raw[k] = dup.raw[k];
+  }
+  pruneRoster(dup.id);
+  var d = db();
+  if(d && crmColl){ d.collection(crmColl).doc(dup.id)['delete']()['catch'](function(){}); }
+  else if(d){ resolveCrmColl(dup.id, function(coll){ if(coll) d.collection(coll).doc(dup.id)['delete']()['catch'](function(){}); }); }
+  if(DATA[dup.id]){
+    delete DATA[dup.id]; saveLocal();
+    if(d) d.collection(COLL).doc(dup.id)['delete']()['catch'](function(){});
+  }
+  return true;
+}
 /* find which Firestore collection actually holds this client doc (cached) */
 function resolveCrmColl(id, cb){
   var d = db();
@@ -1440,24 +1475,111 @@ function contractKeyFor(cl){
   if(DATA[sg]) return sg;
   return cl.id;
 }
+var dupInfo = { clients:[], contracts:0 };
+
+/* One row per CRM client. A contract doc is claimed by id first, then by name -
+   so docs written under an old key still land on their client instead of
+   piling up as phantom "NOT IN CRM" rows. */
 function buildRows(){
-  var rows = [], used = {}, i, k;
+  var rows = [], i, k, byName = {}, byId = {}, dupClients = [];
+  dupInfo = { clients:[], contracts:0 };
+
+  var seenId = {}, roster = [];
   for(i=0;i<crmCache.length;i++){
-    var cl = crmCache[i], key = contractKeyFor(cl);
-    if(used[key]) continue;
-    used[key] = 1;
+    var cl = crmCache[i];
+    /* the same id twice is one record listed twice - not a duplicate to report */
+    if(seenId[cl.id]) continue;
+    seenId[cl.id] = 1; roster.push(cl);
+    var n = nkey(cl.name);
+    byId[cl.id] = cl;
+    if(n){
+      if(byName[n]) dupClients.push(cl);   /* same client entered twice */
+      else byName[n] = cl;
+    }
+  }
+  dupInfo.clients = dupClients;
+
+  var buckets = {}, loose = [];
+  for(k in DATA){
+    if(!DATA.hasOwnProperty(k)) continue;
+    var owner = byId[k] || byName[nkey(DATA[k].name || k)] || null;
+    if(owner){ (buckets[owner.id] = buckets[owner.id] || []).push(k); }
+    else loose.push(k);
+  }
+
+  for(i=0;i<roster.length;i++){
+    var c2 = roster[i];
+    if(byName[nkey(c2.name)] !== c2 && nkey(c2.name)) continue;   /* dup handled below */
+    var keys = buckets[c2.id] || [];
+    keys.sort(function(a,b){
+      var au = String((DATA[a]||{}).updated || ''), bu = String((DATA[b]||{}).updated || '');
+      return au < bu ? 1 : (au > bu ? -1 : 0);
+    });
+    var live = keys.length ? keys[0] : c2.id;
+    dupInfo.contracts += Math.max(0, keys.length - 1);
     rows.push({
-      key:key, crmId:cl.id, name:cl.name,
-      tier:(DATA[key] && DATA[key].tier) || cl.tier || '',
-      c: DATA[key] || null, inCrm:true
+      key:live, crmId:c2.id, name:c2.name,
+      tier:(DATA[live] && DATA[live].tier) || c2.tier || '',
+      c: DATA[live] || null, inCrm:true,
+      dupKeys: keys.slice(1)
     });
   }
-  for(k in DATA){
-    if(!DATA.hasOwnProperty(k) || used[k]) continue;
-    rows.push({ key:k, crmId:null, name:DATA[k].name || k, tier:DATA[k].tier || '', c:DATA[k], inCrm:false });
+  for(i=0;i<dupClients.length;i++){
+    var dc = dupClients[i];
+    rows.push({ key:dc.id, crmId:dc.id, name:dc.name, tier:dc.tier || '',
+                c: DATA[dc.id] || null, inCrm:true, dupClient:true, dupKeys:[] });
+  }
+  for(i=0;i<loose.length;i++){
+    var lk = loose[i];
+    rows.push({ key:lk, crmId:null, name:DATA[lk].name || lk, tier:DATA[lk].tier || '',
+                c:DATA[lk], inCrm:false, dupKeys:[] });
   }
   return rows;
 }
+
+/* == one-click repair for the mess already in the data ==================== */
+function seq(items, work, done){
+  var i = 0;
+  function step(){
+    if(i >= items.length){ done(); return; }
+    work(items[i++], step);
+  }
+  step();
+}
+window.ctCleanup = function(){
+  buildRows();
+  var dc = dupInfo.clients, dk = dupInfo.contracts;
+  if(!dc.length && !dk){ alert('No duplicates found \u2014 the CRM and the contract table agree.'); return; }
+  var msg = 'Clean up:\n\n';
+  if(dc.length) msg += '\u2022 ' + dc.length + ' duplicate client record' + (dc.length===1?'':'s') + ' in the CRM\n';
+  if(dk)        msg += '\u2022 ' + dk + ' stray contract record' + (dk===1?'':'s') + '\n';
+  msg += '\nThe newest copy of each is kept. This cannot be undone.';
+  if(!confirm(msg)) return;
+
+  /* 1. drop stray contract docs */
+  var rows = buildRows(), strays = [], i, j;
+  for(i=0;i<rows.length;i++){
+    for(j=0;j<(rows[i].dupKeys||[]).length;j++) strays.push(rows[i].dupKeys[j]);
+  }
+  var d = db();
+  for(i=0;i<strays.length;i++){
+    delete DATA[strays[i]];
+    if(d) d.collection(COLL).doc(strays[i])['delete']()['catch'](function(){});
+  }
+  if(strays.length) saveLocal();
+
+  /* 2. drop duplicate CRM records */
+  var failed = 0;
+  seq(dc, function(entry, next){
+    dropClient({ key:entry.id, crmId:entry.id }, function(ok){ if(!ok) failed++; next(); });
+  }, function(){
+    refreshAll(); refreshCrmUi();
+    setTimeout(function(){ refreshAll(); }, 500);
+    alert('Removed ' + strays.length + ' stray contract record' + (strays.length===1?'':'s') +
+          ' and ' + (dc.length - failed) + ' duplicate client record' + ((dc.length-failed)===1?'':'s') + '.' +
+          (failed ? '\n\n' + failed + ' CRM record(s) could not be reached \u2014 delete them from the Internal CRM tab.' : ''));
+  });
+};
 
 var ctMode = 'all', ctQ = '';
 window.ctFilter = function(m){
@@ -1691,14 +1813,21 @@ function renderDash(){
     vis.push(r);
   }
 
-  var note = $('ct-link-note');
+  var note = $('ct-link-note'), clean = $('ct-clean');
+  var nDup = dupInfo.clients.length, nStray = dupInfo.contracts;
   if(note){
     note.innerHTML = crmCache.length
       ? ('Linked to the Internal CRM \u2014 <b>' + crmCache.length + '</b> client record' + (crmCache.length===1?'':'s') +
          ', <b>' + t.total + '</b> with a contract.' +
-         (crmFromDom ? ' <span class="ct-flag">roster read from the CRM tab \u2014 open it once for a live link</span>' : ''))
+         (crmFromDom ? ' <span class="ct-flag">roster read from the CRM tab \u2014 open it once for a live link</span>' : '') +
+         ((nDup || nStray) ? ' <span class="ct-flag">' +
+            (nDup ? nDup + ' duplicate client record' + (nDup===1?'':'s') : '') +
+            (nDup && nStray ? ' and ' : '') +
+            (nStray ? nStray + ' stray contract record' + (nStray===1?'':'s') : '') +
+            ' found</span>' : ''))
       : 'Waiting on the CRM roster \u2014 open the <b>Internal CRM</b> tab once so the two lists bind.';
   }
+  if(clean) clean.style.display = (nDup || nStray) ? '' : 'none';
 
   if(!vis.length){
     body.innerHTML = '<tr><td colspan="10" style="padding:28px;text-align:center;color:var(--cs-sub)">' +
@@ -1715,10 +1844,12 @@ function renderDash(){
     var chipCls = (row.tier && row.tier.indexOf('tier') === 0) ? row.tier : 'gray';
     var open = 'ctOpenClient(\'' + jsq(row.key) + '\',\'' + jsq(row.crmId || '') + '\')';
     var orphan = (crmCache.length && !row.inCrm) ? '<span class="ct-orphan">NOT IN CRM</span>' : '';
+    if(row.dupClient) orphan += '<span class="ct-orphan">DUPLICATE RECORD</span>';
+    if(row.dupKeys && row.dupKeys.length) orphan += '<span class="ct-orphan">' + row.dupKeys.length + ' STRAY CONTRACT' + (row.dupKeys.length===1?'':'S') + '</span>';
 
     if(!c){
       html += '<tr class="clickable ct-nc" onclick="' + open + '">' +
-        '<td class="site-nm">' + esc(row.name) + '<div class="sub-txt">In CRM \u00b7 no contract yet</div></td>' +
+        '<td class="site-nm">' + esc(row.name) + orphan + '<div class="sub-txt">In CRM \u00b7 no contract yet</div></td>' +
         '<td><span class="chip ' + chipCls + '">' + esc(tier.label) + '</span></td>' +
         '<td class="num">\u2014</td><td class="num">\u2014</td>' +
         '<td class="num"><span class="ct-set">Set pricing \u2192</span></td>' +
@@ -1787,22 +1918,69 @@ function wrap(){
   if(typeof window.saveClient === 'function' && !window.saveClient.__ct){
     var origS = window.saveClient;
     var ws = function(){
-      var c = readForm();
-      var key = curKey || curCrmId || slug(c.name);
+      var c = readForm(), i;
+      var before   = rosterIdMap();
+      var editing  = curCrmId && before[curCrmId] ? curCrmId : null;
+      var prevKey  = curKey;
+
       var out = origS.apply(this, arguments);
-      /* zeroing the pricing out (or setting "no contract") removes it, so an
-         edit can take a client back off the revenue table without a delete */
+
+      /* Whatever id the admin console just assigned is the ONLY identity that
+         matters. Guessing it before the save is what minted duplicate docs. */
+      var after = crmRoster(), added = [];
+      for(i=0;i<after.length;i++){ if(!before[after[i].id]) added.push(after[i]); }
+
+      /* the record the console just appended, if any */
+      var fresh = null;
+      for(i=0;i<added.length;i++){ if(nkey(added[i].name) === nkey(c.name)){ fresh = added[i]; break; } }
+      if(!fresh && added.length) fresh = added[0];
+
+      /* a client that was ALREADY there under this name - an append on top of
+         it is a duplicate, whether or not we were tracking an id for the edit */
+      var prior = editing;
+      if(!prior){
+        for(i=0;i<after.length;i++){
+          if(before[after[i].id] && nkey(after[i].name) === nkey(c.name)){ prior = after[i].id; break; }
+        }
+      }
+
+      var target = prior;
+      if(prior && fresh){ mergeDuplicateClient(fresh, prior); }
+      else if(fresh){ target = fresh.id; }
+      if(!target){
+        /* no roster visibility - fall back to the name, matched case-insensitively */
+        var hit = null;
+        for(i=0;i<after.length;i++){ if(nkey(after[i].name) === nkey(c.name)){ hit = after[i].id; break; } }
+        target = hit || prevKey || slug(c.name);
+      }
+
+      /* collapse any older doc that was written under a different key for this
+         same client, so an existing mess heals itself on the next save */
+      var strays = [], k;
+      for(k in DATA){
+        if(!DATA.hasOwnProperty(k) || k === target) continue;
+        if(nkey(DATA[k].name) === nkey(c.name)) strays.push(k);
+      }
+      var d = db();
+      for(i=0;i<strays.length;i++){
+        delete DATA[strays[i]];
+        if(d) d.collection(COLL).doc(strays[i])['delete']()['catch'](function(){});
+      }
+      if(strays.length) saveLocal();
+
       if(c.status === 'none' || !(c.base || c.svc || c.devHrs)){
-        if(DATA[key]){
-          delete DATA[key]; saveLocal();
-          var d = db();
-          if(d) d.collection(COLL).doc(key)['delete']()['catch'](function(){});
+        if(DATA[target]){
+          delete DATA[target]; saveLocal();
+          if(d) d.collection(COLL).doc(target)['delete']()['catch'](function(){});
         }
       } else {
-        persist(key, c);
+        persist(target, c);
       }
+
       curKey = null; curCrmId = null;
-      refreshAll();
+      refreshAll(); refreshCrmUi();
+      /* admin-console may write asynchronously - re-check once it settles */
+      setTimeout(function(){ refreshAll(); }, 600);
       return out;
     };
     ws.__ct = 1; window.saveClient = ws;
