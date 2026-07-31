@@ -375,6 +375,42 @@ body{font-family:'DM Sans',sans-serif;background:var(--cs-bg);color:var(--cs-tex
 .ct-flag{font-size:10px;font-weight:700;color:var(--cs-amber)}
 .ct-store-note{color:var(--cs-amber);font-weight:600}
 
+/* ── CONTRACT TABLE: CRM link, row actions, totals ── */
+.ct-toolbar{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-top:16px}
+.ct-seg{display:inline-flex;background:#fff;border:1.5px solid var(--cs-border);border-radius:9px;overflow:hidden}
+.ct-seg button{background:none;border:none;padding:8px 14px;font-size:12.5px;font-weight:600;color:var(--cs-sub);cursor:pointer;font-family:'DM Sans',sans-serif;border-right:1px solid var(--cs-border);transition:all .12s}
+.ct-seg button:last-child{border-right:none}
+.ct-seg button:hover{color:var(--cs-navy)}
+.ct-seg button.on{background:var(--cs-navy);color:#fff}
+.ct-search{flex:1;min-width:170px;border:1.5px solid var(--cs-border);border-radius:9px;padding:8px 12px;font-size:12.5px;font-family:'DM Sans',sans-serif;color:var(--cs-text);background:#fff;outline:none}
+.ct-search:focus{border-color:var(--cs-sky)}
+.ct-link-note{font-size:11px;color:var(--cs-sub);margin-top:8px}
+.ct-link-note b{color:var(--cs-navy)}
+.ct-acts{display:flex;gap:6px;justify-content:flex-end;white-space:nowrap}
+.ct-ico{border:1.5px solid var(--cs-border);background:#fff;border-radius:7px;width:29px;height:27px;cursor:pointer;font-size:12px;color:var(--cs-sub);display:inline-flex;align-items:center;justify-content:center;transition:all .12s;padding:0;font-family:'DM Sans',sans-serif;line-height:1}
+.ct-ico:hover{border-color:var(--cs-sky);color:var(--cs-sky);background:#F8FBFF}
+.ct-ico.danger:hover{border-color:var(--cs-red);color:var(--cs-red);background:rgba(229,57,53,.06)}
+.ct-set{color:var(--cs-sky);font-weight:700;font-family:'DM Sans',sans-serif;font-size:11.5px}
+.ptable tbody tr.ct-nc td{background:#FCFDFE}
+.ptable tbody tr.ct-nc .site-nm{color:var(--cs-sub)}
+.ct-orphan{font-size:9.5px;font-weight:700;color:var(--cs-red);background:rgba(229,57,53,.1);border-radius:20px;padding:2px 8px;margin-left:6px;white-space:nowrap}
+
+.ptable tfoot td{background:var(--cs-bg);border-top:2px solid var(--cs-navy);border-bottom:none;padding:13px 14px;vertical-align:top}
+.ptable tfoot .tf-lbl{font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:var(--cs-navy)}
+.ptable tfoot .tf-big{font-family:'DM Mono',monospace;font-size:14.5px;font-weight:500;color:var(--cs-navy);letter-spacing:-.3px;white-space:nowrap}
+.ptable tfoot .tf-sub{font-size:10px;font-weight:600;color:var(--cs-sub);margin-top:4px;font-family:'DM Sans',sans-serif;line-height:1.45}
+.ptable tfoot .tf-sub .g{color:#137A38}
+.ptable tfoot .tf-sub .a{color:var(--cs-amber)}
+
+.ct-choice{border:1.5px solid var(--cs-border);border-radius:10px;padding:13px 15px;margin-bottom:10px;cursor:pointer;background:#fff;transition:all .12s}
+.ct-choice:hover{border-color:var(--cs-sky);background:#F8FBFF}
+.ct-choice.danger:hover{border-color:var(--cs-red);background:rgba(229,57,53,.05)}
+.ct-choice-t{font-size:13.5px;font-weight:700;color:var(--cs-navy)}
+.ct-choice.danger .ct-choice-t{color:var(--cs-red)}
+.ct-choice-s{font-size:11.5px;color:var(--cs-sub);margin-top:3px;line-height:1.5}
+.ct-del-note{font-size:11px;color:var(--cs-sub);margin-top:8px;min-height:15px}
+.ct-del-note.err{color:var(--cs-red);font-weight:600}
+
 @media(max-width:1024px){
   .kpi-grid{grid-template-columns:repeat(2,1fr)}
 }
@@ -383,7 +419,7 @@ body{font-family:'DM Sans',sans-serif;background:var(--cs-bg);color:var(--cs-tex
   .dash-welcome{font-size:24px}
   .kpi-grid{grid-template-columns:repeat(2,1fr)}
   .table-wrap{overflow-x:auto}
-  .ptable{min-width:820px}
+  .ptable{min-width:960px}
   .drawer{width:100%}
 }
 </style>
@@ -483,14 +519,28 @@ body{font-family:'DM Sans',sans-serif;background:var(--cs-bg);color:var(--cs-tex
         <button class="btn-ghost" onclick="ctExportCsv()">Export CSV</button>
       </div>
       <div class="kpi-grid" id="ct-kpis"></div>
-      <div class="table-wrap" style="margin-top:14px">
+
+      <div class="ct-toolbar">
+        <div class="ct-seg" id="ct-seg">
+          <button data-f="all" class="on" onclick="ctFilter('all')">All CRM clients</button>
+          <button data-f="contract" onclick="ctFilter('contract')">Contracted</button>
+          <button data-f="active" onclick="ctFilter('active')">Active only</button>
+        </div>
+        <input class="ct-search" id="ct-q" placeholder="Search clients&hellip;" oninput="ctSearch()">
+        <button class="btn-ghost" onclick="ctSyncCrm()">&#8635; Sync from CRM</button>
+        <button class="btn-ghost" onclick="switchTab('crm')">Open CRM &rarr;</button>
+      </div>
+      <div class="ct-link-note" id="ct-link-note"></div>
+
+      <div class="table-wrap" style="margin-top:12px">
         <table class="ptable">
           <thead>
-            <tr><th>Client</th><th>Tier</th><th>Seats</th><th>Discount</th><th>MRR</th><th>Annual Total</th><th>Dev Hrs/mo</th><th>Service Fee</th><th>Renewal</th></tr>
+            <tr><th>Client</th><th>Tier</th><th>Seats</th><th>Discount</th><th>MRR</th><th>Annual Total</th><th>Dev Hrs/mo</th><th>Service Fee</th><th>Renewal</th><th style="text-align:right">Actions</th></tr>
           </thead>
           <tbody id="ct-body"></tbody>
+          <tfoot id="ct-foot"></tfoot>
         </table>
-        <div class="table-foot">Click a row to edit pricing, apply a discount, or waive the service fee. <span id="ct-store-note"></span></div>
+        <div class="table-foot">Every client in the Internal CRM appears here. Click a row (or &#9998;) to price it &middot; &#128465; to remove. <span id="ct-store-note"></span></div>
       </div>
 
       <!-- OPEN WORK / OPS -->
@@ -783,7 +833,7 @@ body{font-family:'DM Sans',sans-serif;background:var(--cs-bg);color:var(--cs-tex
       <div class="ct-preview" id="ct-preview"></div>
     </div>
 
-    <div class="mbtns"><button class="mb-cancel" onclick="closeModal('client-modal')">Cancel</button><button class="mb-create" onclick="saveClient()">Save</button></div>
+    <div class="mbtns"><button class="mb-cancel" onclick="ctAskDeleteCurrent()" style="margin-right:auto;color:var(--cs-red);border-color:rgba(229,57,53,.3)">Delete client</button><button class="mb-cancel" onclick="closeModal('client-modal')">Cancel</button><button class="mb-create" onclick="saveClient()">Save</button></div>
   </div>
 </div>
 
@@ -899,6 +949,24 @@ body{font-family:'DM Sans',sans-serif;background:var(--cs-bg);color:var(--cs-tex
   </div>
 </div>
 
+<!-- ââ REMOVE CLIENT / CONTRACT ââ -->
+<div class="modal-bg" id="ct-del-modal">
+  <div class="modal" style="max-width:470px">
+    <h3>Remove client</h3>
+    <div class="modal-sub" id="ct-del-sub"></div>
+    <div class="ct-choice" onclick="ctDoDelete('contract')">
+      <div class="ct-choice-t">Remove the contract only</div>
+      <div class="ct-choice-s">Clears pricing, seats, discount &amp; service fee. The client stays in the CRM and the inventory.</div>
+    </div>
+    <div class="ct-choice danger" onclick="ctDoDelete('client')">
+      <div class="ct-choice-t">Delete the client entirely</div>
+      <div class="ct-choice-s">Removes the contract <em>and</em> the CRM record. Repositories and live deployments are not touched.</div>
+    </div>
+    <div class="ct-del-note" id="ct-del-note"></div>
+    <div class="mbtns"><button class="mb-cancel" onclick="ctCloseDel()">Cancel</button></div>
+  </div>
+</div>
+
 <div class="toast" id="toast"></div>
 
 <!-- FIREBASE SDKs -->
@@ -933,7 +1001,8 @@ window.OMEGA_TIERS = TIERS;
 var STORE_KEY = 'omega_contracts_v1';
 var COLL      = 'omega_contracts';
 var DATA      = {};      /* key -> contract */
-var curKey    = null;    /* client key currently open in the modal */
+var curKey    = null;    /* contract key currently open in the modal */
+var curCrmId  = null;    /* the CRM client id that key belongs to */
 var remoteOk  = false;
 
 /* ── 2. helpers ───────────────────────────────────────────────────────────── */
@@ -1170,7 +1239,7 @@ function preview(){
 /* ── 6. public actions ────────────────────────────────────────────────────── */
 window.ctPreview = preview;
 window.ctClear = function(){
-  if(!confirm('Clear the contract & pricing on this client?')) return;
+  if(!confirm('Clear the contract & pricing on this client? The client stays in the CRM.')) return;
   if(curKey && DATA[curKey]){
     delete DATA[curKey];
     saveLocal();
@@ -1199,21 +1268,305 @@ window.ctExportCsv = function(){
   a.download = 'omega-contracts-' + iso(new Date()) + '.csv';
   document.body.appendChild(a); a.click(); document.body.removeChild(a);
 };
-window.ctOpenClient = function(key){
+window.ctOpenClient = function(key, crmId, ev){
+  if(ev && ev.stopPropagation) ev.stopPropagation();
   curKey = key;
   var c = DATA[key] || {};
   var opened = false;
   if(typeof window.openClientModal === 'function'){
-    try { window.openClientModal(key); opened = true; } catch(e){ opened = false; }
+    try { window.openClientModal(crmId || key); opened = true; } catch(e){ opened = false; }
   }
   var modal = $('client-modal');
   if(modal && modal.className.indexOf('on') === -1) modal.className = 'modal-bg on';
-  if(!opened && $('cm-name') && !val('cm-name')) setVal('cm-name', c.name || '');
+  /* if the admin console didn't open (and fill) the modal, the name field can
+     still be holding the LAST client we looked at - never trust it blindly */
+  var nm = c.name || crmNameById(crmId) || '';
+  if($('cm-name') && nm && (!opened || !val('cm-name'))) setVal('cm-name', nm);
   curKey = key;
+  curCrmId = crmId || null;
   fillForm(key);
 };
 
-/* ── 7. dashboard ─────────────────────────────────────────────────────────── */
+/* == 7. CRM BRIDGE - the client roster is the source of truth ============= */
+var CRM_COLLS = ['clients','omega_clients','admin_clients','crm_clients','omega_crm','client_registry','crm'];
+var crmColl   = null;   /* resolved Firestore collection holding client docs */
+var crmSrc    = null;   /* live reference to the in-memory roster admin-console.js owns */
+var crmCache  = [];     /* normalized roster */
+var crmFp     = '';     /* fingerprint, so we only re-render when it actually changes */
+var crmFromDom= false;
+
+function isArr(a){ return Object.prototype.toString.call(a) === '[object Array]'; }
+function jsq(s){ return esc(String(s===null||s===undefined?'':s).replace(/\\/g,'\\\\').replace(/'/g,"\\'")); }
+
+function objToArr(o){
+  var a = [], k;
+  for(k in o){
+    if(!o.hasOwnProperty(k)) continue;
+    var v = o[k];
+    if(v && typeof v === 'object'){ if(!v.id && !v.key) v.id = k; a.push(v); }
+  }
+  return a;
+}
+function normClient(r){
+  if(!r || typeof r !== 'object') return null;
+  var name = r.name || r.client || r.clientName || r.workspace || r.title || '';
+  var id   = r.id || r.key || r._id || r.docId || (name ? slug(name) : '');
+  if(!id) return null;
+  return {
+    id: String(id), name: String(name || id), tier: r.tier || '',
+    owner: r.owner || '', soldBy: r.soldBy || r.soldby || '',
+    domain: r.domain || '', dom: false
+  };
+}
+function firstText(el){
+  if(!el) return '';
+  var n = el.firstChild;
+  while(n){
+    if(n.nodeType === 3){
+      var t = String(n.nodeValue).replace(/\s+/g,' ').replace(/^\s+|\s+$/g,'');
+      if(t) return t;
+    }
+    if(n.nodeType === 1 && String(n.className || '').indexOf('chip') === -1){
+      var t2 = firstText(n); if(t2) return t2;
+    }
+    n = n.nextSibling;
+  }
+  return String(el.textContent || '').replace(/\s+/g,' ').replace(/^\s+|\s+$/g,'');
+}
+/* last-resort roster: read the rows the CRM / inventory tabs already rendered */
+function scrapeCrm(){
+  var out = [], seen = {}, tbs = ['crm-body','cl-body'], j, i;
+  for(j=0;j<tbs.length;j++){
+    var tb = $(tbs[j]); if(!tb) continue;
+    var rows = tb.getElementsByTagName('tr');
+    for(i=0;i<rows.length;i++){
+      var tr = rows[i], cells = tr.getElementsByTagName('td');
+      if(cells.length < 2) continue;
+      var nm = firstText(cells[0].getElementsByClassName('site-nm')[0] || cells[0]);
+      if(!nm) continue;
+      var oc = tr.getAttribute('onclick') || '';
+      var m  = oc.match(/['"]([^'"]{2,})['"]/);
+      var id = m ? m[1] : slug(nm);
+      if(seen[id]) continue;
+      seen[id] = 1;
+      out.push({ id:id, name:nm, tier:'', owner:'', soldBy:'', domain:'', dom:true });
+    }
+  }
+  return out;
+}
+function crmRoster(){
+  var i, src = null, kind = '';
+  var holders = [window.STATE, window.State, window.state, window.APP, window.DATA_STATE];
+  var props   = ['clients','crm','clientList','clientRows','accounts','crmClients'];
+  for(i=0;i<holders.length && !src;i++){
+    var S = holders[i];
+    if(!S || typeof S !== 'object') continue;
+    for(var p=0;p<props.length;p++){
+      var v = S[props[p]];
+      if(isArr(v) && v.length){ src = v; kind = 'arr'; break; }
+      if(v && typeof v === 'object' && !isArr(v)){
+        var a = objToArr(v);
+        if(a.length){ src = v; kind = 'obj'; break; }
+      }
+    }
+  }
+  if(!src){
+    var globs = [window.CLIENTS, window.clients, window.CLIENT_ROWS];
+    for(i=0;i<globs.length;i++){ if(isArr(globs[i]) && globs[i].length){ src = globs[i]; kind = 'arr'; break; } }
+  }
+  var res = [];
+  if(src){
+    crmSrc = { kind:kind, ref:src };
+    var list = (kind === 'obj') ? objToArr(src) : src;
+    for(i=0;i<list.length;i++){ var n = normClient(list[i]); if(n) res.push(n); }
+  }
+  crmFromDom = false;
+  if(!res.length){ res = scrapeCrm(); crmFromDom = res.length > 0; crmSrc = null; }
+  return res;
+}
+/* drop a client out of admin-console.js's own in-memory list so its tabs update too */
+function pruneRoster(id){
+  if(!crmSrc) return;
+  var ref = crmSrc.ref, i, k, n;
+  if(crmSrc.kind === 'arr'){
+    for(i = ref.length - 1; i >= 0; i--){ n = normClient(ref[i]); if(n && n.id === id) ref.splice(i,1); }
+  } else {
+    for(k in ref){
+      if(!ref.hasOwnProperty(k)) continue;
+      n = normClient(ref[k]);
+      if(k === id || (n && n.id === id)) delete ref[k];
+    }
+  }
+}
+function refreshCrmUi(){
+  var fns = ['renderClients','renderCrm','renderInventory','renderOverview','renderTabs','renderAll'], i;
+  for(i=0;i<fns.length;i++){
+    if(typeof window[fns[i]] === 'function'){ try { window[fns[i]](); } catch(e){} }
+  }
+}
+/* re-read the roster and repaint NOW - the 1.5s poll is too slow after an
+   edit or a delete, and rendering off the stale cache resurrects dead rows */
+function refreshAll(){
+  crmCache = crmRoster();
+  crmFp = '';
+  renderDash();
+}
+function crmNameById(id){
+  if(!id) return '';
+  for(var i=0;i<crmCache.length;i++){ if(crmCache[i].id === id) return crmCache[i].name; }
+  return '';
+}
+/* find which Firestore collection actually holds this client doc (cached) */
+function resolveCrmColl(id, cb){
+  var d = db();
+  if(!d || !id){ cb(null); return; }
+  if(crmColl){ cb(crmColl); return; }
+  var i = 0;
+  function step(){
+    if(i >= CRM_COLLS.length){ cb(null); return; }
+    var name = CRM_COLLS[i++];
+    d.collection(name).doc(id).get().then(function(doc){
+      if(doc && doc.exists){ crmColl = name; cb(name); }
+      else step();
+    })['catch'](function(){ step(); });
+  }
+  step();
+}
+
+/* == 8. merge roster + contracts into the rows the table renders ========== */
+function contractKeyFor(cl){
+  if(DATA[cl.id]) return cl.id;
+  var sg = slug(cl.name);
+  if(DATA[sg]) return sg;
+  return cl.id;
+}
+function buildRows(){
+  var rows = [], used = {}, i, k;
+  for(i=0;i<crmCache.length;i++){
+    var cl = crmCache[i], key = contractKeyFor(cl);
+    if(used[key]) continue;
+    used[key] = 1;
+    rows.push({
+      key:key, crmId:cl.id, name:cl.name,
+      tier:(DATA[key] && DATA[key].tier) || cl.tier || '',
+      c: DATA[key] || null, inCrm:true
+    });
+  }
+  for(k in DATA){
+    if(!DATA.hasOwnProperty(k) || used[k]) continue;
+    rows.push({ key:k, crmId:null, name:DATA[k].name || k, tier:DATA[k].tier || '', c:DATA[k], inCrm:false });
+  }
+  return rows;
+}
+
+var ctMode = 'all', ctQ = '';
+window.ctFilter = function(m){
+  ctMode = m;
+  var seg = $('ct-seg');
+  if(seg){
+    var b = seg.getElementsByTagName('button');
+    for(var i=0;i<b.length;i++) b[i].className = (b[i].getAttribute('data-f') === m) ? 'on' : '';
+  }
+  renderDash();
+};
+window.ctSearch = function(){
+  ctQ = String(val('ct-q') || '').toLowerCase();
+  renderDash();
+};
+
+/* re-key every contract onto its CRM client id and pull name/tier back over */
+window.ctSyncCrm = function(){
+  if(!crmCache.length){ alert('No CRM roster is loaded yet — open the Internal CRM tab once, then try again.'); return; }
+  if(crmFromDom){ alert('The CRM list was read off-screen rather than from the live record set. Open the Internal CRM tab and try again.'); return; }
+  var changed = 0, rekeyed = 0, i;
+  for(i=0;i<crmCache.length;i++){
+    var cl = crmCache[i], key = contractKeyFor(cl), c = DATA[key];
+    if(!c) continue;
+    var dirty = false;
+    if(cl.name && c.name !== cl.name){ c.name = cl.name; dirty = true; }
+    if(cl.tier && c.tier !== cl.tier){ c.tier = cl.tier; dirty = true; }
+    if(key !== cl.id){
+      DATA[cl.id] = c; delete DATA[key];
+      var d = db();
+      if(d) d.collection(COLL).doc(key)['delete']()['catch'](function(){});
+      rekeyed++; dirty = true; key = cl.id;
+    }
+    if(dirty){ persist(key, c); changed++; }
+  }
+  saveLocal(); renderDash();
+  alert(changed
+    ? ('Synced ' + changed + ' contract' + (changed===1?'':'s') + ' to the CRM' + (rekeyed ? ' (' + rekeyed + ' re-keyed onto the CRM client id)' : '') + '.')
+    : 'Everything is already in sync with the CRM.');
+};
+
+/* == 9. remove a contract / a client ====================================== */
+var delTarget = null;
+function delNote(msg, err){
+  var e = $('ct-del-note');
+  if(e){ e.innerHTML = msg || ''; e.className = err ? 'ct-del-note err' : 'ct-del-note'; }
+}
+window.ctCloseDel = function(){
+  var m = $('ct-del-modal'); if(m) m.className = 'modal-bg';
+  delTarget = null;
+};
+window.ctAskDelete = function(key, crmId, name, ev){
+  if(ev && ev.stopPropagation) ev.stopPropagation();
+  delTarget = { key:key, crmId:crmId || null, name:name || key };
+  var sub = $('ct-del-sub');
+  if(sub) sub.innerHTML = '<b>' + esc(delTarget.name) + '</b> &mdash; choose how far to go. This cannot be undone.';
+  delNote('');
+  var m = $('ct-del-modal'); if(m) m.className = 'modal-bg on';
+};
+window.ctAskDeleteCurrent = function(){
+  /* the record we actually have open wins over whatever text is in the field */
+  var nm = (DATA[curKey] && DATA[curKey].name) || crmNameById(curCrmId) || val('cm-name') || curKey;
+  if(!curKey && !curCrmId && !nm){ return; }
+  var mc = $('client-modal'); if(mc) mc.className = 'modal-bg';
+  window.ctAskDelete(curKey || slug(nm), curCrmId, nm);
+};
+function dropContract(key, cb){
+  if(DATA[key]){ delete DATA[key]; saveLocal(); }
+  var d = db();
+  if(!d){ cb(); return; }
+  d.collection(COLL).doc(key)['delete']().then(function(){ cb(); })['catch'](function(){ cb(); });
+}
+function dropClient(t, cb){
+  var id = t.crmId || t.key, i;
+  var fns = ['deleteClient','removeClient','archiveClient'];
+  for(i=0;i<fns.length;i++){
+    if(typeof window[fns[i]] === 'function'){
+      try { window[fns[i]](id); pruneRoster(id); cb(true, 'admin console'); return; } catch(e){}
+    }
+  }
+  resolveCrmColl(id, function(coll){
+    if(!coll){ cb(false); return; }
+    db().collection(coll).doc(id)['delete']().then(function(){
+      pruneRoster(id); cb(true, coll);
+    })['catch'](function(){ cb(false); });
+  });
+}
+window.ctDoDelete = function(mode){
+  if(!delTarget) return;
+  var t = delTarget;
+  delNote('Removing&hellip;');
+  dropContract(t.key, function(){
+    if(mode === 'contract'){
+      refreshAll(); window.ctCloseDel();
+      return;
+    }
+    dropClient(t, function(ok, where){
+      refreshAll();
+      refreshCrmUi();
+      refreshAll();
+      if(ok){ window.ctCloseDel(); }
+      else {
+        delNote('Contract removed, but the CRM record could not be reached. Delete it from the Internal CRM tab.', true);
+      }
+    });
+  });
+};
+
+/* == 10. dashboard render ================================================= */
 function rollup(){
   var t = { mrr:0, arr:0, devHrs:0, devVal:0, svcBill:0, svcWaived:0, waivedCount:0, active:0, total:0, disc:0, next:null };
   for(var k in DATA){
@@ -1237,60 +1590,169 @@ function kpi(cls, label, value, foot){
          '<div class="kpi-val">' + value + '</div>' +
          '<div class="kpi-foot">' + foot + '</div></div>';
 }
-function renderDash(){
-  var grid = $('ct-kpis'), body = $('ct-body');
-  if(!grid || !body) return;
-  var t = rollup();
+/* totals across exactly the rows on screen */
+function totalsOf(rows){
+  var t = { shown:rows.length, contracted:0, active:0, pipeline:0, churned:0, noContract:0,
+            seats:0, extra:0, disc:0, mrr:0, mrrA:0, mrrP:0, arr:0, arrA:0, arrP:0,
+            dev:0, devA:0, svc:0, svcWaived:0, next:null, tiers:{} };
+  for(var i=0;i<rows.length;i++){
+    var r = rows[i], c = r.c;
+    if(r.tier) t.tiers[r.tier] = (t.tiers[r.tier] || 0) + 1;
+    if(!c){ t.noContract++; continue; }
+    t.contracted++;
+    if(c.status === 'churned' || c.status === 'none'){ t.churned++; continue; }
+    var m = calc(c), live = (c.status === 'active');
+    if(live) t.active++; else t.pipeline++;
+    t.seats += num(c.seats); t.extra += m.extraSeats; t.disc += m.disc;
+    t.mrr += m.mrr; t.arr += m.arr; t.dev += m.devHrs;
+    t.svc += m.svcBill;
+    if(live){ t.mrrA += m.mrr; t.arrA += m.arr; t.devA += m.devHrs; }
+    else    { t.mrrP += m.mrr; t.arrP += m.arr; }
+    if(m.svcWaived && m.svcFee) t.svcWaived += m.svcFee;
+    var rn = renewalOf(c.start);
+    if(rn && (!t.next || rn < t.next)) t.next = rn;
+  }
+  return t;
+}
+function splitSub(a, p){
+  if(!a && !p) return '';
+  var out = [];
+  if(a) out.push('<span class="g">' + money(a) + ' active</span>');
+  if(p) out.push('<span class="a">' + money(p) + ' pipeline</span>');
+  return '<div class="tf-sub">' + out.join(' &middot; ') + '</div>';
+}
+function renderFoot(t){
+  var foot = $('ct-foot');
+  if(!foot) return;
+  if(!t.shown){ foot.innerHTML = ''; return; }
+
+  var mixOrder = ['tier1','tier2','tier3','tier4','internal','partner'], mix = [], i;
+  for(i=0;i<mixOrder.length;i++){
+    if(t.tiers[mixOrder[i]]) mix.push((TIERS[mixOrder[i]] || {label:mixOrder[i]}).label.split(' \u00b7 ').pop() + ' ' + t.tiers[mixOrder[i]]);
+  }
   var dn = daysUntil(t.next);
 
-  grid.innerHTML =
-    kpi('green','Monthly Recurring Revenue', money(t.mrr),
-        t.active + ' active contract' + (t.active===1?'':'s') + (t.disc>0 ? ' · <span class="dn">' + money(t.disc) + '</span> discounted' : '')) +
-    kpi('blue','Annual Total Revenue', t.arr >= 10000000 ? moneyShort(t.arr) : money(t.arr),
-        money(t.mrr*12) + ' recurring + ' + money(t.svcBill) + ' service fees') +
-    kpi('purple','Allocated Dev Hours', t.devHrs + '<span class="unit">hr/mo</span>',
-        (t.devHrs*12) + ' hr/yr · ' + money(t.devVal*12) + ' included value') +
-    kpi('','Annual Service Fees', money(t.svcBill),
-        t.waivedCount ? '<span class="ct-flag">' + money(t.svcWaived) + '</span> waived across ' + t.waivedCount + ' — bills at renewal'
-                      : (t.next ? 'Next renewal ' + prettyDate(t.next) + (dn!==null ? ' · ' + dn + ' days' : '') : 'No renewals scheduled'));
+  var head = '<div class="tf-lbl">Totals \u00b7 ' + t.shown + ' shown</div>' +
+             '<div class="tf-sub">' + t.contracted + ' contracted \u00b7 ' + t.noContract + ' unpriced' +
+             (t.churned ? ' \u00b7 ' + t.churned + ' churned (excluded)' : '') + '</div>';
 
-  var keys = [];
-  for(var k in DATA){ if(DATA.hasOwnProperty(k)) keys.push(k); }
-  keys.sort(function(a,b){ return calc(DATA[b]).mrr - calc(DATA[a]).mrr; });
+  foot.innerHTML = '<tr>' +
+    '<td>' + head + '</td>' +
+    '<td><div class="tf-sub" style="margin-top:0">' + (mix.length ? mix.join(' \u00b7 ') : '\u2014') + '</div></td>' +
+    '<td class="num"><div class="tf-big">' + t.seats + '</div>' + (t.extra ? '<div class="tf-sub">+' + t.extra + ' billable</div>' : '') + '</td>' +
+    '<td class="num"><div class="tf-big">' + (t.disc ? '\u2212' + money(t.disc) : '\u2014') + '</div>' + (t.disc ? '<div class="tf-sub">off list / mo</div>' : '') + '</td>' +
+    '<td class="num"><div class="tf-big">' + money(t.mrr) + '</div>' + splitSub(t.mrrA, t.mrrP) + '</td>' +
+    '<td class="num"><div class="tf-big">' + money(t.arr) + '</div>' + splitSub(t.arrA, t.arrP) + '</td>' +
+    '<td class="num"><div class="tf-big">' + (t.dev || 0) + '</div><div class="tf-sub">' + (t.dev * 12) + ' hr/yr</div></td>' +
+    '<td class="num"><div class="tf-big">' + money(t.svc) + '</div>' + (t.svcWaived ? '<div class="tf-sub"><span class="a">' + money(t.svcWaived) + ' waived</span></div>' : '') + '</td>' +
+    '<td class="num"><div class="tf-big" style="font-size:12.5px">' + (t.next ? prettyDate(t.next) : '\u2014') + '</div>' +
+      (t.next && dn !== null ? '<div class="tf-sub">next \u00b7 ' + dn + ' days</div>' : '') + '</td>' +
+    '<td></td>' +
+  '</tr>';
+}
+function actionsCell(r){
+  return '<td><div class="ct-acts">' +
+    '<button class="ct-ico" title="Edit pricing" onclick="ctOpenClient(\'' + jsq(r.key) + '\',\'' + jsq(r.crmId || '') + '\',event)">\u270E</button>' +
+    '<button class="ct-ico danger" title="Remove" onclick="ctAskDelete(\'' + jsq(r.key) + '\',\'' + jsq(r.crmId || '') + '\',\'' + jsq(r.name) + '\',event)">\uD83D\uDDD1</button>' +
+    '</div></td>';
+}
+function renderDash(){
+  var grid = $('ct-kpis'), body = $('ct-body');
+  if(!body) return;
+  var t = rollup(), dn = daysUntil(t.next), i;
 
-  if(!keys.length){
-    body.innerHTML = '<tr><td colspan="9" style="padding:28px;text-align:center;color:var(--cs-sub)">No contracts yet — open a client and fill in Contract &amp; Pricing.</td></tr>';
+  if(grid){
+    grid.innerHTML =
+      kpi('green','Monthly Recurring Revenue', money(t.mrr),
+          t.active + ' active contract' + (t.active===1?'':'s') + (t.disc>0 ? ' \u00b7 <span class="dn">' + money(t.disc) + '</span> discounted' : '')) +
+      kpi('blue','Annual Total Revenue', t.arr >= 10000000 ? moneyShort(t.arr) : money(t.arr),
+          money(t.mrr*12) + ' recurring + ' + money(t.svcBill) + ' service fees') +
+      kpi('purple','Allocated Dev Hours', t.devHrs + '<span class="unit">hr/mo</span>',
+          (t.devHrs*12) + ' hr/yr \u00b7 ' + money(t.devVal*12) + ' included value') +
+      kpi('','Annual Service Fees', money(t.svcBill),
+          t.waivedCount ? '<span class="ct-flag">' + money(t.svcWaived) + '</span> waived across ' + t.waivedCount + ' \u2014 bills at renewal'
+                        : (t.next ? 'Next renewal ' + prettyDate(t.next) + (dn!==null ? ' \u00b7 ' + dn + ' days' : '') : 'No renewals scheduled'));
+  }
+
+  var rows = buildRows();
+  rows.sort(function(a,b){
+    var am = a.c ? calc(a.c).mrr : -1, bm = b.c ? calc(b.c).mrr : -1;
+    if(bm !== am) return bm - am;
+    var an = String(a.name||'').toLowerCase(), bn = String(b.name||'').toLowerCase();
+    return an < bn ? -1 : (an > bn ? 1 : 0);
+  });
+
+  var vis = [];
+  for(i=0;i<rows.length;i++){
+    var r = rows[i];
+    if(ctMode === 'contract' && !r.c) continue;
+    if(ctMode === 'active' && !(r.c && r.c.status === 'active')) continue;
+    if(ctQ && String(r.name||'').toLowerCase().indexOf(ctQ) === -1) continue;
+    vis.push(r);
+  }
+
+  var note = $('ct-link-note');
+  if(note){
+    note.innerHTML = crmCache.length
+      ? ('Linked to the Internal CRM \u2014 <b>' + crmCache.length + '</b> client record' + (crmCache.length===1?'':'s') +
+         ', <b>' + t.total + '</b> with a contract.' +
+         (crmFromDom ? ' <span class="ct-flag">roster read from the CRM tab \u2014 open it once for a live link</span>' : ''))
+      : 'Waiting on the CRM roster \u2014 open the <b>Internal CRM</b> tab once so the two lists bind.';
+  }
+
+  if(!vis.length){
+    body.innerHTML = '<tr><td colspan="10" style="padding:28px;text-align:center;color:var(--cs-sub)">' +
+      (ctQ ? 'No client matches \u201c' + esc(ctQ) + '\u201d.' : 'Nothing to show under this filter.') + '</td></tr>';
+    renderFoot(totalsOf(vis));
     storeNote();
     return;
   }
 
   var html = '';
-  for(var i=0;i<keys.length;i++){
-    var key = keys[i], c = DATA[key], m = calc(c), r = renewalOf(c.start), d = daysUntil(r);
-    var tier = TIERS[c.tier] || { label: c.tier || '—' };
-    var chipCls = (c.tier && c.tier.indexOf('tier') === 0) ? c.tier : 'gray';
+  for(i=0;i<vis.length;i++){
+    var row = vis[i], c = row.c;
+    var tier = TIERS[row.tier] || { label: row.tier || '\u2014' };
+    var chipCls = (row.tier && row.tier.indexOf('tier') === 0) ? row.tier : 'gray';
+    var open = 'ctOpenClient(\'' + jsq(row.key) + '\',\'' + jsq(row.crmId || '') + '\')';
+    var orphan = (crmCache.length && !row.inCrm) ? '<span class="ct-orphan">NOT IN CRM</span>' : '';
+
+    if(!c){
+      html += '<tr class="clickable ct-nc" onclick="' + open + '">' +
+        '<td class="site-nm">' + esc(row.name) + '<div class="sub-txt">In CRM \u00b7 no contract yet</div></td>' +
+        '<td><span class="chip ' + chipCls + '">' + esc(tier.label) + '</span></td>' +
+        '<td class="num">\u2014</td><td class="num">\u2014</td>' +
+        '<td class="num"><span class="ct-set">Set pricing \u2192</span></td>' +
+        '<td class="num">\u2014</td><td class="num">\u2014</td><td class="num">\u2014</td><td class="num">\u2014</td>' +
+        actionsCell(row) +
+      '</tr>';
+      continue;
+    }
+
+    var m = calc(c), rn = renewalOf(c.start), d = daysUntil(rn);
     var discTxt = c.discType === 'pct' ? c.discVal + '% off'
-                : c.discType === 'amt' ? money(c.discVal) + '/mo off' : '—';
-    var svcTxt = !m.svcFee ? '—'
+                : c.discType === 'amt' ? money(c.discVal) + '/mo off' : '\u2014';
+    var svcTxt = !m.svcFee ? '\u2014'
                : m.svcWaived ? '<span class="ct-waived">' + money(m.svcFee) + '</span> <span class="ct-flag">WAIVED</span>'
                : money(m.svcFee);
-    var renewTxt = r ? prettyDate(r) + (d !== null && d <= 60 && d >= 0 ? ' <span class="ct-flag">' + d + 'd</span>' : '') : '—';
-    var dim = counts(c) ? '' : ' style="opacity:.5"';
+    var renewTxt = rn ? prettyDate(rn) + (d !== null && d <= 60 && d >= 0 ? ' <span class="ct-flag">' + d + 'd</span>' : '') : '\u2014';
+    var dim = counts(c) ? '' : ' style="opacity:.55"';
 
-    html += '<tr class="clickable"' + dim + ' onclick="ctOpenClient(\'' + esc(key).replace(/'/g,"\\'") + '\')">' +
-      '<td class="site-nm">' + esc(c.name || key) + (counts(c) ? '' : ' <span class="chip gray">' + esc(c.status || '') + '</span>') +
+    html += '<tr class="clickable"' + dim + ' onclick="' + open + '">' +
+      '<td class="site-nm">' + esc(row.name) + (counts(c) ? '' : ' <span class="chip gray">' + esc(c.status || '') + '</span>') + orphan +
         (c.note ? '<div class="sub-txt">' + esc(c.note) + '</div>' : '') + '</td>' +
       '<td><span class="chip ' + chipCls + '">' + esc(tier.label) + '</span></td>' +
       '<td class="num">' + num(c.seats) + (m.extraSeats ? ' <span class="sub-txt">(+' + m.extraSeats + ')</span>' : '') + '</td>' +
       '<td class="num">' + discTxt + '</td>' +
       '<td class="num"><b>' + money(m.mrr) + '</b></td>' +
       '<td class="num">' + money(m.arr) + '</td>' +
-      '<td class="num">' + (m.devHrs || '—') + '</td>' +
+      '<td class="num">' + (m.devHrs || '\u2014') + '</td>' +
       '<td class="num">' + svcTxt + '</td>' +
       '<td class="num">' + renewTxt + '</td>' +
+      actionsCell(row) +
     '</tr>';
   }
   body.innerHTML = html;
+  renderFoot(totalsOf(vis));
   storeNote();
 }
 window.ctRenderDash = renderDash;
@@ -1301,12 +1763,22 @@ function keyFrom(arg){
   if(arg && typeof arg === 'object' && (arg.id || arg.key)) return arg.id || arg.key;
   return null;
 }
+/* a contract may live under the CRM id or under a slug of the name - find it */
+function resolveKey(k){
+  if(!k) return null;
+  if(DATA[k]) return k;
+  var nm = val('cm-name');
+  if(nm && DATA[slug(nm)]) return slug(nm);
+  return k;
+}
 function wrap(){
   if(typeof window.openClientModal === 'function' && !window.openClientModal.__ct){
     var orig = window.openClientModal;
     var w = function(){
       var out = orig.apply(this, arguments);
-      curKey = keyFrom(arguments[0]) || (val('cm-name') ? slug(val('cm-name')) : null);
+      var raw = keyFrom(arguments[0]) || (val('cm-name') ? slug(val('cm-name')) : null);
+      curCrmId = keyFrom(arguments[0]) || null;
+      curKey   = resolveKey(raw);
       fillForm(curKey);
       return out;
     };
@@ -1316,11 +1788,21 @@ function wrap(){
     var origS = window.saveClient;
     var ws = function(){
       var c = readForm();
-      var key = curKey || slug(c.name);
+      var key = curKey || curCrmId || slug(c.name);
       var out = origS.apply(this, arguments);
-      if(c.status !== 'none' && (c.base || c.svc || c.devHrs)){ persist(key, c); }
-      curKey = null;
-      renderDash();
+      /* zeroing the pricing out (or setting "no contract") removes it, so an
+         edit can take a client back off the revenue table without a delete */
+      if(c.status === 'none' || !(c.base || c.svc || c.devHrs)){
+        if(DATA[key]){
+          delete DATA[key]; saveLocal();
+          var d = db();
+          if(d) d.collection(COLL).doc(key)['delete']()['catch'](function(){});
+        }
+      } else {
+        persist(key, c);
+      }
+      curKey = null; curCrmId = null;
+      refreshAll();
       return out;
     };
     ws.__ct = 1; window.saveClient = ws;
@@ -1346,14 +1828,24 @@ function bind(){
   }
 }
 
+/* watch admin-console.js's roster and re-render whenever it changes */
+function crmTick(){
+  var r = crmRoster(), fp = '', i;
+  for(i=0;i<r.length;i++) fp += r[i].id + '\u0001' + r[i].name + '\u0001' + r[i].tier + '\u0002';
+  if(fp === crmFp) return;
+  crmFp = fp; crmCache = r;
+  renderDash();
+}
 function boot(){
   loadLocal();
   bind();
   fillForm(null);
+  crmCache = crmRoster();
   renderDash();
   wrap();
   var tries = 0;
   var t = setInterval(function(){ wrap(); if(++tries > 20) clearInterval(t); }, 400);
+  setInterval(crmTick, 1500);
   try {
     if(window.firebase && firebase.auth){
       firebase.auth().onAuthStateChanged(function(u){ if(u) loadRemote(); });
