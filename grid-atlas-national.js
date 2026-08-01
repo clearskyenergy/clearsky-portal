@@ -435,7 +435,7 @@ function pdbFacFeature(r){
 }
 
 function fetchPdbFac(key, cb){
-  var GA = window.GA;
+  var GA = ga();
   var b = GA.viewBbox();
   pdbSetNote("Loading carrier facilities…");
   pdbFacBbox(b, function(err, rows){
@@ -456,7 +456,7 @@ function fetchPdbFac(key, cb){
 }
 
 function fetchPdbIx(key, cb){
-  var GA = window.GA;
+  var GA = ga();
   var b = GA.viewBbox();
   /* IX records carry no coordinates of their own; they inherit from the
      facilities they sit in. We resolve position via the facility bbox query and
@@ -589,7 +589,7 @@ function retireYear(g){
 }
 
 function fetchEiaRetire(key, cb){
-  var GA = window.GA;
+  var GA = ga();
   if(!eiaKey()){ GA.status("Stranded-capacity layer needs eiaApiKey in config.js", false); cb([]); return; }
   var b = GA.viewBbox();
   eiaGenFetch(["RE","OS","OP","SB"], null, function(err, gens){
@@ -705,7 +705,7 @@ function flowArrows(pairs){
 }
 
 function fetchPowerFlow(key, cb){
-  var GA = window.GA;
+  var GA = ga();
   fetchFlow(function(err, data){
     if(err){
       GA.status("Power-flow layer: " + err.message + (eiaKey() ? "" : " — set eiaApiKey in config.js"), false);
@@ -1621,7 +1621,7 @@ function runReport(){
     }
     /* Move the map and drop the base tool's pin so the map and the report
        always describe the same point. */
-    var GA = window.GA;
+    var GA = ga();
     try {
       GA.map.setView([site.lat, site.lon], radiusMi <= 10 ? 12 : radiusMi <= 25 ? 11 : radiusMi <= 50 ? 10 : 8);
       if(GA.dropPin) GA.dropPin({ lat: site.lat, lng: site.lon });
@@ -2121,7 +2121,51 @@ function registerLayers(GA){
     }
   };
 
-  var added = ["pdb_fac", "pdb_ix", "osm_telecom", "fcc_hex", "eia_retire", "powerflow"];
+  /* Self-discovering national fiber. This is the layer that answers "show me
+     the fiber grid" — it asks ArcGIS Online what agencies have published for
+     wherever you are looking, instead of relying on a list I maintain. */
+  L.fiber_discover = {
+    name: "Fiber Routes (discovered)", color: "#00E0C6", on: false,
+    geom: "line", role: "connectivity",
+    url: "__EXT__", extFetch: fetchDiscoveredFiber,
+    label: function(a){ return a.name || "Fiber route"; },
+    meta: function(a){
+      var b = [];
+      if(a.operator) b.push(a.operator);
+      if(a.status) b.push(a.status);
+      if(a.source) b.push("via " + a.source);
+      if(a.publisher) b.push("published by " + a.publisher);
+      return b.join(" · ") || "discovered route";
+    }
+  };
+
+  L.fiber_state = {
+    name: "Fiber (state agencies)", color: "#12A89B", on: false,
+    geom: "line", role: "connectivity",
+    url: "__EXT__", extFetch: fetchVerifiedFiber,
+    label: function(a){ return a.name || "Fiber route"; },
+    meta: function(a){
+      return [a.operator, a.status, a.publisher].filter(Boolean).join(" · ") || "state agency route";
+    }
+  };
+
+  for(var m = 0; m < ITEM_LAYERS.length; m++){
+    (function(it){
+      L[it.key] = {
+        name: it.name, color: "#3DA5FF", on: false,
+        geom: "line", role: "connectivity",
+        url: "__EXT__", extFetch: fetchItemLayer, itemId: it.itemId,
+        label: function(a){ return a.name || it.name; },
+        meta: function(a){
+          return [a.operator, a.status, a.publisher].filter(Boolean).join(" · ") || it.note;
+        }
+      };
+      if(ORDER.indexOf(it.key) < 0) ORDER.push(it.key);
+    })(ITEM_LAYERS[m]);
+  }
+
+  var added = ["pdb_fac", "pdb_ix", "osm_telecom", "fiber_discover", "fiber_state",
+               "fcc_hex", "eia_retire", "powerflow"];
   for(var j = 0; j < added.length; j++){
     if(ORDER.indexOf(added[j]) < 0) ORDER.push(added[j]);
   }
@@ -2173,6 +2217,11 @@ function drawFlow(GA, feats, group){
    ═══════════════════════════════════════════════════════════════════════════ */
 
 var GA_REF = null;
+
+/* Resolve the host tool. Prefers the reference captured at init over
+   window.GA, so the extension keeps working if the host is embedded,
+   namespaced, or exercised in a test harness rather than on window. */
+function ga(){ return GA_REF || window.GA; }
 
 function init(GA){
   GA_REF = GA;
@@ -2321,7 +2370,7 @@ function retireDeadLayers(GA){
    where carrier fiber terminates and where a lateral gets spliced. This queries
    the tags that return data instead of the one that returns nothing. */
 function fetchOsmTelecom(key, cb){
-  var GA = window.GA;
+  var GA = ga();
   var b = GA.viewBbox();
   var bbox = b.ymin + "," + b.xmin + "," + b.ymax + "," + b.xmax;
   var q = "[out:json][timeout:25];(" +
@@ -2363,7 +2412,7 @@ function fetchOsmTelecom(key, cb){
    long-haul conduit is largely unmapped in OSM. The layer reports honestly
    when Overpass answers with an empty set rather than showing a bare 0. */
 function fetchOsmFiberRoutes(key, cb){
-  var GA = window.GA;
+  var GA = ga();
   var b = GA.viewBbox();
   var bbox = b.ymin + "," + b.xmin + "," + b.ymax + "," + b.xmax;
   var q = "[out:json][timeout:25];(" +
@@ -2418,7 +2467,7 @@ function isFiberRecord(p){
 }
 
 function fetchFccHex(key, cb){
-  var GA = window.GA;
+  var GA = ga();
   var b = GA.viewBbox();
   /* Hex polygons are dense — refuse to query above a sane zoom rather than
      time out and report a misleading zero. */
@@ -2500,6 +2549,7 @@ function markLayer(key, state, reason, count){
    in production: a dead source and an empty viewport both rendered "0". Now a
    dead source is red and says why on hover. */
 function paintRailStatus(){
+  if(!ga()) return;
   var host = document.getElementById("layers");
   if(!host || !host.querySelectorAll) return;
   var rows = host.querySelectorAll("[data-lyr]");
@@ -2565,6 +2615,17 @@ function probeTargets(GA){
         STATE_FIBER[j].verified ? "verified" : "UNVERIFIED");
   }
 
+  t.push({ group: "Fiber", name: "ArcGIS Online fiber discovery", kind: "agol",
+           url: AGOL + "/search",
+           note: "self-updating registry — finds agency fiber services by map extent" });
+  for(var v = 0; v < VERIFIED_FIBER.length; v++){
+    arc("Fiber", VERIFIED_FIBER[v].name, VERIFIED_FIBER[v].url, VERIFIED_FIBER[v].note);
+  }
+  for(var m = 0; m < ITEM_LAYERS.length; m++){
+    t.push({ group: "Fiber", name: ITEM_LAYERS[m].name + " (item ID)", kind: "agolitem",
+             url: AGOL + "/content/items/" + ITEM_LAYERS[m].itemId,
+             note: ITEM_LAYERS[m].note });
+  }
   t.push({ group: "Fiber", name: "PeeringDB facilities", kind: "pdb",
            url: PDB_BASE + "/fac?limit=1" });
   t.push({ group: "Fiber", name: "OSM Overpass (telecom)", kind: "overpass",
@@ -2622,6 +2683,25 @@ function probe(target, cb){
       if(j && j.error){ done("fail", (j.error.message || "service error"), null); return; }
       var c = (j && (j.count !== undefined ? j.count : null));
       done(c === 0 ? "empty" : "ok", c === null ? "responded" : "service reachable", c);
+    }, 18000);
+    return;
+  }
+  if(target.kind === "agol"){
+    getJson(target.url + "?f=json&num=5&q=" + encodeURIComponent(DISCOVER_Q) +
+            "&bbox=-88.5,41.5,-87.5,42.2", function(err, j){
+      if(err){ done("fail", err.message, null); return; }
+      if(!j || !j.results){ done("fail", "unexpected search response", null); return; }
+      done(j.results.length ? "ok" : "empty",
+           "search reachable · " + (j.total !== undefined ? j.total.toLocaleString() + " matching items nationally" : "ok"),
+           j.results.length);
+    }, 20000);
+    return;
+  }
+  if(target.kind === "agolitem"){
+    getJson(target.url + "?f=json", function(err, j){
+      if(err){ done("fail", err.message, null); return; }
+      if(!j || j.error){ done("fail", "item not publicly readable", null); return; }
+      done(j.url ? "ok" : "empty", j.url ? ("resolves to " + j.url.slice(0, 70)) : "item has no service url", null);
     }, 18000);
     return;
   }
@@ -2683,7 +2763,7 @@ function probe(target, cb){
 var AUDIT = null;
 
 function openHealth(){
-  var GA = window.GA;
+  var GA = ga();
   var rep = document.getElementById("gaRep");
   var body = document.getElementById("gaRepB");
   var prog = document.getElementById("gaProg");
@@ -2841,7 +2921,316 @@ function exportAuditPdf(a){
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
-   24 · PUBLIC HOOKS — consumed by the grid-atlas.html patch
+   25 · FIBER DISCOVERY — A REGISTRY THAT MAINTAINS ITSELF
+
+   Hardcoding state fiber endpoints is how this tool ended up with three
+   fabricated URLs. Any list I write today rots: agencies republish, portals
+   migrate, item IDs change. So instead of a list, this asks ArcGIS Online what
+   fiber services exist inside the current viewport, right now.
+
+   ArcGIS Online's search endpoint is public, needs no token for public items,
+   and accepts a bbox. State broadband offices, DOTs, regional planning
+   councils and co-ops publish their fiber and middle-mile routes there. Panning
+   the map re-runs the search, so coverage grows as agencies publish rather than
+   as I remember to add lines.
+
+   Everything found is labelled with the publishing organisation, because for a
+   diligence pack "who says so" matters as much as the geometry.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+var AGOL = "https://www.arcgis.com/sharing/rest";
+
+/* Terms that find fiber route geometry without dragging in every broadband
+   grant-boundary polygon in the country. */
+var DISCOVER_Q =
+  '(fiber OR "middle mile" OR "middle-mile" OR "fibre optic" OR "fiber optic" OR conduit) ' +
+  'AND (type:"Feature Service" OR type:"Map Service")';
+
+/* Owners whose content is noise for this purpose: demo orgs, training accounts,
+   and vendor marketing layers. */
+var DISCOVER_SKIP = /(^esri_|_demo$|sample|training|test|template)/i;
+
+var discoverCache = {};   /* bbox key -> [{svc}] */
+var discoverSeen = {};    /* service url -> true, so one service is drawn once */
+
+function bboxKey(b){
+  return [b.xmin, b.ymin, b.xmax, b.ymax].map(function(v){ return v.toFixed(1); }).join(",");
+}
+
+/* Step 1 — ask AGOL what exists here. */
+function discoverServices(b, cb){
+  var ck = bboxKey(b);
+  if(discoverCache[ck]){ cb(null, discoverCache[ck]); return; }
+  var url = AGOL + "/search?f=json&num=40&sortField=numviews&sortOrder=desc" +
+    "&q=" + encodeURIComponent(DISCOVER_Q) +
+    "&bbox=" + [b.xmin, b.ymin, b.xmax, b.ymax].join(",");
+  getJson(url, function(err, j){
+    if(err){ cb(err); return; }
+    if(!j || !j.results){ cb(new Error("unexpected search response")); return; }
+    var out = [];
+    for(var i = 0; i < j.results.length; i++){
+      var r = j.results[i];
+      if(!r.url) continue;
+      if(DISCOVER_SKIP.test(r.owner || "")) continue;
+      if(!/FeatureServer|MapServer/i.test(r.url)) continue;
+      out.push({
+        id: r.id, title: r.title || "Untitled service",
+        url: r.url.replace(/\/+$/, ""),
+        owner: r.owner || "", org: r.orgId || "",
+        access: r.access || "public",
+        modified: r.modified || null
+      });
+    }
+    discoverCache[ck] = out;
+    cb(null, out);
+  }, 20000);
+}
+
+/* Step 2 — a service can have many sublayers. Ask which carry line geometry;
+   polygons here are grant boundaries and service areas, not routes. */
+function serviceLineLayers(svc, cb){
+  getJson(svc.url + "?f=json", function(err, j){
+    if(err || !j){ cb([]); return; }
+    var layers = j.layers || [];
+    var out = [];
+    for(var i = 0; i < layers.length && out.length < 3; i++){
+      var L2 = layers[i];
+      var gt = L2.geometryType || "";
+      if(!/Polyline/i.test(gt)) continue;
+      out.push({ id: L2.id, name: L2.name || ("layer " + L2.id) });
+    }
+    cb(out);
+  }, 15000);
+}
+
+/* Step 3 — pull the geometry inside the viewport. */
+function queryServiceLayer(svc, layer, b, cb){
+  var env = b.xmin + "," + b.ymin + "," + b.xmax + "," + b.ymax;
+  var qs = "/" + layer.id + "/query?f=geojson&where=1%3D1&outFields=*&returnGeometry=true" +
+    "&geometryType=esriGeometryEnvelope&inSR=4326&outSR=4326" +
+    "&spatialRel=esriSpatialRelIntersects&resultRecordCount=400&geometry=" + encodeURIComponent(env);
+  getJson(svc.url + qs, function(err, j){
+    if(err || !j || !j.features){ cb([]); return; }
+    cb(j.features);
+  }, 20000);
+}
+
+var discoverNote = "";
+function fetchDiscoveredFiber(key, cb){
+  var GA = ga();
+  if(GA.map.getZoom() < 7){
+    markLayer(key, "empty", "zoom to level 7+ to search for published fiber services", 0);
+    GA.status("Fiber discovery: zoom in to level 7 or closer", false);
+    cb([]); return;
+  }
+  var b = GA.viewBbox();
+  GA.status("Searching ArcGIS Online for published fiber routes here…", true);
+
+  discoverServices(b, function(err, svcs){
+    if(err){
+      markLayer(key, "fail", "AGOL search: " + err.message, 0);
+      discoverNote = "discovery unavailable — " + err.message;
+      cb([]); return;
+    }
+    if(!svcs.length){
+      markLayer(key, "empty", "no agency has published a fiber service covering this view", 0);
+      discoverNote = "no published fiber services found in this view";
+      cb([]); return;
+    }
+
+    /* Bound the fan-out. Eight services, three line layers each, is enough to
+       cover a metro without hanging the browser on a continental view. */
+    var pool = svcs.slice(0, 8);
+    var out = [], done = 0, hits = 0;
+
+    function finish(){
+      discoverNote = hits + " of " + pool.length + " services returned routes";
+      markLayer(key, out.length ? "ok" : "empty",
+        out.length ? discoverNote : "services found but none returned route geometry here",
+        out.length);
+      GA.status(out.length
+        ? "Discovered " + out.length + " fiber route segments from " + hits + " agency services"
+        : "Found " + pool.length + " fiber services, none with routes in this view", false);
+      cb(out);
+    }
+
+    for(var i = 0; i < pool.length; i++){
+      (function(svc){
+        serviceLineLayers(svc, function(layers){
+          if(!layers.length){ if(++done === pool.length) finish(); return; }
+          var pending = layers.length, got = false;
+          for(var k = 0; k < layers.length; k++){
+            (function(layer){
+              queryServiceLayer(svc, layer, b, function(feats){
+                for(var n = 0; n < feats.length; n++){
+                  var f = feats[n];
+                  if(!f.geometry) continue;
+                  var p = f.properties || {};
+                  out.push({
+                    props: {
+                      name: pick(p, ["NAME","Name","name","SegmentName","RouteName","ROUTE","Route",
+                                     "LABEL","Label","DESCRIPTION"]) || layer.name,
+                      operator: pick(p, ["OWNER","Owner","OPERATOR","Operator","PROVIDER",
+                                         "Provider","provider_name","CARRIER"]) || "",
+                      status: pick(p, ["STATUS","Status","status","PhaseStatus","Phase"]) || "",
+                      source: svc.title,
+                      publisher: svc.owner,
+                      svcUrl: svc.url,
+                      itemUrl: "https://www.arcgis.com/home/item.html?id=" + svc.id,
+                      discovered: true
+                    },
+                    geom: f.geometry
+                  });
+                  got = true;
+                }
+                if(--pending === 0){
+                  if(got) hits++;
+                  if(++done === pool.length) finish();
+                }
+              });
+            })(layers[k]);
+          }
+        });
+      })(pool[i]);
+    }
+  });
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   26 · ITEM-ID RESOLUTION + VERIFIED ENDPOINTS
+
+   Where an agency's dataset has a stable ArcGIS item ID, resolve the service
+   URL from the ID at runtime instead of hardcoding the URL. Item IDs survive
+   portal migrations and service renames; the URLs do not. This is the specific
+   failure that produced the three dead GeoDataViewer links.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+var ITEM_LAYERS = [
+  { key: "ca_mmbi", name: "CA Middle-Mile (CPUC)", st: "CA",
+    itemId: "6ab17ba395a1433b8383277b243287cb",
+    note: "statewide open-access middle-mile route design, CPUC" },
+  { key: "fcc_bdc_national", name: "FCC Broadband (national)", st: "US",
+    itemId: "e1343efcefc344709057260ee57290a0",
+    note: "Esri Living Atlas summary of the FCC Broadband Data Collection" }
+];
+
+var itemUrlCache = {};
+function resolveItemService(itemId, cb){
+  if(itemUrlCache[itemId]){ cb(null, itemUrlCache[itemId]); return; }
+  getJson(AGOL + "/content/items/" + encodeURIComponent(itemId) + "?f=json", function(err, j){
+    if(err){ cb(err); return; }
+    if(!j || !j.url){ cb(new Error(j && j.error ? "item not public" : "item has no service url")); return; }
+    itemUrlCache[itemId] = j.url.replace(/\/+$/, "");
+    cb(null, itemUrlCache[itemId]);
+  }, 18000);
+}
+
+/* Directly verified public endpoints. Each was confirmed to exist from its
+   own agency's REST directory listing — not inferred from a pattern. */
+var VERIFIED_FIBER = [
+  { key: "ut_fcc_hex", name: "UT Fiber Coverage (FCC)", st: "UT", geom: "poly",
+    url: "https://services.arcgis.com/j195B8Fn38z3xQw8/arcgis/rest/services/all_record_hexes_dissolved/FeatureServer/0",
+    note: "Utah SGID, rebuilt monthly from the FCC BDC API" },
+  { key: "ca_scag_mm", name: "CA Middle-Mile (SCAG)", st: "CA", geom: "line",
+    url: "https://maps.scag.ca.gov/scaggis/rest/services/Broadband/Broadband/MapServer/2",
+    note: "CPUC anchor-build routes on the State Highway Network" },
+  { key: "md_bb", name: "MD Broadband Service Areas", st: "MD", geom: "poly",
+    url: "https://mdgeodata.md.gov/imap/rest/services/UtilityTelecom/MD_BroadbandServiceAreas/MapServer/0",
+    note: "Maryland iMAP, NTIA SBDD availability" },
+  { key: "ny_bb_fiber", name: "NY Fiber Availability", st: "NY", geom: "poly",
+    url: "https://gisportalnydev.dot.ny.gov/hostingny/rest/services/BroadbandAvailability_WGS_FCC477_Sup_Generalize_10_M/MapServer/4",
+    note: "NYSDOT, FCC 477 fiber sublayer" }
+];
+
+function fetchVerifiedFiber(key, cb){
+  var GA = ga();
+  var b = GA.viewBbox();
+  var env = b.xmin + "," + b.ymin + "," + b.xmax + "," + b.ymax;
+  var out = [], pending = VERIFIED_FIBER.length, reached = 0;
+
+  function done(){
+    if(--pending > 0) return;
+    markLayer(key, out.length ? "ok" : "empty",
+      out.length ? (reached + " agency services returned data")
+                 : "no verified state service covers this view (registry is state-by-state)",
+      out.length);
+    cb(out);
+  }
+
+  for(var i = 0; i < VERIFIED_FIBER.length; i++){
+    (function(src){
+      var qs = "/query?f=geojson&where=1%3D1&outFields=*&returnGeometry=true" +
+        "&geometryType=esriGeometryEnvelope&inSR=4326&outSR=4326" +
+        "&spatialRel=esriSpatialRelIntersects&resultRecordCount=600&geometry=" + encodeURIComponent(env);
+      getJson(src.url + qs, function(err, j){
+        if(err || !j || !j.features){ done(); return; }
+        if(j.features.length) reached++;
+        for(var n = 0; n < j.features.length; n++){
+          var f = j.features[n];
+          if(!f.geometry) continue;
+          var p = f.properties || {};
+          /* Coverage-polygon services carry a technology field; keep fiber only. */
+          if(src.geom === "poly" && !isFiberRecord(p)) continue;
+          out.push({
+            props: {
+              name: pick(p, ["NAME","Name","name","SegmentName","RouteName","provider_name","Provider"]) || src.name,
+              operator: pick(p, ["OWNER","Owner","PROVIDER","Provider","provider_name"]) || "",
+              status: pick(p, ["STATUS","Status","PhaseStatus"]) || "",
+              source: src.name, publisher: src.note, state: src.st, verified: true
+            },
+            geom: f.geometry
+          });
+        }
+        done();
+      }, 20000);
+    })(VERIFIED_FIBER[i]);
+  }
+}
+
+/* Item-ID-resolved layers, fetched through whatever URL the item points at today. */
+function fetchItemLayer(key, cb){
+  var GA = ga();
+  var entry = null;
+  for(var i = 0; i < ITEM_LAYERS.length; i++){
+    if(ITEM_LAYERS[i].key === key){ entry = ITEM_LAYERS[i]; break; }
+  }
+  if(!entry){ cb([]); return; }
+  resolveItemService(entry.itemId, function(err, base){
+    if(err){
+      markLayer(key, "fail", "item " + entry.itemId + ": " + err.message, 0);
+      cb([]); return;
+    }
+    var b = GA.viewBbox();
+    serviceLineLayers({ url: base }, function(lineLayers){
+      /* Prefer line sublayers; fall back to sublayer 0 for coverage polygons. */
+      var target = lineLayers.length ? lineLayers[0] : { id: 0, name: entry.name };
+      queryServiceLayer({ url: base }, target, b, function(feats){
+        var out = [];
+        for(var n = 0; n < feats.length; n++){
+          var f = feats[n];
+          if(!f.geometry) continue;
+          var p = f.properties || {};
+          out.push({
+            props: {
+              name: pick(p, ["NAME","Name","name","SegmentName","RouteName"]) || entry.name,
+              operator: pick(p, ["OWNER","Owner","PROVIDER","Provider"]) || "",
+              status: pick(p, ["STATUS","Status","PhaseStatus"]) || "",
+              source: entry.name, publisher: entry.note,
+              itemUrl: "https://www.arcgis.com/home/item.html?id=" + entry.itemId
+            },
+            geom: f.geometry
+          });
+        }
+        markLayer(key, out.length ? "ok" : "empty",
+          out.length ? "resolved via item ID" : "item resolved, nothing in this view", out.length);
+        cb(out);
+      });
+    });
+  });
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   27 · PUBLIC HOOKS — consumed by the grid-atlas.html patch
    ═══════════════════════════════════════════════════════════════════════════ */
 
 window.GA_EXT = {
@@ -2852,7 +3241,7 @@ window.GA_EXT = {
   /* Routes the four new layers to their own fetchers. Returns true if this
      module handled the layer, false to let the base tool fetch it normally. */
   fetch: function(key, cb){
-    var GA = window.GA;
+    var GA = ga();
     var L2 = GA.LAYERS[key];
     if(!L2 || L2.url !== "__EXT__") return false;
     L2.extFetch(key, cb);
@@ -2863,7 +3252,7 @@ window.GA_EXT = {
      layers whose geometry carries meaning the default renderer would lose. */
   onRendered: function(key, feats, group){
     if(key === "powerflow"){
-      try { drawFlow(window.GA, feats, group); } catch(e){}
+      try { drawFlow(ga(), feats, group); } catch(e){}
     }
   },
 
