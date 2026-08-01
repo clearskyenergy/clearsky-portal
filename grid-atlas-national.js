@@ -2151,6 +2151,57 @@ function exportPdf(R){
    18 · LAYER REGISTRATION + INIT
    ═══════════════════════════════════════════════════════════════════════════ */
 
+/* ═══════════════════════════════════════════════════════════════════════════
+   CRITICAL · LAYER GROUP CREATION
+
+   The base tool builds its Leaflet layer groups exactly once, at load:
+
+       ORDER.forEach(function(k){ groups[k] = L.layerGroup(); ... });
+
+   That runs before this module appends anything to ORDER. Every layer added
+   here therefore had no group, and renderLayer's first statement —
+   `var g = groups[key]; g.clearLayers();` — threw
+   "cannot read properties of undefined (reading 'clearLayers')"
+   on the first load cycle, which aborted the whole batch. That is why the new
+   layers showed a permanent 0 and why the fiber section never populated: not a
+   data problem at all, a lifecycle problem.
+
+   ensureGroups() is idempotent and is called after every registration and
+   before every rail rebuild, so a layer added at any point in the session gets
+   a group. */
+function ensureGroups(GA){
+  var created = [];
+  if(!GA || !GA.ORDER || !GA.groups) return created;
+  /* Leaflet is always present in the real host; guard anyway so a missing
+     map library degrades to "no groups created" and is caught by
+     auditGroups() rather than throwing during init. */
+  if(!GA.L || typeof GA.L.layerGroup !== "function") return created;
+  for(var i = 0; i < GA.ORDER.length; i++){
+    var k = GA.ORDER[i];
+    if(!GA.LAYERS[k]) continue;
+    if(GA.groups[k]) continue;
+    try {
+      GA.groups[k] = GA.L.layerGroup();
+      if(GA.LAYERS[k].on) GA.groups[k].addTo(GA.map);
+      created.push(k);
+    } catch(e){}
+  }
+  return created;
+}
+
+/* Post-init assertion. If a layer ever ends up in the draw order without a
+   group again, this reports it loudly instead of letting it fail silently at
+   render time. Surfaced in the Data Health audit as well. */
+function auditGroups(GA){
+  var orphans = [];
+  if(!GA || !GA.ORDER || !GA.groups) return orphans;
+  for(var i = 0; i < GA.ORDER.length; i++){
+    var k = GA.ORDER[i];
+    if(GA.LAYERS[k] && !GA.groups[k]) orphans.push(k);
+  }
+  return orphans;
+}
+
 function registerLayers(GA){
   var L = GA.LAYERS, ORDER = GA.ORDER;
 
@@ -2201,9 +2252,18 @@ function registerLayers(GA){
   };
 
   /* State / regional open fiber services, driven off the registry. */
+  /* Names already present in the registry — the base tool ships its own CA
+     middle-mile layer, and duplicating it by a different key put three
+     identically-named rows in the rail. Dedupe on the visible name, not the key. */
+  var takenNames = {};
+  for(var nk in L){
+    if(L.hasOwnProperty(nk) && L[nk] && L[nk].name) takenNames[L[nk].name.toLowerCase()] = nk;
+  }
+
   for(var i = 0; i < STATE_FIBER.length; i++){
     (function(sf){
-      if(L[sf.key]) return;   /* base tool already defines CA middle-mile */
+      if(L[sf.key]) return;
+      if(takenNames[sf.name.toLowerCase()]) return;   /* same layer under another key */
       L[sf.key] = {
         name: sf.name + (sf.verified ? "" : " ?"), color: "#00E0C6", on: false,
         geom: "line", role: "connectivity", url: sf.url,
@@ -2377,6 +2437,7 @@ function arrowWing(mid, ang, size, off){
 }
 
 function drawFlow(GA, feats, group){
+  if(!group || !group.clearLayers) return;
   group.clearLayers();
   var Lf = GA.L;
   var max = 0;
@@ -2428,11 +2489,23 @@ function init(GA){
   var retired = retireDeadLayers(GA);
 
   registerLayers(GA);
+
+  /* Must happen before any render. See ensureGroups() for why. */
+  var madeGroups = ensureGroups(GA);
+
   injectCss();
   injectUi();
 
   /* Rebuild the layer rail so the new layers appear in their categories. */
   try { if(GA.buildRail) GA.buildRail(); } catch(e){}
+
+  var orphans = auditGroups(GA);
+  if(orphans.length && window.console && console.error){
+    console.error("Grid Atlas: layers in draw order with no Leaflet group — " + orphans.join(", "));
+  }
+  if(window.console && console.info){
+    console.info("Grid Atlas: created " + madeGroups.length + " layer groups for extension layers");
+  }
 
   if(retired.length && window.console && console.warn){
     console.warn("Grid Atlas: retired " + retired.length +
@@ -2862,6 +2935,9 @@ function probeTargets(GA){
     if(!DEAD_LAYERS.hasOwnProperty(k)) continue;
     t.push({ group: "Retired", name: k, kind: "dead", url: "", note: DEAD_LAYERS[k] });
   }
+  var orph = auditGroups(GA);
+  t.push({ group: "Grid", name: "Layer group integrity", kind: "groups", url: "",
+           note: orph.length ? ("orphans: " + orph.join(", ")) : "every layer has a render group" });
   return t;
 }
 
@@ -2884,6 +2960,14 @@ function probe(target, cb){
       var c = (j && (j.count !== undefined ? j.count : null));
       done(c === 0 ? "empty" : "ok", c === null ? "responded" : "service reachable", c);
     }, 18000);
+    return;
+  }
+  if(target.kind === "groups"){
+    var orphaned = auditGroups(ga());
+    done(orphaned.length ? "fail" : "ok",
+         orphaned.length ? (orphaned.length + " layer(s) would throw on render")
+                         : "all layers have a Leaflet group",
+         ga().ORDER.length);
     return;
   }
   if(target.kind === "osrm"){
@@ -4143,6 +4227,7 @@ function fetchLongHaul(key, cb){
 /* Custom draw — shared-risk carries the colour and the width, and an unrouted
    segment is dashed so it can never be mistaken for a road-following path. */
 function drawLongHaul(GA, feats, group){
+  if(!group || !group.clearLayers) return;
   group.clearLayers();
   var Lf = GA.L;
   for(var i = 0; i < feats.length; i++){
@@ -4218,6 +4303,14 @@ window.GA_EXT = {
     var GA = ga();
     var L2 = GA.LAYERS[key];
     if(!L2 || L2.url !== "__EXT__") return false;
+    /* Belt and braces: if this layer somehow has no group yet, make one now
+       rather than letting renderLayer throw on the callback. */
+    if(!GA.groups[key]){
+      try {
+        GA.groups[key] = GA.L.layerGroup();
+        if(L2.on) GA.groups[key].addTo(GA.map);
+      } catch(e){}
+    }
     L2.extFetch(key, cb);
     return true;
   },
