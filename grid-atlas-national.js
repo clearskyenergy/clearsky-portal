@@ -2121,6 +2121,56 @@ function registerLayers(GA){
     }
   };
 
+  /* ── LOAD & DEMAND REBUILD ──────────────────────────────────────────────
+     All three of these shipped pointing at sparse OSM tags. Repointed at the
+     authoritative sources; names updated so the rail says what is behind them. */
+  if(L.datacenters){
+    L.datacenters.name = "Data Centers";
+    L.datacenters.geom = "bubble";
+    L.datacenters.url = "__EXT__";
+    L.datacenters.extFetch = fetchDataCenters;
+    L.datacenters.label = function(a){ return a.name || "Data center"; };
+    L.datacenters.meta = function(a){
+      var b = [];
+      if(a.operator) b.push(a.operator);
+      if(a.netCount) b.push(a.netCount + " networks");
+      if(a.ixCount) b.push(a.ixCount + " IXP" + (a.ixCount > 1 ? "s" : ""));
+      if(a.diverseSubs) b.push("diverse substations");
+      if(a.voltages) b.push(a.voltages);
+      if(a.source) b.push("src: " + a.source);
+      return b.join(" \u00b7 ") || "colocation / compute";
+    };
+  }
+
+  if(L.bess){
+    L.bess.name = "Storage / BESS (EIA)";
+    L.bess.geom = "bubble";
+    L.bess.url = "__EXT__";
+    L.bess.extFetch = fetchBessEia;
+    L.bess.label = function(a){ return a.name || "Battery storage"; };
+    L.bess.meta = function(a){
+      return [a.mw ? fmtMw(a.mw) : null, a.statusLabel, a.tech, a.county]
+        .filter(Boolean).join(" \u00b7 ") || "battery storage";
+    };
+  }
+
+  if(L.ev){
+    L.ev.name = "EV Charging (NREL)";
+    L.ev.geom = "bubble";
+    L.ev.url = "__EXT__";
+    L.ev.extFetch = fetchEvAfdc;
+    L.ev.label = function(a){ return a.name || "Charging station"; };
+    L.ev.meta = function(a){
+      var b = [];
+      if(a.dcfc) b.push(a.dcfc + " DCFC");
+      if(a.level2) b.push(a.level2 + " L2");
+      if(a.connectors) b.push(a.connectors);
+      if(a.network) b.push(a.network);
+      if(a.nevi) b.push("NEVI-funded");
+      return b.join(" \u00b7 ") || "EV charging";
+    };
+  }
+
   /* Self-discovering national fiber. This is the layer that answers "show me
      the fiber grid" — it asks ArcGIS Online what agencies have published for
      wherever you are looking, instead of relying on a list I maintain. */
@@ -2793,6 +2843,8 @@ function openHealth(){
     AUDIT = { results: results, at: new Date() };
     prog.className = "";
     body.innerHTML = renderHealth(results, targets.length);
+    var cb2 = document.getElementById("gaCovBtn");
+    if(cb2) cb2.onclick = runCoverageTest;
     var csv = document.getElementById("gaRepCsv");
     csv.disabled = false;
     csv.onclick = function(){ exportAudit(AUDIT); };
@@ -2834,6 +2886,11 @@ function renderHealth(results, total){
   h += '<div class="ga-verdict" style="color:' + headline + '">' +
        (summary.length ? summary.join(" · ") : "every source responding") + '</div>';
 
+  h += '<div class="ga-note" style="margin:10px 0 6px">' +
+       '<span id="gaCovBtn" style="color:var(--amp,#ffb020);cursor:pointer;font-weight:600">' +
+       'Run layer coverage test &#8594;</span><br>' +
+       'Endpoint probes prove a URL answers. The coverage test runs every layer\'s real fetcher ' +
+       'against this map view and reports what each one actually produced.</div>';
   h += '<div class="ga-note">Each row is a live request made just now, not a cached claim. ' +
        'PASS means the endpoint answered. EMPTY means it answered with nothing — which is the ' +
        'correct answer for a California layer viewed over Nevada, and the wrong answer everywhere else.</div>';
@@ -3230,7 +3287,425 @@ function fetchItemLayer(key, cb){
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
-   27 · PUBLIC HOOKS — consumed by the grid-atlas.html patch
+   28 · DATA CENTERS — A REAL NATIONAL INVENTORY
+
+   The base layer queried OSM telecom=data_center alone, which maps a few
+   hundred US sites. That is not an inventory, it is a rounding error.
+
+   There is no free government dataset of US data centers. What exists is the
+   register the industry maintains about itself: PeeringDB. Every colo and
+   carrier hotel that wants networks to find it is in there, with coordinates,
+   how many networks are lit inside, and — uniquely — the two fields that
+   matter for siting a new one:
+
+       available_voltage_services     what the building can actually take
+       diverse_serving_substations    fed from two substations (N-1 power)
+
+   This merges PeeringDB with a broadened OSM query and dedupes by proximity,
+   so a facility present in both counts once and keeps the richer record. Every
+   marker carries its provenance, because a PeeringDB record and an OSM node
+   are not equally trustworthy and a diligence pack should say which is which.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* Two points closer than this are the same building. Colo campuses list
+   individual buildings ~100 m apart, so keep the threshold tight. */
+var DC_DEDUPE_MI = 0.09;   /* ~150 m */
+
+function fetchDataCenters(key, cb){
+  var GA = ga();
+  var b = GA.viewBbox();
+  var merged = [], pending = 2, errs = [];
+
+  function near(lat, lon){
+    for(var i = 0; i < merged.length; i++){
+      var m = merged[i];
+      if(distMi(lat, lon, m.lat, m.lon) < DC_DEDUPE_MI) return m;
+    }
+    return null;
+  }
+
+  function done(){
+    if(--pending > 0) return;
+    var out = [];
+    for(var i = 0; i < merged.length; i++){
+      var d = merged[i];
+      /* Bubble by network count where known; a 500-network carrier hotel and a
+         3-rack edge closet should not look identical. */
+      var mag = d.netCount > 0 ? d.netCount : 4;
+      out.push({
+        props: d,
+        geom: { type: "Point", coordinates: [d.lon, d.lat] },
+        bubbleMw: mag,
+        bubbleColor: d.netCount >= 100 ? "#C4A2FF" : d.netCount >= 20 ? "#A78BFA" : "#7C6BB5"
+      });
+    }
+    markLayer(key, out.length ? "ok" : "empty",
+      errs.length ? ("partial — " + errs.join("; ")) : "PeeringDB + OSM, deduped", out.length);
+    cb(out);
+  }
+
+  /* ── source 1 · PeeringDB ── */
+  pdbFacBbox(b, function(err, rows){
+    if(err){ errs.push("PeeringDB " + err.message); done(); return; }
+    for(var i = 0; i < rows.length; i++){
+      var r = rows[i];
+      var lat = num(r.latitude), lon = num(r.longitude);
+      if(lat === null || lon === null) continue;
+      merged.push({
+        name: r.name || "Data center",
+        operator: r.org_name || "",
+        netCount: num(r.net_count) || 0,
+        ixCount: num(r.ix_count) || 0,
+        carrierCount: num(r.carrier_count) || 0,
+        voltages: (r.available_voltage_services || []).join(", "),
+        diverseSubs: r.diverse_serving_substations === true,
+        address: [r.address1, r.city, r.state, r.zipcode].filter(Boolean).join(", "),
+        url: "https://www.peeringdb.com/fac/" + r.id,
+        source: "PeeringDB",
+        lat: lat, lon: lon
+      });
+    }
+    done();
+  });
+
+  /* ── source 2 · OSM, every tag actually in use ── */
+  var bbox = b.ymin + "," + b.xmin + "," + b.ymax + "," + b.xmax;
+  var q = "[out:json][timeout:25];(" +
+    'node["telecom"="data_center"](' + bbox + ');' +
+    'way["telecom"="data_center"](' + bbox + ');' +
+    'way["building"="data_center"](' + bbox + ');' +
+    'way["man_made"="data_center"](' + bbox + ');' +
+    'way["landuse"="industrial"]["name"~"[Dd]ata ?[Cc]ent",](' + bbox + ');' +
+    ");out center 400;";
+  getJson("https://overpass-api.de/api/interpreter?data=" + encodeURIComponent(q), function(err, json){
+    if(err || !json){ errs.push("OSM " + (err ? err.message : "no response")); done(); return; }
+    var els = json.elements || [];
+    for(var i = 0; i < els.length; i++){
+      var e = els[i];
+      var lat = e.lat || (e.center && e.center.lat);
+      var lon = e.lon || (e.center && e.center.lon);
+      if(lat === null || lat === undefined) continue;
+      var tg = e.tags || {};
+      var hit = near(lat, lon);
+      if(hit){
+        /* Already have it from PeeringDB — keep the richer record, note the
+           corroboration rather than dropping the second sighting silently. */
+        hit.source = hit.source + " + OSM";
+        if(!hit.operator && tg.operator) hit.operator = tg.operator;
+        continue;
+      }
+      merged.push({
+        name: tg.name || tg.operator || "Data center",
+        operator: tg.operator || tg.brand || "",
+        netCount: 0, ixCount: 0, carrierCount: 0,
+        voltages: "", diverseSubs: false,
+        address: [tg["addr:street"], tg["addr:city"], tg["addr:state"]].filter(Boolean).join(", "),
+        url: "https://www.openstreetmap.org/" + (e.type || "node") + "/" + e.id,
+        source: "OSM",
+        lat: lat, lon: lon
+      });
+    }
+    done();
+  }, 30000);
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   29 · BESS AND EV — REPLACING SPARSE OSM WITH THE AUTHORITATIVE SOURCES
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* ── Storage · EIA-860M ──────────────────────────────────────────────────
+   OSM maps a handful of US battery plants. EIA-860M has every utility-scale
+   battery in the country with nameplate MW, status, and commercial operation
+   date. For a BESS developer that is the difference between a decoration and
+   a competitive map. */
+function fetchBessEia(key, cb){
+  var GA = ga();
+  if(!eiaKey()){
+    markLayer(key, "unconfigured", "set eiaApiKey in config.js", 0);
+    GA.status("Storage layer needs eiaApiKey in config.js", false);
+    cb([]); return;
+  }
+  var b = GA.viewBbox();
+  eiaGenFetch(["OP","SB","P","U","V","T","L"], null, function(err, gens){
+    if(err){ markLayer(key, "fail", err.message, 0); cb([]); return; }
+    var out = [];
+    for(var i = 0; i < gens.length; i++){
+      var g = gens[i];
+      if(g.lat === null || g.lon === null) continue;
+      var isBatt = /batter|MWH/i.test(g.fuel || "") || /batter|storage/i.test(g.tech || "");
+      if(!isBatt) continue;
+      if(g.lon < b.xmin || g.lon > b.xmax || g.lat < b.ymin || g.lat > b.ymax) continue;
+      var operating = GEN_STATUS[g.status] && GEN_STATUS[g.status].live;
+      out.push({
+        props: {
+          name: g.plant, mw: g.mw, statusLabel: g.statusLabel,
+          tech: g.tech, state: g.state, county: g.county, operating: operating
+        },
+        geom: { type: "Point", coordinates: [g.lon, g.lat] },
+        bubbleMw: Math.max(1, g.mw || 1),
+        bubbleColor: operating ? "#6ee76e" : "#B8E986"
+      });
+    }
+    markLayer(key, out.length ? "ok" : "empty", "EIA-860M battery fleet", out.length);
+    cb(out);
+  });
+}
+
+/* ── EV charging · NREL AFDC ─────────────────────────────────────────────
+   The federal station locator. Gives DC fast-charge port counts per site and
+   flags NEVI-funded builds, neither of which OSM carries.
+
+   Domain note: developer.nrel.gov was retired 29 May 2026 in favour of
+   developer.nlr.gov. Primary is the new host, with the old one kept as a
+   fallback since it still redirects. DEMO_KEY works with a low rate limit —
+   set nrelApiKey in config.js for production use. */
+var AFDC_HOSTS = ["https://developer.nlr.gov", "https://developer.nrel.gov"];
+
+function nrelKey(){
+  var c = cfg();
+  return c.nrelApiKey || (c.apiKeys && c.apiKeys.nrel) || "DEMO_KEY";
+}
+
+function fetchEvAfdc(key, cb){
+  var GA = ga();
+  var b = GA.viewBbox();
+  var cLat = (b.ymin + b.ymax) / 2, cLon = (b.xmin + b.xmax) / 2;
+  /* Radius that covers the viewport corner, capped at the API maximum. */
+  var radius = Math.min(500, Math.max(2, distMi(cLat, cLon, b.ymax, b.xmax)));
+  var usingDemo = (nrelKey() === "DEMO_KEY");
+
+  var idx = 0;
+  function attempt(){
+    if(idx >= AFDC_HOSTS.length){
+      markLayer(key, "fail", "AFDC unreachable on both hosts", 0);
+      cb([]); return;
+    }
+    var host = AFDC_HOSTS[idx++];
+    var url = host + "/api/alt-fuel-stations/v1.json?api_key=" + encodeURIComponent(nrelKey()) +
+      "&fuel_type=ELEC&status=E&access=public&country=US" +
+      "&latitude=" + cLat.toFixed(5) + "&longitude=" + cLon.toFixed(5) +
+      "&radius=" + radius.toFixed(1) + "&limit=200";
+    getJson(url, function(err, j){
+      if(err || !j || !j.fuel_stations){ attempt(); return; }
+      var st = j.fuel_stations, out = [];
+      for(var i = 0; i < st.length; i++){
+        var s = st[i];
+        var lat = num(s.latitude), lon = num(s.longitude);
+        if(lat === null || lon === null) continue;
+        var dcfc = num(s.ev_dc_fast_num) || 0;
+        var l2 = num(s.ev_level2_evse_num) || 0;
+        var nevi = !!(s.funding_sources && String(s.funding_sources).indexOf("NEVI") >= 0);
+        out.push({
+          props: {
+            name: s.station_name || "Charging station",
+            network: s.ev_network || "",
+            dcfc: dcfc, level2: l2, nevi: nevi,
+            connectors: (s.ev_connector_types || []).join("/"),
+            address: [s.street_address, s.city, s.state].filter(Boolean).join(", "),
+            opened: s.open_date || "",
+            url: s.station_name ? ("https://afdc.energy.gov/stations#/find/nearest?id=" + s.id) : ""
+          },
+          geom: { type: "Point", coordinates: [lon, lat] },
+          /* Size by DC fast ports — an eight-stall DCFC hub is a different
+             animal from a single L2 in a parking garage. */
+          bubbleMw: dcfc > 0 ? Math.max(2, dcfc * 3) : 2,
+          bubbleColor: dcfc >= 4 ? "#4ea3ff" : dcfc > 0 ? "#3A7FCC" : "#2C5F8A"
+        });
+      }
+      markLayer(key, out.length ? "ok" : "empty",
+        "NREL AFDC" + (usingDemo ? " (DEMO_KEY — set nrelApiKey for production limits)" : ""),
+        out.length);
+      cb(out);
+    }, 25000);
+  }
+  attempt();
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   30 · LAYER COVERAGE TEST — "every component must produce a result"
+
+   The endpoint audit in section 23 proves a URL answers. That is not the same
+   as proving a LAYER works: a service can respond perfectly while the layer
+   built on it returns nothing because of a field mismatch, a bad filter, or a
+   geometry type the renderer drops.
+
+   This runs the real fetcher for every layer in the registry against the
+   current view and reports what each one actually produced. It is the full
+   path — request, parse, normalise, count — not a reachability ping.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+function runCoverageTest(){
+  var GA = ga();
+  var rep = document.getElementById("gaRep");
+  var body = document.getElementById("gaRepB");
+  var prog = document.getElementById("gaProg");
+  rep.className = "on";
+  document.getElementById("gaRepTitle").textContent = "Layer Coverage Test";
+  document.getElementById("gaRepCsv").disabled = true;
+  document.getElementById("gaRepPdf").disabled = true;
+  body.innerHTML = "";
+  prog.className = "on";
+
+  var keys = GA.ORDER.slice();
+  var results = [], i = 0;
+
+  function fetcherFor(k){
+    var L2 = GA.LAYERS[k];
+    if(!L2) return null;
+    if(L2.url === "__EXT__") return L2.extFetch;
+    if(L2.url === "__STATIC__") return GA.fetchStatic || null;
+    if(L2.url === "__EIA__") return GA.fetchEIA || null;
+    if(L2.url === "__PROXY__") return null;      /* covered by the listing probes */
+    if(L2.url === "__OSM__" || L2.url === "__OSMGEOM__") return GA.fetchOSM || null;
+    return GA.fetchArc || null;
+  }
+
+  function step(){
+    if(i >= keys.length){ finish(); return; }
+    var k = keys[i], L2 = GA.LAYERS[k];
+    if(!L2){ i++; step(); return; }
+    prog.textContent = "Testing " + (i + 1) + "/" + keys.length + " · " + L2.name;
+
+    var fn = fetcherFor(k);
+    if(!fn){
+      results.push({ key: k, name: L2.name, role: L2.role || "other",
+                     state: "skipped", count: 0,
+                     note: L2.url === "__PROXY__" ? "listing proxy — see Data Health" : "no fetcher available",
+                     ms: 0 });
+      i++; setTimeout(step, 10); return;
+    }
+
+    var t0 = new Date().getTime(), settled = false;
+    var guard = setTimeout(function(){
+      if(settled) return;
+      settled = true;
+      results.push({ key: k, name: L2.name, role: L2.role || "other",
+                     state: "timeout", count: 0, note: "no response in 35s",
+                     ms: new Date().getTime() - t0 });
+      i++; body.innerHTML = renderCoverage(results, keys.length); setTimeout(step, 10);
+    }, 35000);
+
+    try {
+      fn(k, function(feats){
+        if(settled) return;
+        settled = true;
+        clearTimeout(guard);
+        var n = (feats && feats.length) || 0;
+        var st = LAYER_STATUS[k];
+        results.push({
+          key: k, name: L2.name, role: L2.role || "other",
+          state: n > 0 ? "data" : (st && st.state === "fail" ? "fail"
+                 : st && st.state === "unconfigured" ? "nokey" : "empty"),
+          count: n,
+          note: st ? st.reason : (n > 0 ? "returned features" : "returned nothing in this view"),
+          ms: new Date().getTime() - t0
+        });
+        i++;
+        body.innerHTML = renderCoverage(results, keys.length);
+        setTimeout(step, 40);
+      });
+    } catch(e){
+      settled = true; clearTimeout(guard);
+      results.push({ key: k, name: L2.name, role: L2.role || "other",
+                     state: "error", count: 0, note: "threw: " + e.message,
+                     ms: new Date().getTime() - t0 });
+      i++; setTimeout(step, 10);
+    }
+  }
+
+  function finish(){
+    prog.className = "";
+    COVERAGE = { results: results, at: new Date(),
+                 view: GA.viewBbox(), zoom: GA.map.getZoom() };
+    body.innerHTML = renderCoverage(results, keys.length);
+    var csv = document.getElementById("gaRepCsv");
+    csv.disabled = false;
+    csv.onclick = function(){ exportCoverage(COVERAGE); };
+  }
+  step();
+}
+
+var COVERAGE = null;
+
+var COV_COLOR = { data: "#6ee76e", empty: "#7d8fa3", fail: "#ff5c3a",
+                  nokey: "#ffb020", timeout: "#ff8f3a", error: "#ff5c3a", skipped: "#4a5a6b" };
+var COV_LABEL = { data: "DATA", empty: "EMPTY", fail: "FAIL",
+                  nokey: "NO KEY", timeout: "TIMEOUT", error: "ERROR", skipped: "SKIP" };
+
+function renderCoverage(results, total){
+  var withData = 0, broken = 0, nokey = 0;
+  for(var i = 0; i < results.length; i++){
+    if(results[i].state === "data") withData++;
+    if(results[i].state === "fail" || results[i].state === "error" || results[i].state === "timeout") broken++;
+    if(results[i].state === "nokey") nokey++;
+  }
+  var col = broken ? "#ff5c3a" : nokey ? "#ffb020" : "#6ee76e";
+
+  var h = "";
+  h += '<div class="ga-hero"><span class="n" style="color:' + col + '">' + withData + '</span>' +
+       '<span class="l">of ' + results.length + " layers returned data here" +
+       (results.length < total ? " · " + (total - results.length) + " pending" : "") + '</span></div>';
+  h += '<div class="ga-bar"><span style="width:' + (results.length ? (withData / results.length) * 100 : 0) +
+       '%;background:' + col + '"></span></div>';
+  h += '<div class="ga-verdict" style="color:' + col + '">' +
+       (broken ? broken + " layer(s) failing" : nokey ? nokey + " layer(s) waiting on an API key"
+        : "no layer failed") + '</div>';
+  h += '<div class="ga-note">Every row ran its real fetcher against the current map view — request, ' +
+       'parse, normalise, count. EMPTY is often correct: a California middle-mile layer over Nevada, ' +
+       'or cable landings inland. FAIL, TIMEOUT and ERROR never are.</div>';
+
+  var groups = [
+    { k: "interconnect", n: "Grid · Interconnect" },
+    { k: "generation",   n: "Generation" },
+    { k: "connectivity", n: "Fiber · Connectivity" },
+    { k: "market",       n: "Market · Utility" },
+    { k: "land",         n: "Land · Commercial" },
+    { k: "load",         n: "Load · Demand" },
+    { k: "other",        n: "Other" }
+  ];
+  for(var g = 0; g < groups.length; g++){
+    var rows = [];
+    for(var r = 0; r < results.length; r++){
+      if((results[r].role || "other") === groups[g].k) rows.push(results[r]);
+    }
+    if(!rows.length) continue;
+    h += '<div class="ga-sec">' + esc(groups[g].n) + '</div>';
+    for(var k = 0; k < rows.length; k++){
+      var R = rows[k], c = COV_COLOR[R.state];
+      var meta = [];
+      if(R.count) meta.push(R.count.toLocaleString() + " features");
+      if(R.note) meta.push(R.note);
+      if(R.ms) meta.push(R.ms + " ms");
+      h += '<div class="ga-row"><span class="ic" style="background:' + c + '"></span>' +
+        '<div class="main"><div class="nm">' + esc(R.name) + '</div>' +
+        '<div class="meta">' + esc(meta.join(" · ")) + '</div></div>' +
+        '<div class="val" style="color:' + c + ';font-size:10px">' + COV_LABEL[R.state] + '</div></div>';
+    }
+  }
+  h += '<div class="ga-note" style="color:#4a5a6b">Tested at zoom ' +
+       (COVERAGE ? COVERAGE.zoom : ga().map.getZoom()) + ' · ' + new Date().toLocaleString() +
+       ' · build ' + BUILD + '</div>';
+  return h;
+}
+
+function exportCoverage(c){
+  var t = "";
+  t += csvRow(["ClearSky-OMEGA Grid Atlas — Layer Coverage Test"]);
+  t += csvRow(["Run", c.at.toISOString(), "Zoom", c.zoom, "Build", BUILD]);
+  t += csvRow(["View", "W " + c.view.xmin.toFixed(4), "S " + c.view.ymin.toFixed(4),
+               "E " + c.view.xmax.toFixed(4), "N " + c.view.ymax.toFixed(4)]);
+  t += csvRow([]);
+  t += csvRow(["Category","Layer","Key","Result","Features","Note","Latency (ms)"]);
+  for(var i = 0; i < c.results.length; i++){
+    var r = c.results[i];
+    t += csvRow([r.role, r.name, r.key, COV_LABEL[r.state], r.count, r.note, r.ms]);
+  }
+  download(t, "text/csv;charset=utf-8",
+    "grid-atlas-layer-coverage-" + c.at.toISOString().slice(0, 10) + ".csv");
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   31 · PUBLIC HOOKS — consumed by the grid-atlas.html patch
    ═══════════════════════════════════════════════════════════════════════════ */
 
 window.GA_EXT = {
@@ -3267,6 +3742,8 @@ window.GA_EXT = {
     hostingFor: hostingFor,
     lastReport: function(){ return LAST_REPORT; },
     runHealthAudit: openHealth,
+    runCoverageTest: runCoverageTest,
+    lastCoverage: function(){ return COVERAGE; },
     lastAudit: function(){ return AUDIT; },
     layerStatus: function(){ return LAYER_STATUS; },
     deadLayers: DEAD_LAYERS,

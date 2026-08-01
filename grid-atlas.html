@@ -434,7 +434,7 @@
 (function(){
 "use strict";
 /* Build tag — check window.GRID_ATLAS_BUILD in the console to confirm which version is live. */
-window.GRID_ATLAS_BUILD = "2026-07-31-national-v1";
+window.GRID_ATLAS_BUILD = "2026-07-31-national-v2";
 
 function fail(msg){
   var s=document.getElementById("stTxt"), b=document.getElementById("status");
@@ -2574,7 +2574,8 @@ window.GA = {
   ajax:ajax, status:status, esc:esc,
   buildRail:buildRail, loadVisible:loadVisible, renderLayer:renderLayer,
   dropPin:dropPin, openPanel:openPanel, analyze:analyze,
-  fetchArc:fetchArc, updateRailCounts:updateRailCounts,
+  fetchArc:fetchArc, fetchOSM:fetchOSM, fetchStatic:fetchStatic, fetchEIA:fetchEIA,
+  updateRailCounts:updateRailCounts,
   viewBbox:function(){
     var b=map.getBounds();
     return { xmin:b.getWest(), ymin:b.getSouth(), xmax:b.getEast(), ymax:b.getNorth() };
