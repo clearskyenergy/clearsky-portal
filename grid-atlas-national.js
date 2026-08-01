@@ -440,8 +440,12 @@ function fetchPdbFac(key, cb){
   pdbSetNote("Loading carrier facilities…");
   pdbFacBbox(b, function(err, rows){
     if(err){
-      pdbSetNote("PeeringDB unreachable (" + err.message + ") — set pdbProxy in config.js if CORS-blocked");
-      markLayer(key, "fail", err.message + " (likely CORS — set pdbProxy)", 0);
+      var why = cfg().pdbProxy
+        ? "proxy at " + cfg().pdbProxy + " failed: " + err.message
+        : err.message + " — PeeringDB does not send CORS headers. Deploy api/pdb.js and set " +
+          "window.CLEARSKY_CONFIG.pdbProxy = \"/api/pdb\" in config.js.";
+      pdbSetNote("Carrier facilities unavailable — " + why);
+      markLayer(key, "fail", why, 0);
       cb([]); return;
     }
     var out = [];
@@ -2256,14 +2260,22 @@ function registerLayers(GA){
      middle-mile layer, and duplicating it by a different key put three
      identically-named rows in the rail. Dedupe on the visible name, not the key. */
   var takenNames = {};
+  function nameKey(n){ return String(n || "").toLowerCase().replace(/[^a-z0-9]/g, ""); }
+  function claimName(n, key){
+    var nk2 = nameKey(n);
+    if(!nk2) return true;
+    if(takenNames[nk2] && takenNames[nk2] !== key) return false;
+    takenNames[nk2] = key;
+    return true;
+  }
   for(var nk in L){
-    if(L.hasOwnProperty(nk) && L[nk] && L[nk].name) takenNames[L[nk].name.toLowerCase()] = nk;
+    if(L.hasOwnProperty(nk) && L[nk] && L[nk].name) takenNames[nameKey(L[nk].name)] = nk;
   }
 
   for(var i = 0; i < STATE_FIBER.length; i++){
     (function(sf){
       if(L[sf.key]) return;
-      if(takenNames[sf.name.toLowerCase()]) return;   /* same layer under another key */
+      if(!claimName(sf.name, sf.key)) return;   /* same layer already registered under another key */
       L[sf.key] = {
         name: sf.name + (sf.verified ? "" : " ?"), color: "#00E0C6", on: false,
         geom: "line", role: "connectivity", url: sf.url,
@@ -2408,6 +2420,8 @@ function registerLayers(GA){
 
   for(var m = 0; m < ITEM_LAYERS.length; m++){
     (function(it){
+      if(L[it.key]) return;
+      if(!claimName(it.name, it.key)) return;
       L[it.key] = {
         name: it.name, color: "#3DA5FF", on: false,
         geom: "line", role: "connectivity",
@@ -4172,56 +4186,110 @@ function conduitInView(c, b){
   return !(maxLat < b.ymin || minLat > b.ymax || maxLon < b.xmin || minLon > b.xmax);
 }
 
+/* Nearest conduit to a point, for the empty-state hint. */
+function nearestConduitTo(lat, lon){
+  var best = null;
+  for(var i = 0; i < LH_CONDUITS.length; i++){
+    var c = LH_CONDUITS[i];
+    var A = LH_CITY[c.a], B = LH_CITY[c.b];
+    if(!A || !B) continue;
+    var d = Math.min(distMi(lat, lon, A[0], A[1]), distMi(lat, lon, B[0], B[1]));
+    if(!best || d < best.dist) best = { dist: d, c: c };
+  }
+  return best;
+}
+function bearingWord(lat, lon, tLat, tLon){
+  var dy = tLat - lat, dx = tLon - lon;
+  var ang = Math.atan2(dy, dx) * 180 / Math.PI;
+  var dirs = ["east","north-east","north","north-west","west","south-west","south","south-east"];
+  var idx = Math.round(((ang + 360) % 360) / 45) % 8;
+  return dirs[idx];
+}
+
+/* Routing is rate-limited so a national view does not fire 53 OSRM requests at
+   once. Cached routes resolve instantly, so this only bites on first run. */
+function routeBatch(list, concurrency, each, done){
+  var i = 0, active = 0, finished = 0;
+  function pump(){
+    while(active < concurrency && i < list.length){
+      (function(c){
+        active++;
+        routeConduit(c, function(r){
+          each(c, r);
+          active--; finished++;
+          if(finished === list.length){ done(); return; }
+          pump();
+        });
+      })(list[i++]);
+    }
+  }
+  if(!list.length){ done(); return; }
+  pump();
+}
+
 function fetchLongHaul(key, cb){
   var GA = ga();
   var b = GA.viewBbox();
+  var zoom = GA.map.getZoom();
+
+  /* A national backbone map is most useful zoomed OUT. Below zoom 7 the whole
+     published set draws, so the country-level picture is visible in one look.
+     Above that it narrows to the viewport. The previous build filtered at every
+     zoom, which meant the national view — the entire point of the layer —
+     could never be seen. */
+  var national = zoom < 7;
   var todo = [];
   for(var i = 0; i < LH_CONDUITS.length; i++){
-    if(conduitInView(LH_CONDUITS[i], b)) todo.push(LH_CONDUITS[i]);
+    if(national || conduitInView(LH_CONDUITS[i], b)) todo.push(LH_CONDUITS[i]);
   }
+
   if(!todo.length){
-    markLayer(key, "empty", "no published long-haul conduit crosses this view", 0);
+    var cLat = (b.ymin + b.ymax) / 2, cLon = (b.xmin + b.xmax) / 2;
+    var near = nearestConduitTo(cLat, cLon);
+    var hint = "no published conduit here";
+    if(near){
+      var A = LH_CITY[near.c.a];
+      hint = "nearest published conduit is " + near.c.a + " \u2194 " + near.c.b +
+             ", " + Math.round(near.dist) + " mi " + bearingWord(cLat, cLon, A[0], A[1]) +
+             " \u2014 zoom out to see the national backbone";
+    }
+    markLayer(key, "empty", hint, 0);
+    GA.status("Long-haul: " + hint, false);
     cb([]); return;
   }
 
-  var out = [], pending = todo.length, routed = 0, unrouted = 0;
-  GA.status("Routing " + todo.length + " long-haul conduits along roadway ROW…", true);
+  var out = [], routed = 0, unrouted = 0;
+  GA.status((national ? "Drawing the national long-haul backbone \u2014 " : "Routing ") +
+    todo.length + " conduits along roadway ROW…", true);
 
-  function done(){
-    if(--pending > 0) return;
+  routeBatch(todo, 6, function(c, r){
+    if(!r) return;
+    if(r.routed) routed++; else unrouted++;
+    out.push({
+      props: {
+        name: c.a + " \u2194 " + c.b,
+        isps: c.isps || null,
+        probes: c.probes || null,
+        cite: c.cite,
+        row: c.row || "roadway",
+        routed: r.routed,
+        km: r.km,
+        lhConduit: true
+      },
+      geom: { type: "LineString", coordinates: r.coords },
+      lhColor: lhColor(c),
+      lhWeight: lhWeight(c),
+      lhDashed: !r.routed
+    });
+  }, function(){
     markLayer(key, out.length ? "ok" : "empty",
       "InterTubes (SIGCOMM 2015) published subset · " + routed + " road-routed" +
-      (unrouted ? ", " + unrouted + " direct-line fallback" : ""), out.length);
-    GA.status("Long-haul backbone · " + out.length + " conduits · " + routed +
-      " routed along roadway ROW", false);
+      (unrouted ? ", " + unrouted + " direct-line fallback" : "") +
+      (national ? " · national view" : ""), out.length);
+    GA.status("Long-haul backbone · " + out.length + " conduits" +
+      (national ? " (national view)" : "") + " · " + routed + " routed along roadway ROW", false);
     cb(out);
-  }
-
-  for(var k = 0; k < todo.length; k++){
-    (function(c){
-      routeConduit(c, function(r){
-        if(!r){ done(); return; }
-        if(r.routed) routed++; else unrouted++;
-        out.push({
-          props: {
-            name: c.a + " ↔ " + c.b,
-            isps: c.isps || null,
-            probes: c.probes || null,
-            cite: c.cite,
-            row: c.row || "roadway",
-            routed: r.routed,
-            km: r.km,
-            lhConduit: true
-          },
-          geom: { type: "LineString", coordinates: r.coords },
-          lhColor: lhColor(c),
-          lhWeight: lhWeight(c),
-          lhDashed: !r.routed
-        });
-        done();
-      });
-    })(todo[k]);
-  }
+  });
 }
 
 /* Custom draw — shared-risk carries the colour and the width, and an unrouted
