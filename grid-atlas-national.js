@@ -1017,6 +1017,18 @@ function scoreFiber(d){
   s += p4; parts.push({ k: "Exchange presence", v: p4, max: 15,
     note: ix > 0 ? ix + " Internet Exchange" + (ix > 1 ? "s" : "") + " in radius" : "no IXP in radius" });
 
+  /* Long-haul proximity is scored as a bonus rather than a weighted component,
+     because the published conduit subset is partial — a site with no documented
+     conduit nearby should not be penalised for a gap in the source data. */
+  if(d.longhaul){
+    var lhMi = d.longhaul.dist;
+    var bonus = clamp(10 - lhMi * 0.35, 0, 10);
+    s += bonus;
+    parts.push({ k: "Long-haul proximity", v: bonus, max: 10,
+      note: fmtMi(lhMi) + " to " + d.longhaul.conduit.a + " \u2194 " + d.longhaul.conduit.b +
+            (d.longhaul.conduit.isps ? " (" + d.longhaul.conduit.isps + " ISPs)" : "") + " \u00b7 bonus, not weighted" });
+  }
+
   return { score: Math.round(clamp(s, 0, 100)), parts: parts };
 }
 
@@ -1270,7 +1282,7 @@ function gather(site, radiusMi, minAcres, onProgress, cb){
     land: [], comm: [],
     errors: []
   };
-  var steps = 0, totalSteps = 9;
+  var steps = 0, totalSteps = 10;
   function tick(label){
     steps++;
     if(onProgress) onProgress(steps, totalSteps, label);
@@ -1401,6 +1413,43 @@ function gather(site, radiusMi, minAcres, onProgress, cb){
         R.medianPpa = median(ppas);
         tick("land listings"); next();
       });
+    },
+    /* Long-haul carrier diversity — nearest published conduit and how many
+       providers sit in it. This is the procurement question, not a map decoration. */
+    function(next){
+      var best = null, pending = 0, finished = false;
+      var cand = [];
+      for(var i = 0; i < LH_CONDUITS.length; i++){
+        var c = LH_CONDUITS[i];
+        var A = LH_CITY[c.a], B = LH_CITY[c.b];
+        if(!A || !B) continue;
+        /* Cheap pre-filter on endpoint distance before paying for a route. */
+        var d = Math.min(distMi(lat, lon, A[0], A[1]), distMi(lat, lon, B[0], B[1]));
+        if(d < radiusMi + 400) cand.push({ c: c, seed: d });
+      }
+      cand.sort(function(x, y){ return x.seed - y.seed; });
+      cand = cand.slice(0, 12);
+      if(!cand.length){ tick("carrier diversity"); next(); return; }
+      pending = cand.length;
+      function fin(){
+        if(--pending > 0 || finished) return;
+        finished = true;
+        R.longhaul = best;
+        tick("carrier diversity"); next();
+      }
+      for(var k = 0; k < cand.length; k++){
+        (function(entry){
+          routeConduit(entry.c, function(r){
+            if(!r){ fin(); return; }
+            var feats = [{ geometry: { type: "LineString", coordinates: r.coords } }];
+            var hit = nearestLineFeature(feats, lat, lon);
+            if(hit && (!best || hit.dist < best.dist)){
+              best = { dist: hit.dist, conduit: entry.c, routed: r.routed };
+            }
+            fin();
+          });
+        })(cand[k]);
+      }
     },
     /* Commercial / industrial listings */
     function(next){
@@ -1811,6 +1860,70 @@ function renderReport(R){
     }
   }
 
+  /* ── Long-haul carrier diversity ──────────────────────────────────────
+     The question a carrier rep will not answer for you: how many providers
+     can actually reach this site, and are the "diverse" circuits they are
+     quoting you in the same trench. */
+  h += '<div class="ga-sec">Long-Haul Carrier Diversity</div>';
+  if(R.longhaul){
+    var lh = R.longhaul, lc = lh.conduit;
+    var lhCol = lc.isps >= 15 ? "#6ee76e" : lc.isps >= 4 ? "#9BE86E"
+              : lc.isps >= 2 ? "#ffb020" : lc.isps === 1 ? "#ff8f3a" : "#7d8fa3";
+    h += row(lhCol, "Nearest long-haul conduit",
+      esc(lc.a + " \u2194 " + lc.b) + (lh.routed ? "" : " \u00b7 direct-line estimate"),
+      fmtMi(lh.dist));
+    if(lc.isps){
+      h += row(lhCol, lc.isps + " provider" + (lc.isps > 1 ? "s" : "") + " share this conduit",
+        lc.isps >= 15 ? "deep carrier choice — you can run a competitive bid"
+        : lc.isps >= 4 ? "workable carrier choice"
+        : lc.isps >= 2 ? "thin — expect two real quotes at most"
+        : "single provider on this route — no competitive tension",
+        String(lc.isps));
+      if(lc.isps >= 4){
+        h += '<div class="ga-warn">Carrier count is a procurement signal, not a resilience one. ' +
+          'All ' + lc.isps + ' providers on this conduit are in the same trench. Circuits sold to you ' +
+          'as diverse may share a single backhoe risk — ask each carrier for the physical route, ' +
+          'not the logical one.</div>';
+      }
+    } else if(lc.probes){
+      h += row(lhCol, "Route traffic rank",
+        lc.probes.toLocaleString() + " traceroute probes — a high-volume corridor", "");
+    }
+    if(lc.row === "pipeline"){
+      h += '<div class="ga-note">This conduit follows a pipeline right-of-way rather than road or rail, ' +
+        'which is unusual and worth verifying before assuming a lateral is straightforward.</div>';
+    }
+    h += '<div class="ga-note">Source: Durairajan, Barford, Sommers &amp; Willinger, ' +
+      '<i>InterTubes</i>, ACM SIGCOMM 2015 \u00b7 ' + esc(lc.cite) + '. ' +
+      'Endpoints are documented; the path between them is inferred along roadway right-of-way ' +
+      'per that paper\'s own finding that long-haul conduit co-locates with roads more often than rail.</div>';
+  } else {
+    h += row("#7d8fa3", "Nearest long-haul conduit",
+      "no published conduit within reach of this site", "\u2014");
+    h += '<div class="ga-note">The published subset covers the highest-traffic and most-shared ' +
+      'conduits, not all 542 in the full map. Absence here means no <i>documented</i> conduit nearby, ' +
+      'not no fiber.</div>';
+  }
+
+  /* Carrier maps and commercial data — the right next clicks. */
+  h += '<div class="ga-sec">Carrier Route Maps</div>';
+  h += '<div class="ga-note">Carriers publish their own long-haul maps as PDFs and viewers rather ' +
+    'than APIs, so they cannot be a map layer. They are the primary source the InterTubes authors ' +
+    'used, and the right next click once a site looks promising.</div>';
+  for(var cm = 0; cm < CARRIER_MAPS.length; cm++){
+    var C2 = CARRIER_MAPS[cm];
+    h += row("#C77DFF", '<a href="' + esc(C2.u) + '" target="_blank" rel="noopener">' +
+      esc(C2.n) + ' &#8599;</a>', esc(C2.note || ""), "");
+  }
+  h += '<div class="ga-sec">Surveyed Route Data (licensed)</div>';
+  h += '<div class="ga-note">Route-level certainty everywhere is a paid product. Wire any key behind ' +
+    'a serverless proxy \u2014 never config.js, which ships to the browser.</div>';
+  for(var cf = 0; cf < COMMERCIAL_FIBER.length; cf++){
+    var F2 = COMMERCIAL_FIBER[cf];
+    h += row("#7d8fa3", '<a href="' + esc(F2.u) + '" target="_blank" rel="noopener">' +
+      esc(F2.n) + ' &#8599;</a>', esc(F2.note || ""), "");
+  }
+
   h += '<div class="ga-note">Carrier-facility data is PeeringDB, the register carriers maintain themselves. ' +
     'It shows where fiber is <i>terminated and lit</i>, which is what you can actually buy. ' +
     'It is not a route map — absence of a facility is not proof there is no fiber in the ground.</div>';
@@ -1939,6 +2052,18 @@ function exportCsv(R){
     var live = GEN_STATUS[g.status] && GEN_STATUS[g.status].live;
     if(live && !retireYear(g)) continue;
     t += csvRow([g.plant, g.statusLabel, g.fuel, g.mw, g.plannedRetire || "", g.dist.toFixed(2), g.lat, g.lon]);
+  }
+  t += csvRow([]);
+  t += csvRow(["LONG-HAUL CARRIER DIVERSITY (InterTubes, SIGCOMM 2015)"]);
+  if(R.longhaul){
+    t += csvRow(["Nearest conduit", R.longhaul.conduit.a + " <-> " + R.longhaul.conduit.b,
+                 "Distance (mi)", R.longhaul.dist.toFixed(2)]);
+    t += csvRow(["ISPs sharing", R.longhaul.conduit.isps || "not published",
+                 "Traceroute probes", R.longhaul.conduit.probes || ""]);
+    t += csvRow(["Citation", R.longhaul.conduit.cite,
+                 "Path", R.longhaul.routed ? "routed along roadway ROW" : "direct-line estimate"]);
+  } else {
+    t += csvRow(["Nearest conduit", "none within reach of the published subset"]);
   }
   t += csvRow([]);
   t += csvRow(["CARRIER FACILITIES (PeeringDB)"]);
@@ -2171,6 +2296,28 @@ function registerLayers(GA){
     };
   }
 
+  /* The real InterTubes layer. The base tool had a placeholder pointing at a
+     /data/ file that was never committed; this replaces it with the published
+     subset, routed along roads per the paper's own §3 finding. */
+  L.longhaul = {
+    name: "Long-Haul Backbone", color: "#C77DFF", on: false,
+    geom: "line", role: "connectivity",
+    url: "__EXT__", extFetch: fetchLongHaul,
+    label: function(a){ return a.name || "Long-haul conduit"; },
+    meta: function(a){
+      var b = [];
+      if(a.isps) b.push(a.isps + " ISPs sharing");
+      if(a.probes) b.push(a.probes.toLocaleString() + " probes");
+      if(a.km) b.push(Math.round(a.km) + " km");
+      if(!a.routed) b.push("direct line — not routed");
+      return b.join(" \u00b7 ") || "published long-haul conduit";
+    }
+  };
+  if(L.backbone){
+    L.backbone.unavailable = "superseded by Long-Haul Backbone";
+    L.backbone.on = false;
+  }
+
   /* Self-discovering national fiber. This is the layer that answers "show me
      the fiber grid" — it asks ArcGIS Online what agencies have published for
      wherever you are looking, instead of relying on a list I maintain. */
@@ -2214,8 +2361,8 @@ function registerLayers(GA){
     })(ITEM_LAYERS[m]);
   }
 
-  var added = ["pdb_fac", "pdb_ix", "osm_telecom", "fiber_discover", "fiber_state",
-               "fcc_hex", "eia_retire", "powerflow"];
+  var added = ["pdb_fac", "pdb_ix", "osm_telecom", "longhaul", "fiber_discover",
+               "fiber_state", "fcc_hex", "eia_retire", "powerflow"];
   for(var j = 0; j < added.length; j++){
     if(ORDER.indexOf(added[j]) < 0) ORDER.push(added[j]);
   }
@@ -2665,6 +2812,9 @@ function probeTargets(GA){
         STATE_FIBER[j].verified ? "verified" : "UNVERIFIED");
   }
 
+  t.push({ group: "Fiber", name: "OSRM road routing (long-haul paths)", kind: "osrm",
+           url: osrmBase() + "/route/v1/driving",
+           note: cfg().osrmBase ? "self-hosted" : "public demo server — set osrmBase for production" });
   t.push({ group: "Fiber", name: "ArcGIS Online fiber discovery", kind: "agol",
            url: AGOL + "/search",
            note: "self-updating registry — finds agency fiber services by map extent" });
@@ -2733,6 +2883,14 @@ function probe(target, cb){
       if(j && j.error){ done("fail", (j.error.message || "service error"), null); return; }
       var c = (j && (j.count !== undefined ? j.count : null));
       done(c === 0 ? "empty" : "ok", c === null ? "responded" : "service reachable", c);
+    }, 18000);
+    return;
+  }
+  if(target.kind === "osrm"){
+    getJson(target.url + "/-87.6298,41.8781;-87.9,42.0?overview=false", function(err, j){
+      if(err){ done("fail", err.message, null); return; }
+      done(j && j.code === "Ok" ? "ok" : "fail",
+           j && j.code === "Ok" ? "routing engine reachable" : ("OSRM code " + (j && j.code)), null);
     }, 18000);
     return;
   }
@@ -3705,7 +3863,348 @@ function exportCoverage(c){
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
-   31 · PUBLIC HOOKS — consumed by the grid-atlas.html patch
+   32 · LONG-HAUL BACKBONE — InterTubes RECONSTRUCTION
+
+   Source: Durairajan, Barford, Sommers & Willinger, "InterTubes: A Study of
+   the US Long-haul Fiber-optic Infrastructure", ACM SIGCOMM 2015.
+   DOI 10.1145/2785956.2787499
+
+   The full map — 273 nodes, 2,411 links, 542 conduits — is distributed only
+   through DHS PREDICT/IMPACT and requires an application. What the paper
+   publishes openly is the high-value subset: Tables 2 and 3 rank the top 40
+   conduits by measured traceroute volume, and the body text names the most
+   heavily-shared conduits together with how many ISPs sit in each. That subset
+   is reproduced here with citation.
+
+   THE PATHS ARE INFERRED, THE ENDPOINTS ARE NOT. Section 3 of the paper
+   quantifies that long-haul conduit co-locates with roadway infrastructure
+   more often than railway, and most often with a combination of the two. We
+   operationalise exactly that: each documented city pair is routed along the
+   real road network, which reproduces the paper's own Figure 1 geography.
+   Every segment is labelled "path inferred along roadway ROW" so nobody
+   mistakes a routed line for a surveyed one.
+
+   WHY THIS MATTERS FOR SITING, and it is not obvious:
+   The paper's central result is that 89.67% of conduits are shared by two or
+   more ISPs, 53.50% by four or more, and twelve conduits carry seventeen-plus
+   providers. For a data center that inverts into a procurement question. A
+   site near a 19-ISP conduit can run a competitive carrier bid. A site on a
+   2-ISP conduit has one real quote and one bluff — and both carriers are in
+   the same trench, so "redundant" circuits share a single backhoe risk.
+   That is the number this layer puts on the map.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* City coordinates for every endpoint referenced in the published subset. */
+var LH_CITY = {
+  "Albuquerque, NM":[35.0844,-106.6504], "Allentown, PA":[40.6084,-75.4902],
+  "Amarillo, TX":[35.2220,-101.8313],    "Anaheim, CA":[33.8366,-117.9143],
+  "Atlanta, GA":[33.7490,-84.3880],      "Bakersfield, CA":[35.3733,-119.0187],
+  "Baltimore, MD":[39.2904,-76.6122],    "Baton Rouge, LA":[30.4515,-91.1871],
+  "Battle Creek, MI":[42.3211,-85.1797], "Billings, MT":[45.7833,-108.5007],
+  "Boca Raton, FL":[26.3683,-80.1289],   "Boise, ID":[43.6150,-116.2023],
+  "Bozeman, MT":[45.6770,-111.0429],     "Bryan, TX":[30.6744,-96.3698],
+  "Camp Verde, AZ":[34.5636,-111.8543],  "Casper, WY":[42.8666,-106.3131],
+  "Charlottesville, VA":[38.0293,-78.4767], "Cheyenne, WY":[41.1400,-104.8202],
+  "Chicago, IL":[41.8781,-87.6298],      "Chico, CA":[39.7285,-121.8375],
+  "Dallas, TX":[32.7767,-96.7970],       "Denver, CO":[39.7392,-104.9903],
+  "Detroit, MI":[42.3314,-83.0458],      "Eau Claire, WI":[44.8113,-91.4985],
+  "Edison, NJ":[40.5187,-74.4121],       "El Paso, TX":[31.7619,-106.4850],
+  "Eugene, OR":[44.0521,-123.0868],      "Fort Worth, TX":[32.7555,-97.3308],
+  "Gainesville, FL":[29.6516,-82.3248],  "Hillsboro, OR":[45.5229,-122.9898],
+  "Houston, TX":[29.7604,-95.3698],      "Kalamazoo, MI":[42.2917,-85.5872],
+  "Kansas City, MO":[39.0997,-94.5786],  "Lansing, MI":[42.7325,-84.5555],
+  "Las Vegas, NV":[36.1699,-115.1398],   "Laurel, MS":[31.6948,-89.1306],
+  "Lincoln, NE":[40.8136,-96.7026],      "Livonia, MI":[42.3684,-83.3527],
+  "Lompoc, CA":[34.6391,-120.4579],      "Los Angeles, CA":[34.0522,-118.2437],
+  "Lynchburg, VA":[37.4138,-79.1422],    "Madison, WI":[43.0731,-89.4012],
+  "New Orleans, LA":[29.9511,-90.0715],  "New York, NY":[40.7128,-74.0060],
+  "Ocala, FL":[29.1872,-82.1401],        "Oklahoma City, OK":[35.4676,-97.5164],
+  "Palo Alto, CA":[37.4419,-122.1430],   "Philadelphia, PA":[39.9526,-75.1652],
+  "Phoenix, AZ":[33.4484,-112.0740],     "Portland, OR":[45.5152,-122.6784],
+  "Provo, UT":[40.2338,-111.6585],       "Sacramento, CA":[38.5816,-121.4944],
+  "Salt Lake City, UT":[40.7608,-111.8910], "San Francisco, CA":[37.7749,-122.4194],
+  "San Luis Obispo, CA":[35.2828,-120.6596], "Santa Barbara, CA":[34.4208,-119.6982],
+  "Santa Clara, CA":[37.3541,-121.9552], "Seattle, WA":[47.6062,-122.3321],
+  "Sedona, AZ":[34.8697,-111.7610],      "Shreveport, LA":[32.5252,-93.7502],
+  "South Bend, IN":[41.6764,-86.2520],   "Southfield, MI":[42.4734,-83.2219],
+  "Spokane, WA":[47.6588,-117.4260],     "Stamford, CT":[41.0534,-73.5387],
+  "Topeka, KS":[39.0473,-95.6752],       "Towson, MD":[39.4015,-76.6019],
+  "Trenton, NJ":[40.2206,-74.7597],      "Tucson, AZ":[32.2226,-110.9747],
+  "Wells, NV":[41.1116,-114.9647],       "West Palm Beach, FL":[26.7153,-80.0534],
+  "White Plains, NY":[41.0340,-73.7629], "Wichita Falls, TX":[33.9137,-98.4934],
+  "Wichita, KS":[37.6872,-97.3301]
+};
+
+/* Published conduits.
+     isps   number of providers sharing the conduit, where the paper states it
+     probes traceroute count from Table 2 or 3 — a proxy for carried traffic
+     cite   where in the paper this conduit is documented
+     row    right-of-way type when the paper identifies something other than road */
+var LH_CONDUITS = [
+  /* ── heavily-shared conduits named in §4.2 ── */
+  { a:"Phoenix, AZ",        b:"Tucson, AZ",         isps:19, cite:"§4.2 extreme sharing" },
+  { a:"Salt Lake City, UT", b:"Denver, CO",         isps:19, cite:"§4.2 extreme sharing" },
+  { a:"Philadelphia, PA",   b:"New York, NY",       isps:19, cite:"§4.2 extreme sharing" },
+  { a:"Portland, OR",       b:"Seattle, WA",        isps:31, probes:8094,
+    cite:"§4.3 — 18 in physical map, 13 more inferred from traceroute" },
+
+  /* ── conduit sharing documented in §2.4 from agency filings ── */
+  { a:"Los Angeles, CA",    b:"San Francisco, CA",  isps:5,
+    cite:"§2.4 coastal route — AT&T, Sprint, CenturyLink, Level 3, Verizon" },
+  { a:"Houston, TX",        b:"Dallas, TX",         isps:2, cite:"§2.4 CenturyLink + Verizon" },
+  { a:"Denver, CO",         b:"El Paso, TX",        isps:2, cite:"§2.4 CenturyLink + Verizon" },
+  { a:"Santa Clara, CA",    b:"Salt Lake City, UT", isps:2, cite:"§2.4 CenturyLink + Verizon" },
+  { a:"Wells, NV",          b:"Salt Lake City, UT", isps:2, cite:"§2.4 CenturyLink + Verizon" },
+  { a:"Salt Lake City, UT", b:"Sacramento, CA",     isps:2, cite:"§4.1 risk matrix example" },
+  { a:"Sacramento, CA",     b:"Palo Alto, CA",      isps:1, cite:"§4.1 risk matrix example" },
+  { a:"Ocala, FL",          b:"Gainesville, FL",    isps:3,
+    cite:"§2.4 Level 3 fibre used by Cox and Comcast" },
+
+  /* ── non-transport rights-of-way identified in §3 ── */
+  { a:"Anaheim, CA",        b:"Las Vegas, NV",      isps:1, row:"pipeline",
+    cite:"§3 — co-located with refined-products pipeline, not road or rail" },
+  { a:"Houston, TX",        b:"Atlanta, GA",        isps:1, row:"pipeline",
+    cite:"§3 — deployed along NGL pipelines" },
+
+  /* ── Table 2 · top conduits, west-origin east-bound ── */
+  { a:"Trenton, NJ",        b:"Edison, NJ",         probes:78402, cite:"Table 2" },
+  { a:"Kalamazoo, MI",      b:"Battle Creek, MI",   probes:78384, cite:"Table 2" },
+  { a:"Dallas, TX",         b:"Fort Worth, TX",     probes:56233, cite:"Table 2" },
+  { a:"Baltimore, MD",      b:"Towson, MD",         probes:46336, cite:"Table 2" },
+  { a:"Baton Rouge, LA",    b:"New Orleans, LA",    probes:46328, cite:"Table 2" },
+  { a:"Livonia, MI",        b:"Southfield, MI",     probes:46287, cite:"Table 2" },
+  { a:"Topeka, KS",         b:"Lincoln, NE",        probes:46275, cite:"Table 2" },
+  { a:"Spokane, WA",        b:"Boise, ID",          probes:44461, cite:"Table 2" },
+  { a:"Dallas, TX",         b:"Atlanta, GA",        probes:41008, cite:"Table 2" },
+  { a:"Dallas, TX",         b:"Bryan, TX",          probes:39232, cite:"Table 2" },
+  { a:"Shreveport, LA",     b:"Dallas, TX",         probes:39210, cite:"Table 2" },
+  { a:"Wichita Falls, TX",  b:"Dallas, TX",         probes:39180, cite:"Table 2 and 3" },
+  { a:"San Luis Obispo, CA",b:"Lompoc, CA",         probes:32381, cite:"Table 2" },
+  { a:"San Francisco, CA",  b:"Las Vegas, NV",      probes:22986, cite:"Table 2" },
+  { a:"Wichita, KS",        b:"Las Vegas, NV",      probes:22169, cite:"Table 2" },
+  { a:"Las Vegas, NV",      b:"Salt Lake City, UT", probes:22094, cite:"Table 2" },
+  { a:"Battle Creek, MI",   b:"Lansing, MI",        probes:15027, cite:"Table 2" },
+  { a:"South Bend, IN",     b:"Battle Creek, MI",   probes:14795, cite:"Table 2" },
+  { a:"Philadelphia, PA",   b:"Allentown, PA",      probes:12905, cite:"Table 2" },
+  { a:"Philadelphia, PA",   b:"Edison, NJ",         probes:12901, cite:"Table 2" },
+
+  /* ── Table 3 · top conduits, east-origin west-bound ── */
+  { a:"West Palm Beach, FL",b:"Boca Raton, FL",     probes:155774, cite:"Table 3" },
+  { a:"Lynchburg, VA",      b:"Charlottesville, VA",probes:155079, cite:"Table 3" },
+  { a:"Sedona, AZ",         b:"Camp Verde, AZ",     probes:54067,  cite:"Table 3" },
+  { a:"Bozeman, MT",        b:"Billings, MT",       probes:50879,  cite:"Table 3" },
+  { a:"Billings, MT",       b:"Casper, WY",         probes:50818,  cite:"Table 3" },
+  { a:"Casper, WY",         b:"Cheyenne, WY",       probes:50817,  cite:"Table 3" },
+  { a:"White Plains, NY",   b:"Stamford, CT",       probes:25784,  cite:"Table 3" },
+  { a:"Amarillo, TX",       b:"Wichita Falls, TX",  probes:16354,  cite:"Table 3" },
+  { a:"Eugene, OR",         b:"Chico, CA",          probes:12234,  cite:"Table 3" },
+  { a:"Phoenix, AZ",        b:"Dallas, TX",         probes:9725,   cite:"Table 3" },
+  { a:"Salt Lake City, UT", b:"Provo, UT",          probes:9433,   cite:"Table 3" },
+  { a:"Salt Lake City, UT", b:"Los Angeles, CA",    probes:8921,   cite:"Table 3" },
+  { a:"Dallas, TX",         b:"Oklahoma City, OK",  probes:8242,   cite:"Table 3" },
+  { a:"Eau Claire, WI",     b:"Madison, WI",        probes:7476,   cite:"Table 3" },
+  { a:"Salt Lake City, UT", b:"Cheyenne, WY",       probes:7380,   cite:"Table 3" },
+  { a:"Bakersfield, CA",    b:"Los Angeles, CA",    probes:6874,   cite:"Table 3" },
+  { a:"Seattle, WA",        b:"Hillsboro, OR",      probes:6854,   cite:"Table 3" },
+  { a:"Santa Barbara, CA",  b:"Los Angeles, CA",    probes:6641,   cite:"Table 3" },
+
+  /* ── structural features called out in §2.5 ── */
+  { a:"Kansas City, MO",    b:"Denver, CO",         isps:2, cite:"§2.5 parallel deployments" }
+];
+
+/* Shared-risk colour. This is the procurement signal: how many carriers can
+   actually quote you a circuit on this path, and how many of your "diverse"
+   circuits are really in one trench. */
+function lhColor(c){
+  var n = c.isps || 0;
+  if(n >= 15) return "#FF3D9A";   /* extreme sharing — deep carrier choice, single trench */
+  if(n >= 4)  return "#C77DFF";
+  if(n >= 2)  return "#7B9CFF";
+  if(n === 1) return "#4A7FB5";   /* single provider — no competitive bid */
+  return "#5FA8D3";               /* traffic-ranked, sharing not published */
+}
+function lhWeight(c){
+  if(c.isps) return clamp(1.6 + Math.sqrt(c.isps) * 1.1, 2, 7.5);
+  if(c.probes) return clamp(1.4 + Math.log(c.probes) / 3.2, 1.6, 5);
+  return 2;
+}
+
+/* ── Path inference · route each city pair along the real road network ─────
+   This is the paper's §3 finding turned into geometry. OSRM's public demo
+   server is fine for evaluation; set osrmBase in config.js to your own
+   instance for production. If routing fails the segment still draws as a
+   direct line and is explicitly flagged as unrouted, never silently. */
+function osrmBase(){
+  return cfg().osrmBase || "https://router.project-osrm.org";
+}
+
+var lhRouteCache = {};
+var LH_CACHE_KEY = "omega_lh_routes_v1";
+
+(function loadLhCache(){
+  try {
+    var raw = localStorage.getItem(LH_CACHE_KEY);
+    if(raw) lhRouteCache = JSON.parse(raw) || {};
+  } catch(e){ lhRouteCache = {}; }
+})();
+function saveLhCache(){
+  try { localStorage.setItem(LH_CACHE_KEY, JSON.stringify(lhRouteCache)); } catch(e){}
+}
+
+function routeConduit(c, cb){
+  var A = LH_CITY[c.a], B = LH_CITY[c.b];
+  if(!A || !B){ cb(null); return; }
+  var ck = c.a + "|" + c.b;
+  if(lhRouteCache[ck]){ cb(lhRouteCache[ck]); return; }
+
+  var url = osrmBase() + "/route/v1/driving/" +
+    A[1] + "," + A[0] + ";" + B[1] + "," + B[0] +
+    "?overview=full&geometries=geojson&alternatives=false&steps=false";
+  getJson(url, function(err, j){
+    if(err || !j || j.code !== "Ok" || !j.routes || !j.routes.length){
+      /* Straight line, flagged. A missing route must never look like a real one. */
+      var direct = { coords: [[A[1], A[0]], [B[1], B[0]]], routed: false, km: null };
+      lhRouteCache[ck] = direct; saveLhCache();
+      cb(direct); return;
+    }
+    var r = j.routes[0];
+    var out = {
+      coords: r.geometry.coordinates,
+      routed: true,
+      km: r.distance ? r.distance / 1000 : null
+    };
+    lhRouteCache[ck] = out; saveLhCache();
+    cb(out);
+  }, 25000);
+}
+
+/* Only route conduits whose extent touches the current view. */
+function conduitInView(c, b){
+  var A = LH_CITY[c.a], B = LH_CITY[c.b];
+  if(!A || !B) return false;
+  var pad = 1.5;
+  var minLat = Math.min(A[0], B[0]) - pad, maxLat = Math.max(A[0], B[0]) + pad;
+  var minLon = Math.min(A[1], B[1]) - pad, maxLon = Math.max(A[1], B[1]) + pad;
+  return !(maxLat < b.ymin || minLat > b.ymax || maxLon < b.xmin || minLon > b.xmax);
+}
+
+function fetchLongHaul(key, cb){
+  var GA = ga();
+  var b = GA.viewBbox();
+  var todo = [];
+  for(var i = 0; i < LH_CONDUITS.length; i++){
+    if(conduitInView(LH_CONDUITS[i], b)) todo.push(LH_CONDUITS[i]);
+  }
+  if(!todo.length){
+    markLayer(key, "empty", "no published long-haul conduit crosses this view", 0);
+    cb([]); return;
+  }
+
+  var out = [], pending = todo.length, routed = 0, unrouted = 0;
+  GA.status("Routing " + todo.length + " long-haul conduits along roadway ROW…", true);
+
+  function done(){
+    if(--pending > 0) return;
+    markLayer(key, out.length ? "ok" : "empty",
+      "InterTubes (SIGCOMM 2015) published subset · " + routed + " road-routed" +
+      (unrouted ? ", " + unrouted + " direct-line fallback" : ""), out.length);
+    GA.status("Long-haul backbone · " + out.length + " conduits · " + routed +
+      " routed along roadway ROW", false);
+    cb(out);
+  }
+
+  for(var k = 0; k < todo.length; k++){
+    (function(c){
+      routeConduit(c, function(r){
+        if(!r){ done(); return; }
+        if(r.routed) routed++; else unrouted++;
+        out.push({
+          props: {
+            name: c.a + " ↔ " + c.b,
+            isps: c.isps || null,
+            probes: c.probes || null,
+            cite: c.cite,
+            row: c.row || "roadway",
+            routed: r.routed,
+            km: r.km,
+            lhConduit: true
+          },
+          geom: { type: "LineString", coordinates: r.coords },
+          lhColor: lhColor(c),
+          lhWeight: lhWeight(c),
+          lhDashed: !r.routed
+        });
+        done();
+      });
+    })(todo[k]);
+  }
+}
+
+/* Custom draw — shared-risk carries the colour and the width, and an unrouted
+   segment is dashed so it can never be mistaken for a road-following path. */
+function drawLongHaul(GA, feats, group){
+  group.clearLayers();
+  var Lf = GA.L;
+  for(var i = 0; i < feats.length; i++){
+    var f = feats[i], c = f.geom.coordinates, pts = [];
+    for(var j = 0; j < c.length; j++) pts.push([c[j][1], c[j][0]]);
+    if(pts.length < 2) continue;
+    var p = f.props;
+    var bits = [];
+    if(p.isps) bits.push("<b>" + p.isps + " ISPs share this conduit</b>");
+    if(p.probes) bits.push(p.probes.toLocaleString() + " traceroute probes");
+    if(p.km) bits.push(Math.round(p.km).toLocaleString() + " km along roadway");
+    bits.push(p.routed ? "path inferred along roadway ROW"
+                       : "DIRECT LINE — routing unavailable, path not inferred");
+    if(p.row === "pipeline") bits.push("follows pipeline ROW, not road or rail");
+    bits.push("Durairajan et al., SIGCOMM 2015 · " + p.cite);
+
+    Lf.polyline(pts, {
+      color: f.lhColor, weight: f.lhWeight, opacity: 0.85,
+      dashArray: f.lhDashed ? "6,6" : null, lineCap: "round", lineJoin: "round"
+    }).bindPopup(
+      '<div class="pp-t" style="color:' + f.lhColor + '">' + esc(p.name) + '</div>' +
+      '<div class="pp-r">' + bits.join("<br>") + '</div>'
+    ).addTo(group);
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   33 · CARRIER NETWORK MAPS + COMMERCIAL FIBER DATA
+
+   Carriers publish their own long-haul maps. They are PDFs and interactive
+   viewers rather than APIs, so they cannot be a layer — but they are the
+   primary source the InterTubes authors used in step 1, and they are the
+   right next click when a site looks promising. Deep-linked from the report.
+
+   FiberLocator, GeoTel and LandGate sell surveyed route geometry. That is the
+   only way to get route-level certainty nationwide. Wire the key behind a
+   serverless proxy — never in config.js, which ships to the browser.
+   ═══════════════════════════════════════════════════════════════════════════ */
+var CARRIER_MAPS = [
+  { n:"Lumen (Level 3 / CenturyLink)", u:"https://www.lumen.com/en-us/resources/network-maps.html",
+    note:"largest US long-haul footprint; Level 3 is the paper's reference network" },
+  { n:"Zayo",       u:"https://www.zayo.com/network-map/",  note:"interactive long-haul and metro" },
+  { n:"Cogent",     u:"https://www.cogentco.com/en/network/network-map", note:"interactive" },
+  { n:"AT&T",       u:"https://www.business.att.com/products/att-network-map.html" },
+  { n:"Verizon",    u:"https://www.verizon.com/business/why-verizon/network-map/" },
+  { n:"Comcast Business", u:"https://business.comcast.com/enterprise/our-network" },
+  { n:"Crown Castle Fiber", u:"https://fiber.crowncastle.com/resources/network-map" },
+  { n:"Telecom Ramblings — US regional map index", u:"https://www.telecomramblings.com/network-maps/usa-regional/",
+    note:"curated index of carrier maps by region — the fastest way to check who is in a market" },
+  { n:"Submarine Cable Map (kmcd mirror)", u:"https://map.kmcd.dev/",
+    note:"subsea routes and landing stations" }
+];
+
+var COMMERCIAL_FIBER = [
+  { n:"FiberLocator", u:"https://www.fiberlocator.com/",
+    note:"surveyed lit-building and route data; the paper cites this class of provider as the non-free equivalent of its own method" },
+  { n:"GeoTel",       u:"https://www.geo-tel.com/",  note:"fiber route and lit-building geometry" },
+  { n:"LandGate",     u:"https://www.landgate.com/", note:"fiber plus energy and land data in one product" }
+];
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   34 · PUBLIC HOOKS — consumed by the grid-atlas.html patch
    ═══════════════════════════════════════════════════════════════════════════ */
 
 window.GA_EXT = {
@@ -3729,6 +4228,9 @@ window.GA_EXT = {
     if(key === "powerflow"){
       try { drawFlow(ga(), feats, group); } catch(e){}
     }
+    if(key === "longhaul"){
+      try { drawLongHaul(ga(), feats, group); } catch(e){}
+    }
   },
 
   /* Exposed for console debugging and for other OMEGA tools that want the
@@ -3744,6 +4246,9 @@ window.GA_EXT = {
     runHealthAudit: openHealth,
     runCoverageTest: runCoverageTest,
     lastCoverage: function(){ return COVERAGE; },
+    longHaulConduits: LH_CONDUITS,
+    carrierMaps: CARRIER_MAPS,
+    commercialFiber: COMMERCIAL_FIBER,
     lastAudit: function(){ return AUDIT; },
     layerStatus: function(){ return LAYER_STATUS; },
     deadLayers: DEAD_LAYERS,
