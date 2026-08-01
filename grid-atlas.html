@@ -434,7 +434,7 @@
 (function(){
 "use strict";
 /* Build tag — check window.GRID_ATLAS_BUILD in the console to confirm which version is live. */
-window.GRID_ATLAS_BUILD = "2026-07-15-platform-nav-clearskyomega-v6";
+window.GRID_ATLAS_BUILD = "2026-07-31-national-v1";
 
 function fail(msg){
   var s=document.getElementById("stTxt"), b=document.getElementById("status");
@@ -1161,6 +1161,11 @@ function renderLayer(key,feats){
       }
     }
   }
+  /* PATCH · national extension: lets a layer take over its own drawing when
+     the default renderer would lose meaning (power-flow direction/magnitude). */
+  if(window.GA_EXT&&window.GA_EXT.onRendered){
+    try{ window.GA_EXT.onRendered(key,feats,g); }catch(e){}
+  }
 }
 function popup(L2,a,col){
   col=col||L2.color;
@@ -1200,7 +1205,13 @@ function loadVisible(){
   status("Loading "+todo.length+" layer"+(todo.length>1?"s":"")+"…",true);
   todo.forEach(function(k){
     var isOSM=(LAYERS[k].url==="__OSM__"||LAYERS[k].url==="__OSMGEOM__");
-    var fn=LAYERS[k].url==="__STATIC__"?fetchStatic:
+    /* PATCH · national extension: layers registered with url "__EXT__" are
+       fetched by grid-atlas-national.js. Falls through to the base fetchers
+       if the extension is absent, so the tool works either way. */
+    var fn=LAYERS[k].url==="__EXT__"?function(kk,done){
+             if(window.GA_EXT&&window.GA_EXT.fetch(kk,done))return; done([]);
+           }:
+           LAYERS[k].url==="__STATIC__"?fetchStatic:
            (LAYERS[k].url==="__EIA__"?fetchEIA:
            (LAYERS[k].url==="__PROXY__"?(LAYERS[k].proxyKind==="commercial"?fetchCommercialProxy:fetchProxy):(isOSM?fetchOSM:fetchArc)));
     fn(k,function(feats){
@@ -2551,7 +2562,34 @@ map.whenReady(function(){
 });
 window.addEventListener("resize",function(){ map.invalidateSize(); });
 
+/* ═══════════════════════════════════════════════════════════════════════════
+   PATCH · NATIONAL EXTENSION INTEGRATION SURFACE
+   Publishes the handful of internals grid-atlas-national.js needs. Nothing is
+   removed or altered above this line — if the extension file is missing, the
+   tool behaves exactly as it did before.
+   ═══════════════════════════════════════════════════════════════════════════ */
+window.GA = {
+  map:map, L:L, LAYERS:LAYERS, ORDER:ORDER, CATS:CATS,
+  cache:cache, groups:groups,
+  ajax:ajax, status:status, esc:esc,
+  buildRail:buildRail, loadVisible:loadVisible, renderLayer:renderLayer,
+  dropPin:dropPin, openPanel:openPanel, analyze:analyze,
+  fetchArc:fetchArc, updateRailCounts:updateRailCounts,
+  viewBbox:function(){
+    var b=map.getBounds();
+    return { xmin:b.getWest(), ymin:b.getSouth(), xmax:b.getEast(), ymax:b.getNorth() };
+  }
+};
+if(window.GA_EXT&&window.GA_EXT.init){
+  try{ window.GA_EXT.init(window.GA); }
+  catch(e){ if(window.console) console.error("national extension init failed:",e); }
+}
+
 })();
 </script>
+<!-- PATCH · National extension: carrier-facility + stranded-capacity + power-flow
+     layers, and the address-driven Site Viability Report. Must load AFTER the
+     main script block above. Safe to remove: the base tool is unaffected. -->
+<script src="/grid-atlas-national.js"></script>
 </body>
 </html>
