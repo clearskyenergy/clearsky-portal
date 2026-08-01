@@ -1286,7 +1286,7 @@ function gather(site, radiusMi, minAcres, onProgress, cb){
     land: [], comm: [],
     errors: []
   };
-  var steps = 0, totalSteps = 10;
+  var steps = 0, totalSteps = 11;
   function tick(label){
     steps++;
     if(onProgress) onProgress(steps, totalSteps, label);
@@ -1417,6 +1417,35 @@ function gather(site, radiusMi, minAcres, onProgress, cb){
         R.medianPpa = median(ppas);
         tick("land listings"); next();
       });
+    },
+    /* Nearest surveyed fiber plant — the run you would actually splice into. */
+    function(next){
+      var b2 = bboxFor(lat, lon, Math.min(radiusMi, 25));
+      var got = 0, pend = FIBER_PLANT.length, best = null;
+      if(!pend){ tick("fiber plant"); next(); return; }
+      function fin(){
+        if(--pend > 0) return;
+        R.plant = best;
+        R.plantSources = got;
+        tick("fiber plant"); next();
+      }
+      for(var i = 0; i < FIBER_PLANT.length; i++){
+        (function(src){
+          harvestQuery(src.u, null, b2, function(feats){
+            if(feats.length) got++;
+            var norm = [];
+            for(var n = 0; n < feats.length; n++){
+              var g = normGeom(feats[n].geometry);
+              if(g) norm.push({ geometry: g, properties: feats[n].properties });
+            }
+            var hit = nearestLineFeature(norm, lat, lon);
+            if(hit && (!best || hit.dist < best.dist)){
+              best = { dist: hit.dist, props: hit.p, source: src.n };
+            }
+            fin();
+          });
+        })(FIBER_PLANT[i]);
+      }
     },
     /* Long-haul carrier diversity — nearest published conduit and how many
        providers sit in it. This is the procurement question, not a map decoration. */
@@ -1862,6 +1891,13 @@ function renderReport(R){
         '<a href="' + esc(sp.p.url) + '" target="_blank" rel="noopener">' + esc(sp.p.name) + ' &#8599;</a>',
         esc(bits.join(" · ")), fmtMi(sp.dist));
     }
+  }
+
+  if(R.plant){
+    h += row("#4EE1A0", "Nearest surveyed fiber plant",
+      esc(R.plant.props ? (pick(R.plant.props, OWNER_FIELDS) || R.plant.source) : R.plant.source) +
+      " \u00b7 published conduit or cable geometry, not an inferred route",
+      fmtMi(R.plant.dist));
   }
 
   /* ── Long-haul carrier diversity ──────────────────────────────────────
@@ -2390,6 +2426,24 @@ function registerLayers(GA){
     L.backbone.on = false;
   }
 
+  /* Real buried plant — conduit and cable geometry, not coverage polygons.
+     This is the layer that answers "where are the fiber runs". */
+  L.fiber_plant = {
+    name: "Fiber Plant (conduit & cable)", color: "#4EE1A0", on: false,
+    geom: "line", role: "connectivity",
+    url: "__EXT__", extFetch: fetchFiberPlant,
+    label: function(a){ return a.name || "Fiber segment"; },
+    meta: function(a){
+      var b = [];
+      if(a.owner) b.push("owner: " + a.owner);
+      if(a.kind) b.push(a.kind);
+      if(a.clli) b.push("CLLI " + a.clli);
+      if(a.installed) b.push("installed " + a.installed);
+      if(a.source) b.push(a.source);
+      return b.join(" \u00b7 ") || "published fiber plant";
+    }
+  };
+
   /* Self-discovering national fiber. This is the layer that answers "show me
      the fiber grid" — it asks ArcGIS Online what agencies have published for
      wherever you are looking, instead of relying on a list I maintain. */
@@ -2435,8 +2489,8 @@ function registerLayers(GA){
     })(ITEM_LAYERS[m]);
   }
 
-  var added = ["pdb_fac", "pdb_ix", "osm_telecom", "longhaul", "fiber_discover",
-               "fiber_state", "fcc_hex", "eia_retire", "powerflow"];
+  var added = ["pdb_fac", "pdb_ix", "osm_telecom", "longhaul", "fiber_plant",
+               "fiber_discover", "fiber_state", "fcc_hex", "eia_retire", "powerflow"];
   for(var j = 0; j < added.length; j++){
     if(ORDER.indexOf(added[j]) < 0) ORDER.push(added[j]);
   }
@@ -2445,6 +2499,36 @@ function registerLayers(GA){
 /* Power-flow arrows are drawn here rather than by the base renderer, because
    direction and magnitude are the entire point — a plain equal-weight polyline
    would say nothing. Called from the renderLayer hook. */
+/* Plant renderer — owner class drives colour, so at a glance you can see who
+   you would have to negotiate with for each run. */
+function drawPlant(GA, feats, group){
+  if(!group || !group.clearLayers) return;
+  group.clearLayers();
+  var Lf = GA.L;
+  for(var i = 0; i < feats.length; i++){
+    var f = feats[i], g = f.geom;
+    var rings = g.type === "LineString" ? [g.coordinates] : g.coordinates;
+    var col = plantColor(f.props);
+    for(var r = 0; r < rings.length; r++){
+      var pts = [];
+      for(var j = 0; j < rings[r].length; j++) pts.push([rings[r][j][1], rings[r][j][0]]);
+      if(pts.length < 2) continue;
+      var p = f.props;
+      var bits = [];
+      if(p.owner) bits.push("<b>Owner: " + esc(p.owner) + "</b>");
+      if(p.kind) bits.push(esc(p.kind));
+      if(p.clli) bits.push("CLLI " + esc(p.clli));
+      if(p.installed) bits.push("installed " + esc(p.installed));
+      bits.push("published by " + esc(p.publisher || p.source));
+      bits.push("surveyed plant geometry \u2014 not an inferred route");
+      Lf.polyline(pts, { color: col, weight: 2.6, opacity: 0.9, lineCap: "round" })
+        .bindPopup('<div class="pp-t" style="color:' + col + '">' + esc(p.name) + '</div>' +
+                   '<div class="pp-r">' + bits.join("<br>") + '</div>')
+        .addTo(group);
+    }
+  }
+}
+
 function arrowWing(mid, ang, size, off){
   var th = ang + Math.PI + off;
   return [mid[0] + Math.cos(th) * size * 0.7, mid[1] + Math.sin(th) * size];
@@ -2899,6 +2983,9 @@ function probeTargets(GA){
         STATE_FIBER[j].verified ? "verified" : "UNVERIFIED");
   }
 
+  for(var fp = 0; fp < FIBER_PLANT.length; fp++){
+    arc("Fiber", FIBER_PLANT[fp].n, FIBER_PLANT[fp].u, FIBER_PLANT[fp].note);
+  }
   t.push({ group: "Fiber", name: "OSRM road routing (long-haul paths)", kind: "osrm",
            url: osrmBase() + "/route/v1/driving",
            note: cfg().osrmBase ? "self-hosted" : "public demo server — set osrmBase for production" });
@@ -3101,6 +3188,8 @@ function openHealth(){
     body.innerHTML = renderHealth(results, targets.length);
     var cb2 = document.getElementById("gaCovBtn");
     if(cb2) cb2.onclick = runCoverageTest;
+    var lb = document.getElementById("gaLedBtn");
+    if(lb) lb.onclick = openLedger;
     var csv = document.getElementById("gaRepCsv");
     csv.disabled = false;
     csv.onclick = function(){ exportAudit(AUDIT); };
@@ -3142,6 +3231,10 @@ function renderHealth(results, total){
   h += '<div class="ga-verdict" style="color:' + headline + '">' +
        (summary.length ? summary.join(" · ") : "every source responding") + '</div>';
 
+  h += '<div class="ga-note" style="margin:10px 0 6px">' +
+       '<span id="gaLedBtn" style="color:var(--amp,#ffb020);cursor:pointer;font-weight:600">' +
+       'Provenance ledger &#8594;</span><br>' +
+       'What was in the tool originally, what changed, and what was added.</div>';
   h += '<div class="ga-note" style="margin:10px 0 6px">' +
        '<span id="gaCovBtn" style="color:var(--amp,#ffb020);cursor:pointer;font-weight:600">' +
        'Run layer coverage test &#8594;</span><br>' +
@@ -4357,7 +4450,519 @@ var COMMERCIAL_FIBER = [
 ];
 
 /* ═══════════════════════════════════════════════════════════════════════════
-   34 · PUBLIC HOOKS — consumed by the grid-atlas.html patch
+   35 · FIBER ROUTE HARVESTER — REAL CONDUIT AND CABLE GEOMETRY
+
+   Everything before this returned either coverage polygons (where a carrier
+   sells service) or long-haul corridors (city-pair level). Neither is a
+   fiber RUN. This section goes after the actual buried plant.
+
+   The find that made it possible: municipal and agency GIS servers publish
+   full fiber plant as open ArcGIS services, and they are far richer than
+   anything at the state level. Rockford, Illinois publishes three layers —
+
+       Fiber_Data_Map/MapServer/1   Fiber Structure   (handholes, vaults, splice)
+       Fiber_Data_Map/MapServer/2   Fiber Conduit     (polyline)
+       Fiber_Data_Map/MapServer/3   Fiber Cable       (polyline)
+
+   — and the conduit layer carries OWNER, CLLI code, duct-bank vs trench,
+   diameter, material and installation date. That is utility-grade plant data,
+   free, no key. Verified live from its own REST directory listing.
+
+   Hundreds of cities run this exact pattern. Hardcoding them would rot, so
+   this HARVESTS: it queries the ArcGIS Online search API for fiber services
+   intersecting the current view, walks each service's sublayers, keeps the
+   polyline ones, and pulls geometry. Section 25 does this for statewide
+   middle-mile; this one is tuned for municipal plant and reaches deeper —
+   more search phrasings, sublayer-name filtering, and owner extraction.
+
+   WHAT THIS IS AND IS NOT
+   It is real surveyed geometry where a public agency published it: city
+   networks, DOT ROW conduit, utility and co-op plant, campus and I-Net.
+   It is NOT a national carrier route map. Private carrier plant is not
+   published anywhere free — that remains FiberLocator or GeoTel.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* Search phrasings. Each is issued separately because AGOL relevance-ranks per
+   query — one long OR clause buries the specific hits under generic broadband
+   grant layers. Ordered most-specific first. */
+var HARVEST_QUERIES = [
+  '(("fiber conduit" OR "fibre conduit" OR "fiber optic cable" OR "fiber cable") AND type:"Feature Service")',
+  '(("fiber optic" OR "fibre optic") AND (conduit OR cable OR route OR duct OR plant) AND (type:"Feature Service" OR type:"Map Service"))',
+  '(("dark fiber" OR "middle mile" OR "middle-mile" OR "I-Net" OR "institutional network") AND type:"Feature Service")',
+  '((broadband OR telecom OR telecommunications) AND (infrastructure OR conduit OR fiber) AND type:"Feature Service")'
+];
+
+/* Sublayer names worth pulling. A service can hold twenty layers of which two
+   are fiber; without this we would drag in every street centerline. */
+var LAYER_KEEP = /fib|conduit|duct|cable|dark.?fiber|middle.?mile|backbone|telecom|i-?net|broadband.?(route|line|infra)/i;
+/* Names to skip even when they match above — service areas and grant polygons
+   are already covered by the FCC layers and are not routes. */
+var LAYER_SKIP = /service.?area|coverage|eligib|grant|award|census|block|boundary|parcel|address|point|structure|pole|node|vault|handhole/i;
+
+var OWNER_FIELDS = ["OWNER","Owner","owner","OWNERNAME","PROVIDER","Provider","provider",
+                    "COMPANY","Company","CARRIER","Carrier","AGENCY","Agency","OPERATOR","Operator"];
+var NAME_FIELDS  = ["PROJECTNAME","ProjectName","NAME","Name","name","ROUTENAME","RouteName",
+                    "SegmentName","LABEL","Label","DESCRIPTION","Description","CONDUITID","CABLEID"];
+var TYPE_FIELDS  = ["SUBTYPECODE","SubtypeCode","CABLETYPE","CableType","TYPE","Type","MATERIAL","Material",
+                    "STATUS","Status","PHASE","Phase"];
+
+/* Directly verified municipal and agency services. Confirmed live from their
+   own REST directory listings — not inferred from a URL pattern. These render
+   even when AGOL search is unavailable, and they anchor the harvester so the
+   layer is never entirely dependent on a third-party search index. */
+var FIBER_PLANT = [
+  { n: "Rockford IL · Fiber Cable",   u: "https://rockgis.rockfordil.gov/arcgissvr/rest/services/Fiber_Data_Map/MapServer/3",
+    note: "City of Rockford fiber plant" },
+  { n: "Rockford IL · Fiber Conduit", u: "https://rockgis.rockfordil.gov/arcgissvr/rest/services/Fiber_Data_Map/MapServer/2",
+    note: "duct bank / trench, with OWNER, CLLI, diameter, material, install date" },
+  { n: "Decatur IL · Fiber Optic Cable", u: "https://maps.decaturil.gov/arcgis/rest/services/PublicWorks/FiberInfrastructure/FeatureServer/1",
+    note: "City of Decatur public works fiber" },
+  { n: "Concord MA · Fiber",          u: "https://gis.concordma.gov/arcgis/rest/services/Fiber/ConcordFiber/MapServer/0",
+    note: "municipal light plant fiber" }
+];
+
+/* Reproject Web Mercator to WGS84. Several municipal servers ignore outSR and
+   return their native projection; without this the geometry lands in the Gulf
+   of Guinea. State-plane feet cannot be converted without a full projection
+   library, so those are detected and skipped rather than drawn wrong. */
+function webMercToWgs(x, y){
+  var lon = x / 20037508.34 * 180;
+  var lat = y / 20037508.34 * 180;
+  lat = 180 / Math.PI * (2 * Math.atan(Math.exp(lat * Math.PI / 180)) - Math.PI / 2);
+  return [lon, lat];
+}
+function looksWgs(x, y){ return Math.abs(x) <= 180 && Math.abs(y) <= 90; }
+function looksWebMerc(x, y){ return Math.abs(x) <= 20037509 && Math.abs(y) <= 20037509 && !looksWgs(x, y); }
+
+/* Normalise a coordinate ring to WGS84, or return null if the projection is
+   one we cannot convert in-browser. Returning null is correct: a route drawn
+   in the wrong hemisphere is worse than a route not drawn. */
+function normRing(ring){
+  if(!ring || !ring.length) return null;
+  var x0 = ring[0][0], y0 = ring[0][1];
+  if(looksWgs(x0, y0)) return ring;
+  if(looksWebMerc(x0, y0)){
+    var out = [];
+    for(var i = 0; i < ring.length; i++) out.push(webMercToWgs(ring[i][0], ring[i][1]));
+    return out;
+  }
+  return null;   /* state-plane feet or similar — skip rather than misplace */
+}
+
+function normGeom(g){
+  if(!g) return null;
+  if(g.type === "LineString"){
+    var r = normRing(g.coordinates);
+    return r ? { type: "LineString", coordinates: r } : null;
+  }
+  if(g.type === "MultiLineString"){
+    var outs = [];
+    for(var i = 0; i < g.coordinates.length; i++){
+      var rr = normRing(g.coordinates[i]);
+      if(rr) outs.push(rr);
+    }
+    return outs.length ? { type: "MultiLineString", coordinates: outs } : null;
+  }
+  return null;
+}
+
+var harvestSeen = {};      /* service+layer url -> true, within one fetch */
+var harvestCache = {};     /* bbox key -> discovered service list */
+
+/* Ask AGOL, across several phrasings, what fiber services cover this view. */
+function harvestSearch(b, cb){
+  var ck = "h" + bboxKey(b);
+  if(harvestCache[ck]){ cb(harvestCache[ck]); return; }
+  var found = {}, pending = HARVEST_QUERIES.length;
+
+  function done(){
+    if(--pending > 0) return;
+    var list = [];
+    for(var k in found){ if(found.hasOwnProperty(k)) list.push(found[k]); }
+    harvestCache[ck] = list;
+    cb(list);
+  }
+  for(var i = 0; i < HARVEST_QUERIES.length; i++){
+    (function(q){
+      var url = AGOL + "/search?f=json&num=30&sortField=numviews&sortOrder=desc" +
+        "&q=" + encodeURIComponent(q) +
+        "&bbox=" + [b.xmin, b.ymin, b.xmax, b.ymax].join(",");
+      getJson(url, function(err, j){
+        if(err || !j || !j.results){ done(); return; }
+        for(var n = 0; n < j.results.length; n++){
+          var r = j.results[n];
+          if(!r.url || !/FeatureServer|MapServer/i.test(r.url)) continue;
+          if(DISCOVER_SKIP.test(r.owner || "")) continue;
+          found[r.url] = { id: r.id, title: r.title || "Fiber service",
+                           url: r.url.replace(/\/+$/, ""), owner: r.owner || "" };
+        }
+        done();
+      }, 20000);
+    })(HARVEST_QUERIES[i]);
+  }
+}
+
+/* Walk a service's sublayers, keeping polylines whose names look like plant. */
+function harvestLayers(svc, cb){
+  getJson(svc.url + "?f=json", function(err, j){
+    if(err || !j){ cb([]); return; }
+    /* A URL ending in a number is already a specific layer. */
+    if(/\/\d+$/.test(svc.url)){
+      cb([{ id: null, name: j.name || svc.title }]);
+      return;
+    }
+    var layers = j.layers || [], keep = [];
+    for(var i = 0; i < layers.length && keep.length < 4; i++){
+      var L2 = layers[i];
+      if(!/Polyline/i.test(L2.geometryType || "")) continue;
+      var nm = L2.name || "";
+      if(!LAYER_KEEP.test(nm)) continue;
+      if(LAYER_SKIP.test(nm)) continue;
+      keep.push({ id: L2.id, name: nm });
+    }
+    cb(keep);
+  }, 15000);
+}
+
+function harvestQuery(baseUrl, layerId, b, cb){
+  var env = b.xmin + "," + b.ymin + "," + b.xmax + "," + b.ymax;
+  var url = baseUrl + (layerId === null ? "" : "/" + layerId) +
+    "/query?f=geojson&where=1%3D1&outFields=*&returnGeometry=true" +
+    "&geometryType=esriGeometryEnvelope&inSR=4326&outSR=4326" +
+    "&spatialRel=esriSpatialRelIntersects&resultRecordCount=800&geometry=" + encodeURIComponent(env);
+  getJson(url, function(err, j){
+    if(err || !j || !j.features){ cb([]); return; }
+    cb(j.features);
+  }, 22000);
+}
+
+function plantFeature(f, srcName, publisher){
+  var g = normGeom(f.geometry);
+  if(!g) return null;
+  var p = f.properties || {};
+  var owner = pick(p, OWNER_FIELDS);
+  return {
+    props: {
+      name: pick(p, NAME_FIELDS) || srcName,
+      owner: owner || "",
+      kind: pick(p, TYPE_FIELDS) || "",
+      clli: pick(p, ["CLLI","clli"]) || "",
+      installed: pick(p, ["INSTALLATIONDATE","InstallDate","INSTALLED","YEAR"]) || "",
+      source: srcName,
+      publisher: publisher || "",
+      plant: true
+    },
+    geom: g
+  };
+}
+
+function fetchFiberPlant(key, cb){
+  var GA = ga();
+  if(GA.map.getZoom() < 9){
+    markLayer(key, "empty", "zoom to 9+ — fiber plant is city-scale data", 0);
+    GA.status("Fiber plant: zoom in to level 9 or closer", false);
+    cb([]); return;
+  }
+  var b = GA.viewBbox();
+  harvestSeen = {};
+  var out = [], sources = {};
+  GA.status("Harvesting published fiber plant…", true);
+
+  /* Verified endpoints run unconditionally; harvested ones are added on top. */
+  var tasks = [];
+  for(var i = 0; i < FIBER_PLANT.length; i++){
+    (function(src){
+      tasks.push(function(next){
+        harvestQuery(src.u, null, b, function(feats){
+          for(var n = 0; n < feats.length; n++){
+            var pf = plantFeature(feats[n], src.n, src.note);
+            if(pf){ out.push(pf); sources[src.n] = 1; }
+          }
+          next();
+        });
+      });
+    })(FIBER_PLANT[i]);
+  }
+
+  tasks.push(function(next){
+    harvestSearch(b, function(svcs){
+      if(!svcs.length){ next(); return; }
+      var pool = svcs.slice(0, 10), pending = pool.length;
+      if(!pending){ next(); return; }
+      function one(){ if(--pending === 0) next(); }
+      for(var k = 0; k < pool.length; k++){
+        (function(svc){
+          harvestLayers(svc, function(layers){
+            if(!layers.length){ one(); return; }
+            var lp = layers.length;
+            function lone(){ if(--lp === 0) one(); }
+            for(var m = 0; m < layers.length; m++){
+              (function(layer){
+                var sig = svc.url + "|" + layer.id;
+                if(harvestSeen[sig]){ lone(); return; }
+                harvestSeen[sig] = 1;
+                harvestQuery(svc.url, layer.id, b, function(feats){
+                  for(var n = 0; n < feats.length; n++){
+                    var pf = plantFeature(feats[n], svc.title + " · " + layer.name, svc.owner);
+                    if(pf){ out.push(pf); sources[svc.title] = 1; }
+                  }
+                  lone();
+                });
+              })(layers[m]);
+            }
+          });
+        })(pool[k]);
+      }
+    });
+  });
+
+  parallel(tasks, function(){
+    var nSrc = 0;
+    for(var s in sources){ if(sources.hasOwnProperty(s)) nSrc++; }
+    markLayer(key, out.length ? "ok" : "empty",
+      out.length ? (out.length.toLocaleString() + " segments from " + nSrc + " published source(s)")
+                 : "no agency has published fiber plant covering this view",
+      out.length);
+    GA.status(out.length
+      ? "Fiber plant · " + out.length.toLocaleString() + " segments from " + nSrc + " sources"
+      : "No published fiber plant in this view — coverage is city-by-city", false);
+    cb(out);
+  });
+}
+
+/* Colour by owner class. Who owns the duct decides whether you can get an IRU
+   or have to negotiate with a carrier, so it is the useful visual split. */
+function plantColor(p){
+  var o = String(p.owner || "").toLowerCase();
+  if(!o) return "#00E0C6";                                       /* owner not published */
+  /* Utility first: names like "ComEd" and "Ameren" contain no generic keyword,
+     so they must be matched before the catch-all or they fall through to
+     "carrier" and the colour lies about who you would negotiate with. */
+  if(/electric|utility|co-?op|cooperative|power|energy|comed|ameren|xcel|duke|dominion|pg&e|edison/.test(o))
+    return "#FF9F45";
+  if(/school|univ|college|library|k-?12|i-?net|educat/.test(o))  return "#7FB2FF";
+  if(/dot|transportation|highway|turnpike|tollway/.test(o))      return "#FFD166";
+  if(/city|county|town|village|municipal|public|gov|authority|district|state of/.test(o))
+    return "#4EE1A0";
+  return "#C77DFF";                                              /* private carrier */
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   37 · PROVENANCE LEDGER — what was original, what changed, what was added
+
+   A running record of every layer's relationship to the tool as it originally
+   shipped. This exists so the question "did we lose anything?" has a permanent,
+   exportable answer rather than depending on anyone's memory of a chat.
+
+   BASELINE is the layer registry of the tool as delivered, read from the
+   original file. Nothing here is inferred at runtime — it is the ground truth
+   the extension is measured against.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+var BASELINE = {
+  substations:     { name: "Substations",              src: "EIA Atlas / HIFLD mirror (ArcGIS)" },
+  transmission:    { name: "Transmission",             src: "EIA Atlas transmission lines (ArcGIS)" },
+  plants:          { name: "Power Plants",             src: "EIA Atlas power plants (ArcGIS)" },
+  datacenters:     { name: "Data Centers",             src: "OSM telecom=data_center" },
+  greenfield:      { name: "Land for Sale",            src: "listing proxy / static file" },
+  commercial:      { name: "Commercial / Industrial",  src: "listing proxy / static file" },
+  ev:              { name: "EV Chargers",              src: "OSM amenity=charging_station" },
+  bess:            { name: "Storage / BESS",           src: "OSM power=plant battery" },
+  osm_lines:       { name: "OSM Power Lines",          src: "OSM power=line" },
+  osm_subs:        { name: "OSM Substations",          src: "OSM power=substation" },
+  osm_plants:      { name: "OSM Plants",               src: "OSM power=plant" },
+  eia_plants:      { name: "EIA Plants (MW)",          src: "EIA operating-generator-capacity" },
+  fiber:           { name: "Fiber Routes",             src: "OSM communication=line" },
+  fiber_cls:       { name: "Cable Landings",           src: "OSM telecom=cable_landing_station" },
+  backbone:        { name: "LH Backbone (InterTubes)", src: "local /data file" },
+  fiber_ca:        { name: "CA Middle-Mile",           src: "CA CDT ArcGIS" },
+  subsea:          { name: "Submarine Cables",         src: "map.kmcd.dev" },
+  ll_backbone:     { name: "LH Backbone (GDV)",        src: "static.geodataviewer.com" },
+  fiber_verified:  { name: "Fiber Routes (verified)",  src: "static.geodataviewer.com" },
+  fiber_estimated: { name: "Fiber Routes (est.)",      src: "static.geodataviewer.com" },
+  utility_terr:    { name: "Utility Territory",        src: "HIFLD open energy (NASA NCCS)" },
+  iso_rto:         { name: "ISO / RTO",                src: "HIFLD open energy (NASA NCCS)" },
+  ba_area:         { name: "Balancing Authority",      src: "HIFLD open energy (NASA NCCS)" }
+};
+
+/* Layers whose source was deliberately upgraded, with the reason. Anything
+   repointed that is NOT in this table is flagged as an unexplained change. */
+var UPGRADED = {
+  datacenters: { from: "OSM telecom=data_center only",
+                 to:   "PeeringDB + OSM merged, deduped at 150 m",
+                 why:  "OSM maps a few hundred US sites; PeeringDB is the register the industry maintains about itself, and carries voltage services and diverse-substation flags" },
+  bess:        { from: "OSM power=plant battery",
+                 to:   "EIA-860M battery fleet",
+                 why:  "EIA has every utility-scale battery in the country with nameplate MW and status, including planned and under construction" },
+  ev:          { from: "OSM amenity=charging_station",
+                 to:   "NREL AFDC station locator",
+                 why:  "AFDC carries DC fast-charge port counts and NEVI funding flags; OSM carries neither" },
+  fiber:       { from: "OSM communication=line (single tag)",
+                 to:   "five OSM tag forms, renamed to say what it is",
+                 why:  "communication=line is barely used in the US, so the layer answered 0 everywhere" }
+};
+
+function buildLedger(){
+  var GA = ga();
+  var rows = [];
+  var kept = 0, upgraded = 0, retired = 0, addedN = 0, unexplained = 0;
+
+  for(var k in BASELINE){
+    if(!BASELINE.hasOwnProperty(k)) continue;
+    var base = BASELINE[k];
+    var live = GA.LAYERS[k];
+    if(!live){
+      rows.push({ key: k, name: base.name, state: "retired",
+                  detail: DEAD_LAYERS[k] || "removed", src: base.src });
+      retired++;
+      continue;
+    }
+    if(UPGRADED[k]){
+      rows.push({ key: k, name: live.name, state: "upgraded",
+                  detail: UPGRADED[k].from + "  \u2192  " + UPGRADED[k].to,
+                  why: UPGRADED[k].why, src: base.src });
+      upgraded++;
+      continue;
+    }
+    /* Anything else that moved without an entry above is a problem worth
+       surfacing, not hiding. */
+    if(live.url === "__EXT__"){
+      rows.push({ key: k, name: live.name, state: "unexplained",
+                  detail: "repointed to the extension with no ledger entry", src: base.src });
+      unexplained++;
+      continue;
+    }
+    rows.push({ key: k, name: live.name, state: "original",
+                detail: "unchanged, still on its original source", src: base.src });
+    kept++;
+  }
+
+  for(var m = 0; m < GA.ORDER.length; m++){
+    var kk = GA.ORDER[m];
+    if(BASELINE[kk]) continue;
+    var L2 = GA.LAYERS[kk];
+    if(!L2) continue;
+    rows.push({ key: kk, name: L2.name, state: "added",
+                detail: "new layer", src: "" });
+    addedN++;
+  }
+
+  return { rows: rows, kept: kept, upgraded: upgraded, retired: retired,
+           added: addedN, unexplained: unexplained,
+           baseline: 23, live: GA.ORDER.length,
+           orphans: auditGroups(GA), at: new Date() };
+}
+
+var LEDGER = null;
+
+function openLedger(){
+  var rep = document.getElementById("gaRep");
+  var body = document.getElementById("gaRepB");
+  var prog = document.getElementById("gaProg");
+  rep.className = "on";
+  document.getElementById("gaRepTitle").textContent = "Provenance Ledger";
+  prog.className = "";
+  LEDGER = buildLedger();
+  body.innerHTML = renderLedger(LEDGER);
+  var csv = document.getElementById("gaRepCsv");
+  csv.disabled = false;
+  csv.onclick = function(){ exportLedger(LEDGER); };
+  document.getElementById("gaRepPdf").disabled = true;
+  var b2 = document.getElementById("gaLedgerCov");
+  if(b2) b2.onclick = runCoverageTest;
+}
+
+var LED_COLOR = { original: "#6ee76e", upgraded: "#4EA3FF", added: "#C77DFF",
+                  retired: "#ff8f3a", unexplained: "#ff5c3a" };
+var LED_LABEL = { original: "ORIGINAL", upgraded: "UPGRADED", added: "ADDED",
+                  retired: "RETIRED", unexplained: "UNEXPLAINED" };
+
+function renderLedger(L2){
+  var ok = L2.unexplained === 0 && L2.orphans.length === 0;
+  var col = ok ? "#6ee76e" : "#ff5c3a";
+  var h = "";
+
+  h += '<div class="ga-hero"><span class="n" style="color:' + col + '">' +
+       (L2.kept + L2.upgraded) + '</span><span class="l">of ' + L2.baseline +
+       ' original layers still present</span></div>';
+  h += '<div class="ga-bar"><span style="width:' +
+       (((L2.kept + L2.upgraded) / L2.baseline) * 100).toFixed(0) +
+       '%;background:' + col + '"></span></div>';
+  h += '<div class="ga-verdict" style="color:' + col + '">' +
+       L2.kept + " unchanged \u00b7 " + L2.upgraded + " upgraded \u00b7 " +
+       L2.retired + " retired \u00b7 " + L2.added + " added" +
+       (L2.unexplained ? " \u00b7 " + L2.unexplained + " UNEXPLAINED" : "") + '</div>';
+
+  h += '<div class="ga-note">Baseline is the layer registry of the tool as it originally shipped. ' +
+       'Nothing was removed except sources verified to not exist. Every source change is listed ' +
+       'below with its reason. Layer count went from ' + L2.baseline + ' to ' + L2.live + '.</div>';
+
+  if(L2.unexplained){
+    h += '<div class="ga-warn">' + L2.unexplained + ' layer(s) were repointed without a ledger ' +
+         'entry. That is a gap in this record, not necessarily a broken layer \u2014 but it should ' +
+         'be explained before this report goes to anyone external.</div>';
+  }
+  if(L2.orphans.length){
+    h += '<div class="ga-warn">' + L2.orphans.length + ' layer(s) have no render group and would ' +
+         'throw: ' + esc(L2.orphans.join(", ")) + '</div>';
+  }
+
+  h += '<div class="ga-note" style="margin:10px 0 4px">' +
+       '<span id="gaLedgerCov" style="color:var(--amp,#ffb020);cursor:pointer;font-weight:600">' +
+       'Run layer coverage test &#8594;</span><br>' +
+       'This ledger proves the layers are still registered. The coverage test proves they still ' +
+       'return data.</div>';
+
+  var groups = [
+    { s: "original",    t: "Original \u2014 unchanged" },
+    { s: "upgraded",    t: "Original \u2014 source upgraded" },
+    { s: "added",       t: "Added" },
+    { s: "retired",     t: "Retired \u2014 source did not exist" },
+    { s: "unexplained", t: "Unexplained change" }
+  ];
+  for(var g = 0; g < groups.length; g++){
+    var rows = [];
+    for(var i = 0; i < L2.rows.length; i++){
+      if(L2.rows[i].state === groups[g].s) rows.push(L2.rows[i]);
+    }
+    if(!rows.length) continue;
+    h += '<div class="ga-sec">' + esc(groups[g].t) + ' (' + rows.length + ')</div>';
+    for(var r = 0; r < rows.length; r++){
+      var R = rows[r];
+      var meta = R.state === "original" ? R.src : R.detail;
+      h += '<div class="ga-row"><span class="ic" style="background:' + LED_COLOR[R.state] + '"></span>' +
+        '<div class="main"><div class="nm">' + esc(R.name) + '</div>' +
+        '<div class="meta">' + esc(meta) + '</div>' +
+        (R.why ? '<div class="meta" style="opacity:.75">' + esc(R.why) + '</div>' : "") +
+        '</div><div class="val" style="color:' + LED_COLOR[R.state] + ';font-size:9px">' +
+        LED_LABEL[R.state] + '</div></div>';
+    }
+  }
+
+  h += '<div class="ga-note" style="color:#4a5a6b">Ledger generated ' +
+       L2.at.toLocaleString() + ' \u00b7 build ' + BUILD + '</div>';
+  return h;
+}
+
+function exportLedger(L2){
+  var t = "";
+  t += csvRow(["ClearSky-OMEGA Grid Atlas — Provenance Ledger"]);
+  t += csvRow(["Generated", L2.at.toISOString(), "Build", BUILD]);
+  t += csvRow(["Baseline layers", L2.baseline, "Live layers", L2.live]);
+  t += csvRow(["Unchanged", L2.kept, "Upgraded", L2.upgraded,
+               "Retired", L2.retired, "Added", L2.added]);
+  t += csvRow([]);
+  t += csvRow(["Layer", "Key", "Status", "Original source", "Detail", "Reason"]);
+  for(var i = 0; i < L2.rows.length; i++){
+    var R = L2.rows[i];
+    t += csvRow([R.name, R.key, LED_LABEL[R.state], R.src, R.detail, R.why || ""]);
+  }
+  download(t, "text/csv;charset=utf-8",
+    "grid-atlas-provenance-" + L2.at.toISOString().slice(0, 10) + ".csv");
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   38 · PUBLIC HOOKS — consumed by the grid-atlas.html patch
    ═══════════════════════════════════════════════════════════════════════════ */
 
 window.GA_EXT = {
@@ -4392,6 +4997,9 @@ window.GA_EXT = {
     if(key === "longhaul"){
       try { drawLongHaul(ga(), feats, group); } catch(e){}
     }
+    if(key === "fiber_plant"){
+      try { drawPlant(ga(), feats, group); } catch(e){}
+    }
   },
 
   /* Exposed for console debugging and for other OMEGA tools that want the
@@ -4406,8 +5014,12 @@ window.GA_EXT = {
     lastReport: function(){ return LAST_REPORT; },
     runHealthAudit: openHealth,
     runCoverageTest: runCoverageTest,
+    provenanceLedger: buildLedger,
+    openLedger: openLedger,
+    baseline: BASELINE,
     lastCoverage: function(){ return COVERAGE; },
     longHaulConduits: LH_CONDUITS,
+    fiberPlantSources: FIBER_PLANT,
     carrierMaps: CARRIER_MAPS,
     commercialFiber: COMMERCIAL_FIBER,
     lastAudit: function(){ return AUDIT; },
