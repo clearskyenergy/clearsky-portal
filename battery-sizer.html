@@ -1080,8 +1080,8 @@ var AI_STATE = { ready: null, why: null };   /* ready: null unknown, true, false
 /* ---- Firebase, loaded only if bill reading is actually used ---------- */
 function aiAuthToken(cb){
   if(window.firebase && firebase.apps && firebase.apps.length){ _tok(cb); return; }
-  _loadFb(function(ok){
-    if(!ok){ cb(null, 'Firebase did not load, so the tool cannot prove who you are.'); return; }
+  _loadFb(function(ok, why){
+    if(!ok){ cb(null, why || 'Firebase did not load, so the tool cannot prove who you are.'); return; }
     _tok(cb);
   });
 }
@@ -1089,34 +1089,57 @@ function _tok(cb){
   try{
     var u = firebase.auth().currentUser;
     if(!u){
-      /* auth may still be resolving a cached credential on first paint */
-      var off = firebase.auth().onAuthStateChanged(function(user){
-        off();
-        if(!user){ cb(null, 'Sign in on the portal first \u2014 bill reading uses your account.'); return; }
+      /* Auth may still be resolving a cached credential on first paint, so we
+         wait for the first state change. It can also fire SYNCHRONOUSLY when
+         state is already known, before the unsubscribe handle exists - calling
+         off() blind in that case throws, and the throw was being swallowed as
+         a generic session error, hiding the real "please sign in". */
+      var off = null, fired = false;
+      var onState = function(user){
+        if(fired) return;
+        fired = true;
+        if(off){ try{ off(); }catch(e){} }
+        if(!user){ cb(null, '__SIGNIN__'); return; }
         user.getIdToken().then(function(t){ cb(t, null); }, function(){ cb(null, 'Could not read your session.'); });
-      });
+      };
+      off = firebase.auth().onAuthStateChanged(onState);
+      if(fired && off){ try{ off(); }catch(e){} }
       return;
     }
     u.getIdToken().then(function(t){ cb(t, null); }, function(){ cb(null, 'Could not read your session.'); });
   }catch(e){ cb(null, 'Could not read your session.'); }
 }
+/* The public web config. It ships to every browser anyway, and every OMEGA
+   surface points at the same project, so carrying a copy here means the tool
+   does not break just because /firebase-config.js is absent on the tool host.
+   A file at that path still wins if one exists. */
+var FB_FALLBACK = {
+  apiKey:            'AIzaSyABoM1lgOYUnd5ZadaoTMhYmA9cHa8Tyo0',
+  authDomain:        'clearsky-portal.firebaseapp.com',
+  projectId:         'clearsky-portal',
+  storageBucket:     'clearsky-portal.firebasestorage.app',
+  messagingSenderId: '742134484347',
+  appId:             '1:742134484347:web:ab0f95fd221536158481de'
+};
+
 function _loadFb(cb){
   if(window.__fbLoading){ window.__fbLoading.push(cb); return; }
   window.__fbLoading = [cb];
-  function done(ok){
+  function done(ok, why){
     var q = window.__fbLoading; window.__fbLoading = null;
-    for(var i=0;i<q.length;i++) q[i](ok);
+    for(var i=0;i<q.length;i++) q[i](ok, why);
   }
   _script('https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js', function(ok){
-    if(!ok) return done(false);
+    if(!ok) return done(false, 'The Firebase library was blocked \u2014 check for a Content-Security-Policy on this host that excludes www.gstatic.com.');
     _script('https://www.gstatic.com/firebasejs/8.10.1/firebase-auth.js', function(ok2){
-      if(!ok2) return done(false);
+      if(!ok2) return done(false, 'The Firebase auth library was blocked by this host.');
       _script('/firebase-config.js', function(){
         try{
-          if(!window.CLEARSKY_CONFIG){ done(false); return; }
-          if(!firebase.apps.length) firebase.initializeApp(window.CLEARSKY_CONFIG);
-          done(true);
-        }catch(e){ done(false); }
+          var cfg = window.CLEARSKY_CONFIG || FB_FALLBACK;
+          if(!cfg || !cfg.apiKey) return done(false, 'No Firebase configuration was found.');
+          if(!firebase.apps.length) firebase.initializeApp(cfg);
+          done(true, null);
+        }catch(e){ done(false, 'Firebase would not start: ' + (e && e.message ? e.message : 'unknown error') + '.'); }
       });
     });
   });
@@ -1225,6 +1248,24 @@ function aiEnabled(){
   var el = $('aiToggle');
   return !!(el && el.checked);
 }
+/* Auth is per-origin. Signing in on the tenant portal does not sign you in
+   here, so the tool has to offer its own way in rather than send the person
+   away to a page that will not help. */
+function aiSignIn(){
+  aiSetStatus('Opening sign-in\u2026');
+  try{
+    var p = new firebase.auth.GoogleAuthProvider();
+    firebase.auth().signInWithPopup(p).then(function(){
+      aiSetStatus('Signed in. Drop the bills again.', 'ok');
+    }, function(e){
+      aiSetStatus('Sign-in failed: ' + esc((e && e.message) || 'unknown error') +
+        ' If your organisation does not use Google, open another OMEGA tool on this host, sign in there, then come back.', 'bad');
+    });
+  }catch(e){
+    aiSetStatus('Sign-in is unavailable on this host.', 'bad');
+  }
+}
+
 function aiSetStatus(msg, kind){
   var el = $('aiStatus');
   if(!el) return;
@@ -1556,9 +1597,15 @@ function pdfHandleFiles(files){
       aiExtract(aiDocs, function(resp, why){
         if(!resp){
           AI_STATE.ready = false; AI_STATE.why = why;
-          aiSetStatus('<b>AI reading is unavailable.</b> ' + esc(why) +
-            (all.length ? ' Falling back to pattern matching for the bills that had a text layer.'
-                        : ' Nothing could be read \u2014 type the numbers in below.'), 'bad');
+          if(why === '__SIGNIN__'){
+            aiSetStatus('<b>Sign in to read bills with AI.</b> Your session lives on this host, '
+              + esc(location.hostname) + ', separately from the portal you came from.'
+              + '<br><button class="btn btn-pri btn-sm" style="margin-top:8px" onclick="aiSignIn()">Sign in</button>', 'bad');
+          } else {
+            aiSetStatus('<b>AI reading is unavailable.</b> ' + esc(why) +
+              (all.length ? ' Falling back to pattern matching for the bills that had a text layer.'
+                          : ' Nothing could be read \u2014 type the numbers in below.'), 'bad');
+          }
           apply(all, errs);
           return;
         }
