@@ -30,7 +30,10 @@ var admin = null;
 try { admin = require('firebase-admin'); } catch (e) { /* optional */ }
 
 var DEFAULT_MODEL = process.env.OMEGA_AI_MODEL || 'claude-sonnet-5';
-var MAX_IMAGES = 8;          // a bill is rarely more than a few pages
+/* A multi-meter site is one statement per meter in one file, so a bundle of
+   ten to sixteen pages is normal, not an outlier. Too low a cap drops meters
+   silently, which is worse than a slower call. */
+var MAX_IMAGES = 16;
 var MAX_CHARS = 60000;       // per document, keeps one runaway file from blowing the request
 
 function initAdmin() {
