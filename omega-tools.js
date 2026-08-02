@@ -123,6 +123,11 @@
       file:'/datacenter-compute-calculator.html', badge:'new', tier:TIER.ALL,
       icon:'M4 4h16v6H4zM4 14h16v6H4zM8 7h.01M8 17h.01M12 7h4M12 17h4' },
 
+    { key:'batterysizer', name:'Battery Sizer', category:'finance',
+      desc:'Size a BESS from utility bills, bill PDFs or an 8760 \u2014 peak-shave dispatch, demand savings, payback & NPV.',
+      file:'/battery-sizer.html', badge:'new', tier:TIER.STANDARD,
+      icon:'M2 9a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v6a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2zM22 11v2M11 9l-2 3.5h2.5L10 16' },
+
     { key:'investment', name:'Site Investment Analysis', category:'finance',
       desc:'Investor-grade returns, risk & portfolio underwriting.',
       file:'/investment-analysis.html', badge:'invest', tier:TIER.ENTERPRISE, savesData:true,
@@ -340,6 +345,17 @@
       if (workspace && workspace.orgId) {
         base += (base.indexOf('?') >= 0 ? '&' : '?') + 'org=' +
                 encodeURIComponent(workspace.orgId);
+      }
+
+      // Tools on TOOL_HOST are a different origin from the portal, so they
+      // cannot work out where the person came from once the referrer is gone
+      // (a refresh, or rel="noreferrer"). Hand them the way back explicitly.
+      // Tools that don't use it simply ignore the param.
+      if (host && typeof window !== 'undefined' && window.location && window.location.host) {
+        var back = window.location.protocol + '//' + window.location.host +
+                   (window.location.pathname || '/');
+        base += (base.indexOf('?') >= 0 ? '&' : '?') + 'return=' +
+                encodeURIComponent(back);
       }
       return base;
     },
