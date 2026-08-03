@@ -233,12 +233,18 @@
     draft:             { label: 'Draft',             stage: 0, tone: 'muted',  blurb: 'Not submitted yet.' },
     saved:             { label: 'Saved (self-serve)', stage: 0, tone: 'muted',  blurb: 'Kept as your own record. Not sent to Omega.' },
     submitted:         { label: 'Submitted',         stage: 1, tone: 'info',   blurb: 'Received. Waiting to be picked up.' },
-    in_review:         { label: 'In review',         stage: 2, tone: 'info',   blurb: 'Omega is reviewing your inputs.' },
+    in_review:         { label: 'In review',         stage: 2, tone: 'info',   blurb: 'Reviewing your inputs to price the work.' },
+    quoted:            { label: 'Quote sent',        stage: 2, tone: 'warn',   blurb: 'A fee quote is waiting for your approval.' },
+    declined:          { label: 'Quote declined',    stage: 2, tone: 'muted',  blurb: 'You declined the quote. The record is still yours.' },
+    accepted:          { label: 'Accepted',          stage: 3, tone: 'good',   blurb: 'Quote accepted. Work is scheduled.' },
     changes_requested: { label: 'Needs your input',  stage: 2, tone: 'warn',   blurb: 'Omega needs something from you to continue.' },
     in_production:     { label: 'In production',     stage: 3, tone: 'info',   blurb: 'Drawings and packages are being produced.' },
     delivered:         { label: 'Delivered',         stage: 4, tone: 'good',   blurb: 'Complete. Files are attached below.' }
   };
-  var PIPELINE = ['Draft', 'Submitted', 'In review', 'In production', 'Delivered'];
+  var PIPELINE = ['Draft', 'Submitted', 'Quoted', 'In production', 'Delivered'];
+  // Statuses a client may set on their own. Mirrors clientStatus() in
+  // firestore.rules — keep the two lists in step.
+  var CLIENT_STATUS = ['draft', 'saved', 'submitted', 'accepted', 'declined'];
 
   /* ----------------------------------------------------------------- utils */
   function uid(prefix) {
@@ -285,9 +291,27 @@
       updatedAt: nowIso(),
       submittedAt: null,
       completedAt: null,
-      routing: 'omega',            // 'omega' = do it for me | 'self' = record only
+      /* purpose is the fork the whole tool turns on:
+           'build'   — intake the documents and photos, open a project, do the
+                       work themselves in the editor. No fee, never quoted.
+           'service' — the same intake, but ClearSky produces the deliverables
+                       for a fee. Quoted, accepted, then worked.
+         routing is kept as the storage-level mirror ('self' / 'omega') so
+         records written before the fork existed still read correctly. */
+      purpose: 'build',
+      routing: 'self',
       status: 'draft',
+      /* The tenant's own project in /projects — the same collection the editor
+         and the portal project list read. Path 1 creates one from this intake;
+         path 2 links to an existing one so the delivered files land against
+         the project the customer already has open. */
       editorProjectId: '',
+      editorProjectName: '',
+      /* Priced by ClearSky, never by the client. Pinned in the rules. */
+      quote: { lines: [], subtotal: null, discount: 0, total: null,
+               currency: 'USD', note: '', sentAt: null, sentBy: '', expiresAt: null },
+      /* Written by the client when they accept or decline. */
+      acceptance: { state: '', by: '', at: null, poNumber: '', note: '' },
       customer: {
         company: '', contactName: '', email: '', phone: '', role: '',
         street: '', city: '', state: '', zip: '', notes: ''
@@ -337,7 +361,7 @@
     if (!rec.project.name) missing.push('Project name');
     if (!rec.project.city || !rec.project.state) missing.push('Site city and state');
     if (!activeScopes(rec).length) missing.push('At least one technology scope');
-    if (rec.routing === 'omega' && !requestedDeliverables(rec).length) {
+    if (rec.purpose === 'service' && !requestedDeliverables(rec).length) {
       missing.push('At least one requested deliverable');
     }
     return { ok: missing.length === 0, missing: missing };
@@ -460,6 +484,7 @@
   function submit(rec, actor) {
     var v = validate(rec);
     if (!v.ok) return Promise.reject(new Error('Missing: ' + v.missing.join(', ')));
+    rec.purpose = 'service';
     rec.routing = 'omega';
     rec.status = 'submitted';
     rec.submittedAt = nowIso();
@@ -469,6 +494,7 @@
   }
 
   function saveSelfServe(rec, actor) {
+    rec.purpose = 'build';
     rec.routing = 'self';
     if (rec.status === 'draft') rec.status = 'saved';
     logActivity(rec, 'save', 'Saved as a self-serve record.', actor || rec.createdBy.email);
@@ -556,6 +582,177 @@
     return true;
   }
 
+  /* ---------------------------------------------------- projects (path 1) */
+  /* The tenant's projects live in /projects — the collection the editor, the
+     portal project list and the org rules already share. Intake reads and
+     writes that collection directly rather than keeping a parallel copy, so a
+     project created here is the same project they open in the editor.
+
+     projectSeed() is the ONE place the field names live. They are inferred
+     from the rules (orgId, uid) plus the portal's project cards; if editor.html
+     saves under different keys, correct them here and nowhere else. */
+  function projectSeed(rec, user) {
+    var p = rec.project || {};
+    return {
+      orgId: orgId(),
+      uid: (user && user.uid) || null,
+      name: p.name || 'Untitled project',
+      address: [p.street, p.city, p.state, p.zip].filter(Boolean).join(', '),
+      city: p.city || '', state: p.state || '', zip: p.zip || '',
+      lat: p.lat === '' ? null : Number(p.lat),
+      lng: p.lng === '' ? null : Number(p.lng),
+      apn: p.apn || '',
+      utility: p.utility || '',
+      ahj: p.ahj || '',
+      stage: p.stage || '',
+      scopes: activeScopes(rec).map(function (x) { return x.key; }),
+      source: 'intake',
+      intakeId: rec.intakeId,
+      createdBy: (user && user.email) || '',
+      createdAt: nowIso(),
+      updatedAt: nowIso()
+    };
+  }
+
+  function listProjects(db) {
+    if (!db) return Promise.resolve([]);
+    return db.collection('projects').where('orgId', '==', orgId()).get()
+      .then(function (snap) {
+        var out = [];
+        snap.forEach(function (d) {
+          var v = d.data() || {};
+          out.push({ id: d.id, name: v.name || v.title || d.id });
+        });
+        out.sort(function (a, b) { return String(a.name).localeCompare(String(b.name)); });
+        return out;
+      })['catch'](function () { return []; });
+  }
+
+  /* Create the project, then point the intake at it. Both directions are
+     written: the project carries intakeId, the intake carries the project id,
+     so neither side is orphaned if someone opens the other first. */
+  function createProject(db, rec, user) {
+    if (!db) return Promise.reject(new Error('No Firestore on this page.'));
+    var seed = projectSeed(rec, user);
+    var ref = db.collection('projects').doc();
+    return ref.set(seed).then(function () {
+      rec.editorProjectId = ref.id;
+      rec.editorProjectName = seed.name;
+      logActivity(rec, 'project', 'Opened project "' + seed.name + '" from this intake.',
+        (user && user.email) || '');
+      return store().save(rec).then(function () { return ref.id; });
+    });
+  }
+
+  function attachProject(rec, projectId, projectName, actor) {
+    rec.editorProjectId = projectId || '';
+    rec.editorProjectName = projectName || '';
+    if (projectId) logActivity(rec, 'project', 'Linked to project "' + (projectName || projectId) + '".', actor);
+    return rec;
+  }
+
+  /* ------------------------------------------------------- quoting (path 2) */
+  /* NO DEFAULT PRICES SHIP IN THIS FILE, deliberately. A fabricated number in
+     a customer-facing quote is worse than a blank one — the client either pays
+     a made-up figure or catches it and stops trusting the tool. A rate card is
+     read from omega_orgs/{orgId}.priceBook when one exists; where it does not,
+     the client sees "Quoted after review" and a person prices it. */
+  function priceBook() {
+    var b = brand();
+    return (b && b.priceBook) || {};
+  }
+  function listPrice(key) {
+    var v = priceBook()[key];
+    return (typeof v === 'number' && isFinite(v)) ? v : null;
+  }
+  /* Estimate shown to the client BEFORE a quote exists. Returns null when any
+     requested deliverable has no rate — a partial total reads as the whole
+     price, which is the misleading half of showing a number at all. */
+  function estimate(rec) {
+    var req = requestedDeliverables(rec);
+    if (!req.length) return null;
+    var sum = 0;
+    for (var i = 0; i < req.length; i++) {
+      var p = listPrice(req[i].key);
+      if (p === null) return null;
+      sum += p;
+    }
+    return sum;
+  }
+  function quoteTotal(rec) {
+    var q = rec.quote || {};
+    return (typeof q.total === 'number') ? q.total : null;
+  }
+  function money(n, cur) {
+    if (typeof n !== 'number' || !isFinite(n)) return '—';
+    try {
+      return n.toLocaleString(undefined, { style: 'currency', currency: cur || 'USD',
+        maximumFractionDigits: 0 });
+    } catch (e) { return (cur || 'USD') + ' ' + Math.round(n); }
+  }
+
+  /* Build the quote from the requested deliverables so a line can never be
+     billed for work that was not asked for. */
+  function draftQuoteLines(rec) {
+    return requestedDeliverables(rec).map(function (d) {
+      var existing = ((rec.quote && rec.quote.lines) || []).filter(function (l) {
+        return l.key === d.key;
+      })[0];
+      return {
+        key: d.key,
+        label: d.label,
+        amount: existing ? existing.amount : listPrice(d.key),
+        note: existing ? existing.note : ''
+      };
+    });
+  }
+  function recalcQuote(rec) {
+    var q = rec.quote = rec.quote || {};
+    var sum = 0, complete = true;
+    (q.lines || []).forEach(function (l) {
+      if (typeof l.amount === 'number' && isFinite(l.amount)) sum += l.amount;
+      else complete = false;
+    });
+    q.subtotal = complete ? sum : null;
+    q.total = complete ? Math.max(0, sum - (Number(q.discount) || 0)) : null;
+    return q;
+  }
+  function sendQuote(rec, actor) {
+    recalcQuote(rec);
+    if (rec.quote.total === null) {
+      return Promise.reject(new Error('Every line needs an amount before the quote goes out.'));
+    }
+    rec.quote.sentAt = nowIso();
+    rec.quote.sentBy = actor || '';
+    rec.status = 'quoted';
+    rec.acceptance = { state: '', by: '', at: null, poNumber: '', note: '' };
+    logActivity(rec, 'quote', 'Quote sent: ' +
+      money(rec.quote.total, rec.quote.currency) + ' for ' +
+      (rec.quote.lines || []).length + ' deliverable(s).', actor);
+    return store().save(rec);
+  }
+  function acceptQuote(rec, actor, poNumber) {
+    if (rec.status !== 'quoted') {
+      return Promise.reject(new Error('There is no open quote to accept.'));
+    }
+    rec.acceptance = { state: 'accepted', by: actor || '', at: nowIso(),
+                       poNumber: poNumber || '', note: '' };
+    rec.status = 'accepted';
+    logActivity(rec, 'quote', 'Quote accepted' +
+      (poNumber ? ' (PO ' + poNumber + ')' : '') + '.', actor);
+    return store().save(rec);
+  }
+  function declineQuote(rec, actor, why) {
+    if (rec.status !== 'quoted') {
+      return Promise.reject(new Error('There is no open quote to decline.'));
+    }
+    rec.acceptance = { state: 'declined', by: actor || '', at: nowIso(),
+                       poNumber: '', note: why || '' };
+    rec.status = 'declined';
+    logActivity(rec, 'quote', 'Quote declined' + (why ? ': ' + why : '') + '.', actor);
+    return store().save(rec);
+  }
+
   /* --------------------------------------------------------------- exports */
   global.OmegaIntake = {
     COLLECTION: COLLECTION,
@@ -580,6 +777,13 @@
     addLink: addLink, updateLink: updateLink, removeLink: removeLink,
     addCategory: addCategory, linkProvider: linkProvider, normalizeUrl: normalizeUrl,
 
+    projectSeed: projectSeed, listProjects: listProjects,
+    createProject: createProject, attachProject: attachProject,
+    priceBook: priceBook, listPrice: listPrice, estimate: estimate,
+    quoteTotal: quoteTotal, money: money, draftQuoteLines: draftQuoteLines,
+    recalcQuote: recalcQuote, sendQuote: sendQuote,
+    acceptQuote: acceptQuote, declineQuote: declineQuote,
+    CLIENT_STATUS: CLIENT_STATUS,
     store: store, setBackend: setBackend,
     uid: uid, nowIso: nowIso, clone: clone
   };
