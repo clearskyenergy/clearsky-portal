@@ -651,6 +651,111 @@
     return rec;
   }
 
+  /* ══════════════════════════════════════════════════════════════════
+     OMEGA STAFF ROLES
+
+     isAdmin() in the rules is domain-only. That covers ClearSky's own people
+     but cannot express "this person is a rep" — and a rep on any other domain
+     could not read the queue at all. omega_staff/{uid} fixes that, on the same
+     shape as fin_profiles: a person self-creates a PENDING doc on first sign
+     in, an administrator promotes it. Nobody grants themselves a role.
+     ══════════════════════════════════════════════════════════════════ */
+  var STAFF_ROLES = [
+    { key: 'none',  label: 'Pending',    blurb: 'Signed in, no access yet.' },
+    { key: 'rep',   label: 'Omega Rep',  blurb: 'Works submitted jobs, posts progress, opens them in the editor. Cannot price.' },
+    { key: 'admin', label: 'Administrator', blurb: 'Everything a rep can do, plus assigning roles and pricing work.' }
+  ];
+  function roleLabel(k) {
+    for (var i = 0; i < STAFF_ROLES.length; i++) if (STAFF_ROLES[i].key === k) return STAFF_ROLES[i].label;
+    return k || 'Pending';
+  }
+
+  var _me = null;
+  function myStaff() { return _me; }
+
+  /* Reads the caller's own staff doc, creating a pending one if this is their
+     first visit. That is what makes a new person show up in the admin list
+     without anyone having to add them by hand first. */
+  function loadMyStaff(db, user) {
+    if (!db || !user || !user.uid) { _me = null; return Promise.resolve(null); }
+    var ref = db.collection('omega_staff').doc(user.uid);
+    return ref.get().then(function (snap) {
+      if (snap.exists) { _me = snap.data(); return _me; }
+      var seed = {
+        uid: user.uid,
+        email: (user.email || '').toLowerCase(),
+        name: user.displayName || '',
+        role: 'none',
+        active: true,
+        addedAt: nowIso()
+      };
+      return ref.set(seed).then(function () { _me = seed; return _me; })
+        ['catch'](function () { _me = seed; return _me; });   // rules may refuse; carry on read-only
+    })['catch'](function () { _me = null; return null; });
+  }
+
+  function listStaff(db) {
+    if (!db) return Promise.resolve([]);
+    return db.collection('omega_staff').get().then(function (snap) {
+      var out = [];
+      snap.forEach(function (d) { var v = d.data() || {}; v.uid = v.uid || d.id; out.push(v); });
+      out.sort(function (a, b) { return String(a.email).localeCompare(String(b.email)); });
+      return out;
+    })['catch'](function () { return []; });
+  }
+
+  function setStaffRole(db, uid, role, actor) {
+    if (!db) return Promise.reject(new Error('No Firestore.'));
+    return db.collection('omega_staff').doc(uid).set({
+      role: role, updatedAt: nowIso(), updatedBy: actor || ''
+    }, { merge: true });
+  }
+  function setStaffActive(db, uid, active, actor) {
+    if (!db) return Promise.reject(new Error('No Firestore.'));
+    return db.collection('omega_staff').doc(uid).set({
+      active: !!active, updatedAt: nowIso(), updatedBy: actor || ''
+    }, { merge: true });
+  }
+
+  /* Domain staff are administrators without needing a doc — this mirrors
+     isAdmin() in the rules so the UI and the rules agree about who can do
+     what. Anything the UI allows that the rules refuse is a bug. */
+  var STAFF_DOMAINS = ['clearsky-usa.com', 'csebuilders.com'];
+  function isDomainStaff(email) {
+    var d = String(email || '').split('@')[1];
+    return !!d && STAFF_DOMAINS.indexOf(d.toLowerCase()) >= 0;
+  }
+  function canWorkQueue(user) {
+    if (isDomainStaff(user && user.email)) return true;
+    var m = myStaff();
+    return !!(m && m.active !== false && (m.role === 'admin' || m.role === 'rep'));
+  }
+  function canAdminister(user) {
+    if (isDomainStaff(user && user.email)) return true;
+    var m = myStaff();
+    return !!(m && m.active !== false && m.role === 'admin');
+  }
+
+  /* ---------------------------------------------------------------- payment */
+  /* The payment link lives ON THE QUOTE, not in the admin map: the client has
+     to be able to see and click it, and the quote is already the one map they
+     can read but not write. Same protection, no extra surface. */
+  function setPaymentLink(rec, url, actor) {
+    rec.quote = rec.quote || {};
+    rec.quote.paymentUrl = normalizeUrl(url);
+    rec.quote.paymentStatus = rec.quote.paymentStatus || 'unpaid';
+    logActivity(rec, 'payment', 'Payment link posted for ' +
+      money(rec.quote.total, rec.quote.currency) + '.', actor);
+    return store().save(rec);
+  }
+  function markPaid(rec, actor, note) {
+    rec.quote = rec.quote || {};
+    rec.quote.paymentStatus = 'paid';
+    rec.quote.paidAt = nowIso();
+    logActivity(rec, 'payment', 'Marked paid' + (note ? ' \u2014 ' + note : '') + '.', actor);
+    return store().save(rec);
+  }
+
   /* ------------------------------------------------------- quoting (path 2) */
   /* NO DEFAULT PRICES SHIP IN THIS FILE, deliberately. A fabricated number in
      a customer-facing quote is worse than a blank one — the client either pays
@@ -777,6 +882,11 @@
     addLink: addLink, updateLink: updateLink, removeLink: removeLink,
     addCategory: addCategory, linkProvider: linkProvider, normalizeUrl: normalizeUrl,
 
+    STAFF_ROLES: STAFF_ROLES, roleLabel: roleLabel,
+    myStaff: myStaff, loadMyStaff: loadMyStaff, listStaff: listStaff,
+    setStaffRole: setStaffRole, setStaffActive: setStaffActive,
+    isDomainStaff: isDomainStaff, canWorkQueue: canWorkQueue, canAdminister: canAdminister,
+    setPaymentLink: setPaymentLink, markPaid: markPaid,
     projectSeed: projectSeed, listProjects: listProjects,
     createProject: createProject, attachProject: attachProject,
     priceBook: priceBook, listPrice: listPrice, estimate: estimate,

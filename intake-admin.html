@@ -148,6 +148,10 @@ textarea:focus,input:focus{border-color:var(--accent)}
 <div class="chrome">
   <span class="mark">ClearSky Omega</span>
   <span class="tag">Intake queue</span>
+  <button class="btn sm" id="navQueue" type="button"
+     style="margin-left:18px;background:#1E2831;border-color:#33414F;color:#E6ECF2">Queue</button>
+  <button class="btn sm" id="navTeam" type="button" hidden
+     style="margin-left:6px;background:transparent;border-color:#33414F;color:#8FA3B5">Team</button>
   <span class="sp"></span>
   <span class="who" id="who"></span>
 </div>
@@ -169,6 +173,25 @@ textarea:focus,input:focus{border-color:var(--accent)}
     <option value="name">Project name</option>
   </select>
   <button class="btn" id="reload" type="button">Reload</button>
+</div>
+
+<!-- ══ TEAM ══ Who may work the queue. Administrators only. -->
+<div id="teamView" hidden style="max-width:900px;margin:0 auto;padding:26px 18px 60px">
+  <h2 style="font-size:17px;margin:0 0 4px;letter-spacing:-.01em">Team &amp; access</h2>
+  <p style="font-size:12.5px;color:var(--muted);margin:0 0 18px;line-height:1.55">
+    Anyone who opens this console appears here as <b>Pending</b> with no access.
+    Assign <b>Omega Rep</b> and they can see and work submitted jobs, post progress
+    and open them in the editor \u2014 but not price work. <b>Administrator</b> adds
+    pricing and role assignment. A ClearSky address is an administrator without a
+    row here, matching the Firestore rules.</p>
+  <div style="background:var(--surface);border:1px solid var(--rule);border-radius:var(--r-lg);overflow:hidden">
+    <table><thead><tr>
+      <th style="width:34%">Person</th><th style="width:22%">Role</th>
+      <th style="width:16%">Status</th><th style="width:28%">Last change</th>
+    </tr></thead><tbody id="teamRows"></tbody></table>
+    <div id="teamEmpty" class="empty" hidden><h3>Nobody has signed in yet</h3>
+      <p>Send a rep to this page and they will appear here as Pending.</p></div>
+  </div>
 </div>
 
 <div class="shell" id="shell">
@@ -578,6 +601,47 @@ textarea:focus,input:focus{border-color:var(--accent)}
     s5.appendChild(ta);
     d.appendChild(s5);
 
+    /* payment — administrators only; reps can see it but not set it */
+    if (r.quote && r.quote.total != null) {
+      var sp = el('div', 'sect');
+      sp.appendChild(el('h3', null, 'Payment'));
+      var line = el('div');
+      line.style.cssText = 'font-size:13px;margin-bottom:10px';
+      var paid = r.quote.paymentStatus === 'paid';
+      line.innerHTML = '<b>' + OI.money(r.quote.total, r.quote.currency) + '</b> \u00b7 ' +
+        '<span class="badge ' + (paid ? 'good' : 'warn') + '">' + (paid ? 'Paid' : 'Unpaid') + '</span>';
+      sp.appendChild(line);
+
+      if (isAdminUser) {
+        var pu = document.createElement('input');
+        pu.type = 'url';
+        pu.placeholder = 'Payment link (Stripe, invoice, PO portal\u2026)';
+        pu.value = r.quote.paymentUrl || '';
+        pu.style.cssText = 'width:100%;border:1px solid var(--rule);border-radius:8px;padding:7px 9px;margin-bottom:8px';
+        pu.addEventListener('change', function () {
+          OI.setPaymentLink(r, pu.value, admin.email).then(function () {
+            toast('Payment link posted \u2014 the client can see it.'); apply(); renderDetail();
+          });
+        });
+        sp.appendChild(pu);
+        if (!paid) {
+          var mp = el('button', 'btn sm', 'Mark paid');
+          mp.type = 'button';
+          mp.addEventListener('click', function () {
+            var note = prompt('Reference (PO, invoice, transaction id)') || '';
+            OI.markPaid(r, admin.email, note).then(function () { apply(); renderDetail(); });
+          });
+          sp.appendChild(mp);
+        }
+      } else if (r.quote.paymentUrl) {
+        var pl = el('a', null, 'Open payment link');
+        pl.href = r.quote.paymentUrl; pl.target = '_blank'; pl.rel = 'noopener';
+        pl.style.fontSize = '12.5px';
+        sp.appendChild(pl);
+      }
+      d.appendChild(sp);
+    }
+
     /* actions */
     var s6 = el('div', 'sect'); s6.appendChild(el('h3', null, 'Actions'));
     var stSel = document.createElement('select');
@@ -671,6 +735,78 @@ textarea:focus,input:focus{border-color:var(--accent)}
      The check below is not that boundary. It exists so a person who signs in
      with the wrong account sees WHY the queue is empty instead of an
      unexplained blank screen and a console error. */
+  /* ---------- TEAM & ACCESS ---------- */
+  var isAdminUser = false;
+
+  function db() {
+    try { return (window.firebase && firebase.apps.length) ? firebase.firestore() : null; }
+    catch (e) { return null; }
+  }
+
+  function showView(v) {
+    document.getElementById('teamView').hidden = (v !== 'team');
+    $('#shell').style.display = (v === 'team') ? 'none' : '';
+    Array.prototype.forEach.call(document.querySelectorAll('.counters, .filters'), function (n) {
+      n.style.display = (v === 'team') ? 'none' : '';
+    });
+    var q = $('#navQueue'), t = $('#navTeam');
+    q.style.background = v === 'queue' ? '#1E2831' : 'transparent';
+    q.style.color = v === 'queue' ? '#E6ECF2' : '#8FA3B5';
+    t.style.background = v === 'team' ? '#1E2831' : 'transparent';
+    t.style.color = v === 'team' ? '#E6ECF2' : '#8FA3B5';
+    if (v === 'team') renderTeam();
+  }
+
+  function renderTeam() {
+    var body = $('#teamRows');
+    body.innerHTML = '<tr><td colspan="4" style="padding:18px;color:var(--muted)">Loading\u2026</td></tr>';
+    OI.listStaff(db()).then(function (people) {
+      body.innerHTML = '';
+      $('#teamEmpty').hidden = people.length > 0;
+      people.forEach(function (p) {
+        var tr = el('tr');
+        var c1 = el('td');
+        c1.appendChild(el('div', null, p.name || p.email));
+        if (p.name) c1.appendChild(el('div', 'sub', p.email));
+        tr.appendChild(c1);
+
+        var c2 = el('td');
+        var sel = document.createElement('select');
+        sel.style.cssText = 'border:1px solid var(--rule);border-radius:6px;padding:5px 8px;font-size:12px';
+        OI.STAFF_ROLES.forEach(function (r) { sel.appendChild(new Option(r.label, r.key)); });
+        sel.value = p.role || 'none';
+        sel.addEventListener('change', function () {
+          OI.setStaffRole(db(), p.uid, sel.value, admin.email)
+            .then(function () { toast(p.email + ' \u2192 ' + OI.roleLabel(sel.value)); renderTeam(); })
+            ['catch'](function (e) { toast('Could not save: ' + e.message); });
+        });
+        c2.appendChild(sel); tr.appendChild(c2);
+
+        var c3 = el('td');
+        var on = p.active !== false;
+        var b = el('button', 'btn sm', on ? 'Active' : 'Suspended');
+        b.type = 'button';
+        if (!on) b.style.color = 'var(--hot)';
+        b.addEventListener('click', function () {
+          OI.setStaffActive(db(), p.uid, !on, admin.email)
+            .then(renderTeam)['catch'](function (e) { toast('Could not save: ' + e.message); });
+        });
+        c3.appendChild(b); tr.appendChild(c3);
+
+        var c4 = el('td');
+        c4.style.cssText = 'font-size:11.5px;color:var(--muted)';
+        c4.textContent = p.updatedAt
+          ? new Date(p.updatedAt).toLocaleString() + (p.updatedBy ? ' \u00b7 ' + p.updatedBy : '')
+          : (p.addedAt ? 'Joined ' + new Date(p.addedAt).toLocaleDateString() : '\u2014');
+        tr.appendChild(c4);
+        body.appendChild(tr);
+      });
+    });
+  }
+
+  $('#navQueue').addEventListener('click', function () { showView('queue'); });
+  $('#navTeam').addEventListener('click', function () { showView('team'); });
+
   var STAFF_DOMAINS = ['clearsky-usa.com', 'csebuilders.com'];
   function isStaff(email) {
     var d = String(email || '').split('@')[1];
@@ -746,13 +882,14 @@ textarea:focus,input:focus{border-color:var(--accent)}
     });
   }
 
-  function notStaffPanel(email) {
+  function pendingPanel(email) {
     panel(
       '<div class="eyebrow">ClearSky Omega \u00b7 Intake queue</div>' +
-      '<h1 style="font-size:19px;margin:8px 0 6px">Not a staff account</h1>' +
-      '<p style="font-size:12.5px;color:var(--muted);line-height:1.55">You are signed in as ' +
+      '<h1 style="font-size:19px;margin:8px 0 6px">Waiting on access</h1>' +
+      '<p style="font-size:12.5px;color:var(--muted);line-height:1.55">Signed in as ' +
         email + '. The queue reads submissions across every tenant, so it is limited to ' +
-        'clearsky-usa.com and csebuilders.com accounts.</p>' +
+        'ClearSky staff and people assigned an Omega Rep role. Your account has been ' +
+        'recorded \u2014 ask an administrator to assign it under Team &amp; access.</p>' +
       '<button class="btn" id="gOut" type="button" style="width:100%;margin-top:16px">Sign out</button>'
     );
     document.getElementById('gOut').addEventListener('click', function () {
@@ -786,13 +923,24 @@ textarea:focus,input:focus{border-color:var(--accent)}
       .then(function () {
         firebase.auth().onAuthStateChanged(function (u) {
           if (!u) { signInPanel(); return; }
-          if (!isStaff(u.email)) { notStaffPanel(u.email); return; }
-          closePanel();
-          if (booted) return;
-          booted = true;
           admin = { uid: u.uid, email: u.email, displayName: u.displayName };
-          $('#who').textContent = u.email;
-          load();
+
+          /* Role first, then access. A ClearSky address is an administrator
+             without a staff row; anyone else needs an assigned role — which
+             is exactly what the Firestore rules enforce, so the UI and the
+             rules cannot disagree. */
+          OI.loadMyStaff(db(), u).then(function () {
+            if (!OI.canWorkQueue(admin)) { pendingPanel(u.email); return; }
+            closePanel();
+            isAdminUser = OI.canAdminister(admin);
+            $('#navTeam').hidden = !isAdminUser;
+            $('#who').textContent = u.email +
+              (OI.isDomainStaff(u.email) ? '' : ' \u00b7 ' + OI.roleLabel((OI.myStaff() || {}).role));
+            if (booted) return;
+            booted = true;
+            showView('queue');
+            load();
+          });
         });
       });
   }
