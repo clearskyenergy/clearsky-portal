@@ -602,7 +602,7 @@ body{font-family:'Inter',-apple-system,Arial,sans-serif;background:#F1F4F8;color
     </div>
     <div class="p3-footer">
       <div class="p3-footer-logo">
-        <img class="brand-logo" alt="" src="data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==" onerror="_logoFallback(this)" style="width:28px;height:28px;object-fit:contain;background:#fff;border-radius:4px;padding:1px">
+        <img class="brand-logo brand-logo-white" alt="" src="data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==" onerror="_logoFallback(this)" style="width:28px;height:28px;object-fit:contain;border-radius:4px;padding:1px">
         <span class="brand-name"></span>
       </div>
       <div class="p3-footer-contact">
@@ -687,7 +687,7 @@ body{font-family:'Inter',-apple-system,Arial,sans-serif;background:#F1F4F8;color
     </div>
     <div class="p3-footer">
       <div class="p3-footer-logo">
-        <img class="brand-logo" alt="" src="data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==" onerror="_logoFallback(this)" style="width:28px;height:28px;object-fit:contain;background:#fff;border-radius:4px;padding:1px">
+        <img class="brand-logo brand-logo-white" alt="" src="data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==" onerror="_logoFallback(this)" style="width:28px;height:28px;object-fit:contain;border-radius:4px;padding:1px">
         <span class="brand-name"></span>
       </div>
       <div class="p3-footer-contact">
@@ -721,18 +721,18 @@ body{font-family:'Inter',-apple-system,Arial,sans-serif;background:#F1F4F8;color
 // delete the whole map once none remain.
 // ══════════════════════════════════════════════════════════════════
 var LEGACY_BRANDS = {
-  nextnrg:   { name:'NextNRG',           logo:'nextnrg-logo.png',    accent:'#1D4ED8', tagline:'BATTERY ENERGY STORAGE · EV CHARGING · VPP' },
-  sunesol:   { name:'SunESol',           logo:'sunesol-logo.png',    accent:'#F59E0B', tagline:'SOLAR · STORAGE · EV CHARGING' },
-  spatco:    { name:'SPATCO',            logo:'spatco-logo.png',     accent:'#166534', tagline:'ENERGY INFRASTRUCTURE SOLUTIONS' },
-  solela:    { name:'Solela LLC',        logo:'solela-logo.png',     accent:'#0EA5E9', tagline:'DISTRIBUTED ENERGY · STORAGE' },
-  chileasing:{ name:'Chileasing Energy', logo:'chileasing-logo.png', accent:'#0EA5E9', tagline:'ENERGY LEASING · STORAGE' },
-  ogisolar:  { name:'OGI Solar',         logo:'ogisolar-logo.png',   accent:'#EA580C', tagline:'SOLAR · STORAGE · EV' },
-  lionheart: { name:'Lionheart Energy',  logo:'lionheart-logo.png',  accent:'#B91C1C', tagline:'EV CHARGING SOLUTIONS' },
+  nextnrg:   { name:'NextNRG', accent:'#1D4ED8', tagline:'BATTERY ENERGY STORAGE · EV CHARGING · VPP' },
+  sunesol:   { name:'SunESol', accent:'#F59E0B', tagline:'SOLAR · STORAGE · EV CHARGING' },
+  spatco:    { name:'SPATCO', accent:'#166534', tagline:'ENERGY INFRASTRUCTURE SOLUTIONS' },
+  solela:    { name:'Solela LLC', accent:'#0EA5E9', tagline:'DISTRIBUTED ENERGY · STORAGE' },
+  chileasing:{ name:'Chileasing Energy', accent:'#0EA5E9', tagline:'ENERGY LEASING · STORAGE' },
+  ogisolar:  { name:'OGI Solar', accent:'#EA580C', tagline:'SOLAR · STORAGE · EV' },
+  lionheart: { name:'Lionheart Energy', accent:'#B91C1C', tagline:'EV CHARGING SOLUTIONS' },
 
   // TODO(thomas): confirm accent + tagline + logo filename with each tenant.
   // Present so they stop falling through to DEFAULT_BRAND and printing as ClearSky.
-  fenecon:   { name:'FENECON',              logo:'fenecon-logo.png', accent:'#1D4ED8', tagline:'ENERGY STORAGE SYSTEMS' },
-  iqgen:     { name:'iQGen Technologies',   logo:'iqgen-logo.png',   accent:'#1D4ED8', tagline:'DISTRIBUTED ENERGY · STORAGE' }
+  fenecon:   { name:'FENECON', accent:'#1D4ED8', tagline:'ENERGY STORAGE SYSTEMS' },
+  iqgen:     { name:'iQGen Technologies', accent:'#1D4ED8', tagline:'DISTRIBUTED ENERGY · STORAGE' }
 };
 var DEFAULT_BRAND = { name:'ClearSky-OMEGA', logo:'', accent:'#1D4ED8', tagline:'DISTRIBUTED ENERGY PLATFORM' };
 
@@ -815,20 +815,35 @@ function _absLogo(logo, slug) {
 // try the configured name first and then the common conventions across every
 // plausible origin. Each <img> walks this list via onerror and hides itself if
 // the list runs out — a client never sees a broken-image glyph.
-var LOGO_PATH_FALLBACKS = ['logo.png', 'logo.svg', 'assets/logo.png', 'img/logo.png'];
-function _logoCandidates(brand, slug) {
+// Observed tenant-repo convention (github.com/clearskyenergy/<slug>):
+//   <slug>-logo-color.png   — for light backgrounds
+//   <slug>-logo-white.png   — for dark backgrounds (page-3/4 footers)
+// Generic names are kept as trailing fallbacks for older tenant repos.
+function _logoPaths(slug, variant) {
+  var p = [];
+  if (slug) {
+    if (variant === 'white') {
+      p.push(slug + '-logo-white.png', slug + '-logo-color.png');
+    } else {
+      p.push(slug + '-logo-color.png', slug + '-logo-white.png');
+    }
+    p.push(slug + '-logo.png', slug + '-logo.svg');
+  }
+  p.push('logo.png', 'logo.svg', 'assets/logo.png', 'img/logo.png');
+  return p;
+}
+function _logoCandidates(brand, slug, variant) {
   var out = [], seen = {};
   function push(u){ if (u && !seen[u]) { seen[u] = 1; out.push(u); } }
 
-  if (brand && brand.logo && (/^(https?:)?\/\//i.test(brand.logo) || /^data:/i.test(brand.logo))) push(brand.logo);
+  // An explicit config.js value always wins.
+  var cfgLogo = brand && (variant === 'white' ? (brand.logoWhite || brand.logo) : (brand.logoColor || brand.logo));
+  if (cfgLogo && (/^(https?:)?\/\//i.test(cfgLogo) || /^data:/i.test(cfgLogo))) push(cfgLogo);
 
   var origins = _tenantOrigins(slug);
   var paths   = [];
-  if (brand && brand.logo && !/^(https?:)?\/\//i.test(brand.logo) && !/^data:/i.test(brand.logo)) {
-    paths.push(String(brand.logo).replace(/^\/+/, ''));
-  }
-  if (slug) paths.push(slug + '-logo.png');
-  for (var p = 0; p < LOGO_PATH_FALLBACKS.length; p++) paths.push(LOGO_PATH_FALLBACKS[p]);
+  if (cfgLogo && !/^(https?:)?\/\//i.test(cfgLogo) && !/^data:/i.test(cfgLogo)) paths.push(String(cfgLogo).replace(/^\/+/, ''));
+  paths = paths.concat(_logoPaths(slug, variant));
 
   for (var o = 0; o < origins.length; o++)
     for (var q = 0; q < paths.length; q++)
@@ -839,7 +854,8 @@ function _logoCandidates(brand, slug) {
 // onerror handler wired onto every img.brand-logo
 function _logoFallback(img) {
   try {
-    var list = (window.BRAND && BRAND.logoCandidates) || [];
+    var white = img.className.indexOf('brand-logo-white') !== -1;
+    var list  = (window.BRAND && (white ? BRAND.logoCandidatesWhite : BRAND.logoCandidates)) || [];
     var i = (parseInt(img.getAttribute('data-logo-i'), 10) || 0) + 1;
     if (i < list.length) { img.setAttribute('data-logo-i', String(i)); img.src = list[i]; return; }
   } catch(e){}
@@ -885,11 +901,80 @@ function resolveBrand() {
   }
   if (!b) b = { name:DEFAULT_BRAND.name, logo:DEFAULT_BRAND.logo, accent:DEFAULT_BRAND.accent, tagline:DEFAULT_BRAND.tagline };
 
-  b.logoCandidates = _logoCandidates(b, slug);
-  b.logo = b.logoCandidates.length ? b.logoCandidates[0] : _absLogo(b.logo, slug);
+  b.logoCandidates      = _logoCandidates(b, slug, 'color');
+  b.logoCandidatesWhite = _logoCandidates(b, slug, 'white');
+  b.logo      = b.logoCandidates[0]      || '';
+  b.logoWhiteUrl = b.logoCandidatesWhite[0] || '';
   b.slug = slug;
   return b;
 }
+// ══════════════════════════════════════════════════════════════════
+// TENANT CONFIG LOADER
+// ------------------------------------------------------------------
+// config.js lives in the TENANT repo (github.com/clearskyenergy/<slug>) and is
+// served from the tenant deployment. This tool is served from
+// tools.csebuilders.com, so config.js is never on our page by default.
+//
+// We pull it in with a <script> tag rather than fetch(): script tags are not
+// subject to CORS, so this works against a stock Vercel static deploy with no
+// header changes on the tenant side and no per-tenant edits to this file.
+//
+// Everything below is best-effort. If the fetch fails, or config.js exposes a
+// shape we do not recognise, the slug-convention fallbacks still carry us.
+var CONFIG_GLOBALS = ['OMEGA_CONFIG','CONFIG','TENANT_CONFIG','CLEARSKY_CONFIG','SITE_CONFIG','PORTAL_CONFIG'];
+
+function _readTenantConfig() {
+  for (var i = 0; i < CONFIG_GLOBALS.length; i++) {
+    var C = window[CONFIG_GLOBALS[i]];
+    if (!C || typeof C !== 'object') continue;
+    var b = C.brand || C.branding || C;
+    if (b && (b.name || b.logo || b.logoColor || b.logoWhite)) {
+      return {
+        name:      b.name || b.company || b.orgName || '',
+        logo:      b.logo || b.logoUrl || '',
+        logoColor: b.logoColor || b.logoLight || b.logo || '',
+        logoWhite: b.logoWhite || b.logoDark || '',
+        accent:    b.accent || b.accentColor || b.primaryColor || '',
+        tagline:   b.tagline || b.subtitle || ''
+      };
+    }
+  }
+  return null;
+}
+
+function loadTenantConfig() {
+  return new Promise(function(resolve) {
+    var origin = _tenantOrigin(_slugFromHost());
+    if (!origin) return resolve(null);
+    var sc = document.createElement('script');
+    sc.src = origin + '/config.js';
+    sc.async = true;
+    var done = false;
+    function finish(){ if (done) return; done = true; resolve(_readTenantConfig()); }
+    sc.onload  = finish;
+    sc.onerror = function(){ if (!done) { done = true; resolve(null); } };
+    setTimeout(finish, 4000);          // never hang the page on a slow tenant host
+    document.head.appendChild(sc);
+  });
+}
+
+// Re-resolve the brand once the tenant config has landed, then repaint.
+function applyTenantConfig(cfg) {
+  if (!cfg) return;
+  var slug = BRAND.slug;
+  if (cfg.name)    BRAND.name    = cfg.name;
+  if (cfg.accent)  BRAND.accent  = cfg.accent;
+  if (cfg.tagline) BRAND.tagline = cfg.tagline;
+  if (cfg.logoColor || cfg.logoWhite || cfg.logo) {
+    var src = { logo:cfg.logo, logoColor:cfg.logoColor, logoWhite:cfg.logoWhite };
+    BRAND.logoCandidates      = _logoCandidates(src, slug, 'color');
+    BRAND.logoCandidatesWhite = _logoCandidates(src, slug, 'white');
+    BRAND.logo         = BRAND.logoCandidates[0]      || '';
+    BRAND.logoWhiteUrl = BRAND.logoCandidatesWhite[0] || '';
+  }
+  applyBrand();
+}
+
 var BRAND = resolveBrand();
 function _bn(){ return BRAND.name; }
 
@@ -952,11 +1037,13 @@ function applyBrand() {
   // what produced the broken-image "?" glyph in printed proposals.
   var logos = document.querySelectorAll('img.brand-logo');
   for (var i=0;i<logos.length;i++){
-    if (BRAND.logo) {
+    var isWhite = logos[i].className.indexOf('brand-logo-white') !== -1;
+    var first   = isWhite ? BRAND.logoWhiteUrl : BRAND.logo;
+    if (first) {
       logos[i].setAttribute('data-logo-i','0');
       logos[i].alt = BRAND.name;
       logos[i].style.visibility = '';
-      logos[i].src = BRAND.logo;
+      logos[i].src = first;
     } else {
       logos[i].style.visibility = 'hidden';
     }
@@ -1018,8 +1105,10 @@ function _wireBackLink(){
   if (a) a.setAttribute('href', _portalUrl());
 }
 window.onload = function() {
-  applyBrand();
-  inlineBrandLogo();   // async, non-blocking: converts logo to a data: URI so exports travel
+  applyBrand();                       // paint immediately from slug convention
+  loadTenantConfig()                  // then refine from the tenant's own config.js
+    .then(applyTenantConfig)
+    .then(function(){ inlineBrandLogo(); });
   _wireBackLink();
   // Set today's date
   var today = new Date().toISOString().split('T')[0];
