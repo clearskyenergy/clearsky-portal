@@ -3065,7 +3065,7 @@ if(document.readyState==='loading'){
       <div class="cal-box">
         <h3>▤ Parking Stall Array</h3>
         <p>Enter the grid of stalls to place.</p>
-        <div style="display:flex;gap:6px;margin-bottom:10px">
+        <div style="display:flex;gap:6px;margin-bottom:8px">
           <div style="flex:1">
             <label style="font-size:10px;color:var(--sub);display:block;margin-bottom:3px">Rows</label>
             <input type="number" id="park-rows" value="1" min="1" max="20" style="width:100%;padding:7px;background:var(--surface);border:1px solid var(--border);color:var(--text);border-radius:5px;font-family:inherit">
@@ -3075,6 +3075,17 @@ if(document.readyState==='loading'){
             <input type="number" id="park-cols" value="8" min="1" max="40" style="width:100%;padding:7px;background:var(--surface);border:1px solid var(--border);color:var(--text);border-radius:5px;font-family:inherit">
           </div>
         </div>
+        <div style="display:flex;gap:6px;margin-bottom:6px">
+          <div style="flex:1">
+            <label style="font-size:10px;color:var(--sub);display:block;margin-bottom:3px">Stall width (ft)</label>
+            <input type="number" id="park-wft" value="9" min="6" max="30" step="0.5" style="width:100%;padding:7px;background:var(--surface);border:1px solid var(--border);color:var(--text);border-radius:5px;font-family:inherit">
+          </div>
+          <div style="flex:1">
+            <label style="font-size:10px;color:var(--sub);display:block;margin-bottom:3px">Stall depth (ft)</label>
+            <input type="number" id="park-lft" value="18" min="10" max="60" step="0.5" style="width:100%;padding:7px;background:var(--surface);border:1px solid var(--border);color:var(--text);border-radius:5px;font-family:inherit">
+          </div>
+        </div>
+        <div id="park-scale-note" style="font-size:9px;line-height:1.5;color:var(--sub);margin-bottom:10px"></div>
         <div class="cal-btns">
           <button style="background:var(--surface);color:var(--sub)" onclick="_parkModalCancel()">Cancel</button>
           <button style="background:var(--accent);color:var(--navy)" onclick="_parkModalConfirm()">Place ✓</button>
@@ -8474,8 +8485,44 @@ function setDrawColor(hex){
 }
 /* Resolve the ink color for a shape: its own stored color, else current. */
 function _shapeInk(sh){ return (sh && sh.color) ? sh.color : SHAPE_STROKE; }
-var PARK_STALL_W = 40;          /* px default stall footprint (approx 9ft) */
-var PARK_STALL_H = 80;          /* px default stall depth   (approx 18ft) */
+/* PARKING STALL SIZING
+   ---------------------------------------------------------------------
+   Stalls used to be stored as RAW PIXELS (sw/sh = 40/80), which is why the
+   array neither scaled nor held its ground position: the origin was
+   geo-anchored and tracked the basemap, but the grid drawn from it stayed a
+   fixed pixel size at every zoom. Zoom in and the stalls shrank relative to
+   the lot; zoom out and they swallowed it. The bottom-right of the array
+   therefore walked across the site even though the top-left was pinned.
+
+   Feet are now the invariant, exactly as bespad/assembly/solar-table already
+   do it. Pixels are derived from S.pxPerFt at render time, so the grid tracks
+   pan, zoom and calibration. */
+var PARK_STALL_WFT = 9.0;       /* stall width, ft  (typical 90-degree stall) */
+var PARK_STALL_LFT = 18.0;      /* stall depth, ft */
+var PARK_LEGACY_PPF = 40/9;     /* px-per-ft implied by the old 40x80 constants */
+var PARK_STALL_W = 40;          /* legacy px fallback -- uncalibrated preview only */
+var PARK_STALL_H = 80;
+
+/* Resolve a parking shape's stall size in FEET. Migrates a legacy
+   pixel-sized shape once, in place, so it never has to be converted twice
+   and the feet survive a save. */
+function _parkStallFt(sh){
+  if(!sh) return { wf:PARK_STALL_WFT, lf:PARK_STALL_LFT };
+  if(!(sh.stallWft>0) || !(sh.stallLft>0)){
+    sh.stallWft = (sh.sw>0) ? +(sh.sw/PARK_LEGACY_PPF).toFixed(2) : PARK_STALL_WFT;
+    sh.stallLft = (sh.sh>0) ? +(sh.sh/PARK_LEGACY_PPF).toFixed(2) : PARK_STALL_LFT;
+    /* Drop the pixel copies. Keeping both is how the two drift apart. */
+    try{ delete sh.sw; delete sh.sh; }catch(e){}
+  }
+  return { wf:sh.stallWft, lf:sh.stallLft };
+}
+/* Stall size in CURRENT pixels. Single source of truth -- bbox, render, and
+   the EV snap-to-stall search all read this so they cannot disagree. */
+function _parkStallPx(sh){
+  var ft=_parkStallFt(sh);
+  var ppf=(typeof S!=='undefined' && S.pxPerFt>0) ? S.pxPerFt : PARK_LEGACY_PPF;
+  return { sw:ft.wf*ppf, sh:ft.lf*ppf };
+}
 
 /* BESS pad models (to-scale). lf/wf = length/width in decimal feet.
    Pulled from the verified Gotion catalog where available, plus a
@@ -8580,6 +8627,14 @@ function _placeParking(p){
   _pendingParkPt={x:p.x,y:p.y};
   var m=document.getElementById('park-modal');
   if(m){ m.style.display='flex';
+    var nt=document.getElementById('park-scale-note');
+    if(nt){
+      var ppf=(S.pxPerFt && S.pxPerFt>0);
+      nt.style.color = ppf ? 'var(--sub)' : 'var(--gold)';
+      nt.textContent = ppf
+        ? 'Drawing is calibrated \u2014 stalls drop true-to-scale and stay that size through zoom.'
+        : 'Not calibrated \u2014 stalls drop at preview scale. Use Calibrate Scale for true dimensions.';
+    }
     var rr=document.getElementById('park-rows'); if(rr) rr.focus();
   } else {
     /* fallback if modal missing */
@@ -8595,16 +8650,29 @@ function _parkModalConfirm(){
   var cols=parseInt((document.getElementById('park-cols')||{}).value,10);
   if(!rows||rows<1) rows=1; if(rows>20) rows=20;
   if(!cols||cols<1) cols=1; if(cols>40) cols=40;
+  var wft=parseFloat((document.getElementById('park-wft')||{}).value);
+  var lft=parseFloat((document.getElementById('park-lft')||{}).value);
+  if(!(wft>0)||wft>30) wft=PARK_STALL_WFT;
+  if(!(lft>0)||lft>60) lft=PARK_STALL_LFT;
   var m=document.getElementById('park-modal'); if(m) m.style.display='none';
   var p=_pendingParkPt||{x:200,y:200}; _pendingParkPt=null;
-  _doPlaceParking(p,rows,cols);
+  _doPlaceParking(p,rows,cols,wft,lft);
 }
-function _doPlaceParking(p,rows,cols){
+function _doPlaceParking(p,rows,cols,wft,lft){
+  if(!(wft>0)) wft=PARK_STALL_WFT;
+  if(!(lft>0)) lft=PARK_STALL_LFT;
+  var ppf=(S.pxPerFt && S.pxPerFt>0) ? S.pxPerFt : 0;
   var sh={ id:uid(), kind:'parking', pts:[{x:p.x,y:p.y}], style:S.shapeStyle, color:SHAPE_STROKE,
-           rows:rows, cols:cols, sw:PARK_STALL_W, sh:PARK_STALL_H, rot:0 };
+           rows:rows, cols:cols, stallWft:wft, stallLft:lft, scaled:!!ppf, rot:0 };
   S.shapes.push(sh); renderShape(sh);
+  /* Anchor immediately so the array holds its ground position on the very
+     first pan/zoom rather than waiting for a drag to stamp it. */
+  try{ if(typeof _geoRestampOne==='function') _geoRestampOne(sh); }catch(e){}
   updShapeCount(); pushHist();
-  showBanner('shape',' Parking added ('+rows+' x '+cols+'). Click to place another . ESC exits');
+  var dims=wft+'\u2032 \u00d7 '+lft+'\u2032';
+  showBanner('shape', ppf
+    ? ' Parking added ('+rows+' \u00d7 '+cols+' @ '+dims+' stalls). Click to place another \u00b7 ESC exits'
+    : ' Parking added ('+rows+' \u00d7 '+cols+') at preview scale \u2014 calibrate for true '+dims+' stalls');
 }
 
 /* --- Callout: leader arrow from a target point to a text label --------
@@ -9428,8 +9496,8 @@ function _shapeBBox(sh){
     return { x:sh.pts[0].x, y:sh.pts[0].y, w:sh.lf*pf, h:sh.wf*pf };
   }
   if(sh.kind==='parking'){
-    var sw=sh.sw||PARK_STALL_W, sh2=sh.sh||PARK_STALL_H;
-    return { x:sh.pts[0].x, y:sh.pts[0].y, w:sh.cols*sw, h:sh.rows*sh2 };
+    var _pk=_parkStallPx(sh);
+    return { x:sh.pts[0].x, y:sh.pts[0].y, w:sh.cols*_pk.sw, h:sh.rows*_pk.sh };
   }
   if(sh.kind==='circle'){
     var a=sh.pts[0], b=sh.pts[1];
@@ -9498,7 +9566,9 @@ function renderShape(sh){
 /* draw a rows x cols grid of parking stalls anchored at pts[0] (top-left) */
 function _renderParking(g, sh){
   var ox=sh.pts[0].x, oy=sh.pts[0].y;
-  var sw=sh.sw||PARK_STALL_W, sh2=sh.sh||PARK_STALL_H;
+  /* Feet -> current pixels. Recomputed every render, so a zoom or a
+     recalibration resizes the array instead of leaving it frozen. */
+  var _pk=_parkStallPx(sh), sw=_pk.sw, sh2=_pk.sh;
   for(var r=0;r<sh.rows;r++){
     for(var c=0;c<sh.cols;c++){
       var x=ox + c*sw, y=oy + r*sh2;
@@ -46188,7 +46258,10 @@ function _evNearestStall(p){
     var sh=S.shapes[i];
     if(sh.kind!=='parking') continue;
     var ox=sh.pts[0].x, oy=sh.pts[0].y;
-    var sw=sh.sw||40, shh=sh.sh||80;
+    /* Same resolver the renderer uses -- a hardcoded 40x80 here meant the
+       snap targets sat off the drawn stalls at every zoom but one. */
+    var _pk=(typeof _parkStallPx==='function')?_parkStallPx(sh):{sw:40,sh:80};
+    var sw=_pk.sw, shh=_pk.sh;
     /* account for any translate applied to the parking shape */
     ox += (sh.tx||0); oy += (sh.ty||0);
     for(var r=0;r<sh.rows;r++){
