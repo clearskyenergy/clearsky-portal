@@ -1,10 +1,10 @@
 <!DOCTYPE html>
 <!--
   ═══════════════════════════════════════════════════════════════════════════════
-  ClearSky-OMEGA · Sales Proposal Builder — NextNRG Enterprise Workspace
+  ClearSky-OMEGA · Sales Proposal Builder
   © 2025 ClearSky Energy Solutions LLC. All rights reserved.
   Proprietary and Confidential. Author: Tommy Gilmer.
-  Platform IP: ClearSky Energy Solutions LLC. Customer-facing exports branded to NextNRG.
+  Platform IP: ClearSky Energy Solutions LLC.
   ═══════════════════════════════════════════════════════════════════════════════
 -->
 <html lang="en">
@@ -527,7 +527,7 @@ body{font-family:'Inter',-apple-system,Arial,sans-serif;background:#F1F4F8;color
       </div>
 
       <div class="p1-footer">
-        <div class="p1-footer-text" id="p1-footer-text-brand">NEXTNRG &nbsp;·&nbsp; POWERED BY CLEARSKY-OMEGA</div>
+        <div class="p1-footer-text" id="p1-footer-text-brand">POWERED BY CLEARSKY-OMEGA</div>
         <div class="p1-footer-text" id="p1-agent-contact"></div>
       </div>
     </div>
@@ -556,7 +556,7 @@ body{font-family:'Inter',-apple-system,Arial,sans-serif;background:#F1F4F8;color
               onmousemove="previewItem(event)"></canvas>
             <div class="sitemap-addr" id="p2-addr">No address entered</div>
           </div>
-          <div style="font-size:9px;color:#6B8FAD;margin-top:6px;line-height:1.5;padding:8px;background:#f8fafc;border-radius:4px;border:1px solid #e5e7eb;color:#374151">
+          <div style="font-size:9px;margin-top:6px;line-height:1.5;padding:8px;background:#f8fafc;border-radius:4px;border:1px solid #e5e7eb;color:#374151">
             <strong style="color:#374151">Site Summary:</strong>
             <span id="p2-site-summary"> Enter address and place BESS equipment on the map above.</span>
           </div>
@@ -611,6 +611,7 @@ body{font-family:'Inter',-apple-system,Arial,sans-serif;background:#F1F4F8;color
       </div>
     </div>
   </div>
+
   <!-- PAGE 4: PROCESS -->
   <div class="page" id="page3">
     <div class="p3-header">
@@ -668,7 +669,7 @@ body{font-family:'Inter',-apple-system,Arial,sans-serif;background:#F1F4F8;color
           <div class="step-content">
             <div class="step-label">Step Four · Week 6–14</div>
             <div class="step-title">Installation &amp; Commissioning</div>
-            <div class="step-desc">Licensed electricians and ClearSky's EPC team install the battery system, perform utility interconnection, and commission the system. We handle all inspections and AHJ approvals. Typical installation is 2–4 days with minimal disruption to your operations.</div>
+            <div class="step-desc" id="p3-step4-desc">Licensed electricians and our EPC team install the battery system, perform utility interconnection, and commission the system. We handle all inspections and AHJ approvals. Typical installation is 2–4 days with minimal disruption to your operations.</div>
             <span class="step-tag">⚡ System goes live — savings begin immediately</span>
           </div>
         </div>
@@ -679,7 +680,7 @@ body{font-family:'Inter',-apple-system,Arial,sans-serif;background:#F1F4F8;color
           <div class="step-content">
             <div class="step-label">Step Five · Ongoing</div>
             <div class="step-title">Sit Back &amp; Save</div>
-            <div class="step-desc" id="p3-step5-desc">ClearSky's EMS software monitors and optimizes your battery 24/7, dispatching it to shave demand peaks, participate in energy markets, and maximize your savings. You receive a monthly statement showing energy savings and any revenue share payments.</div>
+            <div class="step-desc" id="p3-step5-desc">Our EMS software monitors and optimizes your battery 24/7, dispatching it to shave demand peaks, participate in energy markets, and maximize your savings. You receive a monthly statement showing energy savings and any revenue share payments.</div>
             <span class="step-tag">📊 Monthly savings reports delivered to your inbox</span>
           </div>
         </div>
@@ -698,15 +699,38 @@ body{font-family:'Inter',-apple-system,Arial,sans-serif;background:#F1F4F8;color
     </div>
   </div>
 
-
 </div>
 </div>
 
 <script>
 // ══════════════════════════════════════════════════════════════════
+// ★ LOGO OVERRIDE — EDIT THESE TWO LINES ONLY ★
+// ------------------------------------------------------------------
+// Whatever you put here is tried FIRST, ahead of every tenant/slug guess.
+// A bare filename resolves against wherever this HTML is served from, so
+// dropping concord-logo.png in the same repo folder as this file is enough.
+// Set to '' to fall back to normal tenant resolution.
+//
+//   LOGO_OVERRIDE       → light backgrounds (cover + page headers)
+//   LOGO_OVERRIDE_WHITE → dark navy footers. If you only have one file,
+//                         leave this '' and it reuses LOGO_OVERRIDE. If the
+//                         mark is dark-on-transparent it will disappear on
+//                         the navy footer — supply a white version here.
+// ══════════════════════════════════════════════════════════════════
+var LOGO_OVERRIDE       = 'concord-logo.png';
+var LOGO_OVERRIDE_WHITE = '';   // e.g. 'concord-logo-white.png'
+
+// Optional: force the display name / colors regardless of host.
+// Leave '' to keep automatic tenant resolution.
+var BRAND_NAME_OVERRIDE    = '';   // e.g. 'Concord Energy'
+var BRAND_ACCENT_OVERRIDE  = '';   // e.g. '#0F766E'
+var BRAND_TAGLINE_OVERRIDE = '';   // e.g. 'BATTERY STORAGE · EV CHARGING'
+
+// ══════════════════════════════════════════════════════════════════
 // BRAND RESOLVER  (multi-tenant)
 // ------------------------------------------------------------------
 // Resolution order — first hit wins:
+//   0. LOGO_OVERRIDE / BRAND_*_OVERRIDE above
 //   1. window.OMEGA_CONFIG.brand   (config.js is loaded → tenant deployment)
 //   2. ?b=<base64 JSON>            (portal passes its own brand on launch)
 //   3. ?bname= / ?blogo= / ?baccent= / ?btagline=   (plain-param equivalent)
@@ -728,6 +752,7 @@ var LEGACY_BRANDS = {
   chileasing:{ name:'Chileasing Energy', accent:'#0EA5E9', tagline:'ENERGY LEASING · STORAGE' },
   ogisolar:  { name:'OGI Solar', accent:'#EA580C', tagline:'SOLAR · STORAGE · EV' },
   lionheart: { name:'Lionheart Energy', accent:'#B91C1C', tagline:'EV CHARGING SOLUTIONS' },
+  concord:   { name:'Concord', accent:'#1D4ED8', tagline:'DISTRIBUTED ENERGY · STORAGE' },
 
   // TODO(thomas): confirm accent + tagline + logo filename with each tenant.
   // Present so they stop falling through to DEFAULT_BRAND and printing as ClearSky.
@@ -755,6 +780,7 @@ function _slugFromHost() {
     var m = (location.search||'').match(/[?&]brand=([^&]+)/); if (m) return decodeURIComponent(m[1]).toLowerCase();
     var h = (location.hostname || '').toLowerCase(); var parts = h.split('.');
     if (parts.length >= 3 && parts[parts.length-2] === 'csebuilders' && !RESERVED_SUBDOMAINS[parts[0]]) return parts[0];
+    if (parts.length >= 3 && parts[parts.length-2] === 'clearskyomega' && !RESERVED_SUBDOMAINS[parts[0]]) return parts[0];
     return '';
   } catch(e){ return ''; }
 }
@@ -772,6 +798,14 @@ function _returnOrigin() {
     return u.origin;
   } catch(e){ return ''; }
 }
+// Same origin this file is served from. '' under file://, which is correct —
+// relative paths still work there via _relFallback below.
+function _selfOrigin() {
+  try {
+    if (location.origin && location.origin !== 'null') return location.origin;
+  } catch(e){}
+  return '';
+}
 // Every origin that might serve this tenant's assets, best guess first.
 function _tenantOrigins(slug) {
   var out = [], seen = {};
@@ -781,6 +815,7 @@ function _tenantOrigins(slug) {
     push('https://' + slug + '.clearskyomega.com');             // 2. tenant deployment convention
     push('https://' + slug + '.csebuilders.com');               // 3. legacy
   }
+  push(_selfOrigin());                                          // 4. wherever this file lives
   return out;
 }
 function _tenantOrigin(slug) {
@@ -798,23 +833,12 @@ function _portalUrl() {
   if (slug) return 'https://' + slug + '.clearskyomega.com/';
   return '/';
 }
-// Force every logo reference to an ABSOLUTE url.
-// Root-relative ("/sunesol-logo.png") was the original bug: it resolved against
-// whatever origin served this tool (tools.csebuilders.com, or file:// once the
-// proposal is downloaded) rather than against the tenant's own deployment.
-function _absLogo(logo, slug) {
-  if (!logo) return '';
-  logo = String(logo).trim();
-  if (/^(https?:)?\/\//i.test(logo) || /^data:/i.test(logo)) return logo;   // already absolute
-  var origin = _tenantOrigin(slug);
-  if (!origin) return logo;                                                 // no origin: leave as-is
-  return origin + '/' + logo.replace(/^\/+/, '');
-}
 // ── Logo URL candidates ──────────────────────────────────────────
 // We do not reliably know the filename each tenant repo uses for its mark, so
-// try the configured name first and then the common conventions across every
-// plausible origin. Each <img> walks this list via onerror and hides itself if
-// the list runs out — a client never sees a broken-image glyph.
+// try the override first, then the configured name, then the common
+// conventions across every plausible origin. Each <img> walks this list via
+// onerror and hides itself if the list runs out — a client never sees a
+// broken-image glyph.
 // Observed tenant-repo convention (github.com/clearskyenergy/<slug>):
 //   <slug>-logo-color.png   — for light backgrounds
 //   <slug>-logo-white.png   — for dark backgrounds (page-3/4 footers)
@@ -832,17 +856,34 @@ function _logoPaths(slug, variant) {
   p.push('logo.png', 'logo.svg', 'assets/logo.png', 'img/logo.png');
   return p;
 }
+function _isAbsolute(u) {
+  return /^(https?:)?\/\//i.test(u) || /^data:/i.test(u);
+}
 function _logoCandidates(brand, slug, variant) {
   var out = [], seen = {};
   function push(u){ if (u && !seen[u]) { seen[u] = 1; out.push(u); } }
 
-  // An explicit config.js value always wins.
-  var cfgLogo = brand && (variant === 'white' ? (brand.logoWhite || brand.logo) : (brand.logoColor || brand.logo));
-  if (cfgLogo && (/^(https?:)?\/\//i.test(cfgLogo) || /^data:/i.test(cfgLogo))) push(cfgLogo);
-
   var origins = _tenantOrigins(slug);
-  var paths   = [];
-  if (cfgLogo && !/^(https?:)?\/\//i.test(cfgLogo) && !/^data:/i.test(cfgLogo)) paths.push(String(cfgLogo).replace(/^\/+/, ''));
+
+  // ── 0. Hard override (highest priority) ──
+  var ov = (variant === 'white') ? (LOGO_OVERRIDE_WHITE || LOGO_OVERRIDE) : LOGO_OVERRIDE;
+  if (ov) {
+    if (_isAbsolute(ov)) {
+      push(ov);
+    } else {
+      var rel = String(ov).replace(/^\/+/, '');
+      push(rel);                                    // plain relative — works under file:// too
+      for (var a = 0; a < origins.length; a++) push(origins[a] + '/' + rel);
+    }
+  }
+
+  // ── 1. Explicit config.js value ──
+  var cfgLogo = brand && (variant === 'white' ? (brand.logoWhite || brand.logo) : (brand.logoColor || brand.logo));
+  if (cfgLogo && _isAbsolute(cfgLogo)) push(cfgLogo);
+
+  // ── 2. Convention walk across every plausible origin ──
+  var paths = [];
+  if (cfgLogo && !_isAbsolute(cfgLogo)) paths.push(String(cfgLogo).replace(/^\/+/, ''));
   paths = paths.concat(_logoPaths(slug, variant));
 
   for (var o = 0; o < origins.length; o++)
@@ -901,9 +942,14 @@ function resolveBrand() {
   }
   if (!b) b = { name:DEFAULT_BRAND.name, logo:DEFAULT_BRAND.logo, accent:DEFAULT_BRAND.accent, tagline:DEFAULT_BRAND.tagline };
 
+  // Manual overrides win over everything
+  if (BRAND_NAME_OVERRIDE)    b.name    = BRAND_NAME_OVERRIDE;
+  if (BRAND_ACCENT_OVERRIDE)  b.accent  = BRAND_ACCENT_OVERRIDE;
+  if (BRAND_TAGLINE_OVERRIDE) b.tagline = BRAND_TAGLINE_OVERRIDE;
+
   b.logoCandidates      = _logoCandidates(b, slug, 'color');
   b.logoCandidatesWhite = _logoCandidates(b, slug, 'white');
-  b.logo      = b.logoCandidates[0]      || '';
+  b.logo         = b.logoCandidates[0]      || '';
   b.logoWhiteUrl = b.logoCandidatesWhite[0] || '';
   b.slug = slug;
   return b;
@@ -944,7 +990,11 @@ function _readTenantConfig() {
 
 function loadTenantConfig() {
   return new Promise(function(resolve) {
-    var origin = _tenantOrigin(_slugFromHost());
+    var origin = _returnOrigin();
+    if (!origin) {
+      var slug0 = _slugFromHost();
+      if (slug0) origin = 'https://' + slug0 + '.clearskyomega.com';
+    }
     if (!origin) return resolve(null);
     var sc = document.createElement('script');
     sc.src = origin + '/config.js';
@@ -959,12 +1009,13 @@ function loadTenantConfig() {
 }
 
 // Re-resolve the brand once the tenant config has landed, then repaint.
+// Manual overrides above always win, so a stray config.js can't clobber them.
 function applyTenantConfig(cfg) {
   if (!cfg) return;
   var slug = BRAND.slug;
-  if (cfg.name)    BRAND.name    = cfg.name;
-  if (cfg.accent)  BRAND.accent  = cfg.accent;
-  if (cfg.tagline) BRAND.tagline = cfg.tagline;
+  if (cfg.name    && !BRAND_NAME_OVERRIDE)    BRAND.name    = cfg.name;
+  if (cfg.accent  && !BRAND_ACCENT_OVERRIDE)  BRAND.accent  = cfg.accent;
+  if (cfg.tagline && !BRAND_TAGLINE_OVERRIDE) BRAND.tagline = cfg.tagline;
   if (cfg.logoColor || cfg.logoWhite || cfg.logo) {
     var src = { logo:cfg.logo, logoColor:cfg.logoColor, logoWhite:cfg.logoWhite };
     BRAND.logoCandidates      = _logoCandidates(src, slug, 'color');
@@ -1013,7 +1064,11 @@ function inlineBrandLogo() {
       .then(function(dataUri){
         BRAND.logo = dataUri;
         var l = document.querySelectorAll('img.brand-logo');
-        for (var i=0;i<l.length;i++) l[i].src = dataUri;
+        for (var i=0;i<l.length;i++) {
+          // Don't clobber the white-variant marks with the color one.
+          if (l[i].className.indexOf('brand-logo-white') !== -1) continue;
+          l[i].src = dataUri;
+        }
       })
       .catch(function(){
         // Cross-origin without CORS headers. The <img> still displays fine on
@@ -1067,8 +1122,8 @@ function applyBrand() {
   if (p3sub) p3sub.textContent = BRAND.name + ' manages the entire process — you just show up for commissioning.';
   var s1 = document.getElementById('p3-step1-desc');
   if (s1) s1.textContent = 'Provide your last 12 months of utility bills. ' + BRAND.name + ' analyzes your peak demand patterns, time-of-use charges, and demand spikes to size the right battery system for maximum savings — no site visit required at this stage.';
-  var s3 = document.getElementById('p3-step3-desc');
-  if (s3) s3.textContent = 'Sign your site host or financing agreement. ' + BRAND.name + ' submits interconnection applications to your utility, files for available rebates (ComEd BESH, SGIP, NJ BPU, etc.), and applies for applicable federal incentives including the 30% Investment Tax Credit.';
+  var s4 = document.getElementById('p3-step4-desc');
+  if (s4) s4.textContent = 'Licensed electricians and the ' + BRAND.name + ' EPC team install the battery system, perform utility interconnection, and commission the system. We handle all inspections and AHJ approvals. Typical installation is 2–4 days with minimal disruption to your operations.';
 
   // contact placeholder
   var ac = document.getElementById('agent-contact');
@@ -1083,7 +1138,7 @@ var _tool  = 'bess';
 var _placements = [];   // {type, x, y}
 var _bgImage = null;    // satellite image data URL
 
-// ── PPA state (NextNRG-owns model) ──
+// ── PPA state (developer-owns model) ──
 var _ppa = {
   energy: true,     // energy $/kWh component on?
   demand: true,     // demand-charge discount component on?
@@ -1105,7 +1160,7 @@ function _wireBackLink(){
   if (a) a.setAttribute('href', _portalUrl());
 }
 window.onload = function() {
-  applyBrand();                       // paint immediately from slug convention
+  applyBrand();                       // paint immediately from override / slug convention
   loadTenantConfig()                  // then refine from the tenant's own config.js
     .then(applyTenantConfig)
     .then(function(){ inlineBrandLogo(); });
@@ -1133,30 +1188,37 @@ function scrollToPage(idx) {
   if (pages[idx]) {
     pages[idx].scrollIntoView({ behavior:'smooth', block:'start' });
   }
-  tabs.forEach(function(t,i){ t.classList.toggle('active', i===idx); });
+  for (var i = 0; i < tabs.length; i++) {
+    if (i === idx) tabs[i].classList.add('active'); else tabs[i].classList.remove('active');
+  }
 }
 
 // ══════════════════════════════════════════════════════════════════
 // MODEL
 // ══════════════════════════════════════════════════════════════════
-var MODEL_DESCS = {
-  clearsky: _bn()+' owns, installs, and operates the system. The client signs a Power Purchase Agreement — buying power at a rate below their utility and/or a guaranteed discount on demand charges. $0 upfront; '+_bn()+' keeps the ITC, depreciation, and value-stack revenue.',
-  finance:  'The client finances the system over a fixed term (5–20 years). During the term they keep the full utility bill savings, and '+_bn()+' retains value-stack revenue until payoff. After the term the system is theirs — or they can pay off the balance early.',
-  cash:     'The client purchases the system outright, owning all value streams — demand savings, energy arbitrage, capacity revenue, and all incentives including the 30% ITC and MACRS depreciation.'
-};
-
-var MODEL_LABELS = {
-  clearsky: '🏢 '+_bn()+'-Owned · Power Purchase Agreement',
-  finance:  '💳 Client Finance Model — Equipment Loan',
-  cash:     '💰 Client Cash Purchase — Full Ownership'
-};
+function _modelDesc(m) {
+  if (m === 'clearsky') {
+    return _bn()+' owns, installs, and operates the system. The client signs a Power Purchase Agreement — buying power at a rate below their utility and/or a guaranteed discount on demand charges. $0 upfront; '+_bn()+' keeps the ITC, depreciation, and value-stack revenue.';
+  }
+  if (m === 'finance') {
+    return 'The client finances the system over a fixed term (5–20 years). During the term they keep the full utility bill savings, and '+_bn()+' retains value-stack revenue until payoff. After the term the system is theirs — or they can pay off the balance early.';
+  }
+  return 'The client purchases the system outright, owning all value streams — demand savings, energy arbitrage, capacity revenue, and all incentives including the 30% ITC and MACRS depreciation.';
+}
+function _modelLabel(m) {
+  if (m === 'clearsky') return '🏢 '+_bn()+'-Owned · Power Purchase Agreement';
+  if (m === 'finance')  return '💳 Client Finance Model — Equipment Loan';
+  return '💰 Client Cash Purchase — Full Ownership';
+}
 
 function setModel(m) {
   _model = m;
-  ['clearsky','finance','cash'].forEach(function(x) {
-    document.getElementById('model-'+x).classList.toggle('active', x===m);
-  });
-  document.getElementById('model-desc').textContent = MODEL_DESCS[m];
+  var ids = ['clearsky','finance','cash'];
+  for (var i = 0; i < ids.length; i++) {
+    var el = document.getElementById('model-'+ids[i]);
+    if (ids[i] === m) el.classList.add('active'); else el.classList.remove('active');
+  }
+  document.getElementById('model-desc').textContent = _modelDesc(m);
   document.getElementById('model-finance-inputs').style.display  = (m==='finance')  ? 'block' : 'none';
   document.getElementById('model-clearsky-inputs').style.display = (m==='clearsky') ? 'block' : 'none';
   document.getElementById('model-cash-inputs').style.display     = (m==='cash')     ? 'block' : 'none';
@@ -1169,7 +1231,8 @@ function toggleComponent(which) {
   var other = (which === 'energy') ? 'demand' : 'energy';
   if (_ppa[which] && !_ppa[other]) return; // this is the only one on; ignore
   _ppa[which] = !_ppa[which];
-  document.getElementById('chip-'+which).classList.toggle('on', _ppa[which]);
+  var chip = document.getElementById('chip-'+which);
+  if (_ppa[which]) chip.classList.add('on'); else chip.classList.remove('on');
   document.getElementById('ppa-energy-block').style.display = _ppa.energy ? 'block' : 'none';
   document.getElementById('ppa-demand-block').style.display = _ppa.demand ? 'block' : 'none';
   update();
@@ -1177,9 +1240,11 @@ function toggleComponent(which) {
 
 function setRateMode(mode) {
   _ppa.rateMode = mode;
-  ['pct','auto','manual'].forEach(function(x){
-    document.getElementById('rmode-'+x).classList.toggle('active', x===mode);
-  });
+  var modes = ['pct','auto','manual'];
+  for (var i = 0; i < modes.length; i++) {
+    var el = document.getElementById('rmode-'+modes[i]);
+    if (modes[i] === mode) el.classList.add('active'); else el.classList.remove('active');
+  }
   document.getElementById('rate-pct-input').style.display    = (mode==='pct')    ? 'block' : 'none';
   document.getElementById('rate-manual-input').style.display = (mode==='manual') ? 'block' : 'none';
   document.getElementById('rate-auto-note').style.display    = (mode==='auto')   ? 'block' : 'none';
@@ -1206,8 +1271,8 @@ function computePpaRate() {
     return parseFloat(document.getElementById('ppa-rate-manual').value) || utilRate;
   }
   if (_ppa.rateMode === 'auto') {
-    // Auto-size: solar+storage LCOE-style target — floor the client at a healthy
-    // discount but keep NextNRG margin. Scale discount by system coverage of load.
+    // Auto-size: LCOE-style target — floor the client at a healthy discount but
+    // keep developer margin. Scale discount by system coverage of load.
     var akwh = parseFloat(document.getElementById('annual-kwh').value) || 1;
     var sysKwh = parseFloat(document.getElementById('sys-kwh').value)  || 500;
     var annualDispatch = sysKwh * 0.87 * 365;           // kWh the system can serve/yr
@@ -1253,7 +1318,7 @@ function update() {
   var annualArbitrage      = kwh * 0.87 * 1.0 * 365 * 0.11; // kWh * eff * cycles * days * spread
   var totalAnnualRevenue   = annualDemandSavings + annualArbitrage;
 
-  // ── PPA ECONOMICS (NextNRG-owns model) ──
+  // ── PPA ECONOMICS (developer-owns model) ──
   // Stored globally so term/financial/chart builders share one source of truth.
   var utilRate  = parseFloat(document.getElementById('utility-rate').value) || 0.142;
   var ppaRate   = computePpaRate();
@@ -1294,7 +1359,7 @@ function update() {
   document.getElementById('p1-agent').textContent    = agent;
   document.getElementById('p1-date').textContent     = dateStr;
   document.getElementById('p1-agent-contact').textContent = agentCtx;
-  document.getElementById('p1-model-badge').textContent   = MODEL_LABELS[_model];
+  document.getElementById('p1-model-badge').textContent   = _modelLabel(_model);
   document.getElementById('p1-kwh').textContent = kwh + ' kWh / ' + kw + ' kW';
 
   var eyebrowEl = document.getElementById('p1-eyebrow');
@@ -1322,29 +1387,29 @@ function update() {
     costLbl.innerHTML   = 'Upfront Cost<br>to Client';
     if (_ppa.energy) {
       itcEl.textContent = '$' + _ppaCalc.ppaRate.toFixed(3);
-      itcEl.className    = 'p1-stat-num blue';
+      itcEl.className   = 'p1-stat-num blue';
       itcLbl.innerHTML  = 'PPA Rate<br>($/kWh)';
     } else {
       itcEl.textContent = Math.round(_ppaCalc.demDisc*100) + '%';
-      itcEl.className    = 'p1-stat-num blue';
+      itcEl.className   = 'p1-stat-num blue';
       itcLbl.innerHTML  = 'Demand Charge<br>Discount';
     }
   } else if (_model === 'finance') {
     var finTerm = parseFloat(document.getElementById('finance-term').value) || 10;
     costEl.textContent  = '$0';
-    costEl.className     = 'p1-stat-num ink';
+    costEl.className    = 'p1-stat-num ink';
     costLbl.innerHTML   = 'Down Payment<br>Required';
     itcEl.textContent   = finTerm + '-Yr';
-    itcEl.className      = 'p1-stat-num blue';
+    itcEl.className     = 'p1-stat-num blue';
     itcLbl.innerHTML    = 'Finance Term<br>w/ Low Payments';
   } else {
     var cashCost = parseFloat(document.getElementById('cash-cost').value) || 0;
     var itcAmt   = cashCost * 0.30;
     costEl.textContent  = cashCost ? '$' + Math.round(cashCost/1000) + 'K' : 'Enter Cost';
-    costEl.className     = 'p1-stat-num ink';
+    costEl.className    = 'p1-stat-num ink';
     costLbl.innerHTML   = 'System Install<br>Cost';
     itcEl.textContent   = itcAmt ? '$' + Math.round(itcAmt/1000) + 'K' : '30% ITC';
-    itcEl.className      = 'p1-stat-num';
+    itcEl.className     = 'p1-stat-num';
     itcLbl.innerHTML    = 'Federal Tax<br>Credit (Est.)';
   }
 
@@ -1380,11 +1445,12 @@ function update() {
   // ── PAGE 2 FINANCIALS ──
   buildFinancials(bill, annualDemandSavings, annualArbitrage, custSavings, kwh);
 
-  // ── PAGE 3 ──
+  // ── PAGE 4 (process) ──
   document.getElementById('p3-agent-line').textContent = agent + (agentCtx ? ' · ' + agentCtx : '');
   updateProcessPage();
-  // ── PAGE 4 ──
-  if(document.getElementById('p4-agent-line')) document.getElementById('p4-agent-line').textContent = agent + (agentCtx ? ' · ' + agentCtx : '');
+
+  // ── PAGE 3 (financials) ──
+  if (document.getElementById('p4-agent-line')) document.getElementById('p4-agent-line').textContent = agent + (agentCtx ? ' · ' + agentCtx : '');
   drawFinChart(kwh, kw, bill, peakDmd, drPct, custSavings);
 }
 
@@ -1442,7 +1508,7 @@ function buildTerms(customer, address, kwh, kw, bill, peakDmd, drPct, demSavings
       + termRow('Net Financed Amount', '$'+Math.round(netCapex/1000)+'K', '')
       + termRow('Est. Monthly Payment', '$'+Math.round(monthly).toLocaleString()+'/mo', '')
       + termRow('During Term: Demand Savings', 'Customer keeps 100%', 'green')
-      + termRow('During Term: Value Stack', 'ClearSky retains until payoff', '')
+      + termRow('During Term: Value Stack', _bn()+' retains until payoff', '')
       + termRow('After Payoff', 'Customer owns all value streams', 'green')
       + termRow('End of Term Options', 'Keep battery or refinance', '')
       + '</div></div>';
@@ -1458,7 +1524,7 @@ function buildTerms(customer, address, kwh, kw, bill, peakDmd, drPct, demSavings
       + termRow('MACRS Depreciation Benefit', '$'+Math.round(macrs/1000)+'K est.', 'green')
       + termRow('Net Cost After Incentives', '$'+Math.round((capex2-itc2-macrs)/1000)+'K', '')
       + termRow('All Value Streams', 'Customer owns 100%', 'green')
-      + termRow('O&amp;M (optional ClearSky SLA)', 'Available at market rate', '')
+      + termRow('O&amp;M (optional SLA)', 'Available at market rate', '')
       + termRow('Payback Period', calcPayback(capex2-itc2-macrs, demSavings+arbRevenue)+' years', '')
       + '</div></div>';
   }
@@ -1468,7 +1534,7 @@ function buildTerms(customer, address, kwh, kw, bill, peakDmd, drPct, demSavings
 function buildFinancials(bill, demSavings, arbRevenue, custSavings, kwh) {
   var finDiv = document.getElementById('p2-financials');
   var annualBill = bill * 12;
-  var savePct = custSavings / annualBill * 100;
+  var savePct = annualBill > 0 ? (custSavings / annualBill * 100) : 0;
 
   var rows = '';
   if (_model === 'clearsky') {
@@ -1519,14 +1585,14 @@ function updateProcessPage() {
   } else if (_model === 'finance') {
     var term = document.getElementById('finance-term').value || 10;
     step3t.textContent = 'Sign Finance Agreement';
-    step3d.textContent = 'Sign the equipment finance agreement. ClearSky facilitates financing through our lending partners. During the '+term+'-year term you benefit from 100% of your utility demand savings while ClearSky retains energy market revenue to support the project economics. After payoff, all value streams transfer to you.';
+    step3d.textContent = 'Sign the equipment finance agreement. '+_bn()+' facilitates financing through our lending partners. During the '+term+'-year term you benefit from 100% of your utility demand savings while '+_bn()+' retains energy market revenue to support the project economics. After payoff, all value streams transfer to you.';
     step3g.textContent = '💳 Low monthly payments — demand savings offset the cost';
-    step5d.textContent = 'Your battery reduces demand charges every month. ClearSky\'s team monitors the system and manages all utility compliance. At end of term you own the battery free and clear — or you can pay off early and capture all value streams sooner.';
+    step5d.textContent = 'Your battery reduces demand charges every month. The '+_bn()+' team monitors the system and manages all utility compliance. At end of term you own the battery free and clear — or you can pay off early and capture all value streams sooner.';
   } else {
-    step3t.textContent = 'Purchase Agreement &amp; Incentive Filing';
-    step3d.textContent = 'Sign the purchase agreement and provide your tax advisor information for the 30% ITC filing. ClearSky assists with all rebate applications and interconnection filings. You receive the full ITC credit on your next tax return, significantly reducing your net cost.';
+    step3t.innerHTML  = 'Purchase Agreement &amp; Incentive Filing';
+    step3d.textContent = 'Sign the purchase agreement and provide your tax advisor information for the 30% ITC filing. '+_bn()+' assists with all rebate applications and interconnection filings. You receive the full ITC credit on your next tax return, significantly reducing your net cost.';
     step3g.textContent = '💰 ITC + MACRS can reduce net cost by 40%+';
-    step5d.textContent = 'You own the battery and all its revenue streams — demand savings, energy arbitrage, capacity market payments, and any utility program revenues. ClearSky offers optional O&M service agreements. Your battery typically pays itself back in 3–6 years.';
+    step5d.textContent = 'You own the battery and all its revenue streams — demand savings, energy arbitrage, capacity market payments, and any utility program revenues. '+_bn()+' offers optional O&M service agreements. Your battery typically pays itself back in 3–6 years.';
   }
 }
 
@@ -1564,8 +1630,25 @@ function clearPlacements() {
   drawCanvas();
 }
 
+// roundRect polyfill — older Safari / iOS lacks it and the whole site map
+// silently fails to draw without this.
+function _roundRect(ctx, x, y, w, h, r) {
+  if (typeof ctx.roundRect === 'function') { ctx.roundRect(x, y, w, h, r); return; }
+  var rr = (typeof r === 'number') ? r : 3;
+  ctx.moveTo(x + rr, y);
+  ctx.lineTo(x + w - rr, y);
+  ctx.quadraticCurveTo(x + w, y, x + w, y + rr);
+  ctx.lineTo(x + w, y + h - rr);
+  ctx.quadraticCurveTo(x + w, y + h, x + w - rr, y + h);
+  ctx.lineTo(x + rr, y + h);
+  ctx.quadraticCurveTo(x, y + h, x, y + h - rr);
+  ctx.lineTo(x, y + rr);
+  ctx.quadraticCurveTo(x, y, x + rr, y);
+}
+
 function drawCanvas() {
   var canvas = document.getElementById('sitemap-canvas');
+  if (!canvas) return;
   var ctx    = canvas.getContext('2d');
   var W = canvas.width, H = canvas.height;
 
@@ -1594,9 +1677,9 @@ function drawCanvas() {
   }
 
   // Draw placements
-  _placements.forEach(function(p) {
-    drawEquipment(ctx, p.type, p.x, p.y, 1.0);
-  });
+  for (var i = 0; i < _placements.length; i++) {
+    drawEquipment(ctx, _placements[i].type, _placements[i].x, _placements[i].y, 1.0);
+  }
 
   // Preview ghost
   if (_previewX >= 0 && _previewY >= 0) {
@@ -1622,27 +1705,27 @@ function drawEquipment(ctx, type, x, y, alpha) {
   // Body fill (dark navy)
   ctx.fillStyle = '#0D2040';
   ctx.beginPath();
-  ctx.roundRect(bx, by, bw, bh, 4);
+  _roundRect(ctx, bx, by, bw, bh, 4);
   ctx.fill();
   ctx.shadowBlur = 0;
 
-  // Body border (gold)
+  // Body border
   ctx.strokeStyle = '#1D4ED8';
   ctx.lineWidth = 1.8;
   ctx.beginPath();
-  ctx.roundRect(bx, by, bw, bh, 4);
+  _roundRect(ctx, bx, by, bw, bh, 4);
   ctx.stroke();
 
   // Positive terminal nub (right side)
   ctx.fillStyle = '#1D4ED8';
   ctx.beginPath();
-  ctx.roundRect(bx + bw, by + (bh - tipH) / 2, tipW, tipH, [0, 2, 2, 0]);
+  _roundRect(ctx, bx + bw, by + (bh - tipH) / 2, tipW, tipH, 2);
   ctx.fill();
 
   // Negative terminal nub (left side, smaller)
   ctx.fillStyle = '#6B8FAD';
   ctx.beginPath();
-  ctx.roundRect(bx - 3, by + (bh - 8) / 2, 3, 8, [2, 0, 0, 2]);
+  _roundRect(ctx, bx - 3, by + (bh - 8) / 2, 3, 8, 1.5);
   ctx.fill();
 
   // Internal cell dividers (3 cells)
@@ -1662,7 +1745,7 @@ function drawEquipment(ctx, type, x, y, alpha) {
   grad.addColorStop(1, '#22d77a');
   ctx.fillStyle = grad;
   ctx.beginPath();
-  ctx.roundRect(bx + 4, by + 5, fillW, bh - 10, 2);
+  _roundRect(ctx, bx + 4, by + 5, fillW, bh - 10, 2);
   ctx.fill();
 
   // "BESS" label below
@@ -1778,7 +1861,7 @@ function calcPayback(cost, annualRevenue) {
 }
 
 // ══════════════════════════════════════════════════════════════════
-// FINANCIAL CHART (PAGE 4)
+// FINANCIAL CHART (PAGE 3)
 // ══════════════════════════════════════════════════════════════════
 function drawFinChart(kwh, kw, bill, peakDmd, drPct, custSavingsAnnual) {
   var canvas = document.getElementById('fin-chart');
@@ -1861,7 +1944,7 @@ function drawFinChart(kwh, kw, bill, peakDmd, drPct, custSavingsAnnual) {
   var range = maxV - minV;
 
   function yx(val) { return PAD.t + CH * (1 - (val - minV) / range); }
-  // Each year slot: 0..10 spaced evenly across CW
+  // Each year slot spaced evenly across CW
   function xx(i)   { return PAD.l + (i / years) * CW; }
   // Bar center = midpoint between year i and i+1
   function bxCenter(i) { return PAD.l + ((i + 0.5) / years) * CW; }
@@ -1896,7 +1979,7 @@ function drawFinChart(kwh, kw, bill, peakDmd, drPct, custSavingsAnnual) {
   ctx.beginPath(); ctx.moveTo(PAD.l, y0); ctx.lineTo(W - PAD.r, y0); ctx.stroke();
   ctx.setLineDash([]);
 
-  // Bars (years 1-10, drawn in middle of each slot)
+  // Bars (drawn in middle of each slot)
   for (var i = 0; i < years; i++) {
     var cx = bxCenter(i);
     var topNo  = yx(Math.max(barNo[i],  0));
@@ -1904,16 +1987,16 @@ function drawFinChart(kwh, kw, bill, peakDmd, drPct, custSavingsAnnual) {
     var bh_no  = Math.abs(y0 - topNo);
     var bh_bat = Math.abs(y0 - topBat);
 
-    // No-battery bar (green, left of center)
+    // Baseline bar (green, left of center)
     ctx.fillStyle = 'rgba(34,197,94,0.40)';
     ctx.fillRect(cx - barW - 1, topNo, barW, bh_no);
 
-    // BESS bar (blue, right of center)
+    // BESS/PPA bar (blue, right of center)
     ctx.fillStyle = 'rgba(59,130,246,0.40)';
     ctx.fillRect(cx + 1, topBat, barW, bh_bat);
   }
 
-  // Cumulative line — No Battery (dark gray)
+  // Cumulative line — baseline (dark gray)
   ctx.strokeStyle = '#374151';
   ctx.lineWidth = 2;
   ctx.beginPath();
@@ -1923,7 +2006,7 @@ function drawFinChart(kwh, kw, bill, peakDmd, drPct, custSavingsAnnual) {
   }
   ctx.stroke();
 
-  // Cumulative line — BESS (blue) — draw line first, then dots on top
+  // Cumulative line — BESS/PPA (blue) — draw line first, then dots on top
   ctx.strokeStyle = '#3B82F6';
   ctx.lineWidth = 2.5;
   ctx.beginPath();
@@ -1933,7 +2016,7 @@ function drawFinChart(kwh, kw, bill, peakDmd, drPct, custSavingsAnnual) {
   }
   ctx.stroke();
 
-  // Dots on BESS cumulative (drawn after stroke so they're clean)
+  // Dots on cumulative (drawn after stroke so they're clean)
   for (var i3b = 0; i3b <= years; i3b++) {
     ctx.fillStyle = '#3B82F6';
     ctx.beginPath();
@@ -1941,15 +2024,17 @@ function drawFinChart(kwh, kw, bill, peakDmd, drPct, custSavingsAnnual) {
     ctx.fill();
   }
 
-  // X axis labels
+  // X axis labels — thin them out on long terms so they don't collide
   ctx.fillStyle = '#94a3b8';
   ctx.font = '9px Arial';
   ctx.textAlign = 'center';
+  var lblStep = years > 12 ? Math.ceil(years / 10) : 1;
   for (var i4 = 0; i4 <= years; i4++) {
+    if (i4 % lblStep !== 0 && i4 !== years) continue;
     ctx.fillText('Yr '+i4, xx(i4), H - PAD.b + 14);
   }
 
-  // Legend (two rows if needed — fit in PAD.t space)
+  // Legend
   var legendItems = [
     {color:'rgba(34,197,94,0.5)',  label:LBL.barA,  line:false},
     {color:'rgba(59,130,246,0.45)',label:LBL.barB,  line:false},
@@ -1957,7 +2042,8 @@ function drawFinChart(kwh, kw, bill, peakDmd, drPct, custSavingsAnnual) {
     {color:'#3B82F6',              label:LBL.lineB, line:true}
   ];
   var lx = PAD.l, ly = 14;
-  legendItems.forEach(function(item) {
+  for (var li = 0; li < legendItems.length; li++) {
+    var item = legendItems[li];
     ctx.save();
     if (item.line) {
       ctx.strokeStyle = item.color; ctx.lineWidth = 2;
@@ -1970,12 +2056,12 @@ function drawFinChart(kwh, kw, bill, peakDmd, drPct, custSavingsAnnual) {
     ctx.fillText(item.label, lx + 20, ly + 4);
     ctx.restore();
     lx += 20 + ctx.measureText(item.label).width + 18;
-  });
+  }
 
   // ── KPI Cards ──
   var payback = annRev > 0 ? (netCapex / annRev) : 0;
   var npv10   = -netCapex;
-  for (var y2 = 0; y2 < 10; y2++) npv10 += annRev;
+  for (var y3 = 0; y3 < 10; y3++) npv10 += annRev;
 
   var npvColor  = npv10  >= 0 ? '#16a34a' : '#dc2626';
   var pbColor   = (payback <= 7) ? '#16a34a' : (payback <= 12 ? '#1d4ed8' : '#b45309');
@@ -1988,22 +2074,22 @@ function drawFinChart(kwh, kw, bill, peakDmd, drPct, custSavingsAnnual) {
   if (_model === 'clearsky') {
     var c = _ppaCalc;
     kpis = [
-      {label:'Client Upfront Cost',          val:'$0 Down',                            color:'#16A34A'},
+      {label:'Client Upfront Cost',          val:'$0 Down',                                     color:'#16A34A'},
       (_ppa.energy
-        ? {label:'PPA Energy Rate',          val:'$'+c.ppaRate.toFixed(3)+'/kWh',      color:'#1D4ED8'}
-        : {label:'Demand Charge Discount',   val:Math.round(c.demDisc*100)+'%',        color:'#1D4ED8'}),
+        ? {label:'PPA Energy Rate',          val:'$'+c.ppaRate.toFixed(3)+'/kWh',               color:'#1D4ED8'}
+        : {label:'Demand Charge Discount',   val:Math.round(c.demDisc*100)+'%',                 color:'#1D4ED8'}),
       {label:'Est. Year-1 Savings',          val:'$'+Math.round(c.clientSavingsY1/1000)+'K/yr', color:'#16A34A'},
-      {label:c.term+'-Yr Lifetime Savings',  val:'$'+Math.round(c.lifeClient/1000)+'K', color:'#16A34A'},
+      {label:c.term+'-Yr Lifetime Savings',  val:'$'+Math.round(c.lifeClient/1000)+'K',         color:'#16A34A'},
       (_ppa.energy
-        ? {label:'Discount vs Utility',      val:Math.round(c.discountPct*100)+'%',    color:'#16A34A'}
-        : {label:'Guaranteed Reduction',     val:Math.round(c.demDisc*100)+'%',        color:'#16A34A'}),
-      {label:'PPA Term',                     val:c.term+' Years',                      color:'#374151'}
+        ? {label:'Discount vs Utility',      val:Math.round(c.discountPct*100)+'%',             color:'#16A34A'}
+        : {label:'Guaranteed Reduction',     val:Math.round(c.demDisc*100)+'%',                 color:'#16A34A'}),
+      {label:'PPA Term',                     val:c.term+' Years',                               color:'#374151'}
     ];
   } else if (_model === 'finance') {
     var finTerm = parseFloat(document.getElementById('finance-term').value) || 10;
     kpis = [
       {label:'Down Payment Required',        val:'$0',                                color:'#16a34a'},
-      {label:'Est. Annual Demand Savings',   val:'$'+Math.round(annRev/1000)+'K/yr', color:'#16a34a'},
+      {label:'Est. Annual Demand Savings',   val:'$'+Math.round(annRev/1000)+'K/yr',  color:'#16a34a'},
       {label:'Finance Term',                 val:finTerm+' Years',                    color:'#374151'},
       {label:'Utility Bill Reduction',       val:Math.round(drPct*100)+'%',           color:'#1d4ed8'},
       {label:'Battery Ownership at Payoff',  val:'Customer',                          color:'#16a34a'},
@@ -2015,7 +2101,7 @@ function drawFinChart(kwh, kw, bill, peakDmd, drPct, custSavingsAnnual) {
       {label:'Federal ITC (30%)',            val:'-$'+Math.round(itc/1000)+'K',       color:'#16a34a'},
       {label:'Net Cost After ITC',           val:'$'+Math.round(netCapex/1000)+'K',   color:'#374151'},
       {label:'Est. Annual Revenue',          val:'$'+Math.round(annRev/1000)+'K/yr',  color:'#16a34a'},
-      {label:'Simple Payback',               val:pbDisplay,                            color:pbColor},
+      {label:'Simple Payback',               val:pbDisplay,                           color:pbColor},
       {label:'10-Year NPV',                  val:fmtDollar(npv10),                    color:npvColor}
     ];
   }
@@ -2028,7 +2114,6 @@ function drawFinChart(kwh, kw, bill, peakDmd, drPct, custSavingsAnnual) {
   }).join('');
 }
 
-
 // ══════════════════════════════════════════════════════════════════
 // PAGE SELECTION FOR EXPORT
 // ══════════════════════════════════════════════════════════════════
@@ -2039,33 +2124,38 @@ function applyPageSelection() {
   var el2 = document.getElementById('page2');
   var el4 = document.getElementById('page4'); // financials page dom-id
 
-  if (el2) el2.classList.toggle('print-hide', !includePage2);
-  if (el4) el4.classList.toggle('print-hide', !includePage3);
+  if (el2) { if (includePage2) el2.classList.remove('print-hide'); else el2.classList.add('print-hide'); }
+  if (el4) { if (includePage3) el4.classList.remove('print-hide'); else el4.classList.add('print-hide'); }
 
   // Recompute which visible page is last, so it doesn't force a trailing blank page break
   var allPages = document.querySelectorAll('.page');
   var lastVisible = null;
-  allPages.forEach(function(p) {
-    p.classList.remove('print-last');
-    if (!p.classList.contains('print-hide')) lastVisible = p;
-  });
+  for (var i = 0; i < allPages.length; i++) {
+    allPages[i].classList.remove('print-last');
+    if (!allPages[i].classList.contains('print-hide')) lastVisible = allPages[i];
+  }
   if (lastVisible) lastVisible.classList.add('print-last');
 }
 
 function exportProposal() {
   applyPageSelection();
 
-  // Snapshot both canvases
+  // Snapshot both canvases. toDataURL throws if the canvas is tainted by a
+  // cross-origin satellite tile — fall back to printing the live canvas.
   var siteCanvas = document.getElementById('sitemap-canvas');
   var finCanvas  = document.getElementById('fin-chart');
-  var siteUrl = siteCanvas.toDataURL('image/png');
-  var finUrl  = finCanvas  ? finCanvas.toDataURL('image/png') : null;
+  var siteUrl = null, finUrl = null;
+  try { siteUrl = siteCanvas ? siteCanvas.toDataURL('image/png') : null; } catch(e) { siteUrl = null; }
+  try { finUrl  = finCanvas  ? finCanvas.toDataURL('image/png')  : null; } catch(e) { finUrl  = null; }
 
-  var siteImg = document.createElement('img');
-  siteImg.src = siteUrl;
-  siteImg.className = 'sitemap-canvas-print';
-  siteImg.style.cssText = 'width:100%;height:220px;object-fit:cover;display:block';
-  siteCanvas.parentNode.replaceChild(siteImg, siteCanvas);
+  var siteImg = null;
+  if (siteCanvas && siteUrl) {
+    siteImg = document.createElement('img');
+    siteImg.src = siteUrl;
+    siteImg.className = 'sitemap-canvas-print';
+    siteImg.style.cssText = 'width:100%;height:220px;object-fit:cover;display:block';
+    siteCanvas.parentNode.replaceChild(siteImg, siteCanvas);
+  }
 
   var finImg = null;
   if (finCanvas && finUrl) {
@@ -2078,8 +2168,8 @@ function exportProposal() {
   window.print();
 
   // Restore canvases
-  siteImg.parentNode.replaceChild(siteCanvas, siteImg);
-  if (finImg && finCanvas) finImg.parentNode.replaceChild(finCanvas, finImg);
+  if (siteImg) siteImg.parentNode.replaceChild(siteCanvas, siteImg);
+  if (finImg)  finImg.parentNode.replaceChild(finCanvas, finImg);
   drawCanvas();
 }
 </script>
