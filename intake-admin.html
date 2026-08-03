@@ -186,15 +186,36 @@ textarea:focus,input:focus{border-color:var(--accent)}
   <aside class="detail" id="detail" hidden></aside>
 </div>
 
+<!-- Firebase compat v8 + shared platform config/registry (OMEGA standard order) -->
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
-<!-- Config and initializeApp live in ONE file for every tool on the host.
-     If it 404s or still has placeholders, the page says so instead of
-     failing as a mysterious sign-in loop. -->
-<script src="./omega-firebase.js"></script>
-<script src="./omega-tools.js"></script>
-<script src="./omega-intake.js"></script>
+<script src="/config.js"></script>
+<script src="/omega-tools.js"></script>
+<script>
+/* config.js on the host is the single source of Firebase settings for every
+   tool. Some deployments call initializeApp() inside it; some only expose the
+   values. This handles both and does nothing if the app is already up, so it
+   never double-initialises. Nothing is hardcoded here — if config.js has no
+   Firebase settings, the page says so rather than failing as a sign-in loop. */
+(function () {
+  if (!window.firebase || typeof firebase.initializeApp !== 'function') return;
+  if (firebase.apps && firebase.apps.length) return;   // config.js already did it
+  var c = window.CLEARSKY_CONFIG || {}, s = window.CS_CONFIG || {};
+  var fc = c.firebase || c.firebaseConfig || c.FIREBASE ||
+           s.FIREBASE || s.firebase || s.firebaseConfig ||
+           window.OMEGA_FIREBASE || null;
+  if (!fc || !fc.apiKey) return;                       // reported by the gate below
+  try { firebase.initializeApp(fc); }
+  catch (e) { console.warn('[intake] initializeApp failed', e); }
+  try {
+    if (firebase.auth) {
+      firebase.auth().setPersistence(firebase.auth.Auth.Persistence.LOCAL)['catch'](function () {});
+    }
+  } catch (e) {}
+})();
+</script>
+<script src="/omega-intake.js"></script>
 <script>
 (function () {
   'use strict';
@@ -724,16 +745,18 @@ textarea:focus,input:focus{border-color:var(--accent)}
       { label: 'Sign in', onClick: signIn });
   }
 
+  /* The app is up or it is not. Checking that beats sniffing key names,
+     because config.js may expose them under any of several shapes. */
   function configLooksUnset() {
-    var c = window.OMEGA_FIREBASE || {};
-    return !c.apiKey || String(c.apiKey).indexOf('REPLACE_ME') === 0;
+    return !(window.firebase && window.firebase.apps && window.firebase.apps.length);
   }
 
   if (window.firebase && firebase.apps.length && firebase.auth) {
     if (configLooksUnset()) {
-      gateScreen('Firebase config not filled in',
-        'omega-firebase.js on this host is either missing or still has REPLACE_ME ' +
-        'values. It is the single config file every tool on this host reads.');
+      gateScreen('Firebase not initialised',
+        'config.js on this host did not provide Firebase settings, so no app was ' +
+        'initialised. Check /config.js is served and exposes CLEARSKY_CONFIG.firebase, ' +
+        'or calls firebase.initializeApp() itself.');
     } else {
       var booted = false;
       firebase.auth().setPersistence(firebase.auth.Auth.Persistence.LOCAL)
