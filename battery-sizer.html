@@ -287,8 +287,16 @@ body.nohelp .hb{display:none}
         <button class="btn btn-out btn-sm" style="flex:1" onclick="loadSample()">Load sample</button>
       </div>
       <div id="pasteBox" style="display:none;margin-top:10px">
-        <textarea id="pasteTa" rows="5" placeholder="Paste CSV rows here, then tap Parse"></textarea>
-        <button class="btn btn-pri btn-sm" style="margin-top:7px;width:100%" onclick="parsePaste()">Parse pasted data</button>
+        <textarea id="pasteTa" rows="8" spellcheck="false" style="font-family:var(--mono);font-size:11.5px"
+          placeholder="Paste straight from Excel, Google Sheets or a CSV.&#10;&#10;Timestamp&#9;kW&#10;2025-01-01 00:00&#9;412.5&#10;2025-01-01 01:00&#9;408.1&#10;&#10;Tabs, commas and semicolons all work. A bare column of numbers works too."></textarea>
+        <div id="pasteMsg"></div>
+        <div style="display:flex;gap:8px;margin-top:7px">
+          <button class="btn btn-pri btn-sm" style="flex:1" onclick="parsePaste()">Parse pasted data</button>
+          <button class="btn btn-out btn-sm" onclick="clearPaste()">Clear</button>
+        </div>
+        <div class="hint">Parses on paste automatically. Values may carry units or currency
+          (<span style="font-family:var(--mono)">412.5 kW</span>, <span style="font-family:var(--mono)">1,234</span>)
+          and account lines above the table are skipped.</div>
       </div>
 
       <div id="mapBox" style="display:none;margin-top:14px;border-top:1px solid var(--border2);padding-top:12px">
@@ -756,37 +764,161 @@ function setMode(m){
 /* ============================================================
    CSV PARSING
    ============================================================ */
-function parseCSV(txt){
-  txt = txt.replace(/^\uFEFF/,'').replace(/\r\n/g,'\n').replace(/\r/g,'\n');
-  var lines = txt.split('\n'), out = [], i, j;
-  /* sniff delimiter on the first non-empty line */
-  var probe='', k;
-  for(k=0;k<lines.length;k++){ if(lines[k].replace(/\s/g,'')!==''){ probe=lines[k]; break; } }
-  var delim = ',';
-  var counts = {',':0,'\t':0,';':0,'|':0};
-  for(i=0;i<probe.length;i++){ if(counts[probe.charAt(i)]!==undefined) counts[probe.charAt(i)]++; }
-  var bestC = -1;
-  for(var d in counts){ if(counts[d]>bestC){ bestC=counts[d]; delim=d; } }
+var LAST_PARSE = { delim:'', rows:0, cols:0, skipped:0 };
 
-  for(i=0;i<lines.length;i++){
-    var ln = lines[i];
-    if(ln.replace(/\s/g,'')==='') continue;
-    var cells=[], cur='', q=false;
-    for(j=0;j<ln.length;j++){
-      var c = ln.charAt(j);
-      if(q){
-        if(c==='"'){ if(ln.charAt(j+1)==='"'){ cur+='"'; j++; } else q=false; }
-        else cur+=c;
-      } else {
-        if(c==='"') q=true;
-        else if(c===delim){ cells.push(cur); cur=''; }
-        else cur+=c;
-      }
+/* Split one line, honouring quotes. delim may be a single character or a
+   regular expression (used for whitespace-separated pastes). */
+function splitLine(ln, delim){
+  var cells=[], cur='', q=false, j, c;
+  if(delim instanceof RegExp){
+    if(ln.indexOf('"') < 0) return ln.replace(/^\s+|\s+$/g,'').split(delim);
+    /* quoted + whitespace is rare; fall back to a simple split of the parts */
+    return ln.replace(/^\s+|\s+$/g,'').replace(/"/g,'').split(delim);
+  }
+  for(j=0;j<ln.length;j++){
+    c = ln.charAt(j);
+    if(q){
+      if(c==='"'){ if(ln.charAt(j+1)==='"'){ cur+='"'; j++; } else q=false; }
+      else cur+=c;
+    } else {
+      if(c==='"') q=true;
+      else if(c===delim){ cells.push(cur); cur=''; }
+      else cur+=c;
     }
-    cells.push(cur);
-    for(j=0;j<cells.length;j++) cells[j] = cells[j].replace(/^\s+|\s+$/g,'');
+  }
+  cells.push(cur);
+  for(j=0;j<cells.length;j++) cells[j] = cells[j].replace(/^\s+|\s+$/g,'').replace(/^"|"$/g,'');
+  return cells;
+}
+
+/* Pick the delimiter by how CONSISTENT it makes the row width across the whole
+   paste, not by counting characters in the first line. A single line cannot
+   tell "1,234" apart from two columns; twenty lines can. */
+/* parseFloat("00:00,1,580.0") returns 0, so it cannot be used to ask whether a
+   CELL is a number - it happily reads a prefix. The whole token has to match. */
+function isFullNumber(v){
+  if(v === null || v === undefined) return false;
+  var t = String(v).replace(/\u00a0/g,' ').replace(/^\s+|\s+$/g,'');
+  if(t === '') return false;
+  t = t.replace(/\s*(kwh|kw|kva|kvar|mw|mwh|w)\s*$/i,'').replace(/[$\u20ac\u00a3]/g,'').replace(/\s/g,'');
+  if(/^\(.*\)$/.test(t)) t = t.slice(1,-1);
+  return /^-?\d{1,3}(\.\d{3})+,\d+$/.test(t)      /* 1.234,56 European */
+      || /^-?\d+,\d{1,2}$/.test(t)                  /* 1234,5   European */
+      || /^-?\d{1,3}(,\d{3})+(\.\d+)?$/.test(t)     /* 1,234.5  thousands */
+      || /^-?\d*\.?\d+(e[-+]?\d+)?$/i.test(t);
+}
+
+/* An unquoted "1,234" splits into "1" and "234" on a comma. Rejecting the
+   comma outright is wrong - the delimiter IS a comma, the number just needs
+   putting back together. */
+function mergeThousands(cells){
+  var out = [], i;
+  for(i=0;i<cells.length;i++){
+    var prev = out.length ? out[out.length-1] : null;
+    if(prev !== null && /^-?\d{1,3}(,\d{3})*$/.test(prev) && /^\d{3}(\.\d+)?$/.test(cells[i])){
+      out[out.length-1] = prev + ',' + cells[i];
+    } else out.push(cells[i]);
+  }
+  return out;
+}
+function thousandsFrac(split){
+  var hit = 0, i, j;
+  for(i=0;i<split.length;i++){
+    for(j=1;j<split[i].length;j++){
+      if(/^-?\d+$/.test(split[i][j-1]) && /^\d{3}(\.\d+)?$/.test(split[i][j])){ hit++; break; }
+    }
+  }
+  return split.length ? hit/split.length : 0;
+}
+
+function sniffDelim(lines){
+  var cands = [
+    { d:'\t',              name:'tab',       bonus:14 },
+    { d:',',               name:'comma',     bonus:10 },
+    { d:';',               name:'semicolon', bonus:8 },
+    { d:'|',               name:'pipe',      bonus:8 },
+    { d:/\s*[\t ]{2,}\s*/, name:'spaces',    bonus:2 },
+    { d:/[ ]+/,            name:'space',     bonus:0 }
+  ];
+  var probe = lines.slice(0, 40), i, j, c;
+  var best = null;
+
+  /* Does a cell look like real data? The delimiter that leaves the most cells
+     parseable as a number or a date is almost always the right one. This is
+     what separates "01.01.2025 00:00;1.580,0" split on ; (two clean cells)
+     from the same line split on , (one broken cell and a stray "0"). */
+  function clean(v){
+    if(v === '' || v === null || v === undefined) return false;
+    if(isFullNumber(v)) return true;
+    return !!parseTS(v);
+  }
+
+  for(c=0;c<cands.length;c++){
+    var widths = {}, n = 0, split = [], k;
+    for(i=0;i<probe.length;i++) split.push(splitLine(probe[i], cands[c].d));
+    /* repair thousands before measuring, so the comma is judged on what it
+       would actually produce rather than on the damage before repair */
+    var merged = (cands[c].name === 'comma') && thousandsFrac(split) > 0.6;
+    if(merged) for(k=0;k<split.length;k++) split[k] = mergeThousands(split[k]);
+    for(i=0;i<split.length;i++){
+      widths[split[i].length] = (widths[split[i].length]||0) + 1; n++;
+    }
+    var modeW = 1, modeN = 0, w2;
+    for(w2 in widths) if(widths[w2] > modeN){ modeN = widths[w2]; modeW = parseInt(w2,10); }
+    if(modeW < 2) continue;                       /* did not split anything */
+
+    var consistency = modeN / n;
+    var good = 0, tot = 0;
+    for(i = (split.length > 1 ? 1 : 0); i<split.length; i++){     /* skip the header row */
+      for(j=0;j<split[i].length;j++){ tot++; if(clean(split[i][j])) good++; }
+    }
+    var quality = tot ? good/tot : 0;
+
+    var score = consistency*60 + quality*60 + cands[c].bonus + Math.min(modeW,6);
+    if(!best || score > best.score)
+      best = { d:cands[c].d, name:cands[c].name, score:score, cols:modeW, merge:merged };
+  }
+  /* nothing split: a single column of numbers, which is perfectly valid */
+  if(!best) best = { d:'\n', name:'single column', score:0, cols:1 };
+  return best;
+}
+
+/* Utility exports often carry account details, blank lines and notes above the
+   real table. Start where the rows first settle into a consistent width. */
+function findTableStart(rows, cols){
+  if(cols < 2) return 0;
+  var i, runStart = 0, runLen = 0, bestStart = 0, bestLen = 0;
+  for(i=0;i<rows.length;i++){
+    if(rows[i].length === cols){
+      if(runLen === 0) runStart = i;
+      runLen++;
+      if(runLen > bestLen){ bestLen = runLen; bestStart = runStart; }
+    } else runLen = 0;
+  }
+  return bestLen >= 3 ? bestStart : 0;
+}
+
+function parseCSV(txt){
+  txt = String(txt).replace(/^\uFEFF/,'').replace(/\r\n/g,'\n').replace(/\r/g,'\n')
+                   .replace(/\u00a0/g,' ');      /* non-breaking spaces from web copy */
+  var raw = txt.split('\n'), lines = [], i;
+  for(i=0;i<raw.length;i++) if(raw[i].replace(/\s/g,'') !== '') lines.push(raw[i]);
+  if(!lines.length){ LAST_PARSE = {delim:'',rows:0,cols:0,skipped:0}; return []; }
+
+  var sn = sniffDelim(lines);
+  var out = [];
+  for(i=0;i<lines.length;i++){
+    var cells = (sn.cols === 1 && sn.name === 'single column')
+      ? [lines[i].replace(/^\s+|\s+$/g,'')]
+      : splitLine(lines[i], sn.d);
+    if(sn.merge) cells = mergeThousands(cells);
     out.push(cells);
   }
+
+  var start = findTableStart(out, sn.cols);
+  if(start > 0) out = out.slice(start);
+
+  LAST_PARSE = { delim: sn.name, rows: out.length, cols: sn.cols, skipped: start };
   return out;
 }
 
@@ -795,8 +927,34 @@ function looksNumeric(s){
   return /^-?[\d,]*\.?\d+(e[-+]?\d+)?$/i.test(String(s).replace(/[$\s]/g,''));
 }
 function toNum(s){
-  var v = parseFloat(String(s).replace(/[$,\s]/g,''));
-  return isFinite(v)?v:NaN;
+  if(s === null || s === undefined) return NaN;
+  var t = String(s).replace(/\u00a0/g,' ').replace(/^\s+|\s+$/g,'');
+  if(t === '') return NaN;
+  /* drop a trailing unit that came along for the ride: "412.5 kW", "1,234 kWh" */
+  t = t.replace(/\s*(kwh|kw|kva|kvar|mw|mwh|w)\s*$/i,'');
+  t = t.replace(/[$\u20ac\u00a3]/g,'').replace(/\s/g,'');
+  /* parentheses are accounting negatives */
+  var neg = /^\(.*\)$/.test(t);
+  if(neg) t = t.slice(1,-1);
+  /* European: 1.234,56  ->  1234.56   (comma last and exactly 2 trailing) */
+  if(/^\-?\d{1,3}(\.\d{3})+,\d+$/.test(t)) t = t.replace(/\./g,'').replace(',','.');
+  else if(/^\-?\d+,\d{1,2}$/.test(t)) t = t.replace(',','.');
+  else t = t.replace(/,/g,'');
+  var v = parseFloat(t);
+  if(!isFinite(v)) return NaN;
+  return neg ? -v : v;
+}
+
+/* Excel stores a date as days since 1899-12-30. Pasting a formatted column
+   usually gives text, but pasting the underlying values gives numbers like
+   45658.25, which would otherwise be read as demand. */
+function excelSerial(v){
+  if(!(v > 20000 && v < 80000)) return null;      /* 1954 .. 2119 */
+  var ms = Math.round((v - 25569) * 86400000);
+  var u = new Date(ms);
+  if(isNaN(u.getTime())) return null;
+  return new Date(u.getUTCFullYear(), u.getUTCMonth(), u.getUTCDate(),
+                  u.getUTCHours(), u.getUTCMinutes(), u.getUTCSeconds());
 }
 
 /* Robust-enough timestamp parse for utility exports. */
@@ -827,7 +985,11 @@ function parseTS(s){
    ============================================================ */
 function handleText(txt){
   var rows = parseCSV(txt);
-  if(rows.length < 2){ alert('Could not read any rows out of that file.'); return; }
+  if(rows.length < 2){
+    pasteMsg('Only ' + rows.length + ' row' + (rows.length===1?'':'s') + ' could be read. '
+      + 'Paste the rows themselves \u2014 a timestamp column and a demand column \u2014 not a screenshot or a summary.', 'bad');
+    return;
+  }
 
   /* header row = first row that is not fully numeric */
   var hdr = rows[0], hasHdr = false, i;
@@ -842,6 +1004,19 @@ function handleText(txt){
 
   buildColSelects();
   reIngest();
+
+  var lp = LAST_PARSE;
+  var msg = 'Read ' + fmt(lp.rows) + ' rows \u00d7 ' + lp.cols + ' column' + (lp.cols===1?'':'s')
+          + ' (' + lp.delim + '-separated).';
+  if(lp.skipped) msg += ' Skipped ' + lp.skipped + ' header/preamble line' + (lp.skipped===1?'':'s') + ' above the table.';
+  msg += ' Check the column mapping below.';
+  pasteMsg(msg, SERIES ? 'ok' : 'bad');
+}
+
+function pasteMsg(m, kind){
+  var el = $('pasteMsg');
+  if(!el) return;
+  el.innerHTML = m ? '<div class="note' + (kind ? ' ' + kind : '') + '">' + m + '</div>' : '';
 }
 
 function buildColSelects(){
@@ -883,7 +1058,11 @@ function reIngest(){
     var v = toNum(r[vi]);
     if(!isFinite(v)) continue;
     var t = null;
-    if(ti>=0){ t = parseTS(r[ti]); if(!t) continue; }
+    if(ti>=0){
+      t = parseTS(r[ti]);
+      if(!t && looksNumeric(r[ti])) t = excelSerial(toNum(r[ti]));
+      if(!t) continue;
+    }
     ts.push(t); kw.push(v);
   }
   if(kw.length < 24){ $('dataSum').innerHTML = '<div class="note bad">Only '+kw.length+' usable rows. Check the column mapping.</div>'; SERIES=null; return; }
@@ -1024,9 +1203,26 @@ function togglePaste(){
 }
 function parsePaste(){
   var t = $('pasteTa').value;
-  if(!t || t.replace(/\s/g,'')===''){ alert('Nothing pasted yet.'); return; }
+  if(!t || t.replace(/\s/g,'')===''){ pasteMsg('Nothing pasted yet.', 'bad'); return; }
   handleText(t);
 }
+function clearPaste(){
+  $('pasteTa').value = '';
+  pasteMsg('');
+}
+
+/* Parse as soon as something lands in the box. Waiting for a button press is
+   an extra step that only ever produces "why is nothing happening". */
+(function(){
+  var ta = $('pasteTa');
+  if(!ta) return;
+  ta.addEventListener('paste', function(){
+    setTimeout(function(){
+      var v = ta.value;
+      if(v && v.replace(/\s/g,'') !== '') handleText(v);
+    }, 0);
+  });
+})();
 
 /* ---------- synthetic sample 8760 ---------- */
 function loadSample(){
@@ -1215,6 +1411,7 @@ function aiRows(resp){
     var rate = parseFloat(p.rate), days = parseFloat(p.days);
     if(!isFinite(kwh) && !isFinite(kw)) continue;
     out.push({
+      meter: p.meter || null,
       label: p.label || null,
       kwh: isFinite(kwh) && kwh > 0 ? kwh : null,
       kw:  isFinite(kw)  && kw  > 0 ? kw  : null,
@@ -1393,6 +1590,15 @@ function pdfPeriod(text){
       return { mi:mi, yr:+m[3], days:(dd>15 && dd<45)?dd:null };
     }
   }
+  /* European 01.01.2025 14:30 - day first, dots. Only when the first number
+     cannot be a month, or the second one can, to avoid stealing US dates. */
+  m = s.match(/^(\d{1,2})\.(\d{1,2})\.(\d{4})[T ]*(\d{1,2})?:?(\d{2})?/);
+  if(m){
+    var dd = +m[1], mm = +m[2];
+    if(mm >= 1 && mm <= 12 && dd >= 1 && dd <= 31)
+      return new Date(+m[3], mm-1, dd, +(m[4]||0), +(m[5]||0));
+  }
+
   /* last resort: a lone "Jul 2025" or "07/2025" */
   m = text.match(/\b([A-Za-z]{3,9})\.?\s+(20\d\d)\b/);
   if(m && pdfMonIdx(m[1]) >= 0) return { mi:pdfMonIdx(m[1]), yr:+m[2], days:null };
@@ -1644,10 +1850,13 @@ function pdfHandleFiles(files){
 
 function apply(stmts, errs){
   /* newest first, dedupe on the month label */
+  /* A single file often holds one statement per METER for a site. Keying the
+     dedupe on the month alone made every meter after the first collide with
+     the first and vanish - five accounts came back as one. */
   var seen = {}, keep = [], i;
   for(i=0;i<stmts.length;i++){
     var s = stmts[i];
-    var key = s.label || ('?' + i);
+    var key = (s.meter || '') + '|' + (s.label || ('?' + i));
     if(seen[key]) continue;
     seen[key] = 1;
     keep.push(s);
@@ -1656,12 +1865,60 @@ function apply(stmts, errs){
     if(!a.label || !b.label) return 0;
     return new Date(a.label + ' 1') - new Date(b.label + ' 1');
   });
-  PDF_ROWS = keep;
-  renderPdfReport(keep, errs);
-  if(keep.length) fillFromPdf(keep);
+  PDF_METERS = pdfGroupMeters(keep);
+  if(PDF_METERS.length > 1){
+    /* default to the largest meter - it carries the biggest demand charge and
+       is where storage is worth putting */
+    var best = PDF_METERS[0], i;
+    for(i=1;i<PDF_METERS.length;i++) if(PDF_METERS[i].peak > best.peak) best = PDF_METERS[i];
+    PDF_METER = best.name;
+    PDF_ROWS = best.rows;
+  } else {
+    PDF_METER = null;
+    PDF_ROWS = keep;
+  }
+  renderPdfReport(PDF_ROWS, errs);
+  if(PDF_ROWS.length) fillFromPdf(PDF_ROWS);
 }
 
 var PDF_ROWS = [];
+var PDF_METERS = [];      /* [{name, rows}] when a file holds more than one */
+var PDF_METER = null;     /* the one currently being sized */
+
+function pdfGroupMeters(rows){
+  var map = {}, order = [], i;
+  for(i=0;i<rows.length;i++){
+    var m = rows[i].meter || '';
+    if(!map[m]){ map[m] = []; order.push(m); }
+    map[m].push(rows[i]);
+  }
+  var out = [];
+  for(i=0;i<order.length;i++){
+    var rs = map[order[i]], pk = 0, kwh = 0, j;
+    for(j=0;j<rs.length;j++){
+      if(rs[j].kw > pk) pk = rs[j].kw;
+      if(rs[j].kwh) kwh += rs[j].kwh;
+    }
+    out.push({ name: order[i] || 'Unlabelled meter', rows: rs, peak: pk, kwh: kwh });
+  }
+  return out;
+}
+
+/* A battery sits behind ONE meter and shaves ONE demand charge. Summing
+   separate accounts would invent a peak that no meter ever sees, so the
+   meters are sized one at a time. */
+function pdfPickMeter(name){
+  var i;
+  for(i=0;i<PDF_METERS.length;i++){
+    if(PDF_METERS[i].name === name){
+      PDF_METER = name;
+      PDF_ROWS = PDF_METERS[i].rows;
+      renderPdfReport(PDF_ROWS, []);
+      fillFromPdf(PDF_ROWS);
+      return;
+    }
+  }
+}
 var AI_META = null;
 var AI_CONFLICTS = [];
 
@@ -1735,6 +1992,18 @@ function renderPdfReport(rows, errs){
       + esc(AI_CONFLICTS.join(', ')) + '.</b> '
       + 'The AI reading was used. Check those rows against the paper before sizing \u2014 a disagreement '
       + 'usually means an unusual bill layout, and one of the two is wrong.</div>';
+  }
+  if(PDF_METERS.length > 1){
+    h += '<div class="note"><b>' + PDF_METERS.length + ' meters in this file.</b> '
+      + 'A battery sits behind one meter and shaves that meter\u0027s demand charge only, so they are sized '
+      + 'separately. Pick one \u2014 the largest is selected by default.<div style="margin-top:8px;display:flex;gap:6px;flex-wrap:wrap">';
+    for(i=0;i<PDF_METERS.length;i++){
+      var mt = PDF_METERS[i], on = (mt.name === PDF_METER);
+      h += '<button class="btn ' + (on ? 'btn-pri' : 'btn-out') + ' btn-sm" '
+        + 'onclick="pdfPickMeter(' + JSON.stringify(mt.name).replace(/"/g,'&quot;') + ')">'
+        + esc(mt.name) + (mt.peak ? ' \u00b7 ' + fmt(mt.peak,1) + ' kW' : '') + '</button>';
+    }
+    h += '</div></div>';
   }
   h += '<div class="scrollx"><table class="t"><thead><tr><th>Period</th><th class="num">kWh</th>'
     + '<th class="num">Peak kW</th><th class="num">$/kW</th><th>Source</th></tr></thead><tbody>';
