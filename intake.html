@@ -454,22 +454,11 @@ textarea{min-height:70px;resize:vertical}
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+<!-- Config and initializeApp live in ONE file for every tool on the host.
+     If it 404s or still has placeholders, the page says so instead of
+     failing as a mysterious sign-in loop. -->
+<script src="./omega-firebase.js"></script>
 <script src="./omega-tools.js"></script>
-<script>
-/* Same project as every other OMEGA tool — paste the values you already use. */
-window.OMEGA_FIREBASE = window.OMEGA_FIREBASE || {
-  apiKey:            'REPLACE_ME',
-  authDomain:        'REPLACE_ME.firebaseapp.com',
-  projectId:         'REPLACE_ME',
-  storageBucket:     'REPLACE_ME.appspot.com',
-  messagingSenderId: 'REPLACE_ME',
-  appId:             'REPLACE_ME'
-};
-if (window.firebase && !firebase.apps.length) {
-  try { firebase.initializeApp(window.OMEGA_FIREBASE); }
-  catch (e) { console.warn('[intake] firebase init failed', e); }
-}
-</script>
 <script src="./omega-intake.js"></script>
 <script>
 (function () {
@@ -1084,9 +1073,10 @@ if (window.firebase && !firebase.apps.length) {
     if (configLooksUnset()) {
       authScreen({
         title: 'Firebase config not filled in',
-        body: 'intake.html still has REPLACE_ME placeholders in window.OMEGA_FIREBASE. ' +
-              'Paste the same config your other OMEGA tools use, or include your shared ' +
-              'init file instead of the block at the top of this file.'
+        body: 'omega-firebase.js on this host is either missing or still has REPLACE_ME ' +
+              'values. Fill in the six fields from Firebase console \u2192 Project settings ' +
+              '\u2192 Your apps \u2192 Web app, or copy them from a tool that already works. ' +
+              'Every tool on this host reads that one file.'
       });
     } else {
       var booted = false;

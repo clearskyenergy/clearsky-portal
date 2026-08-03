@@ -189,22 +189,11 @@ textarea:focus,input:focus{border-color:var(--accent)}
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+<!-- Config and initializeApp live in ONE file for every tool on the host.
+     If it 404s or still has placeholders, the page says so instead of
+     failing as a mysterious sign-in loop. -->
+<script src="./omega-firebase.js"></script>
 <script src="./omega-tools.js"></script>
-<script>
-/* Same project and same values as intake.html and every other OMEGA tool. */
-window.OMEGA_FIREBASE = window.OMEGA_FIREBASE || {
-  apiKey:            'REPLACE_ME',
-  authDomain:        'REPLACE_ME.firebaseapp.com',
-  projectId:         'REPLACE_ME',
-  storageBucket:     'REPLACE_ME.appspot.com',
-  messagingSenderId: 'REPLACE_ME',
-  appId:             'REPLACE_ME'
-};
-if (window.firebase && !firebase.apps.length) {
-  try { firebase.initializeApp(window.OMEGA_FIREBASE); }
-  catch (e) { console.warn('[intake-admin] firebase init failed', e); }
-}
-</script>
 <script src="./omega-intake.js"></script>
 <script>
 (function () {
@@ -743,8 +732,8 @@ if (window.firebase && !firebase.apps.length) {
   if (window.firebase && firebase.apps.length && firebase.auth) {
     if (configLooksUnset()) {
       gateScreen('Firebase config not filled in',
-        'intake-admin.html still has REPLACE_ME placeholders in window.OMEGA_FIREBASE. ' +
-        'Paste the same config the other OMEGA tools use.');
+        'omega-firebase.js on this host is either missing or still has REPLACE_ME ' +
+        'values. It is the single config file every tool on this host reads.');
     } else {
       var booted = false;
       firebase.auth().setPersistence(firebase.auth.Auth.Persistence.LOCAL)
