@@ -330,6 +330,8 @@
       }),
       activity: [],
       messages: [],
+      /* Deliverable files. Metadata only; bytes are in Cloud Storage. */
+      files: [],
       /* Client-reported payment. quote.paymentStatus stays ClearSky's. */
       payment: { claimedAt: null, claimedBy: '', reference: '' },
       admin: { assignee: '', priority: 'normal', internalNotes: '', dueDate: '' },
@@ -851,6 +853,32 @@
      same number; `custom` stays available for the jobs that genuinely are. */
   var QUOTE_TIERS = [100, 250, 500, 750, 1000];
 
+  /* ----------------------------------------------------------------- files
+     Deliverable files live in Cloud Storage at
+
+         intake/{orgId}/{intakeId}/{fileId}-{name}
+
+     and only their metadata is on the record. Download URLs are resolved on
+     demand rather than stored: a saved getDownloadURL() token is a permanent
+     public link to a customer's permit set, readable by anyone it is
+     forwarded to, with no way to revoke it short of rewriting the object.  */
+  function files(rec, key) {
+    var all = (rec && rec.files) || [];
+    return key ? all.filter(function (f) { return (f.key || 'other') === key; }) : all;
+  }
+  function fileUrl(f) {
+    var st;
+    try { st = firebase.storage(); } catch (e) { st = null; }
+    if (!st) return Promise.reject(new Error('Storage is not available on this page.'));
+    return st.ref(f.path).getDownloadURL();
+  }
+  function fmtBytes(n) {
+    n = Number(n) || 0;
+    if (n < 1024) return n + ' B';
+    if (n < 1048576) return Math.round(n / 1024) + ' KB';
+    return (n / 1048576).toFixed(n < 10485760 ? 1 : 0) + ' MB';
+  }
+
   /* ------------------------------------------------------- quoting (path 2) */
   /* NO DEFAULT PRICES SHIP IN THIS FILE, deliberately. A fabricated number in
      a customer-facing quote is worse than a blank one — the client either pays
@@ -984,6 +1012,7 @@
     setPaymentLink: setPaymentLink, markPaid: markPaid,
     postMessage: postMessage, markMessagesRead: markMessagesRead, unreadFor: unreadFor,
     claimPayment: claimPayment, paymentState: paymentState, QUOTE_TIERS: QUOTE_TIERS,
+    files: files, fileUrl: fileUrl, fmtBytes: fmtBytes,
     projectSeed: projectSeed, listProjects: listProjects,
     createProject: createProject, attachProject: attachProject,
     priceBook: priceBook, listPrice: listPrice, estimate: estimate,

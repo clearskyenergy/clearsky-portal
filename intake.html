@@ -271,6 +271,16 @@ textarea{min-height:70px;resize:vertical}
 #ppMsg{width:100%;margin-top:12px;border:1.5px solid #DDE3E9;border-radius:9px;padding:10px 12px;
   font:400 13.5px/1.5 inherit;color:inherit;background:#fff;outline:none;resize:vertical}
 #ppMsg:focus{border-color:#0070F2}
+
+.pp-fg{margin-bottom:12px}
+.pp-fg:last-child{margin-bottom:0}
+.pp-fgn{font-size:12px;font-weight:600;color:var(--ink,#0F2733);margin-bottom:5px}
+.pp-frow{display:flex;align-items:center;gap:9px;background:#fff;border:1px solid var(--line,#E4E8EC);
+  border-radius:7px;padding:7px 10px;margin-bottom:4px;font-size:13px}
+.pp-fn{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#0070F2;
+  cursor:pointer;text-decoration:none}
+.pp-fn:hover{text-decoration:underline}
+.pp-fs{font:400 11px 'DM Mono',ui-monospace,monospace;color:#8FA0AE;flex:none}
 </style>
 </head>
 <body>
@@ -504,6 +514,7 @@ textarea{min-height:70px;resize:vertical}
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-storage-compat.js"></script>
 <script src="/config.js"></script>
 <script src="/omega-tools.js"></script>
 <script src="/omega-intake.js"></script>
@@ -1086,16 +1097,40 @@ function esc(v) {
       html += '</div>';
     }
 
-    /* ── delivered files ── */
-    if (done.length) {
-      html += '<div class="pp-card"><div class="pp-ct">Your files</div><ul class="outlist">';
-      done.forEach(function (d) {
-        html += '<li><a href="' + esc(d.outputUrl) + '" target="_blank" rel="noopener">'
-             +  esc(d.label) + '</a>'
-             +  (d.note ? '<span style="color:var(--muted);font-size:12px">' + esc(d.note)
-                        + '</span>' : '') + '</li>';
+    /* ── your files: uploads and links, grouped by deliverable ── */
+    var uploads = OI.files ? OI.files(rec) : [];
+    if (done.length || uploads.length) {
+      html += '<div class="pp-card"><div class="pp-ct">Your files</div>';
+
+      (rec.deliverables || []).forEach(function (d) {
+        if (!d.requested) return;
+        var mine = uploads.filter(function (f) { return (f.key || 'other') === d.key; });
+        if (!mine.length && !d.outputUrl) return;
+        html += '<div class="pp-fg"><div class="pp-fgn">' + esc(d.label) + '</div>';
+        mine.forEach(function (f) {
+          html += '<div class="pp-frow"><a class="pp-fn" data-file="' + esc(f.id) + '">'
+               +  esc(f.name) + '</a><span class="pp-fs">'
+               +  esc(OI.fmtBytes ? OI.fmtBytes(f.size) : '') + '</span></div>';
+        });
+        if (d.outputUrl) {
+          html += '<div class="pp-frow"><a class="pp-fn" href="' + esc(d.outputUrl)
+               +  '" target="_blank" rel="noopener">Open shared link</a></div>';
+        }
+        if (d.note) html += '<div class="pp-when">' + esc(d.note) + '</div>';
+        html += '</div>';
       });
-      html += '</ul></div>';
+
+      var other = uploads.filter(function (f) { return (f.key || 'other') === 'other'; });
+      if (other.length) {
+        html += '<div class="pp-fg"><div class="pp-fgn">Additional files</div>';
+        other.forEach(function (f) {
+          html += '<div class="pp-frow"><a class="pp-fn" data-file="' + esc(f.id) + '">'
+               +  esc(f.name) + '</a><span class="pp-fs">'
+               +  esc(OI.fmtBytes ? OI.fmtBytes(f.size) : '') + '</span></div>';
+        });
+        html += '</div>';
+      }
+      html += '</div>';
     }
 
     /* ── messages ── */
@@ -1170,6 +1205,25 @@ function esc(v) {
       bS.disabled = true;
       OI.postMessage(rec, text, 'client', me).then(after())
         .catch(function (e) { bS.disabled = false; fail(e); });
+    });
+
+    /* Resolved per click rather than baked into the href, so the storage rules
+       are consulted every time instead of once, forever, by whoever the link
+       was forwarded to. */
+    Array.prototype.forEach.call(slot.querySelectorAll('[data-file]'), function (a) {
+      a.addEventListener('click', function () {
+        var f = (rec.files || []).filter(function (x) { return x.id === a.dataset.file; })[0];
+        if (!f) return;
+        var was = a.textContent;
+        a.textContent = 'Opening\u2026';
+        OI.fileUrl(f).then(function (url) {
+          a.textContent = was;
+          window.open(url, '_blank');
+        })['catch'](function (e) {
+          a.textContent = was;
+          setMsg('Could not open ' + f.name + ': ' + ((e && e.message) || 'storage error'));
+        });
+      });
     });
 
     var bK = $('#ppAck');
