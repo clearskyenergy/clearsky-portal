@@ -281,6 +281,99 @@ textarea{min-height:70px;resize:vertical}
   cursor:pointer;text-decoration:none}
 .pp-fn:hover{text-decoration:underline}
 .pp-fs{font:400 11px 'DM Mono',ui-monospace,monospace;color:#8FA0AE;flex:none}
+
+/* ---------- project portal ---------- */
+.pp{margin-bottom:20px}
+.pp-h{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;flex-wrap:wrap;margin-bottom:22px}
+.pp-k{font-family:var(--mono);font-size:10.5px;letter-spacing:.14em;text-transform:uppercase;color:var(--faint)}
+.pp-t{font-size:26px;font-weight:650;letter-spacing:-.02em;color:var(--ink);margin-top:6px;line-height:1.15}
+.pp-sub{font-size:13.5px;color:var(--muted);margin-top:5px}
+.pp-badge{flex:none;font-family:var(--mono);font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;
+  padding:6px 11px;border-radius:999px;border:1px solid var(--rule);background:var(--surface);color:var(--muted)}
+.pp-badge.good{background:var(--good-soft);border-color:transparent;color:var(--good)}
+.pp-badge.info{background:var(--info-soft);border-color:transparent;color:var(--info)}
+.pp-badge.warn{background:var(--warn-soft);border-color:transparent;color:var(--warn)}
+.stepper{display:flex;list-style:none;margin:0 0 18px;padding:0}
+.step{flex:1;position:relative;text-align:center;min-width:0}
+.step .rail{position:absolute;top:13px;right:50%;width:100%;height:2px;background:var(--rule-2)}
+.step:first-child .rail{display:none}
+.step.done .rail,.step.now .rail{background:var(--accent)}
+.step .node{position:relative;z-index:1;display:inline-flex;align-items:center;justify-content:center;
+  width:26px;height:26px;border-radius:50%;font-family:var(--mono);font-size:11px;background:var(--surface);
+  border:2px solid var(--rule-2);color:var(--faint)}
+.step.done .node{background:var(--accent);border-color:var(--accent);color:#fff}
+.step.now .node{border-color:var(--accent);color:var(--accent);font-weight:700;box-shadow:0 0 0 4px var(--accent-soft)}
+.step .slab{display:block;font-size:11.5px;color:var(--faint);margin-top:8px;overflow:hidden;
+  text-overflow:ellipsis;white-space:nowrap;padding:0 2px}
+.step.now .slab{color:var(--accent);font-weight:600}
+.step.done .slab{color:var(--muted)}
+.pp-blurb{font-size:14px;color:var(--ink-2);line-height:1.6;margin-bottom:18px}
+.pp-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px}
+@media(max-width:760px){.pp-grid{grid-template-columns:1fr}}
+.pp-card{background:var(--surface);border:1px solid var(--rule);border-radius:var(--r-lg);
+  padding:18px 20px;box-shadow:var(--shadow)}
+.pp-card.wide{margin-bottom:14px}
+.pp-ct{font-family:var(--mono);font-size:10.5px;letter-spacing:.14em;text-transform:uppercase;
+  color:var(--faint);margin-bottom:12px}
+.pp-amt{font-family:var(--mono);font-size:34px;font-weight:500;letter-spacing:-.03em;color:var(--ink);line-height:1}
+.pp-lines{list-style:none;margin:14px 0 0;padding:0;font-size:13px}
+.pp-lines li{display:flex;justify-content:space-between;gap:12px;padding:7px 0;
+  border-bottom:1px solid var(--rule-2);color:var(--muted)}
+.pp-lines li:last-child{border-bottom:none}
+.pp-note{font-size:13.5px;line-height:1.6;color:var(--muted);margin-top:10px}
+.pp-when{font-family:var(--mono);font-size:11px;color:var(--faint);margin-top:8px}
+.pp-fine{font-size:12px;color:var(--faint);margin-top:10px;line-height:1.5}
+.pp-empty{font-size:13.5px;color:var(--muted);line-height:1.6;padding:6px 0 2px}
+.pp-row{display:flex;gap:9px;margin-top:14px;flex-wrap:wrap;align-items:center}
+.pp-stat{font-size:13.5px;font-weight:600;margin-top:12px}
+.pp-stat.good{color:var(--good)} .pp-stat.warn{color:var(--warn)} .pp-stat.bad{color:#B3261E}
+.pbtn{border:1px solid transparent;border-radius:var(--r);padding:10px 18px;cursor:pointer;
+  font:600 13.5px var(--sans);text-decoration:none;display:inline-flex;align-items:center;
+  transition:background .12s,border-color .12s}
+.pbtn.primary{background:var(--accent);color:#fff}
+.pbtn.primary:hover{filter:brightness(1.08)}
+.pbtn.ghost{background:var(--surface);border-color:var(--rule);color:var(--ink-2)}
+.pbtn.ghost:hover{border-color:var(--accent);color:var(--accent)}
+.pbtn:disabled{opacity:.5;cursor:not-allowed}
+.pp-fg{margin-bottom:16px}
+.pp-fg:last-child{margin-bottom:0}
+.pp-fgn{font-size:12.5px;font-weight:600;color:var(--ink-2);margin-bottom:7px}
+.pp-frow{display:flex;align-items:center;gap:11px;background:var(--sunken);border:1px solid var(--rule-2);
+  border-radius:var(--r);padding:10px 13px;margin-bottom:6px;font-size:13.5px;transition:border-color .12s}
+.pp-frow:hover{border-color:var(--accent)}
+.fico{font-family:var(--mono);font-size:9.5px;letter-spacing:.06em;color:var(--muted);background:var(--surface);
+  border:1px solid var(--rule);border-radius:4px;padding:3px 5px;flex:none;min-width:34px;text-align:center}
+.pp-fn{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--accent);
+  cursor:pointer;text-decoration:none;font-weight:500}
+.pp-fn:hover{text-decoration:underline}
+.pp-fs{font-family:var(--mono);font-size:11px;color:var(--faint);flex:none}
+.pp-thread{max-height:320px;overflow-y:auto;padding:2px 2px 6px;margin-bottom:12px}
+.pp-msg{margin-bottom:14px;max-width:82%}
+.pp-msg:last-child{margin-bottom:0}
+.pp-who{font-family:var(--mono);font-size:10px;letter-spacing:.1em;text-transform:uppercase;
+  color:var(--faint);margin-bottom:4px}
+.pp-bub{font-size:13.5px;line-height:1.6;padding:11px 14px;border-radius:12px;white-space:pre-wrap;
+  word-break:break-word;background:var(--sunken);border:1px solid var(--rule-2);color:var(--ink)}
+.pp-msg.me{margin-left:auto}
+.pp-msg.me .pp-who{text-align:right}
+.pp-msg.me .pp-bub{background:var(--accent-soft);border-color:transparent}
+.pp-msg.me .pp-when{text-align:right}
+.pp-send{display:flex;gap:9px;align-items:flex-end}
+#ppMsg{flex:1;border:1px solid var(--rule);border-radius:var(--r);padding:11px 13px;
+  font:400 13.5px/1.55 var(--sans);color:var(--ink);background:var(--surface);outline:none;
+  resize:vertical;min-height:44px}
+#ppMsg:focus{border-color:var(--accent)}
+#detailsBar{margin-bottom:18px}
+#detailsToggle{background:none;border:none;border-bottom:1px dashed var(--rule);color:var(--muted);
+  font:500 13px var(--sans);cursor:pointer;padding:0 0 3px}
+#detailsToggle:hover{color:var(--accent);border-bottom-color:var(--accent)}
+#detailsBar:not([hidden]) ~ .cols{display:none}
+#detailsBar:not([hidden]) ~ .cols.open{display:grid}
+
+.plist-amt{font-family:var(--mono);font-size:13px;color:var(--ink);font-weight:500}
+.plist-files{font-size:11.5px;color:var(--muted)}
+.plist-when{font-family:var(--mono);font-size:11px;color:var(--faint)}
+.pipe span.at{background:var(--accent);box-shadow:0 0 0 3px var(--accent-soft)}
 </style>
 </head>
 <body>
@@ -305,7 +398,10 @@ textarea{min-height:70px;resize:vertical}
   <!-- ================= NEW / EDIT ================= -->
   <div id="view-new">
     <div id="noticeSlot"></div>
-    <div class="cols">
+    <div id="detailsBar" hidden>
+      <button id="detailsToggle" type="button" aria-expanded="false">View intake details</button>
+    </div>
+    <div class="cols" id="intakeCols">
       <div>
         <!-- 0 purpose -->
         <section class="card" id="cardPurpose">
@@ -935,17 +1031,29 @@ textarea{min-height:70px;resize:vertical}
       ].filter(Boolean);
       left.appendChild(el('div', 'meta', bits.join('  ·  ')));
       var pipe = el('div', 'pipe');
-      OI.PIPELINE.forEach(function (_, i) {
-        var sp = el('span'); if (i <= st.stage) sp.className = 'on'; pipe.appendChild(sp);
+      OI.PIPELINE.forEach(function (label, i) {
+        var sp = el('span');
+        sp.className = (i < st.stage) ? 'on' : (i === st.stage ? 'at' : '');
+        sp.title = label;
+        pipe.appendChild(sp);
       });
       left.appendChild(pipe);
       item.appendChild(left);
 
       var right = el('div', 'right');
-      right.appendChild(el('span', 'badge ' + st.tone, st.label));
-      if (r.notify && r.notify.unreadForClient) right.appendChild(el('span', 'badge good', 'New update'));
-      right.appendChild(el('span', 'mono', when(r.updatedAt)))
-        .style.cssText = 'font-size:11px;color:var(--faint)';
+      right.appendChild(el('span', 'pp-badge ' + st.tone, st.label));
+      if (r.notify && r.notify.unreadForClient) {
+        right.appendChild(el('span', 'pp-badge good', 'New update'));
+      }
+      /* Money and files are what a client scans this list for, so surface
+         them here rather than making them open each record to find out. */
+      var q = r.quote || {};
+      if (typeof q.total === 'number') {
+        right.appendChild(el('span', 'plist-amt', OI.money(q.total, q.currency)));
+      }
+      var nf = (r.files || []).length;
+      if (nf) right.appendChild(el('span', 'plist-files', nf + (nf === 1 ? ' file' : ' files')));
+      right.appendChild(el('span', 'plist-when', when(r.updatedAt)));
       item.appendChild(right);
 
       function open() {
@@ -964,6 +1072,19 @@ textarea{min-height:70px;resize:vertical}
   }
 
   /* ---------- delivered notice ---------- */
+  /* A short glyph reads faster than a file extension and needs no icon set. */
+  function fileKind(name) {
+    var x = String(name || '').split('.').pop().toLowerCase();
+    if (x === 'pdf') return 'PDF';
+    if (['png','jpg','jpeg','gif','webp','svg','heic'].indexOf(x) >= 0) return 'IMG';
+    if (['xlsx','xls','csv'].indexOf(x) >= 0) return 'XLS';
+    if (['docx','doc'].indexOf(x) >= 0) return 'DOC';
+    if (['zip','7z','rar'].indexOf(x) >= 0) return 'ZIP';
+    if (['dwg','dxf'].indexOf(x) >= 0) return 'CAD';
+    return 'FILE';
+  }
+
+
 function esc(v) {
     return String(v == null ? '' : v)
       .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
@@ -1022,122 +1143,140 @@ function esc(v) {
       return Date.parse(a.at || 0) - Date.parse(b.at || 0);
     });
     var html = '';
+    var stageNames = OI.PIPELINE;
 
-    /* ── where it is ── */
+    /* ── header ── */
     html += '<div class="pp">';
-    html += '<div class="pp-h"><div><div class="pp-k">Your project</div>'
-         +  '<div class="pp-t">' + esc(rec.project.name || 'Untitled project') + '</div></div>'
-         +  '<span class="badge ' + st.tone + '">' + esc(st.label) + '</span></div>';
+    html += '<div class="pp-h">'
+         +  '<div class="pp-hl"><div class="pp-k">Your project</div>'
+         +  '<div class="pp-t">' + esc(rec.project.name || 'Untitled project') + '</div>'
+         +  '<div class="pp-sub">' + esc([rec.project.city, rec.project.state]
+              .filter(Boolean).join(', ') || (rec.customer.company || '')) + '</div></div>'
+         +  '<span class="pp-badge ' + st.tone + '">' + esc(st.label) + '</span></div>';
 
-    html += '<div class="pp-flow">';
-    OI.PIPELINE.forEach(function (label, i) {
-      var cls = i < st.stage ? 'done' : (i === st.stage ? 'now' : '');
-      html += '<div class="pp-step ' + cls + '"><span class="pp-dot"></span>'
-           +  '<span class="pp-lbl">' + esc(label) + '</span></div>';
+    /* ── stepper: the thing a client checks over and over, so it earns the
+          space. Circles carry the state; the rail between them carries the
+          progress. ── */
+    html += '<ol class="stepper">';
+    stageNames.forEach(function (label, i) {
+      var cls = i < st.stage ? 'done' : (i === st.stage ? 'now' : 'todo');
+      html += '<li class="step ' + cls + '">'
+           +  '<span class="rail"></span>'
+           +  '<span class="node">' + (i < st.stage ? '\u2713' : (i + 1)) + '</span>'
+           +  '<span class="slab">' + esc(label) + '</span></li>';
     });
-    html += '</div>';
+    html += '</ol>';
     if (st.blurb) html += '<div class="pp-blurb">' + esc(st.blurb) + '</div>';
 
-    /* ── the quote ── */
-    if (total !== null || rec.status === 'quoted') {
-      html += '<div class="pp-card"><div class="pp-ct">Quote</div>';
-      if (total === null) {
-        html += '<div class="pp-note">A fee is being prepared. Nothing to approve yet.</div>';
-      } else {
-        html += '<div class="pp-amt">' + esc(OI.money(total, q.currency)) + '</div>';
-        if ((q.lines || []).length) {
-          html += '<ul class="pp-lines">';
-          q.lines.forEach(function (l) {
-            html += '<li><span>' + esc(l.label || l.key) + '</span><span class="mono">'
-                 +  esc(OI.money(l.amount, q.currency)) + '</span></li>';
-          });
-          html += '</ul>';
-        }
-        if (q.note) html += '<div class="pp-note">' + esc(q.note) + '</div>';
-        if (q.sentAt) html += '<div class="pp-when">Sent ' + esc(when(q.sentAt)) + '</div>';
+    /* ── quote + payment, side by side where there's room ── */
+    var showQuote = (total !== null || rec.status === 'quoted');
+    var showPay = pay.key !== 'none';
+    if (showQuote || showPay) {
+      html += '<div class="pp-grid">';
 
-        if (rec.status === 'quoted') {
-          html += '<div class="pp-row">'
-               +  '<button class="btn primary" id="ppAccept" type="button">Accept this quote</button>'
-               +  '<button class="btn sm" id="ppDecline" type="button">Decline</button></div>'
-               +  '<div class="pp-fine">Accepting starts the work. You will be asked to pay '
-               +  'before delivery, not now.</div>';
-        } else if (acc.state === 'accepted') {
-          html += '<div class="pp-ok">Accepted ' + esc(when(acc.at))
-               +  (acc.poNumber ? ' \u00b7 PO ' + esc(acc.poNumber) : '') + '</div>';
-        } else if (acc.state === 'declined') {
-          html += '<div class="pp-no">Declined ' + esc(when(acc.at))
-               +  (acc.note ? ' \u2014 ' + esc(acc.note) : '') + '</div>';
+      if (showQuote) {
+        html += '<section class="pp-card"><div class="pp-ct">Quote</div>';
+        if (total === null) {
+          html += '<div class="pp-note">Being priced. Nothing to approve yet.</div>';
+        } else {
+          html += '<div class="pp-amt">' + esc(OI.money(total, q.currency)) + '</div>';
+          if ((q.lines || []).length) {
+            html += '<ul class="pp-lines">';
+            q.lines.forEach(function (l) {
+              html += '<li><span>' + esc(l.label || l.key) + '</span>'
+                   +  '<span class="mono">' + esc(OI.money(l.amount, q.currency)) + '</span></li>';
+            });
+            html += '</ul>';
+          }
+          if (q.note) html += '<div class="pp-note">' + esc(q.note) + '</div>';
+          if (q.sentAt) html += '<div class="pp-when">Sent ' + esc(when(q.sentAt)) + '</div>';
+
+          if (rec.status === 'quoted') {
+            html += '<div class="pp-row">'
+                 +  '<button class="pbtn primary" id="ppAccept" type="button">Accept</button>'
+                 +  '<button class="pbtn ghost" id="ppDecline" type="button">Decline</button></div>'
+                 +  '<div class="pp-fine">Accepting starts the work. Payment comes later.</div>';
+          } else if (acc.state === 'accepted') {
+            html += '<div class="pp-stat good">\u2713 Accepted ' + esc(when(acc.at))
+                 +  (acc.poNumber ? ' \u00b7 PO ' + esc(acc.poNumber) : '') + '</div>';
+          } else if (acc.state === 'declined') {
+            html += '<div class="pp-stat bad">Declined ' + esc(when(acc.at))
+                 +  (acc.note ? ' \u2014 ' + esc(acc.note) : '') + '</div>';
+          }
         }
+        html += '</section>';
+      }
+
+      if (showPay) {
+        html += '<section class="pp-card"><div class="pp-ct">Payment</div>';
+        if (pay.key === 'paid') {
+          html += '<div class="pp-stat good">\u2713 Paid ' + esc(when(q.paidAt)) + '</div>'
+               +  '<div class="pp-note">Nothing outstanding.</div>';
+        } else if (pay.key === 'claimed') {
+          html += '<div class="pp-stat warn">Payment reported</div>'
+               +  '<div class="pp-note">You told us on ' + esc(when(rec.payment.claimedAt))
+               +  (rec.payment.reference ? ' \u00b7 ref ' + esc(rec.payment.reference) : '')
+               +  '. We\u2019ll confirm once it lands.</div>';
+        } else if (pay.key === 'due') {
+          html += '<div class="pp-amt">' + esc(OI.money(total, q.currency)) + '</div>'
+               +  '<div class="pp-note">Due now.</div>'
+               +  '<div class="pp-row">'
+               +  '<a class="pbtn primary" href="' + esc(q.paymentUrl) + '" target="_blank" '
+               +  'rel="noopener">Pay now</a>'
+               +  '<button class="pbtn ghost" id="ppPaid" type="button">I\u2019ve paid</button></div>'
+               +  '<div class="pp-fine">Opens in a new tab. Tell us after and we\u2019ll '
+               +  'reconcile it.</div>';
+        } else {
+          html += '<div class="pp-note">A payment link appears here once the work is '
+               +  'scheduled.</div>';
+        }
+        html += '</section>';
       }
       html += '</div>';
     }
 
-    /* ── payment ── */
-    if (pay.key !== 'none') {
-      html += '<div class="pp-card"><div class="pp-ct">Payment</div>';
-      if (pay.key === 'paid') {
-        html += '<div class="pp-ok">Paid ' + esc(when(q.paidAt)) + '. Nothing outstanding.</div>';
-      } else if (pay.key === 'claimed') {
-        html += '<div class="pp-note">You reported payment ' + esc(when(rec.payment.claimedAt))
-             +  (rec.payment.reference ? ' \u00b7 ref ' + esc(rec.payment.reference) : '')
-             +  '. We\u2019ll confirm once it lands.</div>';
-      } else if (pay.key === 'due') {
-        html += '<div class="pp-amt">' + esc(OI.money(total, q.currency)) + ' due</div>'
-             +  '<div class="pp-row">'
-             +  '<a class="btn primary" href="' + esc(q.paymentUrl) + '" target="_blank" '
-             +  'rel="noopener">Pay now</a>'
-             +  '<button class="btn sm" id="ppPaid" type="button">I\u2019ve paid</button></div>'
-             +  '<div class="pp-fine">Opens the payment page in a new tab. Tell us afterwards '
-             +  'and we\u2019ll confirm it against the account.</div>';
-      } else {
-        html += '<div class="pp-note">A payment link will appear here once the work is '
-             +  'scheduled.</div>';
-      }
-      html += '</div>';
-    }
-
-    /* ── your files: uploads and links, grouped by deliverable ── */
+    /* ── files ── */
     var uploads = OI.files ? OI.files(rec) : [];
     if (done.length || uploads.length) {
-      html += '<div class="pp-card"><div class="pp-ct">Your files</div>';
-
+      html += '<section class="pp-card wide"><div class="pp-ct">Your files</div>';
       (rec.deliverables || []).forEach(function (d) {
         if (!d.requested) return;
         var mine = uploads.filter(function (f) { return (f.key || 'other') === d.key; });
         if (!mine.length && !d.outputUrl) return;
         html += '<div class="pp-fg"><div class="pp-fgn">' + esc(d.label) + '</div>';
         mine.forEach(function (f) {
-          html += '<div class="pp-frow"><a class="pp-fn" data-file="' + esc(f.id) + '">'
-               +  esc(f.name) + '</a><span class="pp-fs">'
+          html += '<div class="pp-frow"><span class="fico">' + esc(fileKind(f.name))
+               +  '</span><a class="pp-fn" data-file="' + esc(f.id) + '">' + esc(f.name)
+               +  '</a><span class="pp-fs">'
                +  esc(OI.fmtBytes ? OI.fmtBytes(f.size) : '') + '</span></div>';
         });
         if (d.outputUrl) {
-          html += '<div class="pp-frow"><a class="pp-fn" href="' + esc(d.outputUrl)
-               +  '" target="_blank" rel="noopener">Open shared link</a></div>';
+          html += '<div class="pp-frow"><span class="fico">\u2197</span>'
+               +  '<a class="pp-fn" href="' + esc(d.outputUrl) + '" target="_blank" '
+               +  'rel="noopener">Open shared link</a></div>';
         }
         if (d.note) html += '<div class="pp-when">' + esc(d.note) + '</div>';
         html += '</div>';
       });
-
       var other = uploads.filter(function (f) { return (f.key || 'other') === 'other'; });
       if (other.length) {
         html += '<div class="pp-fg"><div class="pp-fgn">Additional files</div>';
         other.forEach(function (f) {
-          html += '<div class="pp-frow"><a class="pp-fn" data-file="' + esc(f.id) + '">'
-               +  esc(f.name) + '</a><span class="pp-fs">'
+          html += '<div class="pp-frow"><span class="fico">' + esc(fileKind(f.name))
+               +  '</span><a class="pp-fn" data-file="' + esc(f.id) + '">' + esc(f.name)
+               +  '</a><span class="pp-fs">'
                +  esc(OI.fmtBytes ? OI.fmtBytes(f.size) : '') + '</span></div>';
         });
         html += '</div>';
       }
-      html += '</div>';
+      html += '</section>';
     }
 
     /* ── messages ── */
-    html += '<div class="pp-card"><div class="pp-ct">Messages</div>';
+    html += '<section class="pp-card wide"><div class="pp-ct">Messages</div>';
     if (!msgs.length) {
-      html += '<div class="pp-note">No messages yet. Ask anything about this project here \u2014 '
-           +  'it goes to whoever is working on it.</div>';
+      html += '<div class="pp-empty">Ask anything about this project here. It goes straight '
+           +  'to whoever is building it.</div>';
     } else {
       html += '<div class="pp-thread">';
       msgs.forEach(function (m) {
@@ -1149,17 +1288,39 @@ function esc(v) {
       });
       html += '</div>';
     }
-    html += '<textarea id="ppMsg" rows="3" placeholder="Write a message\u2026"></textarea>'
-         +  '<div class="pp-row"><button class="btn sm" id="ppSend" type="button">Send</button></div>';
-    html += '</div>';
+    html += '<div class="pp-send"><textarea id="ppMsg" rows="2" '
+         +  'placeholder="Write a message\u2026"></textarea>'
+         +  '<button class="pbtn primary" id="ppSend" type="button">Send</button></div>';
+    html += '</section>';
 
     if (rec.notify && rec.notify.unreadForClient) {
-      html += '<div class="pp-row"><button class="btn sm" id="ppAck" type="button">'
+      html += '<div class="pp-row"><button class="pbtn ghost" id="ppAck" type="button">'
            +  'Mark updates as read</button></div>';
     }
     html += '</div>';
 
     slot.innerHTML = html;
+
+    /* Once a project is submitted this page is a STATUS page, not a form. The
+       route picker is a decision already made, and thirty fields of intake
+       below the fold buries the thing the client actually came to see.
+       Collapse it behind a disclosure and let the portal be the page. */
+    var purpose = $('#cardPurpose');
+    if (purpose) purpose.hidden = true;
+    var cols = $('#intakeCols'), bar = $('#detailsBar');
+    if (cols && bar) {
+      bar.hidden = false;
+      if (!bar.dataset.wired) {
+        bar.dataset.wired = '1';
+        $('#detailsToggle').addEventListener('click', function () {
+          var open = cols.classList.toggle('open');
+          var b = $('#detailsToggle');
+          b.textContent = open ? 'Hide intake details' : 'View intake details';
+          b.setAttribute('aria-expanded', open ? 'true' : 'false');
+        });
+      }
+    }
+
 
     /* ---- actions ---- */
     var me = OI.currentEmail();
