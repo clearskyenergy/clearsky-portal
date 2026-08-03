@@ -9,7 +9,7 @@
 (function (global) {
   'use strict';
 
-  var COLLECTION = 'intakeProjects';
+  var COLLECTION = 'intake_projects';
 
   /* ---------------------------------------------------------------- config */
   function cfg() {

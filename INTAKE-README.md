@@ -161,25 +161,83 @@ OmegaIntake.setBackend({
 
 ## 4. Firestore
 
-Collection: `intakeProjects`, document id = `intakeId`. It is **top-level and
-cross-tenant on purpose** — the admin console queries every tenant at once, and
-`orgId` + rules do the isolation. Rules and indexes are in
-`firestore-intake.rules`.
+Collection: `intake_projects`, document id = `intakeId`. Named to match the
+house convention (`slc_`, `om_`, `fin_`), not the camelCase I first used.
 
-The rules depend on the existing `userOrg()` helper, which is what already maps
-`fenecon.de` and `fenecon.us` logins onto the `fenecon.com` org. Verify that
-mapping before the first FENECON intake, or those users will read an empty list.
+It is **one collection for all tenants, on purpose** — the sales console works
+the whole queue in one query, and `orgId` plus the rules do the isolation. That
+makes the read rule load-bearing: it is the only thing between one customer and
+another customer's contact details, site addresses and utility accounts.
 
-Grant staff access one of two ways:
+Deploy `firestore.rules` — it is your existing file with two changes, nothing
+removed. Verified: all 34 collections and all 21 helpers are intact.
 
-```bash
-# preferred — custom claim
-firebase auth:import ... # or:
-admin.auth().setCustomUserClaims(uid, { omegaAdmin: true });
+### Change 1 — `orgAlias()`, and why it matters beyond intake
+
+Your `userOrg()` was the raw email domain:
+
+```js
+function userOrg() { return request.auth.token.email.split('@')[1]; }
 ```
 
-The rules also accept `@clearsky-usa.com` and `@csebuilders.com` addresses as a
-fallback so the console works before claims are issued.
+FENECON staff sign in from `fenecon.com`, `fenecon.de` and `fenecon.us`, but
+their `config.js` seeds every record with `orgId: 'fenecon.com'`. A `.de` login
+resolves to org `fenecon.de`, fails the `orgId` comparison on create, and can
+file nothing — not an intake, and **not a project either**. This is the
+outstanding FENECON item, and it was already live against `/projects`.
+
+The fold is central so it fixes every collection at once:
+
+```js
+function orgAlias(domain) {
+  return domain == 'fenecon.de' ? 'fenecon.com'
+       : domain == 'fenecon.us' ? 'fenecon.com'
+       : domain;
+}
+function userOrg() { return orgAlias(request.auth.token.email.split('@')[1]); }
+```
+
+**Check before deploying:** if anyone has already signed in from `fenecon.de`
+or `fenecon.us` and saved something, those docs carry `orgId: 'fenecon.de'` and
+go unreachable the moment the alias lands. Query for them first:
+
+```
+projects where orgId in ['fenecon.de','fenecon.us']
+```
+
+Empty result, deploy freely. Non-empty, backfill `orgId` to `fenecon.com` first.
+The trial opens 3 Aug 2026, so this is very likely empty.
+
+### Change 2 — the `intake_projects` block
+
+Uses your existing `isAdmin()` rather than the separate helper I first wrote —
+same domains, one definition. Follows the `equipment` precedent and is
+**deliberately not opened to `isConsoleViewer()`**: an intake carries a named
+customer, a site address and a utility account number, so sunesol.com and
+ogisolar.com must not read it the way they can read `/projects`.
+
+Two clauses worth knowing:
+
+- `request.resource.data.get('admin', {}) == resource.data.get('admin', {})`
+  pins your working space (assignee, due date, internal notes) so a client save
+  can't read-modify-write it away.
+- Update accepts either a client status **or an unchanged status**, so a
+  customer can still add a link mid-production without being forced to roll the
+  record back to `submitted`.
+
+### Indexes
+
+**None needed.** Both queries — `where('orgId','==',org)` and the unfiltered
+`listAll()` — are served by automatic single-field indexes. My earlier note
+listing three composite indexes was wrong. You'd only need one if you later add
+an `orderBy` or a second filter to those queries; Firestore will hand you the
+exact definition in a console link when that happens.
+
+### Admin access
+
+Nothing to do. `isAdmin()` already matches `@clearsky-usa.com` and
+`@csebuilders.com` by email domain, so your reps get the queue on sign-in — no
+`omegaAdmin` custom claim needed. Ignore that item from my earlier checklist.
 
 ---
 
@@ -252,13 +310,14 @@ its host so a broken or private link is obvious at a glance.
 
 ## Before go-live
 
-- [ ] `intake.html` + `omega-intake.js` into each tenant repo; `intake-admin.html` into the sales app **only**
+- [ ] Query `projects where orgId in ['fenecon.de','fenecon.us']` — backfill if non-empty
+- [ ] Deploy `firestore.rules` (whole-database replace)
+- [ ] `intake.html` + `omega-intake.js` into the platform repo; `intake-admin.html` into the sales app **only**
+- [ ] Add the `intake` registry entry to `omega-tools.js`
+- [ ] Add `intake` to each tenant's `unlockedTools`; set `serviceName` or accept "Omega"
 - [ ] Run `verify-tenant-package.sh` against both tenant repos — must exit 0
-- [ ] Confirm `omega-intake.js` checksums match across all three repos
-- [ ] Add the registry entry and put `intake` in each tenant's `unlockedTools`
-- [ ] Set `serviceName` per tenant, or accept the "Omega" default
-- [ ] Deploy rules + the three composite indexes
-- [ ] Verify `userOrg()` resolves `fenecon.de` and `fenecon.us` → `fenecon.com`
-- [ ] Set `omegaAdmin` claims on the sales rep accounts
+- [ ] Confirm `omega-intake.js` checksums match across all repos
+- [ ] Add `clearsky-usa.com` to Firebase authorized domains (still open: `fenecon.vercel.app`)
+- [ ] Give the sales app a Firebase bootstrap — the console assumes `firebase.firestore()` exists
 - [ ] Wire `listEditorProjects` so the editor dropdown populates
 - [ ] Decide on `intakeNotifyHook` (email) — in-app notification works without it
