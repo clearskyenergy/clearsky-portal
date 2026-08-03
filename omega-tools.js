@@ -143,6 +143,29 @@
       file:'/permit.html', tier:TIER.DELUXE, savesData:true,
       icon:'M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8zM14 2v6h6M16 13H8M16 17H8' },
 
+    /* ── PROJECT INTAKE ──
+       The one tool that is a SERVICE request rather than a calculator: the
+       tenant describes a site, links their Drive/Dropbox folders, and either
+       sends it to us to produce the plot, site map, costs and utility / AHJ
+       packages, or saves it as their own record and does it themselves.
+
+       tier ALL on purpose — a tenant cannot ask us to do work for them from
+       behind an upgrade wall, and the submission itself is how an upgrade
+       conversation starts. No unlockedTools edit needed for any tenant.
+
+       savesData is true, but this tool DEVIATES from the toolData contract.
+       toolData/{orgId}/tools/{key} is readable only by that org, and the
+       ClearSky queue has to read submissions across every tenant to work
+       them. Records live at intake_projects/{intakeId} instead, carrying
+       orgId, with the rules doing the isolation. See INTAKE-README.md.
+
+       The staff side (intake-admin.html) is deliberately NOT in this
+       registry — see the note at the foot of SEED_TOOLS. */
+    { key:'intake', name:'Project Intake', category:'permitting',
+      desc:'Submit a site \u2014 L2, DCFC, BESS, DER, solar or compute \u2014 and get back the plot, site map, costs and utility / AHJ packages.',
+      file:'/intake.html', badge:'new', tier:TIER.ALL, savesData:true,
+      icon:'M22 12h-6l-2 3h-4l-2-3H2M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z' },
+
     { key:'ahj', name:'AHJ Approval Portal', category:'marketplace',
       desc:'Submit & track permit approvals with the AHJ.',
       file:'/ahj-portal.html', soon:true, tier:TIER.ALL,
@@ -264,6 +287,19 @@
       desc:'Capacity fade over project life vs OEM warranty envelope, with augmentation planning.',
       file:'/degradation-warranty.html', badge:'new', tier:TIER.DELUXE, savesData:true,
       icon:'M6 7h12v10a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2zM9 7V5a3 3 0 0 1 6 0v2M9 15l6-4' }
+
+    /* ── NOT IN THIS REGISTRY, ON PURPOSE ──
+       intake-admin.html — the ClearSky queue where reps work submitted
+       projects. It reads intake_projects across EVERY tenant, so it is not a
+       marketplace tool and must not be discoverable from a customer portal.
+       This file is loaded by both the admin console and every customer
+       portal, so anything listed here is a customer-visible surface.
+
+       orgs:['clearsky-usa.com'] would not be a safe substitute: isVisible()
+       returns false when there is no workspace.orgId, and the admin console
+       runs without a workspace, so the entry would hide from staff and still
+       ship the path to every tenant. It lives in the sales app and is linked
+       directly from there. */
   ];
 
   /* ══════════════════════════════════════════════════════════════════

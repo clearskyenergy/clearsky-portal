@@ -12,32 +12,109 @@
   var COLLECTION = 'intake_projects';
 
   /* ---------------------------------------------------------------- config */
+  /* This tool is hosted ONCE on TOOL_HOST and opened by every tenant portal,
+     so there is no tenant config.js on this origin. The portal passes the
+     tenant through hrefFor() as ?org=<orgId>, exactly like every other shared
+     tool. OMEGATools.orgFromUrl() is the canonical reader for that. */
   function cfg() {
     return global.OMEGA_CONFIG || global.omegaConfig || {};
   }
-  function tenantKey() {
-    var c = cfg();
-    return (c.tenant && (c.tenant.key || c.tenant.id)) || c.tenantKey || c.orgId || 'unknown';
+
+  /* Mirror of orgAlias() in firestore.rules. A tenant signing in from a
+     secondary domain must resolve to the SAME org the rules will compute, or
+     every write is rejected. Keep the two lists in step — if you add a domain
+     here, add it in the rules, and vice versa. */
+  var ORG_ALIASES = {
+    'fenecon.de': 'fenecon.com',
+    'fenecon.us': 'fenecon.com'
+  };
+  function orgAlias(domain) {
+    domain = String(domain || '').toLowerCase();
+    return ORG_ALIASES[domain] || domain;
   }
-  function tenantName() {
-    var c = cfg();
-    return (c.tenant && c.tenant.name) || c.brandName || c.companyName || tenantKey();
-  }
+
+  var _org = null;
   function orgId() {
+    if (_org) return _org;
+    var fromUrl = null;
+    if (global.OMEGATools && typeof global.OMEGATools.orgFromUrl === 'function') {
+      fromUrl = global.OMEGATools.orgFromUrl(currentEmail());
+    } else {
+      var m = global.location && global.location.search
+        ? global.location.search.match(/[?&]org=([^&]+)/) : null;
+      if (m) fromUrl = decodeURIComponent(m[1]);
+    }
     var c = cfg();
-    return c.orgId || (c.tenant && c.tenant.orgId) || tenantKey();
+    _org = orgAlias(fromUrl || c.orgId || (c.tenant && c.tenant.orgId) || emailDomain());
+    return _org;
   }
+  function setOrg(o) { _org = orgAlias(o); }
+
+  function currentEmail() {
+    var c = cfg();
+    if (c.user && c.user.email) return c.user.email;
+    if (global.OMEGA_USER && global.OMEGA_USER.email) return global.OMEGA_USER.email;
+    try {
+      if (global.firebase && firebase.auth && firebase.auth().currentUser) {
+        return firebase.auth().currentUser.email;
+      }
+    } catch (e) {}
+    return '';
+  }
+  function emailDomain() {
+    var e = currentEmail();
+    return e.indexOf('@') > -1 ? e.split('@')[1].toLowerCase() : '';
+  }
+
+  /* Tenant display name + service label. On TOOL_HOST there is no config.js,
+     so these come from omega_orgs/{orgId} — the collection the portal already
+     keeps per-tenant metadata in. Falls back to the org id, which is always
+     something readable like 'fenecon.com'. */
+  var _brand = null;
+  function brand() { return _brand || {}; }
+  function loadBrand(db) {
+    if (!db) return Promise.resolve({});
+    return db.collection('omega_orgs').doc(orgId()).get()
+      .then(function (snap) {
+        _brand = snap.exists ? (snap.data() || {}) : {};
+        return _brand;
+      })['catch'](function () { _brand = {}; return _brand; });
+  }
+  function tenantKey() { return orgId(); }
+  function tenantName() {
+    var b = brand();
+    return b.name || b.displayName || b.company ||
+           (cfg().tenant && cfg().tenant.name) || orgId();
+  }
+  function serviceName() {
+    return brand().serviceName || cfg().serviceName || 'Omega';
+  }
+
+  /* The portal hands shared tools a ?return= link home, since a refresh loses
+     the referrer across origins. */
+  function returnUrl() {
+    var m = global.location && global.location.search
+      ? global.location.search.match(/[?&]return=([^&]+)/) : null;
+    return m ? decodeURIComponent(m[1]) : (cfg().portalUrl || '');
+  }
+
+  /* The editor is itself a shared tool on TOOL_HOST, so route through the
+     registry when it is present rather than guessing a relative path. */
   function editorUrl(projectId) {
-    var base = cfg().editorUrl || './editor.html';
-    return projectId ? base + (base.indexOf('?') > -1 ? '&' : '?') + 'project=' + encodeURIComponent(projectId) : base;
+    var base = cfg().editorUrl || '';
+    if (!base && global.OMEGATools) {
+      var t = global.OMEGATools.byKey('editor');
+      if (t) base = global.OMEGATools.hrefFor(t, { orgId: orgId() }) || '';
+    }
+    if (!base) base = './editor.html';
+    if (!projectId) return base;
+    return base + (base.indexOf('?') > -1 ? '&' : '?') + 'project=' + encodeURIComponent(projectId);
   }
+
   // Deliberately no default. Shared code carries no reference to the operator's
   // own domain — a white-label tenant should never ship a string it didn't set.
   function adminOrigin() {
     return cfg().adminOrigin || '';
-  }
-  function serviceName() {
-    return cfg().serviceName || 'Omega';
   }
 
   /* ------------------------------------------------------------- taxonomy */
@@ -488,7 +565,9 @@
     STATUS: STATUS,
     PIPELINE: PIPELINE,
 
-    cfg: cfg, orgId: orgId, tenantKey: tenantKey, tenantName: tenantName,
+    cfg: cfg, orgId: orgId, setOrg: setOrg, orgAlias: orgAlias,
+    tenantKey: tenantKey, tenantName: tenantName, brand: brand, loadBrand: loadBrand,
+    currentEmail: currentEmail, returnUrl: returnUrl,
     editorUrl: editorUrl, adminOrigin: adminOrigin, serviceName: serviceName,
 
     blankRecord: blankRecord, validate: validate, completeness: completeness,

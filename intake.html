@@ -228,6 +228,7 @@ textarea{min-height:70px;resize:vertical}
   <div class="brandmark" id="brand"><span class="bn">Portal</span></div>
   <span class="tooltag">Project intake</span>
   <span class="sp"></span>
+  <a class="whoami" id="backLink" href="#" hidden style="text-decoration:none">← Portal</a>
   <span class="whoami" id="whoami"></span>
 </div>
 
@@ -419,6 +420,32 @@ textarea{min-height:70px;resize:vertical}
   <button class="btn primary" type="button" id="btnSubmit">Submit to Omega</button>
 </div>
 
+<!-- ────────────────────────────────────────────────────────────────────────
+     FIREBASE BOOTSTRAP
+     Served from TOOL_HOST, a different origin from the portal, so this tool
+     resolves the session itself the way every other shared tool does. If you
+     already have a shared init file, delete this block and include that — all
+     the tool needs is a global `firebase` with an authenticated user.
+     ──────────────────────────────────────────────────────────────────── -->
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+<script src="./omega-tools.js"></script>
+<script>
+/* Same project as every other OMEGA tool — paste the values you already use. */
+window.OMEGA_FIREBASE = window.OMEGA_FIREBASE || {
+  apiKey:            'REPLACE_ME',
+  authDomain:        'REPLACE_ME.firebaseapp.com',
+  projectId:         'REPLACE_ME',
+  storageBucket:     'REPLACE_ME.appspot.com',
+  messagingSenderId: 'REPLACE_ME',
+  appId:             'REPLACE_ME'
+};
+if (window.firebase && !firebase.apps.length) {
+  try { firebase.initializeApp(window.OMEGA_FIREBASE); }
+  catch (e) { console.warn('[intake] firebase init failed', e); }
+}
+</script>
 <script src="./omega-intake.js"></script>
 <script>
 (function () {
@@ -442,28 +469,28 @@ textarea{min-height:70px;resize:vertical}
     } catch (e) {}
     return { uid: null, email: '', displayName: '' };
   }
-  var user = currentUser();
+  var user = { uid: null, email: '', displayName: '' };
 
   /* ---------- brand ----------
    * Nothing here is baked in. A white-label tenant sees its own name, its own
    * support address, and whatever it calls the fulfilment service — never
    * ClearSky's, unless its own config.js puts it there. */
-  var SVC = OI.cfg().serviceName || 'Omega';
+  var SVC = 'Omega';
   function svc(s) { return String(s).replace(/\{svc\}/g, SVC); }
 
-  (function brand() {
-    var c = OI.cfg(), b = $('#brand');
-    var logo = c.logoUrl || (c.brand && c.brand.logoUrl);
-    var name = OI.tenantName();
-    b.innerHTML = '';
-    if (logo) { var i = new Image(); i.src = logo; i.alt = ''; b.appendChild(i); }
-    b.appendChild(el('span', 'bn', name));
+  /* Nothing is baked in. On TOOL_HOST there is no tenant config.js, so the
+     name, logo and support address come from omega_orgs/{orgId}. A white-label
+     tenant sees its own — never ClearSky's, unless its own org doc says so. */
+  function applyBrand() {
+    var bd = OI.brand(), tgt = $('#brand');
+    var logo = bd.logoUrl || (bd.brand && bd.brand.logoUrl);
+    tgt.innerHTML = '';
+    if (logo) { var i = new Image(); i.src = logo; i.alt = ''; tgt.appendChild(i); }
+    tgt.appendChild(el('span', 'bn', OI.tenantName()));
 
-    // Only offer the "invite us" route if the deployment declares an address.
-    var contact = (c.support && c.support.email) || c.supportEmail || '';
+    var contact = bd.supportEmail || (bd.support && bd.support.email) || '';
     $('#shareEmail').textContent = contact ? ', or invite ' + contact : '';
 
-    // Resolve {svc} everywhere it appears in static copy.
     (function walk(node) {
       for (var n = node.firstChild; n; n = n.nextSibling) {
         if (n.nodeType === 3) {
@@ -474,9 +501,9 @@ textarea{min-height:70px;resize:vertical}
       }
     })(document.body);
 
-    $('#whoami').textContent = [user.email, OI.orgId()].filter(Boolean).join(' · ');
-    document.title = name + ' · Project intake';
-  })();
+    $('#whoami').textContent = [user.email, OI.orgId()].filter(Boolean).join(' \u00b7 ');
+    document.title = OI.tenantName() + ' \u00b7 Project intake';
+  }
 
   /* ---------- state ---------- */
   var rec = OI.blankRecord(user);
@@ -916,19 +943,59 @@ textarea{min-height:70px;resize:vertical}
     if (dirty) { e.preventDefault(); e.returnValue = ''; }
   });
 
-  /* ---------- boot ---------- */
-  bindAll();
-  hydrate();
-  loadEditorProjects();
-  refreshList();
-  setMsg('Backend: ' + OI.store().name + ' · org ' + OI.orgId());
+  /* ---------- boot ----------
+     Wait for Firebase to resolve the session before reading anything: orgId
+     falls back to the signed-in email domain, and the rules reject an
+     unauthenticated read outright. Booting early shows an empty list to a
+     signed-in person, which reads as data loss. */
+  function start() {
+    var db = null;
+    try { if (window.firebase && firebase.apps.length) db = firebase.firestore(); } catch (e) {}
 
-  // deep link:  intake.html?id=ix_...
-  var qid = new URLSearchParams(location.search).get('id');
-  if (qid) {
-    OI.store().get(qid).then(function (r) {
-      if (r) { rec = r; hydrate(); showView('new'); }
+    var back = OI.returnUrl();
+    if (back) { $('#backLink').href = back; $('#backLink').hidden = false; }
+
+    OI.loadBrand(db).then(function () {
+      user = currentUser();
+      SVC = OI.serviceName();
+      applyBrand();
+      bindAll();
+      hydrate();
+      loadEditorProjects();
+      return refreshList();
+    }).then(function () {
+      setMsg(OI.tenantName() + ' \u00b7 ' + OI.store().name);
+      var qid = new URLSearchParams(location.search).get('id');
+      if (qid) {
+        OI.store().get(qid).then(function (r) {
+          if (r) { rec = r; hydrate(); showView('new'); }
+        });
+      }
     });
+  }
+
+  if (window.firebase && firebase.apps.length && firebase.auth) {
+    var booted = false;
+    firebase.auth().onAuthStateChanged(function (u) {
+      if (booted) return;
+      booted = true;
+      if (!u) {
+        var back = OI.returnUrl();
+        document.body.innerHTML =
+          '<div style="max-width:460px;margin:16vh auto;padding:0 24px;font-family:system-ui">' +
+          '<h1 style="font-size:19px;margin:0 0 10px">Sign in to continue</h1>' +
+          '<p style="color:#39434E;font-size:14px;line-height:1.6">Open Project Intake from ' +
+          'your portal so it can pick up your session.</p>' +
+          (back ? '<a href="' + back + '" style="color:#0E5FA8">Back to the portal</a>' : '') +
+          '</div>';
+        return;
+      }
+      start();
+    });
+  } else {
+    // No Firebase on the page (local dev) — the data layer falls back to
+    // localStorage, so the tool stays fully usable.
+    start();
   }
 })();
 </script>
