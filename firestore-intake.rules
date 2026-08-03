@@ -1,0 +1,81 @@
+// ============================================================================
+// Firestore rules for the Project Intake tool.
+// Paste the match block into your existing firestore.rules, inside
+// `service cloud.firestore { match /databases/{db}/documents { ... } }`.
+//
+// This reuses the existing userOrg() helper — the same one that already maps
+// fenecon.de and fenecon.us addresses onto the fenecon.com org. Confirm that
+// helper is present before deploying; the rules below depend on it.
+// ============================================================================
+
+function isSignedIn() {
+  return request.auth != null;
+}
+
+// Omega staff. Prefer the custom claim; the domain check is the fallback for
+// accounts that haven't been re-issued a token yet.
+function isOmegaAdmin() {
+  return isSignedIn() && (
+    request.auth.token.omegaAdmin == true ||
+    request.auth.token.email.matches('.*@clearsky-usa[.]com$') ||
+    request.auth.token.email.matches('.*@csebuilders[.]com$')
+  );
+}
+
+// Statuses a client is allowed to move a record into on their own.
+function clientStatus(s) {
+  return s in ['draft', 'saved', 'submitted'];
+}
+
+match /intakeProjects/{intakeId} {
+
+  allow read: if isOmegaAdmin() || (isSignedIn() && resource.data.orgId == userOrg());
+
+  allow create: if isOmegaAdmin() || (
+    isSignedIn()
+    && request.resource.data.orgId == userOrg()
+    && request.resource.data.intakeId == intakeId
+    && clientStatus(request.resource.data.status)
+    && request.resource.data.createdBy.uid == request.auth.uid
+  );
+
+  // Clients own their intake content. They may not touch the production side:
+  // admin notes, assignment, or the org the record belongs to.
+  allow update: if isOmegaAdmin() || (
+    isSignedIn()
+    && resource.data.orgId == userOrg()
+    && request.resource.data.orgId == resource.data.orgId
+    && request.resource.data.admin == resource.data.admin
+    && (
+      // normal client edit
+      clientStatus(request.resource.data.status)
+      // ...or leaving an Omega-set status alone (e.g. only acknowledging a
+      // notification, or adding a document link mid-production)
+      || request.resource.data.status == resource.data.status
+    )
+  );
+
+  // Clients can delete their own drafts only. Everything submitted is retained.
+  allow delete: if isOmegaAdmin() || (
+    isSignedIn()
+    && resource.data.orgId == userOrg()
+    && resource.data.status in ['draft', 'saved']
+  );
+}
+
+// ============================================================================
+// Composite indexes — add to firestore.indexes.json
+// ============================================================================
+// {
+//   "indexes": [
+//     { "collectionGroup": "intakeProjects", "queryScope": "COLLECTION",
+//       "fields": [ { "fieldPath": "orgId",  "order": "ASCENDING" },
+//                   { "fieldPath": "updatedAt", "order": "DESCENDING" } ] },
+//     { "collectionGroup": "intakeProjects", "queryScope": "COLLECTION",
+//       "fields": [ { "fieldPath": "status", "order": "ASCENDING" },
+//                   { "fieldPath": "submittedAt", "order": "DESCENDING" } ] },
+//     { "collectionGroup": "intakeProjects", "queryScope": "COLLECTION",
+//       "fields": [ { "fieldPath": "tenantKey", "order": "ASCENDING" },
+//                   { "fieldPath": "updatedAt", "order": "DESCENDING" } ] }
+//   ]
+// }

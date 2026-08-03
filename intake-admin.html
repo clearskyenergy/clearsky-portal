@@ -1,0 +1,661 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Intake queue · ClearSky Omega</title>
+<style>
+:root{
+  --paper:#EDF0F3; --surface:#FFFFFF; --sunken:#F6F8FA;
+  --chrome:#131A22; --chrome-2:#1E2831;
+  --ink:#0F151C; --ink-2:#39434E; --muted:#6B7783; --faint:#9AA5AF;
+  --rule:#DCE3E9; --rule-2:#EAEFF3;
+  --accent:#0E5FA8; --accent-soft:#E7F0F9;
+  --good:#1B7A4B; --good-soft:#E6F4EC;
+  --warn:#9A5A08; --warn-soft:#FBF0DF;
+  --hot:#B33A32; --hot-soft:#FBECEA;
+  --r:8px; --r-lg:12px;
+  --mono: ui-monospace,"SF Mono","JetBrains Mono",Menlo,Consolas,monospace;
+  --sans: system-ui,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%}
+body{background:var(--paper);color:var(--ink);font-family:var(--sans);font-size:13.5px;line-height:1.5;
+  -webkit-font-smoothing:antialiased}
+button,input,select,textarea{font:inherit;color:inherit}
+a{color:var(--accent)}
+.mono{font-family:var(--mono);font-variant-numeric:tabular-nums}
+.eyebrow{font-family:var(--mono);font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--muted)}
+
+.chrome{background:var(--chrome);color:#E6ECF2;padding:10px 18px;display:flex;
+  align-items:center;gap:14px;position:sticky;top:0;z-index:50}
+.chrome .mark{font-weight:700;letter-spacing:-.01em}
+.chrome .tag{font-family:var(--mono);font-size:10px;letter-spacing:.14em;text-transform:uppercase;
+  color:#8FA3B5;border-left:1px solid #33414F;padding-left:14px}
+.chrome .sp{flex:1}
+.chrome .who{font-size:12px;color:#8FA3B5}
+
+.counters{display:flex;gap:8px;padding:12px 18px;background:var(--surface);
+  border-bottom:1px solid var(--rule);overflow-x:auto;scrollbar-width:none}
+.counters::-webkit-scrollbar{display:none}
+.counter{border:1px solid var(--rule);border-radius:var(--r);padding:8px 12px;min-width:104px;
+  background:var(--sunken);cursor:pointer;text-align:left;flex:none}
+.counter[aria-pressed="true"]{border-color:var(--accent);background:var(--accent-soft)}
+.counter .n{font-family:var(--mono);font-size:19px;font-weight:600;line-height:1}
+.counter .l{font-size:11px;color:var(--muted);margin-top:3px}
+
+.filters{display:flex;gap:8px;flex-wrap:wrap;padding:12px 18px;background:var(--surface);
+  border-bottom:1px solid var(--rule);align-items:center}
+.filters input,.filters select{border:1px solid var(--rule);border-radius:var(--r);
+  padding:7px 9px;background:var(--surface);outline:none}
+.filters input:focus,.filters select:focus{border-color:var(--accent);
+  box-shadow:0 0 0 3px color-mix(in srgb,var(--accent) 14%,transparent)}
+.filters input[type=search]{min-width:230px;flex:1}
+
+.shell{display:grid;grid-template-columns:minmax(0,1fr) 0;transition:grid-template-columns .2s}
+.shell.open{grid-template-columns:minmax(0,1fr) 470px}
+@media(max-width:1080px){.shell.open{grid-template-columns:1fr}
+  .shell.open .queue{display:none}}
+
+.queue{padding:0 0 60px}
+table{width:100%;border-collapse:collapse;background:var(--surface)}
+thead th{position:sticky;top:0;background:var(--sunken);text-align:left;font-size:10.5px;
+  letter-spacing:.1em;text-transform:uppercase;color:var(--muted);font-family:var(--mono);
+  font-weight:500;padding:9px 12px;border-bottom:1px solid var(--rule);z-index:10}
+tbody td{padding:11px 12px;border-bottom:1px solid var(--rule-2);vertical-align:top}
+tbody tr{cursor:pointer}
+tbody tr:hover{background:var(--sunken)}
+tbody tr.sel{background:var(--accent-soft)}
+td .pn{font-weight:600}
+td .sub{font-size:11.5px;color:var(--muted);margin-top:2px}
+.scopechips{display:flex;gap:4px;flex-wrap:wrap}
+.sc{font-family:var(--mono);font-size:10px;letter-spacing:.06em;padding:2px 6px;border-radius:4px;
+  background:var(--sunken);border:1px solid var(--rule);color:var(--ink-2)}
+.badge{display:inline-flex;align-items:center;font-family:var(--mono);font-size:10px;
+  letter-spacing:.08em;text-transform:uppercase;padding:3px 8px;border-radius:999px;
+  border:1px solid var(--rule);color:var(--muted);background:var(--sunken);white-space:nowrap}
+.badge.info{color:var(--accent);background:var(--accent-soft);border-color:color-mix(in srgb,var(--accent) 25%,white)}
+.badge.good{color:var(--good);background:var(--good-soft);border-color:color-mix(in srgb,var(--good) 25%,white)}
+.badge.warn{color:var(--warn);background:var(--warn-soft);border-color:color-mix(in srgb,var(--warn) 30%,white)}
+.badge.hot{color:var(--hot);background:var(--hot-soft);border-color:color-mix(in srgb,var(--hot) 25%,white)}
+.dcount{font-family:var(--mono);font-size:12px;color:var(--ink-2)}
+.dcount i{color:var(--faint);font-style:normal}
+
+/* ---- detail ---- */
+.detail{border-left:1px solid var(--rule);background:var(--surface);overflow-y:auto;
+  height:calc(100vh - 45px);position:sticky;top:45px}
+.detail .dhead{padding:14px 16px;border-bottom:1px solid var(--rule);position:sticky;top:0;
+  background:var(--surface);z-index:5}
+.detail .dhead h2{margin:0 0 4px;font-size:16px;letter-spacing:-.01em}
+.detail .dhead .m{font-size:12px;color:var(--muted)}
+.detail .close{position:absolute;top:12px;right:12px;background:none;border:1px solid var(--rule);
+  border-radius:6px;width:28px;height:28px;cursor:pointer;color:var(--muted)}
+.sect{padding:14px 16px;border-bottom:1px solid var(--rule-2)}
+.sect > h3{margin:0 0 10px;font-family:var(--mono);font-size:10px;letter-spacing:.14em;
+  text-transform:uppercase;color:var(--muted);font-weight:500}
+.kv{display:grid;grid-template-columns:130px minmax(0,1fr);gap:5px 10px;font-size:12.5px}
+.kv dt{color:var(--muted)}
+.kv dd{margin:0;word-break:break-word}
+.specs{font-size:12.5px}
+.specs .sg{padding:8px 0;border-bottom:1px dashed var(--rule-2)}
+.specs .sg:last-child{border-bottom:0}
+.specs .sg b{display:block;margin-bottom:3px}
+.specs .sg span{color:var(--muted)}
+
+.lrow{display:grid;grid-template-columns:1fr auto;gap:6px;padding:8px 0;
+  border-bottom:1px dashed var(--rule-2);align-items:center}
+.lrow:last-child{border-bottom:0}
+.lrow select{border:1px solid var(--rule);border-radius:6px;padding:3px 6px;font-size:11.5px}
+.lrow .ll{font-size:12.5px;font-weight:550}
+.lrow .lu{font-size:11.5px;color:var(--muted);word-break:break-all}
+
+.prod{padding:9px 0;border-bottom:1px dashed var(--rule-2)}
+.prod:last-child{border-bottom:0}
+.prod .ph{display:flex;align-items:center;gap:8px;margin-bottom:6px}
+.prod .ph b{font-size:12.5px;font-weight:600;flex:1}
+.prod select,.prod input{border:1px solid var(--rule);border-radius:6px;padding:5px 7px;
+  font-size:12px;width:100%;background:var(--surface)}
+.prod select{width:auto;font-size:11.5px}
+.prod .pf{display:grid;grid-template-columns:1fr;gap:5px}
+.prod.off{opacity:.42}
+
+.acts{display:flex;flex-wrap:wrap;gap:8px}
+.btn{border:1px solid var(--rule);background:var(--surface);border-radius:var(--r);
+  padding:7px 12px;font-size:12.5px;font-weight:550;cursor:pointer}
+.btn:hover{background:var(--sunken);border-color:var(--faint)}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:#fff}
+.btn.primary:hover{filter:brightness(1.08)}
+.btn.go{background:var(--good);border-color:var(--good);color:#fff}
+.btn.go:hover{filter:brightness(1.08)}
+.btn:disabled{opacity:.45;cursor:not-allowed;filter:none}
+textarea{width:100%;border:1px solid var(--rule);border-radius:var(--r);padding:8px 10px;
+  min-height:64px;resize:vertical;outline:none;background:var(--surface)}
+textarea:focus,input:focus{border-color:var(--accent)}
+.log{list-style:none;margin:0;padding:0;font-size:12px}
+.log li{padding:7px 0;border-bottom:1px dashed var(--rule-2)}
+.log li:last-child{border-bottom:0}
+.log .lt{font-family:var(--mono);font-size:10.5px;color:var(--faint)}
+.empty{padding:60px 20px;text-align:center;color:var(--muted);background:var(--surface)}
+.toast{position:fixed;bottom:18px;left:50%;transform:translateX(-50%);background:var(--chrome);
+  color:#E6ECF2;padding:10px 16px;border-radius:var(--r);font-size:12.5px;z-index:80;
+  box-shadow:0 6px 24px rgba(0,0,0,.2)}
+@media (prefers-reduced-motion: reduce){*{transition:none!important}}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+</style>
+</head>
+<body>
+
+<div class="chrome">
+  <span class="mark">ClearSky Omega</span>
+  <span class="tag">Intake queue</span>
+  <span class="sp"></span>
+  <span class="who" id="who"></span>
+</div>
+
+<div class="counters" id="counters"></div>
+
+<div class="filters">
+  <input type="search" id="q" placeholder="Search project, customer, city, utility, AHJ">
+  <select id="fTenant"><option value="">All tenants</option></select>
+  <select id="fScope"><option value="">All scopes</option></select>
+  <select id="fRouting">
+    <option value="">Omega + self-serve</option>
+    <option value="omega">Submitted to Omega</option>
+    <option value="self">Self-serve records</option>
+  </select>
+  <select id="fSort">
+    <option value="updated">Newest activity</option>
+    <option value="submitted">Newest submission</option>
+    <option value="name">Project name</option>
+  </select>
+  <button class="btn" id="reload" type="button">Reload</button>
+</div>
+
+<div class="shell" id="shell">
+  <div class="queue">
+    <table>
+      <thead><tr>
+        <th style="width:26%">Project</th><th style="width:16%">Customer</th>
+        <th style="width:13%">Scope</th><th style="width:13%">Deliverables</th>
+        <th style="width:13%">Status</th><th style="width:11%">Tenant</th><th style="width:8%">Updated</th>
+      </tr></thead>
+      <tbody id="rows"></tbody>
+    </table>
+    <div class="empty" id="emptyState" hidden><h3>No projects match these filters</h3></div>
+  </div>
+  <aside class="detail" id="detail" hidden></aside>
+</div>
+
+<script src="./omega-intake.js"></script>
+<script>
+(function () {
+  'use strict';
+  var OI = window.OmegaIntake;
+  var $ = function (s, r) { return (r || document).querySelector(s); };
+  var el = function (t, c, x) { var n = document.createElement(t);
+    if (c) n.className = c; if (x != null) n.textContent = x; return n; };
+
+  /* ------------------------------------------------------------------------
+   * HOST GUARD
+   * This console belongs to the ClearSky sales-rep app only. It is excluded
+   * from tenant packages by tools/verify-tenant-package.sh, but if a copy ever
+   * lands on a tenant domain it refuses to run rather than exposing every
+   * tenant's queue. Server-side, Firestore rules are the real boundary — this
+   * is the second lock, not the first.
+   * ---------------------------------------------------------------------- */
+  var ADMIN_HOSTS = [
+    'clearsky-usa.com', 'www.clearsky-usa.com',
+    'csebuilders.com', 'tools.csebuilders.com',
+    'localhost', '127.0.0.1', ''
+  ];
+  (function hostGuard() {
+    var h = location.hostname;
+    var ok = ADMIN_HOSTS.indexOf(h) > -1 ||
+             /\.clearsky-usa\.com$/.test(h) ||
+             /\.csebuilders\.com$/.test(h) ||
+             /^clearsky-[a-z0-9-]+\.vercel\.app$/.test(h);   // preview builds
+    if (ok) return;
+    document.body.innerHTML =
+      '<div style="max-width:520px;margin:14vh auto;padding:0 24px;font-family:system-ui">' +
+      '<div style="font-family:ui-monospace,monospace;font-size:10px;letter-spacing:.14em;' +
+      'text-transform:uppercase;color:#6B7783">Wrong deployment</div>' +
+      '<h1 style="font-size:20px;margin:8px 0 10px">This console does not belong on ' + h + '</h1>' +
+      '<p style="color:#39434E;line-height:1.6;font-size:14px">The intake queue runs only in the ' +
+      'ClearSky sales app. Remove <code>intake-admin.html</code> from this deployment and ' +
+      'redeploy — a tenant build should never contain it.</p>' +
+      '<p style="color:#6B7783;font-size:13px">Customers submit through ' +
+      '<code>intake.html</code>, which is the file that ships to tenants.</p></div>';
+    throw new Error('intake-admin.html loaded on a non-admin host: ' + h);
+  })();
+
+  var admin = (OI.cfg().user) || window.OMEGA_USER || { email: 'admin@clearsky-usa.com' };
+  $('#who').textContent = admin.email || '';
+
+  var all = [], view = [], sel = null, statusFilter = '';
+
+  function fmtDate(s) {
+    if (!s) return '—';
+    var d = new Date(s);
+    return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+  }
+  function toast(msg) {
+    var t = el('div', 'toast', msg); document.body.appendChild(t);
+    setTimeout(function () { t.remove(); }, 2600);
+  }
+
+  /* ------------------------------------------------------------- load */
+  function load() {
+    return OI.store().listAll().then(function (list) {
+      all = list || [];
+      buildFilterOptions();
+      apply();
+    }).catch(function (e) { toast('Load failed: ' + e.message); });
+  }
+  $('#reload').addEventListener('click', load);
+
+  function buildFilterOptions() {
+    var t = $('#fTenant'), cur = t.value;
+    var seen = {};
+    all.forEach(function (r) { if (r.tenantKey) seen[r.tenantKey] = r.tenantName || r.tenantKey; });
+    t.innerHTML = '<option value="">All tenants</option>';
+    Object.keys(seen).sort().forEach(function (k) { t.appendChild(new Option(seen[k], k)); });
+    t.value = cur;
+
+    var s = $('#fScope');
+    if (s.options.length <= 1) {
+      OI.SCOPES.forEach(function (sc) { s.appendChild(new Option(sc.label, sc.key)); });
+    }
+  }
+
+  /* ---------------------------------------------------------- counters */
+  var COUNTER_DEFS = [
+    { key: '', label: 'All' },
+    { key: 'submitted', label: 'New' },
+    { key: 'in_review', label: 'In review' },
+    { key: 'changes_requested', label: 'Blocked' },
+    { key: 'in_production', label: 'In production' },
+    { key: 'delivered', label: 'Delivered' },
+    { key: 'self', label: 'Self-serve' }
+  ];
+  function renderCounters() {
+    var c = $('#counters'); c.innerHTML = '';
+    COUNTER_DEFS.forEach(function (d) {
+      var n = d.key === '' ? all.length
+        : d.key === 'self' ? all.filter(function (r) { return r.routing === 'self'; }).length
+        : all.filter(function (r) { return r.status === d.key; }).length;
+      var b = el('button', 'counter'); b.type = 'button';
+      b.setAttribute('aria-pressed', statusFilter === d.key ? 'true' : 'false');
+      b.appendChild(el('div', 'n', String(n)));
+      b.appendChild(el('div', 'l', d.label));
+      b.addEventListener('click', function () {
+        statusFilter = statusFilter === d.key ? '' : d.key; apply();
+      });
+      c.appendChild(b);
+    });
+  }
+
+  /* ------------------------------------------------------------ filter */
+  function apply() {
+    var q = $('#q').value.trim().toLowerCase();
+    var tn = $('#fTenant').value, sc = $('#fScope').value, rt = $('#fRouting').value;
+    view = all.filter(function (r) {
+      if (tn && r.tenantKey !== tn) return false;
+      if (rt && r.routing !== rt) return false;
+      if (sc && !(r.scope && r.scope[sc] && r.scope[sc].enabled)) return false;
+      if (statusFilter === 'self') { if (r.routing !== 'self') return false; }
+      else if (statusFilter && r.status !== statusFilter) return false;
+      if (q) {
+        var hay = [r.project.name, r.project.siteName, r.project.city, r.project.state,
+          r.project.utility, r.project.ahj, r.customer.company, r.customer.contactName,
+          r.customer.email, r.tenantName].join(' ').toLowerCase();
+        if (hay.indexOf(q) === -1) return false;
+      }
+      return true;
+    });
+    var sort = $('#fSort').value;
+    view.sort(function (a, b) {
+      if (sort === 'name') return String(a.project.name).localeCompare(String(b.project.name));
+      var ka = sort === 'submitted' ? a.submittedAt : a.updatedAt;
+      var kb = sort === 'submitted' ? b.submittedAt : b.updatedAt;
+      return String(kb || '').localeCompare(String(ka || ''));
+    });
+    renderCounters(); renderRows();
+  }
+  ['q', 'fTenant', 'fScope', 'fRouting', 'fSort'].forEach(function (id) {
+    $('#' + id).addEventListener('input', apply);
+    $('#' + id).addEventListener('change', apply);
+  });
+
+  /* -------------------------------------------------------------- rows */
+  function renderRows() {
+    var tb = $('#rows'); tb.innerHTML = '';
+    $('#emptyState').hidden = view.length > 0;
+    view.forEach(function (r) {
+      var st = OI.STATUS[r.status] || { label: r.status, tone: 'muted' };
+      var tr = el('tr');
+      if (sel && sel.intakeId === r.intakeId) tr.className = 'sel';
+
+      var c1 = el('td');
+      c1.appendChild(el('div', 'pn', r.project.name || 'Untitled'));
+      c1.appendChild(el('div', 'sub', [r.project.city, r.project.state].filter(Boolean).join(', ') +
+        (r.project.utility ? ' · ' + r.project.utility : '')));
+      tr.appendChild(c1);
+
+      var c2 = el('td');
+      c2.appendChild(el('div', null, r.customer.company || '—'));
+      c2.appendChild(el('div', 'sub', r.customer.contactName || ''));
+      tr.appendChild(c2);
+
+      var c3 = el('td');
+      var chips = el('div', 'scopechips');
+      OI.activeScopes(r).forEach(function (s) { chips.appendChild(el('span', 'sc', s.short)); });
+      c3.appendChild(chips); tr.appendChild(c3);
+
+      var req = OI.requestedDeliverables(r);
+      var done = req.filter(function (d) { return d.status === 'complete'; }).length;
+      var c4 = el('td');
+      var dc = el('div', 'dcount');
+      dc.innerHTML = req.length ? done + '<i> / ' + req.length + '</i>' : '<i>—</i>';
+      c4.appendChild(dc); tr.appendChild(c4);
+
+      var c5 = el('td');
+      c5.appendChild(el('span', 'badge ' + st.tone, st.label));
+      if (r.notify && r.notify.unreadForClient) {
+        var nb = el('div'); nb.style.marginTop = '4px';
+        nb.appendChild(el('span', 'badge good', 'Notified'));
+        c5.appendChild(nb);
+      }
+      tr.appendChild(c5);
+
+      tr.appendChild(el('td', null, r.tenantName || r.tenantKey || '—'));
+      var c7 = el('td'); c7.appendChild(el('span', 'mono', fmtDate(r.updatedAt)));
+      c7.style.cssText = 'font-size:11.5px;color:var(--muted)';
+      tr.appendChild(c7);
+
+      tr.addEventListener('click', function () { openDetail(r); });
+      tb.appendChild(tr);
+    });
+  }
+
+  /* ------------------------------------------------------------ detail */
+  function openDetail(r) {
+    sel = r;
+    $('#shell').classList.add('open');
+    $('#detail').hidden = false;
+    renderDetail();
+    renderRows();
+  }
+  function closeDetail() {
+    sel = null; $('#shell').classList.remove('open'); $('#detail').hidden = true; renderRows();
+  }
+
+  function persist(msg) {
+    return OI.store().save(sel).then(function () {
+      if (msg) toast(msg);
+      apply(); renderDetail();
+    }).catch(function (e) { toast('Save failed: ' + e.message); });
+  }
+
+  function renderDetail() {
+    var d = $('#detail'); d.innerHTML = '';
+    var r = sel; if (!r) return;
+    var st = OI.STATUS[r.status] || { label: r.status, tone: 'muted' };
+
+    /* head */
+    var head = el('div', 'dhead');
+    head.appendChild(el('h2', null, r.project.name || 'Untitled project'));
+    var m = el('div', 'm');
+    m.textContent = (r.customer.company || '—') + ' · ' + (r.tenantName || r.tenantKey);
+    head.appendChild(m);
+    var bl = el('div'); bl.style.marginTop = '8px';
+    bl.appendChild(el('span', 'badge ' + st.tone, st.label));
+    if (r.routing === 'self') {
+      var sb = el('span', 'badge', 'Self-serve'); sb.style.marginLeft = '6px'; bl.appendChild(sb);
+    }
+    head.appendChild(bl);
+    var x = el('button', 'close', '×'); x.type = 'button';
+    x.setAttribute('aria-label', 'Close'); x.addEventListener('click', closeDetail);
+    head.appendChild(x);
+    d.appendChild(head);
+
+    /* customer + site */
+    var s1 = el('div', 'sect'); s1.appendChild(el('h3', null, 'Customer & site'));
+    var dl = el('dl', 'kv');
+    [
+      ['Contact', [r.customer.contactName, r.customer.role].filter(Boolean).join(' · ')],
+      ['Email', r.customer.email], ['Phone', r.customer.phone],
+      ['Site', [r.project.street, r.project.city, r.project.state, r.project.zip].filter(Boolean).join(', ')],
+      ['Parcel / APN', r.project.apn],
+      ['Coordinates', (r.project.lat && r.project.lng) ? r.project.lat + ', ' + r.project.lng : ''],
+      ['Utility', r.project.utility], ['AHJ', r.project.ahj],
+      ['Existing service', [r.project.serviceVoltage, r.project.existingServiceA && r.project.existingServiceA + 'A'].filter(Boolean).join(' · ')],
+      ['Stage', r.project.stage], ['Site control', r.project.siteControl],
+      ['Target energization', r.project.targetDate],
+      ['Submitted', r.submittedAt ? new Date(r.submittedAt).toLocaleString() : '—']
+    ].forEach(function (p) {
+      if (!p[1]) return;
+      dl.appendChild(el('dt', null, p[0]));
+      dl.appendChild(el('dd', null, p[1]));
+    });
+    s1.appendChild(dl);
+    if (r.project.notes) {
+      var pn = el('div'); pn.style.cssText = 'margin-top:10px;font-size:12.5px;color:var(--ink-2)';
+      pn.textContent = r.project.notes; s1.appendChild(pn);
+    }
+    d.appendChild(s1);
+
+    /* scope */
+    var s2 = el('div', 'sect'); s2.appendChild(el('h3', null, 'Scope'));
+    var sp = el('div', 'specs');
+    var act = OI.activeScopes(r);
+    if (!act.length) sp.appendChild(el('div', null, 'No scope selected.'));
+    act.forEach(function (sc) {
+      var data = r.scope[sc.key];
+      var g = el('div', 'sg');
+      g.appendChild(el('b', null, sc.label + ' — ' + sc.summary(data)));
+      var parts = sc.fields.filter(function (f) {
+        return f.k !== 'notes' && data[f.k] !== '' && data[f.k] != null && data[f.k] !== false;
+      }).map(function (f) {
+        return f.l + ': ' + (data[f.k] === true ? 'yes' : data[f.k]);
+      });
+      g.appendChild(el('span', null, parts.join(' · ')));
+      if (data.notes) {
+        var nn = el('div'); nn.style.cssText = 'margin-top:4px;color:var(--ink-2)';
+        nn.textContent = data.notes; g.appendChild(nn);
+      }
+      sp.appendChild(g);
+    });
+    s2.appendChild(sp); d.appendChild(s2);
+
+    /* links */
+    var s3 = el('div', 'sect');
+    var h3 = el('h3', null, 'Documents (' + (r.links || []).length + ')');
+    s3.appendChild(h3);
+    (r.links || []).forEach(function (ln) {
+      var row = el('div', 'lrow');
+      var left = el('div');
+      var a = el('a', 'll', ln.label || 'Link');
+      a.href = ln.url || '#'; a.target = '_blank'; a.rel = 'noopener';
+      left.appendChild(a);
+      left.appendChild(el('div', 'lu', (ln.url ? OI.linkProvider(ln.url) + ' · ' : '') + (ln.url || 'no url')));
+      row.appendChild(left);
+      var selc = document.createElement('select');
+      (r.categories || OI.DEFAULT_CATEGORIES).forEach(function (c) { selc.appendChild(new Option(c, c)); });
+      if ((r.categories || []).indexOf(ln.category) === -1) selc.appendChild(new Option(ln.category, ln.category));
+      selc.value = ln.category;
+      selc.setAttribute('aria-label', 'Category for ' + (ln.label || 'link'));
+      selc.addEventListener('change', function () {
+        OI.updateLink(r, ln.id, { category: selc.value }, admin.email);
+        persist('Category updated.');
+      });
+      row.appendChild(selc);
+      s3.appendChild(row);
+    });
+    var la = el('div', 'acts'); la.style.marginTop = '10px';
+    var addL = el('button', 'btn', 'Add link'); addL.type = 'button';
+    addL.addEventListener('click', function () {
+      var url = prompt('Share URL'); if (!url) return;
+      var label = prompt('Label', OI.linkProvider(url) + ' folder') || 'Link';
+      var cat = prompt('Category (' + (r.categories || []).join(', ') + ')', 'Other') || 'Other';
+      OI.addCategory(r, cat);
+      OI.addLink(r, { url: url, label: label, category: cat, addedByRole: 'omega' }, admin.email);
+      persist('Link added.');
+    });
+    var addC = el('button', 'btn', 'Add category'); addC.type = 'button';
+    addC.addEventListener('click', function () {
+      var n = prompt('New category name'); if (!n) return;
+      if (OI.addCategory(r, n)) persist('Category added.'); else toast('Already exists.');
+    });
+    la.appendChild(addL); la.appendChild(addC); s3.appendChild(la);
+    d.appendChild(s3);
+
+    /* production */
+    var s4 = el('div', 'sect'); s4.appendChild(el('h3', null, 'Production'));
+    OI.DELIVERABLES.forEach(function (def) {
+      var slot = (r.deliverables || []).filter(function (z) { return z.key === def.key; })[0];
+      if (!slot) { slot = { key: def.key, label: def.label, requested: false,
+        status: 'not_started', outputUrl: '', note: '' };
+        r.deliverables = r.deliverables || []; r.deliverables.push(slot); }
+      var box = el('div', 'prod' + (slot.requested ? '' : ' off'));
+      var ph = el('div', 'ph');
+      ph.appendChild(el('b', null, def.label));
+      var ss = document.createElement('select');
+      [['not_started', 'Not started'], ['in_progress', 'In progress'],
+       ['blocked', 'Blocked'], ['complete', 'Complete']].forEach(function (o) {
+        ss.appendChild(new Option(o[1], o[0]));
+      });
+      ss.value = slot.status || 'not_started';
+      ss.setAttribute('aria-label', def.label + ' status');
+      ss.addEventListener('change', function () {
+        slot.status = ss.value; slot.updatedAt = OI.nowIso();
+        OI.logActivity(r, 'deliverable', def.label + ' → ' + ss.options[ss.selectedIndex].text, admin.email);
+        persist();
+      });
+      ph.appendChild(ss);
+      box.appendChild(ph);
+
+      var pf = el('div', 'pf');
+      var ou = document.createElement('input'); ou.type = 'url';
+      ou.placeholder = 'Output link (Drive / Dropbox / PDF)';
+      ou.value = slot.outputUrl || '';
+      ou.setAttribute('aria-label', def.label + ' output link');
+      ou.addEventListener('change', function () {
+        slot.outputUrl = OI.normalizeUrl(ou.value); persist('Output link saved.');
+      });
+      var on = document.createElement('input'); on.type = 'text';
+      on.placeholder = 'Note to the client'; on.value = slot.note || '';
+      on.setAttribute('aria-label', def.label + ' note');
+      on.addEventListener('change', function () { slot.note = on.value; persist(); });
+      pf.appendChild(ou); pf.appendChild(on);
+      box.appendChild(pf);
+      s4.appendChild(box);
+    });
+    d.appendChild(s4);
+
+    /* assignment */
+    var s5 = el('div', 'sect'); s5.appendChild(el('h3', null, 'Assignment & notes'));
+    r.admin = r.admin || {};
+    var ai = document.createElement('input'); ai.type = 'text';
+    ai.placeholder = 'Assignee'; ai.value = r.admin.assignee || '';
+    ai.style.cssText = 'width:100%;border:1px solid var(--rule);border-radius:8px;padding:7px 9px;margin-bottom:8px';
+    ai.addEventListener('change', function () { r.admin.assignee = ai.value; persist(); });
+    s5.appendChild(ai);
+    var dd = document.createElement('input'); dd.type = 'date'; dd.value = r.admin.dueDate || '';
+    dd.style.cssText = ai.style.cssText;
+    dd.addEventListener('change', function () { r.admin.dueDate = dd.value; persist(); });
+    s5.appendChild(dd);
+    var ta = document.createElement('textarea');
+    ta.placeholder = 'Internal notes — never shown to the client';
+    ta.value = r.admin.internalNotes || '';
+    ta.addEventListener('change', function () { r.admin.internalNotes = ta.value; persist(); });
+    s5.appendChild(ta);
+    d.appendChild(s5);
+
+    /* actions */
+    var s6 = el('div', 'sect'); s6.appendChild(el('h3', null, 'Actions'));
+    var stSel = document.createElement('select');
+    stSel.style.cssText = 'width:100%;border:1px solid var(--rule);border-radius:8px;padding:7px 9px;margin-bottom:10px';
+    Object.keys(OI.STATUS).forEach(function (k) {
+      stSel.appendChild(new Option(OI.STATUS[k].label, k));
+    });
+    stSel.value = r.status;
+    stSel.addEventListener('change', function () {
+      OI.setStatus(r, stSel.value, admin.email).then(function () {
+        toast('Status set to ' + OI.STATUS[stSel.value].label + '.'); apply(); renderDetail();
+      });
+    });
+    s6.appendChild(stSel);
+
+    var acts = el('div', 'acts');
+
+    var notify = el('button', 'btn go', 'Notify client');
+    notify.type = 'button';
+    notify.addEventListener('click', function () {
+      var deflt = r.status === 'delivered'
+        ? 'Your package is complete and ready to download.'
+        : 'There is an update on your project.';
+      var msg = prompt('Message to the client', deflt);
+      if (msg === null) return;
+      OI.notifyClient(r, msg, admin.email).then(function () {
+        toast('Client notified.'); apply(); renderDetail();
+      });
+    });
+    acts.appendChild(notify);
+
+    var complete = el('button', 'btn primary', 'Mark delivered & notify');
+    complete.type = 'button';
+    complete.addEventListener('click', function () {
+      var req = OI.requestedDeliverables(r);
+      var open = req.filter(function (x) { return x.status !== 'complete'; });
+      if (open.length && !confirm(open.length + ' deliverable(s) are not marked complete. Deliver anyway?')) return;
+      OI.setStatus(r, 'delivered', admin.email)
+        .then(function () { return OI.notifyClient(r,
+          'Your package is complete and ready to download.', admin.email); })
+        .then(function () { toast('Delivered and client notified.'); apply(); renderDetail(); });
+    });
+    acts.appendChild(complete);
+
+    var needs = el('button', 'btn', 'Request info');
+    needs.type = 'button';
+    needs.addEventListener('click', function () {
+      var msg = prompt('What do you need from the client?');
+      if (!msg) return;
+      OI.setStatus(r, 'changes_requested', admin.email, msg)
+        .then(function () { return OI.notifyClient(r, msg, admin.email); })
+        .then(function () { toast('Client asked for more information.'); apply(); renderDetail(); });
+    });
+    acts.appendChild(needs);
+
+    if (r.editorProjectId) {
+      var ed = el('a', 'btn', 'Open in editor');
+      ed.href = OI.editorUrl(r.editorProjectId); ed.target = '_blank'; ed.rel = 'noopener';
+      acts.appendChild(ed);
+    }
+    var cp = el('button', 'btn', 'Copy intake ID'); cp.type = 'button';
+    cp.addEventListener('click', function () {
+      navigator.clipboard.writeText(r.intakeId).then(function () { toast('Intake ID copied.'); });
+    });
+    acts.appendChild(cp);
+    s6.appendChild(acts);
+    d.appendChild(s6);
+
+    /* log */
+    var s7 = el('div', 'sect'); s7.appendChild(el('h3', null, 'Activity'));
+    var ul = el('ul', 'log');
+    (r.activity || []).slice(0, 30).forEach(function (a) {
+      var li = el('li');
+      li.appendChild(el('div', 'lt', new Date(a.ts).toLocaleString() + ' · ' + (a.actor || 'system')));
+      li.appendChild(el('div', null, a.message));
+      ul.appendChild(li);
+    });
+    if (!(r.activity || []).length) ul.appendChild(el('li', null, 'No activity yet.'));
+    s7.appendChild(ul); d.appendChild(s7);
+  }
+
+  document.addEventListener('keydown', function (e) { if (e.key === 'Escape' && sel) closeDetail(); });
+
+  load();
+})();
+</script>
+</body>
+</html>

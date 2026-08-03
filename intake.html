@@ -1,0 +1,936 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Project Intake</title>
+<!-- Tenant branding is injected by config.js + omega-brand.js. This file is
+     shared platform code and ships byte-identical to every tenant. -->
+<style>
+:root{
+  --paper:#EFF2F5; --surface:#FFFFFF; --sunken:#F7F9FB;
+  --ink:#0F151C; --ink-2:#39434E; --muted:#6B7783; --faint:#9AA5AF;
+  --rule:#DCE3E9; --rule-2:#EAEFF3;
+  --accent: var(--omega-accent, #0E5FA8);
+  --accent-soft: color-mix(in srgb, var(--accent) 10%, white);
+  --good:#1B7A4B; --good-soft:#E6F4EC;
+  --warn:#9A5A08; --warn-soft:#FBF0DF;
+  --info:#0E5FA8; --info-soft:#E7F0F9;
+  --r:8px; --r-lg:12px;
+  --mono: ui-monospace, "SF Mono", "JetBrains Mono", Menlo, Consolas, monospace;
+  --sans: system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  --shadow: 0 1px 2px rgba(16,26,38,.06), 0 6px 20px rgba(16,26,38,.05);
+}
+*{box-sizing:border-box}
+html,body{margin:0;padding:0}
+body{background:var(--paper);color:var(--ink);font-family:var(--sans);
+  font-size:14px;line-height:1.5;-webkit-font-smoothing:antialiased}
+button,input,select,textarea{font:inherit;color:inherit}
+a{color:var(--accent)}
+.eyebrow{font-family:var(--mono);font-size:10.5px;letter-spacing:.14em;
+  text-transform:uppercase;color:var(--muted)}
+.mono{font-family:var(--mono);font-variant-numeric:tabular-nums}
+
+/* ---------- chrome ---------- */
+.topbar{position:sticky;top:0;z-index:40;background:var(--surface);
+  border-bottom:1px solid var(--rule);display:flex;align-items:center;
+  gap:14px;padding:10px 20px}
+.brandmark{display:flex;align-items:center;gap:10px;min-width:0}
+.brandmark img{height:24px;width:auto;display:block}
+.brandmark .bn{font-weight:650;letter-spacing:-.01em;white-space:nowrap;
+  overflow:hidden;text-overflow:ellipsis}
+.tooltag{font-family:var(--mono);font-size:10.5px;letter-spacing:.12em;
+  text-transform:uppercase;color:var(--muted);border-left:1px solid var(--rule);
+  padding-left:14px}
+.topbar .sp{flex:1}
+.whoami{font-size:12.5px;color:var(--muted);white-space:nowrap;
+  overflow:hidden;text-overflow:ellipsis;max-width:34vw}
+
+.tabs{display:flex;gap:2px;padding:0 20px;background:var(--surface);
+  border-bottom:1px solid var(--rule);position:sticky;top:45px;z-index:39;
+  overflow-x:auto;scrollbar-width:none}
+.tabs::-webkit-scrollbar{display:none}
+.tab{background:none;border:0;padding:11px 14px;cursor:pointer;color:var(--muted);
+  font-weight:550;font-size:13.5px;border-bottom:2px solid transparent;white-space:nowrap}
+.tab[aria-selected="true"]{color:var(--ink);border-bottom-color:var(--accent)}
+.tab .cnt{font-family:var(--mono);font-size:11px;color:var(--faint);margin-left:6px}
+
+/* ---------- layout ---------- */
+.wrap{max-width:1240px;margin:0 auto;padding:22px 20px 96px}
+.cols{display:grid;grid-template-columns:minmax(0,1fr) 320px;gap:22px;align-items:start}
+@media(max-width:1000px){.cols{grid-template-columns:1fr}}
+
+.card{background:var(--surface);border:1px solid var(--rule);border-radius:var(--r-lg);
+  box-shadow:var(--shadow);margin-bottom:18px;overflow:hidden}
+.card > header{padding:14px 18px 12px;border-bottom:1px solid var(--rule-2);
+  display:flex;align-items:baseline;gap:12px}
+.card > header h2{margin:0;font-size:15px;font-weight:650;letter-spacing:-.01em}
+.card > header .sub{font-size:12.5px;color:var(--muted);margin-left:auto;text-align:right}
+.card .body{padding:16px 18px}
+.step{font-family:var(--mono);font-size:10.5px;letter-spacing:.12em;color:var(--accent);
+  border:1px solid color-mix(in srgb,var(--accent) 28%, white);
+  background:var(--accent-soft);border-radius:4px;padding:2px 6px}
+
+/* ---------- fields ---------- */
+.grid{display:grid;gap:12px 14px;grid-template-columns:repeat(12,1fr)}
+.f{display:flex;flex-direction:column;gap:5px;min-width:0}
+.f.c12{grid-column:span 12}.f.c8{grid-column:span 8}.f.c6{grid-column:span 6}
+.f.c4{grid-column:span 4}.f.c3{grid-column:span 3}.f.c2{grid-column:span 2}
+@media(max-width:720px){
+  .f.c8,.f.c6,.f.c4,.f.c3,.f.c2{grid-column:span 12}
+  .f.c3.keep,.f.c4.keep{grid-column:span 6}
+}
+.f > label{font-size:12px;font-weight:550;color:var(--ink-2)}
+.f > label .req{color:#B4302A;margin-left:2px}
+.f .hint{font-size:11.5px;color:var(--faint)}
+input[type=text],input[type=email],input[type=tel],input[type=url],input[type=number],
+input[type=date],select,textarea{
+  width:100%;background:var(--surface);border:1px solid var(--rule);
+  border-radius:var(--r);padding:8px 10px;outline:none;transition:border-color .12s,box-shadow .12s}
+input:focus,select:focus,textarea:focus{border-color:var(--accent);
+  box-shadow:0 0 0 3px color-mix(in srgb,var(--accent) 14%, transparent)}
+input[type=number]{font-family:var(--mono);font-variant-numeric:tabular-nums}
+textarea{min-height:70px;resize:vertical}
+.check{display:flex;align-items:center;gap:8px;padding:7px 0;font-size:13px}
+.check input{width:16px;height:16px;accent-color:var(--accent);flex:none}
+
+/* ---------- scope matrix (signature) ---------- */
+.matrix{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));
+  gap:10px;padding:16px 18px;border-bottom:1px solid var(--rule-2);background:var(--sunken)}
+.tile{position:relative;text-align:left;background:var(--surface);
+  border:1px solid var(--rule);border-radius:var(--r);padding:12px 12px 11px;
+  cursor:pointer;transition:border-color .14s, box-shadow .14s, transform .14s}
+.tile:hover{border-color:var(--faint);transform:translateY(-1px)}
+.tile:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.tile .sh{font-family:var(--mono);font-size:11px;letter-spacing:.1em;color:var(--muted)}
+.tile .lb{font-weight:600;font-size:13.5px;margin-top:3px;line-height:1.25}
+.tile .st{font-family:var(--mono);font-size:11px;color:var(--faint);margin-top:7px;
+  padding-top:7px;border-top:1px dashed var(--rule)}
+.tile[aria-pressed="true"]{border-color:var(--accent);background:var(--accent-soft);
+  box-shadow:inset 0 0 0 1px var(--accent)}
+.tile[aria-pressed="true"] .sh,.tile[aria-pressed="true"] .st{color:var(--accent)}
+.tile .dot{position:absolute;top:11px;right:11px;width:8px;height:8px;border-radius:50%;
+  background:var(--rule);}
+.tile[aria-pressed="true"] .dot{background:var(--accent)}
+
+.scopepanel{border-top:1px solid var(--rule-2);padding:16px 18px;background:var(--surface)}
+.scopepanel > .ph{display:flex;align-items:center;gap:10px;margin-bottom:12px}
+.scopepanel > .ph h3{margin:0;font-size:13.5px;font-weight:650}
+.scopepanel > .ph .rm{margin-left:auto;background:none;border:0;color:var(--muted);
+  cursor:pointer;font-size:12.5px;text-decoration:underline}
+
+/* ---------- links table ---------- */
+.linkrow{display:grid;grid-template-columns:170px minmax(0,1fr) minmax(0,1.3fr) 34px;
+  gap:8px;align-items:start;padding:9px 0;border-bottom:1px dashed var(--rule-2)}
+@media(max-width:820px){.linkrow{grid-template-columns:1fr 1fr;}
+  .linkrow .u{grid-column:span 2}.linkrow .x{grid-column:span 2;justify-self:start}}
+.linkrow .x{background:none;border:1px solid var(--rule);border-radius:6px;
+  width:32px;height:32px;cursor:pointer;color:var(--muted);line-height:1}
+.linkrow .x:hover{border-color:#C9534C;color:#C9534C}
+.prov{font-family:var(--mono);font-size:10.5px;color:var(--faint);margin-top:4px}
+.addrow{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}
+
+/* ---------- deliverables ---------- */
+.deliv{display:flex;gap:10px;padding:11px 0;border-bottom:1px dashed var(--rule-2);align-items:flex-start}
+.deliv:last-child{border-bottom:0}
+.deliv input{margin-top:2px;width:16px;height:16px;accent-color:var(--accent);flex:none}
+.deliv .dl{font-weight:550;font-size:13.5px}
+.deliv .dh{font-size:12px;color:var(--muted)}
+
+/* ---------- routing ---------- */
+.routes{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+@media(max-width:640px){.routes{grid-template-columns:1fr}}
+.route{text-align:left;background:var(--surface);border:1px solid var(--rule);
+  border-radius:var(--r);padding:14px;cursor:pointer;transition:border-color .14s}
+.route:hover{border-color:var(--faint)}
+.route[aria-pressed="true"]{border-color:var(--accent);background:var(--accent-soft);
+  box-shadow:inset 0 0 0 1px var(--accent)}
+.route .rt{font-weight:650;font-size:13.5px;margin-bottom:4px}
+.route .rd{font-size:12.5px;color:var(--muted)}
+
+/* ---------- rail ---------- */
+.rail{position:sticky;top:104px}
+@media(max-width:1000px){.rail{position:static}}
+.meter{height:5px;background:var(--rule-2);border-radius:3px;overflow:hidden;margin:8px 0 4px}
+.meter i{display:block;height:100%;background:var(--accent);transition:width .3s}
+.ledger{list-style:none;margin:10px 0 0;padding:0}
+.ledger li{display:flex;gap:8px;align-items:baseline;padding:5px 0;font-size:12.5px;
+  color:var(--muted);border-bottom:1px dashed var(--rule-2)}
+.ledger li:last-child{border-bottom:0}
+.ledger li.on{color:var(--ink)}
+.ledger li .m{font-family:var(--mono);font-size:11px;color:var(--faint);flex:none;width:14px}
+.ledger li.on .m{color:var(--accent)}
+.chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
+.chip{font-family:var(--mono);font-size:11px;letter-spacing:.05em;padding:3px 7px;
+  border-radius:999px;border:1px solid var(--rule);color:var(--ink-2);background:var(--sunken)}
+.chip.on{border-color:var(--accent);color:var(--accent);background:var(--accent-soft)}
+
+/* ---------- buttons ---------- */
+.btn{border:1px solid var(--rule);background:var(--surface);border-radius:var(--r);
+  padding:8px 14px;font-weight:550;font-size:13.5px;cursor:pointer;
+  transition:background .12s,border-color .12s}
+.btn:hover{background:var(--sunken);border-color:var(--faint)}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:#fff}
+.btn.primary:hover{filter:brightness(1.07)}
+.btn.primary:disabled{opacity:.45;cursor:not-allowed;filter:none}
+.btn.ghost{border-color:transparent;background:none;color:var(--accent);padding-left:6px;padding-right:6px}
+.btn.sm{padding:5px 10px;font-size:12.5px}
+
+.actionbar{position:fixed;left:0;right:0;bottom:0;z-index:45;background:var(--surface);
+  border-top:1px solid var(--rule);padding:11px 20px;display:flex;gap:10px;
+  align-items:center;box-shadow:0 -4px 18px rgba(16,26,38,.06)}
+.actionbar .msg{font-size:12.5px;color:var(--muted);flex:1;min-width:0;
+  overflow:hidden;text-overflow:ellipsis}
+@media(max-width:640px){.actionbar{flex-wrap:wrap}.actionbar .msg{order:-1;flex-basis:100%}}
+
+/* ---------- status / list ---------- */
+.badge{display:inline-flex;align-items:center;gap:5px;font-family:var(--mono);
+  font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;padding:3px 8px;
+  border-radius:999px;border:1px solid var(--rule);color:var(--muted);background:var(--sunken)}
+.badge.info{color:var(--info);background:var(--info-soft);border-color:color-mix(in srgb,var(--info) 25%,white)}
+.badge.good{color:var(--good);background:var(--good-soft);border-color:color-mix(in srgb,var(--good) 25%,white)}
+.badge.warn{color:var(--warn);background:var(--warn-soft);border-color:color-mix(in srgb,var(--warn) 30%,white)}
+
+.plist{display:flex;flex-direction:column}
+.pitem{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px 16px;
+  padding:14px 18px;border-bottom:1px solid var(--rule-2);cursor:pointer;
+  transition:background .12s;align-items:center}
+.pitem:hover{background:var(--sunken)}
+.pitem:last-child{border-bottom:0}
+.pitem h3{margin:0 0 3px;font-size:14px;font-weight:600}
+.pitem .meta{font-size:12px;color:var(--muted)}
+.pitem .right{display:flex;flex-direction:column;align-items:flex-end;gap:6px}
+.pipe{display:flex;gap:3px;margin-top:8px}
+.pipe span{height:3px;flex:1;background:var(--rule-2);border-radius:2px}
+.pipe span.on{background:var(--accent)}
+.empty{padding:44px 18px;text-align:center;color:var(--muted)}
+.empty h3{margin:0 0 6px;color:var(--ink);font-size:15px}
+
+.notice{border:1px solid color-mix(in srgb,var(--good) 30%,white);background:var(--good-soft);
+  border-radius:var(--r-lg);padding:13px 16px;margin-bottom:18px;display:flex;
+  gap:12px;align-items:flex-start}
+.notice .nt{font-weight:650;font-size:13.5px;color:var(--good)}
+.notice .nb{font-size:12.5px;color:var(--ink-2);margin-top:2px}
+
+.outlist{list-style:none;margin:10px 0 0;padding:0}
+.outlist li{display:flex;gap:10px;align-items:center;padding:8px 0;
+  border-bottom:1px dashed var(--rule-2);font-size:13px}
+.outlist li:last-child{border-bottom:0}
+
+@media (prefers-reduced-motion: reduce){*{transition:none!important;animation:none!important}}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <div class="brandmark" id="brand"><span class="bn">Portal</span></div>
+  <span class="tooltag">Project intake</span>
+  <span class="sp"></span>
+  <span class="whoami" id="whoami"></span>
+</div>
+
+<div class="tabs" role="tablist">
+  <button class="tab" role="tab" id="tab-new"  aria-selected="true"  data-view="new">New intake</button>
+  <button class="tab" role="tab" id="tab-list" aria-selected="false" data-view="list">My projects <span class="cnt" id="listCount"></span></button>
+</div>
+
+<div class="wrap">
+  <!-- ================= NEW / EDIT ================= -->
+  <div id="view-new">
+    <div id="noticeSlot"></div>
+    <div class="cols">
+      <div>
+        <!-- 1 customer -->
+        <section class="card">
+          <header><span class="step">01</span><h2>Customer</h2>
+            <span class="sub">Who we're doing this for</span></header>
+          <div class="body"><div class="grid">
+            <div class="f c6"><label for="c_company">Company <span class="req">*</span></label>
+              <input id="c_company" type="text" data-bind="customer.company" autocomplete="organization"></div>
+            <div class="f c6"><label for="c_contact">Primary contact <span class="req">*</span></label>
+              <input id="c_contact" type="text" data-bind="customer.contactName" autocomplete="name"></div>
+            <div class="f c4"><label for="c_email">Email <span class="req">*</span></label>
+              <input id="c_email" type="email" data-bind="customer.email" autocomplete="email"></div>
+            <div class="f c4"><label for="c_phone">Phone</label>
+              <input id="c_phone" type="tel" data-bind="customer.phone" autocomplete="tel"></div>
+            <div class="f c4"><label for="c_role">Role</label>
+              <input id="c_role" type="text" data-bind="customer.role" placeholder="Developer, EPC, host, owner"></div>
+            <div class="f c6"><label for="c_street">Billing street</label>
+              <input id="c_street" type="text" data-bind="customer.street"></div>
+            <div class="f c3 keep"><label for="c_city">City</label>
+              <input id="c_city" type="text" data-bind="customer.city"></div>
+            <div class="f c2 keep"><label for="c_state">State</label>
+              <input id="c_state" type="text" data-bind="customer.state" maxlength="3"></div>
+            <div class="f c2 keep"><label for="c_zip">ZIP</label>
+              <input id="c_zip" type="text" data-bind="customer.zip" maxlength="10"></div>
+            <div class="f c12"><label for="c_notes">Anything we should know about the customer</label>
+              <textarea id="c_notes" data-bind="customer.notes"></textarea></div>
+          </div></div>
+        </section>
+
+        <!-- 2 site -->
+        <section class="card">
+          <header><span class="step">02</span><h2>Site &amp; project</h2>
+            <span class="sub">Where it goes and who governs it</span></header>
+          <div class="body"><div class="grid">
+            <div class="f c6"><label for="p_name">Project name <span class="req">*</span></label>
+              <input id="p_name" type="text" data-bind="project.name" placeholder="Riverside Depot Phase 1"></div>
+            <div class="f c6"><label for="p_site">Site name</label>
+              <input id="p_site" type="text" data-bind="project.siteName"></div>
+            <div class="f c6"><label for="p_street">Site street</label>
+              <input id="p_street" type="text" data-bind="project.street"></div>
+            <div class="f c3 keep"><label for="p_city">City <span class="req">*</span></label>
+              <input id="p_city" type="text" data-bind="project.city"></div>
+            <div class="f c3 keep"><label for="p_state">State <span class="req">*</span></label>
+              <input id="p_state" type="text" data-bind="project.state" maxlength="3"></div>
+            <div class="f c3 keep"><label for="p_zip">ZIP</label>
+              <input id="p_zip" type="text" data-bind="project.zip" maxlength="10"></div>
+            <div class="f c3 keep"><label for="p_apn">Parcel / APN</label>
+              <input id="p_apn" type="text" data-bind="project.apn"></div>
+            <div class="f c3 keep"><label for="p_lat">Latitude</label>
+              <input id="p_lat" type="text" data-bind="project.lat" placeholder="33.9416" inputmode="decimal"></div>
+            <div class="f c3 keep"><label for="p_lng">Longitude</label>
+              <input id="p_lng" type="text" data-bind="project.lng" placeholder="-118.4085" inputmode="decimal"></div>
+            <div class="f c6"><label for="p_utility">Serving utility</label>
+              <input id="p_utility" type="text" data-bind="project.utility" placeholder="SCE, PG&amp;E, Duke, Bayernwerk…">
+              <span class="hint">Needed for the utility submission package.</span></div>
+            <div class="f c6"><label for="p_ahj">Authority having jurisdiction</label>
+              <input id="p_ahj" type="text" data-bind="project.ahj" placeholder="City / county building &amp; fire">
+              <span class="hint">Needed for the AHJ permit package.</span></div>
+            <div class="f c4"><label for="p_volt">Existing service voltage</label>
+              <input id="p_volt" type="text" data-bind="project.serviceVoltage" placeholder="480/277V 3Ø"></div>
+            <div class="f c4"><label for="p_amps">Existing service size (A)</label>
+              <input id="p_amps" type="number" data-bind="project.existingServiceA" placeholder="1200"></div>
+            <div class="f c4"><label for="p_acct">Utility account / meter no.</label>
+              <input id="p_acct" type="text" data-bind="project.utilityAccount"></div>
+            <div class="f c4"><label for="p_stage">Project stage</label>
+              <select id="p_stage" data-bind="project.stage">
+                <option>Feasibility</option><option>Site selection</option>
+                <option>Preliminary design</option><option>Permitting</option>
+                <option>Construction ready</option><option>Under construction</option>
+              </select></div>
+            <div class="f c4"><label for="p_ctrl">Site control</label>
+              <select id="p_ctrl" data-bind="project.siteControl">
+                <option>Under evaluation</option><option>LOI signed</option>
+                <option>Lease signed</option><option>Owned</option>
+              </select></div>
+            <div class="f c4"><label for="p_target">Target energization</label>
+              <input id="p_target" type="date" data-bind="project.targetDate"></div>
+            <div class="f c12"><label for="p_notes">Site constraints, easements, known issues</label>
+              <textarea id="p_notes" data-bind="project.notes"></textarea></div>
+          </div></div>
+        </section>
+
+        <!-- 3 scope -->
+        <section class="card">
+          <header><span class="step">03</span><h2>Scope <span class="req" style="color:#B4302A">*</span></h2>
+            <span class="sub">Pick every technology on this site</span></header>
+          <div class="matrix" id="matrix"></div>
+          <div id="scopePanels"></div>
+        </section>
+
+        <!-- 4 documents -->
+        <section class="card">
+          <header><span class="step">04</span><h2>Documents</h2>
+            <span class="sub">Link your Drive, Dropbox, SharePoint or Box folders</span></header>
+          <div class="body">
+            <p style="margin:0 0 12px;color:var(--muted);font-size:12.5px">
+              Paste share links rather than uploading files. Make sure the link is readable by
+              anyone with the link<span id="shareEmail"></span>.
+              You and {svc} can both add links and change a category at any time.
+            </p>
+            <div id="linkList"></div>
+            <div class="addrow">
+              <button class="btn sm" type="button" id="addLinkBtn">Add a link</button>
+              <button class="btn sm ghost" type="button" id="addCatBtn">Add a category</button>
+            </div>
+          </div>
+        </section>
+
+        <!-- 5 deliverables -->
+        <section class="card">
+          <header><span class="step">05</span><h2>What you want back</h2>
+            <span class="sub">{svc} produces these for you</span></header>
+          <div class="body"><div id="delivList"></div></div>
+        </section>
+
+        <!-- 6 routing -->
+        <section class="card">
+          <header><span class="step">06</span><h2>How to handle it</h2></header>
+          <div class="body">
+            <div class="routes">
+              <button class="route" type="button" data-route="omega" aria-pressed="true">
+                <div class="rt">Submit to {svc}</div>
+                <div class="rd">We build the plot, site map, costs and the utility / AHJ packages, then notify you here when they’re ready.</div>
+              </button>
+              <button class="route" type="button" data-route="self" aria-pressed="false">
+                <div class="rt">Save the record only</div>
+                <div class="rd">Keep everything in one place and do the work yourself. Nothing is sent to {svc}. You can submit it later.</div>
+              </button>
+            </div>
+            <div class="grid" style="margin-top:16px">
+              <div class="f c8"><label for="p_editor">Linked editor project</label>
+                <select id="p_editor" data-bind="editorProjectId"></select>
+                <span class="hint">Ties this intake to a layout in the site editor. Optional.</span></div>
+              <div class="f c4" style="justify-content:flex-end">
+                <a class="btn sm" id="openEditor" href="#" style="text-align:center;text-decoration:none">Open in editor</a></div>
+            </div>
+          </div>
+        </section>
+      </div>
+
+      <!-- rail -->
+      <aside class="rail">
+        <section class="card">
+          <header><h2 id="railTitle">This intake</h2></header>
+          <div class="body">
+            <div class="eyebrow">Ready to submit</div>
+            <div class="meter"><i id="meterFill" style="width:0%"></i></div>
+            <div class="mono" style="font-size:11px;color:var(--muted)" id="meterPct">0%</div>
+
+            <div class="eyebrow" style="margin-top:16px">Scope</div>
+            <div class="chips" id="railChips"><span style="font-size:12.5px;color:var(--faint)">None selected</span></div>
+
+            <div class="eyebrow" style="margin-top:16px">Deliverables ledger</div>
+            <ul class="ledger" id="railLedger"></ul>
+
+            <div id="railMissing" style="margin-top:14px"></div>
+          </div>
+        </section>
+      </aside>
+    </div>
+  </div>
+
+  <!-- ================= LIST ================= -->
+  <div id="view-list" hidden>
+    <section class="card">
+      <header><h2>Your projects</h2><span class="sub" id="listSub"></span></header>
+      <div class="plist" id="plist"></div>
+    </section>
+  </div>
+</div>
+
+<div class="actionbar" id="actionbar">
+  <span class="msg" id="statusMsg"></span>
+  <button class="btn" type="button" id="btnNew">New intake</button>
+  <button class="btn" type="button" id="btnSave">Save draft</button>
+  <button class="btn primary" type="button" id="btnSubmit">Submit to Omega</button>
+</div>
+
+<script src="./omega-intake.js"></script>
+<script>
+(function () {
+  'use strict';
+  var OI = window.OmegaIntake;
+  var $ = function (s, r) { return (r || document).querySelector(s); };
+  var el = function (t, c, txt) { var n = document.createElement(t);
+    if (c) n.className = c; if (txt != null) n.textContent = txt; return n; };
+  var esc = function (s) { return String(s == null ? '' : s); };
+
+  /* ---------- identity ---------- */
+  function currentUser() {
+    var c = OI.cfg();
+    if (c.user) return c.user;
+    if (window.OMEGA_USER) return window.OMEGA_USER;
+    try {
+      if (window.firebase && firebase.auth && firebase.auth().currentUser) {
+        var u = firebase.auth().currentUser;
+        return { uid: u.uid, email: u.email, displayName: u.displayName };
+      }
+    } catch (e) {}
+    return { uid: null, email: '', displayName: '' };
+  }
+  var user = currentUser();
+
+  /* ---------- brand ----------
+   * Nothing here is baked in. A white-label tenant sees its own name, its own
+   * support address, and whatever it calls the fulfilment service — never
+   * ClearSky's, unless its own config.js puts it there. */
+  var SVC = OI.cfg().serviceName || 'Omega';
+  function svc(s) { return String(s).replace(/\{svc\}/g, SVC); }
+
+  (function brand() {
+    var c = OI.cfg(), b = $('#brand');
+    var logo = c.logoUrl || (c.brand && c.brand.logoUrl);
+    var name = OI.tenantName();
+    b.innerHTML = '';
+    if (logo) { var i = new Image(); i.src = logo; i.alt = ''; b.appendChild(i); }
+    b.appendChild(el('span', 'bn', name));
+
+    // Only offer the "invite us" route if the deployment declares an address.
+    var contact = (c.support && c.support.email) || c.supportEmail || '';
+    $('#shareEmail').textContent = contact ? ', or invite ' + contact : '';
+
+    // Resolve {svc} everywhere it appears in static copy.
+    (function walk(node) {
+      for (var n = node.firstChild; n; n = n.nextSibling) {
+        if (n.nodeType === 3) {
+          if (n.nodeValue.indexOf('{svc}') > -1) n.nodeValue = svc(n.nodeValue);
+        } else if (n.nodeType === 1 && n.tagName !== 'SCRIPT' && n.tagName !== 'STYLE') {
+          walk(n);
+        }
+      }
+    })(document.body);
+
+    $('#whoami').textContent = [user.email, OI.orgId()].filter(Boolean).join(' · ');
+    document.title = name + ' · Project intake';
+  })();
+
+  /* ---------- state ---------- */
+  var rec = OI.blankRecord(user);
+  var all = [];
+  var dirty = false;
+  var editorProjects = [];
+
+  function setMsg(t) { $('#statusMsg').textContent = t || ''; }
+  function markDirty() { dirty = true; renderRail(); }
+
+  /* ---------- generic binding ---------- */
+  function getPath(o, p) {
+    return p.split('.').reduce(function (a, k) { return a == null ? a : a[k]; }, o);
+  }
+  function setPath(o, p, v) {
+    var ks = p.split('.'), last = ks.pop();
+    var t = ks.reduce(function (a, k) { if (a[k] == null) a[k] = {}; return a[k]; }, o);
+    t[last] = v;
+  }
+  function bindAll() {
+    Array.prototype.forEach.call(document.querySelectorAll('[data-bind]'), function (n) {
+      n.addEventListener('input', function () {
+        setPath(rec, n.dataset.bind, n.value); markDirty();
+      });
+      n.addEventListener('change', function () {
+        setPath(rec, n.dataset.bind, n.value); markDirty();
+        if (n.dataset.bind === 'editorProjectId') syncEditorLink();
+      });
+    });
+  }
+  function fillBound() {
+    Array.prototype.forEach.call(document.querySelectorAll('[data-bind]'), function (n) {
+      var v = getPath(rec, n.dataset.bind);
+      n.value = v == null ? '' : v;
+    });
+  }
+
+  /* ---------- scope matrix ---------- */
+  function renderMatrix() {
+    var m = $('#matrix'); m.innerHTML = '';
+    OI.SCOPES.forEach(function (s) {
+      var on = !!(rec.scope[s.key] && rec.scope[s.key].enabled);
+      var t = el('button', 'tile'); t.type = 'button';
+      t.setAttribute('aria-pressed', on ? 'true' : 'false');
+      t.innerHTML = '<span class="dot"></span>' +
+        '<div class="sh">' + esc(s.short) + '</div>' +
+        '<div class="lb">' + esc(s.label) + '</div>' +
+        '<div class="st">' + (on ? esc(s.summary(rec.scope[s.key])) : 'Not in scope') + '</div>';
+      t.addEventListener('click', function () {
+        rec.scope[s.key] = rec.scope[s.key] || {};
+        rec.scope[s.key].enabled = !rec.scope[s.key].enabled;
+        renderMatrix(); renderScopePanels(); markDirty();
+      });
+      m.appendChild(t);
+    });
+  }
+
+  function renderScopePanels() {
+    var host = $('#scopePanels'); host.innerHTML = '';
+    OI.activeScopes(rec).forEach(function (s) {
+      var data = rec.scope[s.key];
+      var p = el('div', 'scopepanel');
+      var h = el('div', 'ph');
+      h.innerHTML = '<span class="eyebrow">' + esc(s.short) + '</span><h3>' + esc(s.label) + '</h3>';
+      var rm = el('button', 'rm', 'Remove from scope'); rm.type = 'button';
+      rm.addEventListener('click', function () {
+        data.enabled = false; renderMatrix(); renderScopePanels(); markDirty();
+      });
+      h.appendChild(rm); p.appendChild(h);
+
+      var g = el('div', 'grid');
+      s.fields.forEach(function (f) {
+        var span = f.t === 'textarea' ? 'c12' : (f.t === 'bool' ? 'c4 keep' : 'c4 keep');
+        var w = el('div', 'f ' + span);
+        var id = 'sc_' + s.key + '_' + f.k;
+        if (f.t === 'bool') {
+          var lab = el('label', 'check');
+          var cb = document.createElement('input'); cb.type = 'checkbox'; cb.id = id;
+          cb.checked = !!data[f.k];
+          cb.addEventListener('change', function () {
+            data[f.k] = cb.checked; markDirty();
+          });
+          lab.appendChild(cb); lab.appendChild(document.createTextNode(f.l));
+          w.appendChild(lab);
+        } else {
+          var l = el('label', null, f.l); l.htmlFor = id; w.appendChild(l);
+          var input;
+          if (f.t === 'select') {
+            input = document.createElement('select');
+            input.appendChild(new Option('—', ''));
+            f.o.forEach(function (o) { input.appendChild(new Option(o, o)); });
+          } else if (f.t === 'textarea') {
+            input = document.createElement('textarea');
+          } else {
+            input = document.createElement('input');
+            input.type = f.t === 'number' ? 'number' : 'text';
+            if (f.step) input.step = f.step;
+            if (f.t === 'number') input.min = '0';
+          }
+          input.id = id;
+          if (f.ph) input.placeholder = f.ph;
+          input.value = data[f.k] == null ? '' : data[f.k];
+          input.addEventListener('input', function () {
+            data[f.k] = f.t === 'number' ? (input.value === '' ? '' : Number(input.value)) : input.value;
+            markDirty(); refreshTileSummary();
+          });
+          w.appendChild(input);
+        }
+        g.appendChild(w);
+      });
+      p.appendChild(g); host.appendChild(p);
+    });
+  }
+  function refreshTileSummary() {
+    var tiles = document.querySelectorAll('#matrix .tile');
+    OI.SCOPES.forEach(function (s, i) {
+      var t = tiles[i]; if (!t) return;
+      var on = !!(rec.scope[s.key] && rec.scope[s.key].enabled);
+      var st = t.querySelector('.st');
+      if (st) st.textContent = on ? s.summary(rec.scope[s.key]) : 'Not in scope';
+    });
+  }
+
+  /* ---------- links ---------- */
+  function renderLinks() {
+    var host = $('#linkList'); host.innerHTML = '';
+    if (!rec.links.length) {
+      var e = el('div', null, 'No links yet. Add a Drive or Dropbox folder for surveys, drawings, photos or utility correspondence.');
+      e.style.cssText = 'color:var(--faint);font-size:12.5px;padding:6px 0 2px';
+      host.appendChild(e); return;
+    }
+    rec.links.forEach(function (ln) {
+      var row = el('div', 'linkrow');
+
+      var cw = el('div', 'f');
+      var sel = document.createElement('select');
+      rec.categories.forEach(function (c) { sel.appendChild(new Option(c, c)); });
+      if (rec.categories.indexOf(ln.category) === -1) {
+        sel.appendChild(new Option(ln.category, ln.category));
+      }
+      sel.value = ln.category;
+      sel.setAttribute('aria-label', 'Category');
+      sel.addEventListener('change', function () {
+        OI.updateLink(rec, ln.id, { category: sel.value }, user.email); markDirty();
+      });
+      cw.appendChild(sel); row.appendChild(cw);
+
+      var lw = el('div', 'f');
+      var li = document.createElement('input'); li.type = 'text'; li.value = ln.label;
+      li.placeholder = 'Label'; li.setAttribute('aria-label', 'Link label');
+      li.addEventListener('input', function () { ln.label = li.value; markDirty(); });
+      lw.appendChild(li); row.appendChild(lw);
+
+      var uw = el('div', 'f u');
+      var ui = document.createElement('input'); ui.type = 'url'; ui.value = ln.url;
+      ui.placeholder = 'https://drive.google.com/…'; ui.setAttribute('aria-label', 'Share URL');
+      var pv = el('div', 'prov', ln.url ? OI.linkProvider(ln.url) : '');
+      ui.addEventListener('input', function () {
+        ln.url = ui.value; pv.textContent = ui.value ? OI.linkProvider(ui.value) : ''; markDirty();
+      });
+      uw.appendChild(ui); uw.appendChild(pv); row.appendChild(uw);
+
+      var x = el('button', 'x', '×'); x.type = 'button';
+      x.title = 'Remove link'; x.setAttribute('aria-label', 'Remove link');
+      x.addEventListener('click', function () {
+        OI.removeLink(rec, ln.id, user.email); renderLinks(); markDirty();
+      });
+      row.appendChild(x);
+      host.appendChild(row);
+    });
+  }
+
+  $('#addLinkBtn').addEventListener('click', function () {
+    OI.addLink(rec, { url: '', label: '', category: rec.categories[0] }, user.email);
+    renderLinks(); markDirty();
+    var inputs = document.querySelectorAll('#linkList .linkrow input[type=url]');
+    if (inputs.length) inputs[inputs.length - 1].focus();
+  });
+  $('#addCatBtn').addEventListener('click', function () {
+    var name = prompt('Name the new category');
+    if (!name) return;
+    if (OI.addCategory(rec, name)) { renderLinks(); markDirty(); setMsg('Category "' + name + '" added.'); }
+    else setMsg('That category already exists.');
+  });
+
+  /* ---------- deliverables ---------- */
+  function renderDeliverables() {
+    var host = $('#delivList'); host.innerHTML = '';
+    OI.DELIVERABLES.forEach(function (d) {
+      var slot = rec.deliverables.filter(function (x) { return x.key === d.key; })[0];
+      if (!slot) { slot = { key: d.key, label: d.label, requested: false, status: 'not_started', outputUrl: '', note: '' };
+        rec.deliverables.push(slot); }
+      var row = el('label', 'deliv');
+      var cb = document.createElement('input'); cb.type = 'checkbox'; cb.checked = !!slot.requested;
+      cb.addEventListener('change', function () { slot.requested = cb.checked; markDirty(); });
+      var txt = el('div');
+      txt.appendChild(el('div', 'dl', d.label));
+      txt.appendChild(el('div', 'dh', d.hint));
+      row.appendChild(cb); row.appendChild(txt);
+      host.appendChild(row);
+    });
+  }
+
+  /* ---------- routing ---------- */
+  Array.prototype.forEach.call(document.querySelectorAll('.route'), function (b) {
+    b.addEventListener('click', function () {
+      rec.routing = b.dataset.route;
+      document.querySelectorAll('.route').forEach(function (o) {
+        o.setAttribute('aria-pressed', o === b ? 'true' : 'false');
+      });
+      syncActionBar(); markDirty();
+    });
+  });
+  function syncRouteButtons() {
+    document.querySelectorAll('.route').forEach(function (o) {
+      o.setAttribute('aria-pressed', o.dataset.route === rec.routing ? 'true' : 'false');
+    });
+  }
+  function syncActionBar() {
+    var isSelf = rec.routing === 'self';
+    $('#btnSubmit').textContent = svc(isSelf ? 'Switch to {svc} and submit' : 'Submit to {svc}');
+    $('#btnSave').textContent = isSelf ? 'Save record' : 'Save draft';
+    var v = OI.validate(rec);
+    $('#btnSubmit').disabled = !v.ok;
+  }
+
+  /* ---------- editor link ---------- */
+  function loadEditorProjects() {
+    var c = OI.cfg();
+    var src = c.listEditorProjects;
+    var p = typeof src === 'function' ? Promise.resolve(src(OI.orgId(), user)) : Promise.resolve([]);
+    return p.then(function (list) {
+      editorProjects = Array.isArray(list) ? list : [];
+    }).catch(function () { editorProjects = []; }).then(renderEditorSelect);
+  }
+  function renderEditorSelect() {
+    var s = $('#p_editor'); s.innerHTML = '';
+    s.appendChild(new Option('Not linked', ''));
+    editorProjects.forEach(function (p) {
+      s.appendChild(new Option(p.name || p.title || p.id, p.id));
+    });
+    if (rec.editorProjectId && !editorProjects.some(function (p) { return p.id === rec.editorProjectId; })) {
+      s.appendChild(new Option(rec.editorProjectId, rec.editorProjectId));
+    }
+    s.value = rec.editorProjectId || '';
+    syncEditorLink();
+  }
+  function syncEditorLink() {
+    $('#openEditor').href = OI.editorUrl(rec.editorProjectId || '');
+  }
+
+  /* ---------- rail ---------- */
+  function renderRail() {
+    var pct = OI.completeness(rec);
+    $('#meterFill').style.width = pct + '%';
+    $('#meterPct').textContent = pct + '%';
+
+    var chips = $('#railChips'); chips.innerHTML = '';
+    var act = OI.activeScopes(rec);
+    if (!act.length) {
+      var n = el('span'); n.style.cssText = 'font-size:12.5px;color:var(--faint)';
+      n.textContent = 'None selected'; chips.appendChild(n);
+    } else act.forEach(function (s) { chips.appendChild(el('span', 'chip on', s.short)); });
+
+    var led = $('#railLedger'); led.innerHTML = '';
+    OI.DELIVERABLES.forEach(function (d) {
+      var slot = rec.deliverables.filter(function (x) { return x.key === d.key; })[0];
+      var on = slot && slot.requested;
+      var li = el('li', on ? 'on' : '');
+      li.appendChild(el('span', 'm', on ? '✓' : '·'));
+      li.appendChild(el('span', null, d.label));
+      led.appendChild(li);
+    });
+
+    var miss = $('#railMissing'); miss.innerHTML = '';
+    var v = OI.validate(rec);
+    if (!v.ok) {
+      miss.appendChild(el('div', 'eyebrow', 'Still needed'));
+      var ul = el('ul'); ul.style.cssText = 'margin:6px 0 0;padding-left:18px;font-size:12.5px;color:var(--warn)';
+      v.missing.forEach(function (m) { ul.appendChild(el('li', null, m)); });
+      miss.appendChild(ul);
+    }
+    syncActionBar();
+    refreshTileSummary();
+  }
+
+  /* ---------- persistence ---------- */
+  function saveDraft() {
+    var fn = rec.routing === 'self' ? OI.saveSelfServe : function (r) {
+      return OI.store().save(r);
+    };
+    return fn(rec, user.email).then(function () {
+      dirty = false; setMsg('Saved ' + new Date().toLocaleTimeString() + '.');
+      refreshList();
+    }).catch(function (e) { setMsg('Could not save: ' + e.message); });
+  }
+  $('#btnSave').addEventListener('click', saveDraft);
+
+  $('#btnSubmit').addEventListener('click', function () {
+    var v = OI.validate(rec);
+    if (!v.ok) { setMsg('Still needed: ' + v.missing.join(', ')); return; }
+    $('#btnSubmit').disabled = true;
+    OI.submit(rec, user.email).then(function () {
+      dirty = false;
+      setMsg(svc('Submitted. {svc} will notify you here when the package is ready.'));
+      syncRouteButtons(); refreshList(); renderNotice();
+    }).catch(function (e) {
+      setMsg('Could not submit: ' + e.message); $('#btnSubmit').disabled = false;
+    });
+  });
+
+  $('#btnNew').addEventListener('click', function () {
+    if (dirty && !confirm('Start a new intake? Unsaved changes will be lost.')) return;
+    rec = OI.blankRecord(user);
+    hydrate(); showView('new'); setMsg('New intake started.');
+  });
+
+  /* ---------- list ---------- */
+  function refreshList() {
+    return OI.store().listForOrg(OI.orgId()).then(function (list) {
+      all = (list || []).sort(function (a, b) {
+        return String(b.updatedAt).localeCompare(String(a.updatedAt));
+      });
+      $('#listCount').textContent = all.length ? '(' + all.length + ')' : '';
+      renderList();
+    }).catch(function () {});
+  }
+
+  function renderList() {
+    var host = $('#plist'); host.innerHTML = '';
+    var unread = all.filter(function (r) { return r.notify && r.notify.unreadForClient; }).length;
+    $('#listSub').textContent = all.length
+      ? all.length + ' record' + (all.length === 1 ? '' : 's') + (unread ? ' · ' + unread + ' need your attention' : '')
+      : '';
+    if (!all.length) {
+      var e = el('div', 'empty');
+      e.appendChild(el('h3', null, 'Nothing here yet'));
+      e.appendChild(el('p', null, 'Fill in an intake and either submit it to Omega or save it as your own record.'));
+      host.appendChild(e); return;
+    }
+    all.forEach(function (r) {
+      var st = OI.STATUS[r.status] || { label: r.status, stage: 0, tone: 'muted' };
+      var item = el('div', 'pitem'); item.tabIndex = 0; item.setAttribute('role', 'button');
+      var left = el('div');
+      left.appendChild(el('h3', null, r.project.name || 'Untitled project'));
+      var bits = [
+        [r.project.city, r.project.state].filter(Boolean).join(', '),
+        OI.activeScopes(r).map(function (s) { return s.short; }).join(' · '),
+        r.routing === 'self' ? 'Self-serve' : SVC
+      ].filter(Boolean);
+      left.appendChild(el('div', 'meta', bits.join('  ·  ')));
+      var pipe = el('div', 'pipe');
+      OI.PIPELINE.forEach(function (_, i) {
+        var sp = el('span'); if (i <= st.stage) sp.className = 'on'; pipe.appendChild(sp);
+      });
+      left.appendChild(pipe);
+      item.appendChild(left);
+
+      var right = el('div', 'right');
+      right.appendChild(el('span', 'badge ' + st.tone, st.label));
+      if (r.notify && r.notify.unreadForClient) right.appendChild(el('span', 'badge good', 'New update'));
+      right.appendChild(el('span', 'mono', new Date(r.updatedAt).toLocaleDateString()))
+        .style.cssText = 'font-size:11px;color:var(--faint)';
+      item.appendChild(right);
+
+      function open() { rec = OI.clone(r); hydrate(); showView('new'); window.scrollTo(0, 0); }
+      item.addEventListener('click', open);
+      item.addEventListener('keydown', function (ev) {
+        if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); open(); }
+      });
+      host.appendChild(item);
+    });
+  }
+
+  /* ---------- delivered notice ---------- */
+  function renderNotice() {
+    var slot = $('#noticeSlot'); slot.innerHTML = '';
+    var done = (rec.deliverables || []).filter(function (d) { return d.requested && d.outputUrl; });
+    var unread = rec.notify && rec.notify.unreadForClient;
+    if (!unread && !done.length) return;
+
+    var n = el('div', 'notice');
+    var body = el('div');
+    body.appendChild(el('div', 'nt', rec.status === 'delivered' ? 'Your package is ready' : svc('Update from {svc}')));
+    body.appendChild(el('div', 'nb', (rec.notify && rec.notify.lastMessage) || 'There is new activity on this project.'));
+    if (done.length) {
+      var ul = el('ul', 'outlist');
+      done.forEach(function (d) {
+        var li = el('li');
+        var a = el('a', null, d.label); a.href = d.outputUrl; a.target = '_blank'; a.rel = 'noopener';
+        li.appendChild(a);
+        if (d.note) { var nn = el('span', null, d.note);
+          nn.style.cssText = 'color:var(--muted);font-size:12px'; li.appendChild(nn); }
+        ul.appendChild(li);
+      });
+      body.appendChild(ul);
+    }
+    if (unread) {
+      var ack = el('button', 'btn sm', 'Mark as read'); ack.type = 'button';
+      ack.style.marginTop = '10px';
+      ack.addEventListener('click', function () {
+        OI.acknowledge(rec).then(function () { renderNotice(); refreshList(); });
+      });
+      body.appendChild(ack);
+    }
+    n.appendChild(body);
+    slot.appendChild(n);
+  }
+
+  /* ---------- views ---------- */
+  function showView(v) {
+    $('#view-new').hidden = v !== 'new';
+    $('#view-list').hidden = v !== 'list';
+    $('#actionbar').style.display = v === 'new' ? 'flex' : 'none';
+    document.querySelectorAll('.tab').forEach(function (t) {
+      t.setAttribute('aria-selected', t.dataset.view === v ? 'true' : 'false');
+    });
+  }
+  document.querySelectorAll('.tab').forEach(function (t) {
+    t.addEventListener('click', function () { showView(t.dataset.view); });
+  });
+
+  /* ---------- hydrate ---------- */
+  function hydrate() {
+    // backfill schema for older records
+    OI.SCOPES.forEach(function (s) { if (!rec.scope[s.key]) rec.scope[s.key] = { enabled: false }; });
+    if (!rec.categories || !rec.categories.length) rec.categories = OI.DEFAULT_CATEGORIES.slice();
+    if (!rec.deliverables) rec.deliverables = [];
+    fillBound();
+    renderMatrix(); renderScopePanels(); renderLinks(); renderDeliverables();
+    syncRouteButtons(); renderEditorSelect(); renderRail(); renderNotice();
+    $('#railTitle').textContent = rec.project.name || 'This intake';
+    dirty = false;
+  }
+
+  window.addEventListener('beforeunload', function (e) {
+    if (dirty) { e.preventDefault(); e.returnValue = ''; }
+  });
+
+  /* ---------- boot ---------- */
+  bindAll();
+  hydrate();
+  loadEditorProjects();
+  refreshList();
+  setMsg('Backend: ' + OI.store().name + ' · org ' + OI.orgId());
+
+  // deep link:  intake.html?id=ix_...
+  var qid = new URLSearchParams(location.search).get('id');
+  if (qid) {
+    OI.store().get(qid).then(function (r) {
+      if (r) { rec = r; hydrate(); showView('new'); }
+    });
+  }
+})();
+</script>
+</body>
+</html>
