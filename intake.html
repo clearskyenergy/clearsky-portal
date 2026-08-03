@@ -243,6 +243,26 @@ textarea{min-height:70px;resize:vertical}
     <div id="noticeSlot"></div>
     <div class="cols">
       <div>
+        <!-- 0 purpose -->
+        <section class="card" id="cardPurpose">
+          <header><h2>What do you need?</h2>
+            <span class="sub">This changes what the form asks for</span></header>
+          <div class="body">
+            <div class="routes">
+              <button class="route" type="button" data-purpose="build" aria-pressed="true">
+                <div class="rt">Open a project</div>
+                <div class="rd">Bring your documents and site photos into one record, open a
+                  project you can work in the editor, and keep it yours. No fee.</div>
+              </button>
+              <button class="route" type="button" data-purpose="service" aria-pressed="false">
+                <div class="rt">Have {svc} do the work</div>
+                <div class="rd">Same intake, but we produce the plot, site map, costs and the
+                  utility / AHJ packages. We price it first — you see the fee before anything starts.</div>
+              </button>
+            </div>
+          </div>
+        </section>
+
         <!-- 1 customer -->
         <section class="card">
           <header><span class="step">01</span><h2>Customer</h2>
@@ -351,34 +371,38 @@ textarea{min-height:70px;resize:vertical}
         </section>
 
         <!-- 5 deliverables -->
-        <section class="card">
+        <section class="card" id="cardDeliverables">
           <header><span class="step">05</span><h2>What you want back</h2>
-            <span class="sub">{svc} produces these for you</span></header>
-          <div class="body"><div id="delivList"></div></div>
+            <span class="sub" id="delivSub">{svc} produces these for you</span></header>
+          <div class="body">
+            <div id="delivList"></div>
+            <p id="pricingNote" style="margin:14px 0 0;font-size:12px;color:var(--muted)"></p>
+          </div>
         </section>
 
-        <!-- 6 routing -->
+        <!-- 6 project -->
         <section class="card">
-          <header><span class="step">06</span><h2>How to handle it</h2></header>
+          <header><span class="step">06</span><h2>Your project</h2>
+            <span class="sub">Where this lands in the editor</span></header>
           <div class="body">
-            <div class="routes">
-              <button class="route" type="button" data-route="omega" aria-pressed="true">
-                <div class="rt">Submit to {svc}</div>
-                <div class="rd">We build the plot, site map, costs and the utility / AHJ packages, then notify you here when they’re ready.</div>
-              </button>
-              <button class="route" type="button" data-route="self" aria-pressed="false">
-                <div class="rt">Save the record only</div>
-                <div class="rd">Keep everything in one place and do the work yourself. Nothing is sent to {svc}. You can submit it later.</div>
-              </button>
-            </div>
-            <div class="grid" style="margin-top:16px">
-              <div class="f c8"><label for="p_editor">Linked editor project</label>
-                <select id="p_editor" data-bind="editorProjectId"></select>
-                <span class="hint">Ties this intake to a layout in the site editor. Optional.</span></div>
-              <div class="f c4" style="justify-content:flex-end">
-                <a class="btn sm" id="openEditor" href="#" style="text-align:center;text-decoration:none">Open in editor</a></div>
+            <div class="grid">
+              <div class="f c8"><label for="p_editor">Linked project</label>
+                <select id="p_editor"></select>
+                <span class="hint" id="projHint">Link this intake to a project you already have,
+                  or open a new one from what you have filled in.</span></div>
+              <div class="f c4 keep" style="justify-content:flex-end;gap:8px">
+                <button class="btn sm" type="button" id="createProject">Open a new project</button>
+                <a class="btn sm" id="openEditor" href="#" target="_blank" rel="noopener"
+                   style="text-align:center;text-decoration:none">Open in editor</a></div>
             </div>
           </div>
+        </section>
+
+        <!-- 7 quote -->
+        <section class="card" id="cardQuote" hidden>
+          <header><span class="step">07</span><h2>Your quote</h2>
+            <span class="sub" id="quoteSub"></span></header>
+          <div class="body"><div id="quoteBody"></div></div>
         </section>
       </div>
 
@@ -974,24 +998,110 @@ if (window.firebase && !firebase.apps.length) {
     });
   }
 
-  if (window.firebase && firebase.apps.length && firebase.auth) {
-    var booted = false;
-    firebase.auth().onAuthStateChanged(function (u) {
-      if (booted) return;
-      booted = true;
-      if (!u) {
-        var back = OI.returnUrl();
-        document.body.innerHTML =
-          '<div style="max-width:460px;margin:16vh auto;padding:0 24px;font-family:system-ui">' +
-          '<h1 style="font-size:19px;margin:0 0 10px">Sign in to continue</h1>' +
-          '<p style="color:#39434E;font-size:14px;line-height:1.6">Open Project Intake from ' +
-          'your portal so it can pick up your session.</p>' +
-          (back ? '<a href="' + back + '" style="color:#0E5FA8">Back to the portal</a>' : '') +
-          '</div>';
-        return;
-      }
-      start();
+  /* ---------- authentication ----------
+     Firebase keeps its session per ORIGIN. The portal lives on the tenant's
+     domain and this tool lives on TOOL_HOST, so opening it from the portal
+     does NOT carry the session across — currentUser is null here regardless.
+     The tool therefore signs the person in on its own origin. Because they are
+     already signed in with the same provider, this is one click (usually one
+     silent redirect), and browserLocalPersistence means it happens once per
+     browser rather than once per visit. */
+  function authScreen(opts) {
+    opts = opts || {};
+    var back = OI.returnUrl();
+    document.body.innerHTML =
+      '<div style="max-width:480px;margin:14vh auto;padding:0 24px;font-family:system-ui;color:#0F151C">' +
+        '<div style="font-family:ui-monospace,monospace;font-size:10px;letter-spacing:.14em;' +
+          'text-transform:uppercase;color:#6B7783">Project intake</div>' +
+        '<h1 id="auTitle" style="font-size:21px;margin:8px 0 10px;letter-spacing:-.01em"></h1>' +
+        '<p id="auBody" style="color:#39434E;font-size:14px;line-height:1.6"></p>' +
+        '<div id="auActions" style="display:flex;gap:10px;flex-wrap:wrap;margin-top:18px"></div>' +
+        '<p id="auErr" style="color:#B4302A;font-size:13px;margin-top:14px"></p>' +
+        (back ? '<p style="margin-top:22px"><a href="' + back +
+          '" style="color:#0E5FA8;font-size:13px">\u2190 Back to the portal</a></p>' : '') +
+      '</div>';
+    document.getElementById('auTitle').textContent = opts.title || '';
+    document.getElementById('auBody').textContent = opts.body || '';
+    var acts = document.getElementById('auActions');
+    (opts.actions || []).forEach(function (a) {
+      var btn = document.createElement('button');
+      btn.type = 'button';
+      btn.textContent = a.label;
+      btn.style.cssText = 'border:1px solid ' + (a.primary ? '#0E5FA8' : '#DCE3E9') +
+        ';background:' + (a.primary ? '#0E5FA8' : '#fff') + ';color:' + (a.primary ? '#fff' : '#0F151C') +
+        ';border-radius:8px;padding:9px 16px;font:inherit;font-weight:550;cursor:pointer';
+      btn.addEventListener('click', a.onClick);
+      acts.appendChild(btn);
     });
+    return {
+      err: function (m) { document.getElementById('auErr').textContent = m || ''; }
+    };
+  }
+
+  function signIn() {
+    var auth = firebase.auth();
+    var provider = new firebase.auth.GoogleAuthProvider();
+    /* Nudge the account chooser toward the address they already use, so a
+       person with several Google accounts does not land in the wrong org. */
+    var hint = new URLSearchParams(location.search).get('login_hint');
+    if (hint) provider.setCustomParameters({ login_hint: hint });
+
+    var screen = authScreen({
+      title: 'Signing you in\u2026',
+      body: 'One moment.'
+    });
+    return auth.signInWithPopup(provider)['catch'](function (e) {
+      // Popup blocked or closed — redirect is the reliable fallback.
+      if (e && (e.code === 'auth/popup-blocked' ||
+                e.code === 'auth/cancelled-popup-request' ||
+                e.code === 'auth/operation-not-supported-in-this-environment')) {
+        return auth.signInWithRedirect(provider);
+      }
+      throw e;
+    })['catch'](function (e) {
+      var s = promptSignIn();
+      s.err(e && e.message ? e.message : 'Sign-in failed. Try again.');
+    });
+  }
+
+  function promptSignIn() {
+    return authScreen({
+      title: 'Sign in to Project Intake',
+      body: 'This tool runs on a different domain from your portal, so it needs ' +
+            'its own sign-in. Use the same account — it is remembered after the first time.',
+      actions: [{ label: 'Sign in', primary: true, onClick: signIn }]
+    });
+  }
+
+  /* A placeholder config is the likeliest reason auth never resolves, and it
+     looks exactly like a failed sign-in. Say which it is. */
+  function configLooksUnset() {
+    var c = window.OMEGA_FIREBASE || {};
+    return !c.apiKey || String(c.apiKey).indexOf('REPLACE_ME') === 0;
+  }
+
+  if (window.firebase && firebase.apps.length && firebase.auth) {
+    if (configLooksUnset()) {
+      authScreen({
+        title: 'Firebase config not filled in',
+        body: 'intake.html still has REPLACE_ME placeholders in window.OMEGA_FIREBASE. ' +
+              'Paste the same config your other OMEGA tools use, or include your shared ' +
+              'init file instead of the block at the top of this file.'
+      });
+    } else {
+      var booted = false;
+      firebase.auth().setPersistence(firebase.auth.Auth.Persistence.LOCAL)
+        ['catch'](function () {})
+        .then(function () { return firebase.auth().getRedirectResult()['catch'](function () {}); })
+        .then(function () {
+          firebase.auth().onAuthStateChanged(function (u) {
+            if (booted) return;
+            if (!u) { promptSignIn(); return; }
+            booted = true;
+            start();
+          });
+        });
+    }
   } else {
     // No Firebase on the page (local dev) — the data layer falls back to
     // localStorage, so the tool stays fully usable.
