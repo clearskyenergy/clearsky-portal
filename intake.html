@@ -452,42 +452,12 @@ textarea{min-height:70px;resize:vertical}
   <button class="btn primary" type="button" id="btnSubmit">Submit to Omega</button>
 </div>
 
-<!-- ────────────────────────────────────────────────────────────────────────
-     FIREBASE BOOTSTRAP
-     Served from TOOL_HOST, a different origin from the portal, so this tool
-     resolves the session itself the way every other shared tool does. If you
-     already have a shared init file, delete this block and include that — all
-     the tool needs is a global `firebase` with an authenticated user.
-     ──────────────────────────────────────────────────────────────────── -->
 <!-- Firebase compat v8 + shared platform config/registry (OMEGA standard order) -->
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
 <script src="/config.js"></script>
 <script src="/omega-tools.js"></script>
-<script>
-/* config.js on the host is the single source of Firebase settings for every
-   tool. Some deployments call initializeApp() inside it; some only expose the
-   values. This handles both and does nothing if the app is already up, so it
-   never double-initialises. Nothing is hardcoded here — if config.js has no
-   Firebase settings, the page says so rather than failing as a sign-in loop. */
-(function () {
-  if (!window.firebase || typeof firebase.initializeApp !== 'function') return;
-  if (firebase.apps && firebase.apps.length) return;   // config.js already did it
-  var c = window.CLEARSKY_CONFIG || {}, s = window.CS_CONFIG || {};
-  var fc = c.firebase || c.firebaseConfig || c.FIREBASE ||
-           s.FIREBASE || s.firebase || s.firebaseConfig ||
-           window.OMEGA_FIREBASE || null;
-  if (!fc || !fc.apiKey) return;                       // reported by the gate below
-  try { firebase.initializeApp(fc); }
-  catch (e) { console.warn('[intake] initializeApp failed', e); }
-  try {
-    if (firebase.auth) {
-      firebase.auth().setPersistence(firebase.auth.Auth.Persistence.LOCAL)['catch'](function () {});
-    }
-  } catch (e) {}
-})();
-</script>
 <script src="/omega-intake.js"></script>
 <script>
 (function () {
@@ -543,7 +513,8 @@ textarea{min-height:70px;resize:vertical}
       }
     })(document.body);
 
-    $('#whoami').textContent = [user.email, OI.orgId()].filter(Boolean).join(' \u00b7 ');
+    var who = user.displayName || user.email || '';
+    $('#whoami').textContent = [who, OI.tenantName()].filter(Boolean).join(' \u00b7 ');
     document.title = OI.tenantName() + ' \u00b7 Project intake';
   }
 
@@ -1006,26 +977,46 @@ textarea{min-height:70px;resize:vertical}
 
     var mine = OI.orgAlias(String(user.email || '').split('@')[1] || '');
     var target = OI.orgId();
-    if (!mine || mine === target) return;          // signed in as the tenant
 
-    var slot = $('#actingSlot');
-    var bar = el('div', 'actingbar');
+    /* ClearSky staff are explicitly allowed into a tenant workspace — the
+       portal does the same thing via LOCK_ADMIN_DOMAINS, which is why you can
+       open a client deployment with your own account. So this is normal, not
+       an error, and it gets a quiet line rather than a warning bar. What it
+       must still say plainly is WHOSE workspace the record lands in. */
     if (isStaff(user.email)) {
-      bar.innerHTML = '<span>Signed in as <b>' + esc(user.email) + '</b>, working in <b>' +
-        esc(target) + '</b>\u2019s workspace. Anything you save here belongs to ' +
-        esc(target) + ', not to you.</span>';
-    } else {
+      var q = el('a', 'whoami');
+      q.href = 'intake-admin.html';
+      q.textContent = 'Staff queue \u2192';
+      q.style.cssText = 'text-decoration:none;margin-left:10px';
+      $('#whoami').parentNode.insertBefore(q, $('#whoami').nextSibling);
+
+      if (mine && mine !== target) {
+        var note = el('div', 'actingbar');
+        note.innerHTML = '<span>ClearSky staff \u2014 you are working inside <b>' +
+          esc(OI.tenantName()) + '</b>. Records you save here belong to ' + esc(target) + '.</span>';
+        var sw = el('button', 'btn sm', 'Switch account');
+        sw.type = 'button';
+        sw.addEventListener('click', signOutHere);
+        note.appendChild(sw);
+        $('#actingSlot').appendChild(note);
+      }
+      return;
+    }
+
+    /* A tenant user on someone else's link is a different matter: the rules
+       will refuse every write, so say so before they fill the form in. */
+    if (mine && mine !== target) {
+      var bar = el('div', 'actingbar');
       bar.innerHTML = '<span>Signed in as <b>' + esc(user.email) + '</b>, but this link is for <b>' +
-        esc(target) + '</b>. Saving will be refused. Switch to your ' +
-        esc(target) + ' account.</span>';
+        esc(target) + '</b>. Saving will be refused. Switch to your ' + esc(target) + ' account.</span>';
+      var b2 = el('button', 'btn sm', 'Switch account');
+      b2.type = 'button';
+      b2.addEventListener('click', signOutHere);
+      bar.appendChild(b2);
+      $('#actingSlot').appendChild(bar);
       $('#btnSubmit').disabled = true;
       $('#btnSave').disabled = true;
     }
-    var b = el('button', 'btn sm', 'Switch account');
-    b.type = 'button';
-    b.addEventListener('click', signOutHere);
-    bar.appendChild(b);
-    slot.appendChild(bar);
   }
 
   /* ---------- boot ----------
@@ -1077,109 +1068,157 @@ textarea{min-height:70px;resize:vertical}
      already signed in with the same provider, this is one click (usually one
      silent redirect), and browserLocalPersistence means it happens once per
      browser rather than once per visit. */
-  function authScreen(opts) {
-    opts = opts || {};
+  /* ---------- SIGN-IN ----------
+     Firebase keeps its session per ORIGIN. The portal is on the tenant's
+     domain, this tool is on TOOL_HOST, so the portal's session does not carry
+     across and currentUser is null here until the person signs in on THIS
+     origin. That is true of every shared tool, not just this one.
+
+     The card below mirrors the portal's: email + password first (how most
+     tenant users sign in), Google second. It is an OVERLAY, not a body
+     rewrite — an earlier version replaced document.body, which meant a
+     successful sign-in had no page left to render into. */
+  function authCard(){
+    var box = document.getElementById('ix-auth');
+    if (box) return box;
+    box = el('div');
+    box.id = 'ix-auth';
+    box.style.cssText = 'position:fixed;inset:0;z-index:9000;background:var(--paper);' +
+      'display:flex;align-items:center;justify-content:center;padding:24px;overflow:auto';
     var back = OI.returnUrl();
-    document.body.innerHTML =
-      '<div style="max-width:480px;margin:14vh auto;padding:0 24px;font-family:system-ui;color:#0F151C">' +
-        '<div style="font-family:ui-monospace,monospace;font-size:10px;letter-spacing:.14em;' +
-          'text-transform:uppercase;color:#6B7783">Project intake</div>' +
-        '<h1 id="auTitle" style="font-size:21px;margin:8px 0 10px;letter-spacing:-.01em"></h1>' +
-        '<p id="auBody" style="color:#39434E;font-size:14px;line-height:1.6"></p>' +
-        '<div id="auActions" style="display:flex;gap:10px;flex-wrap:wrap;margin-top:18px"></div>' +
-        '<p id="auErr" style="color:#B4302A;font-size:13px;margin-top:14px"></p>' +
-        (back ? '<p style="margin-top:22px"><a href="' + back +
-          '" style="color:#0E5FA8;font-size:13px">\u2190 Back to the portal</a></p>' : '') +
+    box.innerHTML =
+      '<div style="width:400px;max-width:100%;background:var(--surface);border:1px solid var(--rule);' +
+        'border-radius:var(--r-lg);box-shadow:var(--shadow);padding:30px 28px">' +
+        '<div class="eyebrow">Project intake</div>' +
+        '<h1 style="font-size:19px;margin:8px 0 6px;letter-spacing:-.01em">Sign in to continue</h1>' +
+        '<p style="font-size:12.5px;color:var(--muted);line-height:1.55;margin:0 0 18px">' +
+          'This tool runs on a different domain from your portal, so it keeps its own ' +
+          'sign-in. Use the same account \u2014 it is remembered after the first time.</p>' +
+        '<div class="f" style="margin-bottom:10px"><label for="ixEmail">Work email</label>' +
+          '<input id="ixEmail" type="email" autocomplete="username"></div>' +
+        '<div class="f" style="margin-bottom:14px"><label for="ixPass">Password</label>' +
+          '<input id="ixPass" type="password" autocomplete="current-password"></div>' +
+        '<button class="btn primary" id="ixSignIn" type="button" style="width:100%">Sign in</button>' +
+        '<div style="display:flex;align-items:center;gap:10px;margin:16px 0 14px;' +
+          'font-size:11px;color:var(--faint)"><span style="flex:1;height:1px;background:var(--rule)"></span>' +
+          'or<span style="flex:1;height:1px;background:var(--rule)"></span></div>' +
+        '<button class="btn" id="ixGoogle" type="button" style="width:100%">Continue with Google</button>' +
+        '<p id="ixErr" style="color:#B4302A;font-size:12.5px;margin:14px 0 0;min-height:16px"></p>' +
+        '<p id="ixReset" style="margin:6px 0 0;font-size:12px"></p>' +
+        (back ? '<p style="margin:18px 0 0;font-size:12px"><a href="' + back + '">\u2190 Back to the portal</a></p>' : '') +
       '</div>';
-    document.getElementById('auTitle').textContent = opts.title || '';
-    document.getElementById('auBody').textContent = opts.body || '';
-    var acts = document.getElementById('auActions');
-    (opts.actions || []).forEach(function (a) {
-      var btn = document.createElement('button');
-      btn.type = 'button';
-      btn.textContent = a.label;
-      btn.style.cssText = 'border:1px solid ' + (a.primary ? '#0E5FA8' : '#DCE3E9') +
-        ';background:' + (a.primary ? '#0E5FA8' : '#fff') + ';color:' + (a.primary ? '#fff' : '#0F151C') +
-        ';border-radius:8px;padding:9px 16px;font:inherit;font-weight:550;cursor:pointer';
-      btn.addEventListener('click', a.onClick);
-      acts.appendChild(btn);
-    });
-    return {
-      err: function (m) { document.getElementById('auErr').textContent = m || ''; }
-    };
-  }
+    document.body.appendChild(box);
 
-  function signIn() {
-    var auth = firebase.auth();
-    var provider = new firebase.auth.GoogleAuthProvider();
-    /* Nudge the account chooser toward the address they already use, so a
-       person with several Google accounts does not land in the wrong org. */
-    var hint = new URLSearchParams(location.search).get('login_hint');
-    if (hint) provider.setCustomParameters({ login_hint: hint });
-
-    var screen = authScreen({
-      title: 'Signing you in\u2026',
-      body: 'One moment.'
-    });
-    return auth.signInWithPopup(provider)['catch'](function (e) {
-      // Popup blocked or closed — redirect is the reliable fallback.
-      if (e && (e.code === 'auth/popup-blocked' ||
-                e.code === 'auth/cancelled-popup-request' ||
-                e.code === 'auth/operation-not-supported-in-this-environment')) {
-        return auth.signInWithRedirect(provider);
-      }
-      throw e;
-    })['catch'](function (e) {
-      var s = promptSignIn();
-      s.err(e && e.message ? e.message : 'Sign-in failed. Try again.');
-    });
-  }
-
-  function promptSignIn() {
-    return authScreen({
-      title: 'Sign in to Project Intake',
-      body: 'This tool runs on a different domain from your portal, so it needs ' +
-            'its own sign-in. Use the same account — it is remembered after the first time.',
-      actions: [{ label: 'Sign in', primary: true, onClick: signIn }]
-    });
-  }
-
-  /* A placeholder config is the likeliest reason auth never resolves, and it
-     looks exactly like a failed sign-in. Say which it is. */
-  /* The app is up or it is not. Checking that beats sniffing key names,
-     because config.js may expose them under any of several shapes. */
-  function configLooksUnset() {
-    return !(window.firebase && window.firebase.apps && window.firebase.apps.length);
-  }
-
-  if (window.firebase && firebase.apps.length && firebase.auth) {
-    if (configLooksUnset()) {
-      authScreen({
-        title: 'Firebase not initialised',
-        body: 'config.js on this host did not provide Firebase settings, so no app was ' +
-              'initialised. Every OMEGA tool loads /config.js for this. Check that it is ' +
-              'served and that it either calls firebase.initializeApp() or exposes the ' +
-              'config as CLEARSKY_CONFIG.firebase.'
-      });
-    } else {
-      var booted = false;
-      firebase.auth().setPersistence(firebase.auth.Auth.Persistence.LOCAL)
-        ['catch'](function () {})
-        .then(function () { return firebase.auth().getRedirectResult()['catch'](function () {}); })
-        .then(function () {
-          firebase.auth().onAuthStateChanged(function (u) {
-            if (booted) return;
-            if (!u) { promptSignIn(); return; }
-            booted = true;
-            start();
-          });
-        });
+    function err(m){ document.getElementById('ixErr').textContent = m || ''; }
+    function busy(on){
+      var b = document.getElementById('ixSignIn');
+      b.disabled = on; b.textContent = on ? 'Signing in\u2026' : 'Sign in';
     }
-  } else {
-    // No Firebase on the page (local dev) — the data layer falls back to
-    // localStorage, so the tool stays fully usable.
-    start();
+
+    document.getElementById('ixSignIn').addEventListener('click', function(){
+      var e = (document.getElementById('ixEmail').value || '').trim();
+      var p = document.getElementById('ixPass').value || '';
+      if (!e || !p){ err('Enter your email and password.'); return; }
+      err(''); busy(true);
+      firebase.auth().signInWithEmailAndPassword(e, p)['catch'](function(x){
+        busy(false);
+        var c = x && x.code;
+        if (c === 'auth/wrong-password' || c === 'auth/invalid-credential' || c === 'auth/user-not-found'){
+          err('Incorrect email or password.');
+          document.getElementById('ixReset').innerHTML =
+            '<a href="#" id="ixResetLink">Send a password reset email</a>';
+          document.getElementById('ixResetLink').addEventListener('click', function(ev){
+            ev.preventDefault();
+            firebase.auth().sendPasswordResetEmail(e).then(function(){
+              err(''); document.getElementById('ixReset').textContent = 'Reset email sent to ' + e + '.';
+            })['catch'](function(){ err('Could not send a reset email.'); });
+          });
+        } else if (c === 'auth/too-many-requests'){ err('Too many attempts. Try again shortly.'); }
+        else { err((x && x.message) || 'Sign-in failed.'); }
+      });
+    });
+    document.getElementById('ixPass').addEventListener('keydown', function(ev){
+      if (ev.key === 'Enter') document.getElementById('ixSignIn').click();
+    });
+
+    document.getElementById('ixGoogle').addEventListener('click', function(){
+      err('');
+      var auth = firebase.auth();
+      var provider = new firebase.auth.GoogleAuthProvider();
+      provider.setCustomParameters({ prompt: 'select_account' });
+      auth.signInWithPopup(provider)['catch'](function(x){
+        if (x && (x.code === 'auth/popup-blocked' ||
+                  x.code === 'auth/cancelled-popup-request' ||
+                  x.code === 'auth/operation-not-supported-in-this-environment')){
+          return auth.signInWithRedirect(provider);
+        }
+        err((x && x.message) || 'Sign-in failed.');
+      });
+    });
+    return box;
   }
+  function hideAuthCard(){
+    var b = document.getElementById('ix-auth');
+    if (b && b.parentNode) b.parentNode.removeChild(b);
+  }
+
+  function fatal(title, body){
+    hideAuthCard();
+    var d = el('div');
+    d.style.cssText = 'position:fixed;inset:0;z-index:9000;background:var(--paper);padding:14vh 24px;' +
+      'font-family:var(--sans);color:var(--ink)';
+    d.innerHTML = '<div style="max-width:480px;margin:0 auto">' +
+      '<div class="eyebrow">Project intake</div>' +
+      '<h1 style="font-size:19px;margin:8px 0 10px"></h1>' +
+      '<p style="color:var(--ink-2);font-size:13.5px;line-height:1.6"></p></div>';
+    d.querySelector('h1').textContent = title;
+    d.querySelector('p').textContent = body;
+    document.body.appendChild(d);
+  }
+
+  /* ---------- BOOT ----------
+     Same shape as the portal's _initFirebase(): wait for the SDK AND for
+     config.js to have published CLEARSKY_CONFIG, then initialise once. The
+     earlier version read the config synchronously and gave up if it wasn't
+     there yet, which looked exactly like a missing config. */
+  var booted = false;
+  function bootFirebase(tries){
+    tries = tries || 0;
+    if (typeof firebase === 'undefined' || !window.CLEARSKY_CONFIG){
+      if (tries > 80){
+        if (typeof firebase === 'undefined'){ start(); return; }   // dev: localStorage
+        fatal('Configuration not loaded',
+              'config.js did not publish CLEARSKY_CONFIG on this host. Every OMEGA tool ' +
+              'loads /config.js for its Firebase settings \u2014 check that it is served here.');
+        return;
+      }
+      setTimeout(function(){ bootFirebase(tries + 1); }, 120);
+      return;
+    }
+    try {
+      if (!firebase.apps.length) firebase.initializeApp(window.CLEARSKY_CONFIG.firebase);
+    } catch (e) {
+      if (!/already exists/.test(e.message)) console.error('[intake] firebase init', e);
+    }
+    if (!firebase.apps.length){
+      fatal('Firebase not initialised',
+            'CLEARSKY_CONFIG.firebase is missing from config.js on this host.');
+      return;
+    }
+    firebase.auth().setPersistence(firebase.auth.Auth.Persistence.LOCAL)['catch'](function(){})
+      .then(function(){ return firebase.auth().getRedirectResult()['catch'](function(){}); })
+      .then(function(){
+        firebase.auth().onAuthStateChanged(function(u){
+          if (!u){ hideAuthCard(); authCard(); return; }
+          hideAuthCard();
+          if (booted) return;
+          booted = true;
+          start();
+        });
+      });
+  }
+
+  bootFirebase();
 })();
 </script>
 </body>

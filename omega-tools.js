@@ -1,3 +1,9 @@
+    /* ── A NOTE ON THE TWO INTAKE ENTRIES ──
+       'intake' is the customer-facing form: every tenant sees it.
+       'intake_admin' is the staff queue: restricted by orgs:[] above.
+       Both read the same intake_projects collection; the rules decide who
+       sees whose records. Keep them adjacent so nobody adds one and forgets
+       the other. */
 /* ══════════════════════════════════════════════════════════════════════
    CLEARSKY-OMEGA · TOOL REGISTRY  (omega-tools.js)
    ----------------------------------------------------------------------
@@ -286,7 +292,28 @@
     { key:'degradation', name:'BESS Degradation & Warranty', category:'operations',
       desc:'Capacity fade over project life vs OEM warranty envelope, with augmentation planning.',
       file:'/degradation-warranty.html', badge:'new', tier:TIER.DELUXE, savesData:true,
-      icon:'M6 7h12v10a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2zM9 7V5a3 3 0 0 1 6 0v2M9 15l6-4' }
+      icon:'M6 7h12v10a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2zM9 7V5a3 3 0 0 1 6 0v2M9 15l6-4' },
+
+    /* ── PROJECT INTAKE QUEUE (ClearSky staff only) ──
+       The fulfilment side of Project Intake. Tenants submit sites from their
+       own portal; this is where ClearSky picks them up, works them, and pushes
+       progress back to the tenant.
+
+       orgs:[] restricts it to ClearSky's own workspaces, exactly like
+       spatco_ev is restricted to spatco.com. isVisible() returns false for
+       every other tenant, so it never appears in a customer marketplace even
+       though they all load this same file.
+
+       That restriction is convenience, not security: the file is on a public
+       host and the URL is guessable. The real boundary is the Firestore rule
+       on intake_projects — listAll() is an unfiltered query, which Firestore
+       refuses for anyone isAdmin() is false for, so a tenant who found this
+       page gets a permission error and an empty table. */
+    { key:'intake_admin', name:'Intake Queue', category:'operations',
+      desc:'Work tenant-submitted sites \u2014 triage, quote, produce the packages and push progress back to the client.',
+      file:'/intake-admin.html', badge:'new', tier:TIER.ALL, savesData:true,
+      orgs:['clearsky-usa.com','csebuilders.com'],
+      icon:'M9 11l3 3L22 4M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11' },
 
     /* ── NOT IN THIS REGISTRY, ON PURPOSE ──
        intake-admin.html — the ClearSky queue where reps work submitted
