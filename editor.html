@@ -4116,7 +4116,22 @@ function _projOrgId() {
   try {
     var em = _currentUser && _currentUser.email;
     if (em && em.indexOf('@') > -1) {
-      return em.split('@')[1].toLowerCase();
+      var d = em.split('@')[1].toLowerCase();
+      /* Mirrors orgAlias() in firestore.rules and storage.rules.
+
+         Without it a FENECON user signing in on @fenecon.de writes
+         orgId 'fenecon.de'; the rules fold the CALLER to 'fenecon.com', the
+         create rule's orgId comparison fails, and every save that user makes
+         is refused. If one did land, the project would be invisible in their
+         own portal.
+
+         THIRD COPY OF THIS MAP. The two rules engines cannot share code with
+         the app, so adding a tenant alias means editing all three:
+           firestore.rules  · orgAlias()
+           storage.rules    · orgAlias()
+           editor.html      · here                                          */
+      if (d === 'fenecon.de' || d === 'fenecon.us') return 'fenecon.com';
+      return d;
     }
   } catch (e) {}
   return 'clearsky.com';
@@ -4169,8 +4184,30 @@ function _initFirebase() {
     _auth.setPersistence(firebase.auth.Auth.Persistence.LOCAL).catch(() => {});
 
     // -- Offline Firestore persistence -------------------------
-    _db.enablePersistence({ synchronizeTabs: false }).catch(err => {
-      if (err.code === 'failed-precondition') console.warn('Firestore: multiple tabs');
+    /* synchronizeTabs:true, NOT false.
+
+       Offline persistence takes an IndexedDB lease. With synchronizeTabs
+       false that lease is EXCLUSIVE, so the second tab on this origin cannot
+       get it. The failed-precondition below was caught and logged as if it
+       were harmless — it isn't. By the time it fires, the SDK's internal
+       async queue is already wedged, and from then on every write in that tab
+       throws
+
+           FIRESTORE (9.23.0) INTERNAL ASSERTION FAILED: Unexpected state
+
+       ...forever. The autosave loop then retries into the same broken queue
+       every 60s while the banner says the connection is the problem.
+
+       Staff routinely work with several editor tabs open, so this was never
+       an edge case. multi-tab persistence shares the lease properly. */
+    _db.enablePersistence({ synchronizeTabs: true }).catch(err => {
+      if (err.code === 'failed-precondition') {
+        console.warn('Firestore: multi-tab persistence unavailable; running online-only');
+      } else if (err.code === 'unimplemented') {
+        console.warn('Firestore: this browser has no IndexedDB; running online-only');
+      } else {
+        console.warn('Firestore: persistence off —', err && err.code);
+      }
     });
 
     _auth.onAuthStateChanged(function(user) {
@@ -19750,7 +19787,26 @@ async function saveProject(){
     console.error('Save error:',e);
     // Customer-facing: a silent failed save is a data-loss trap. Tell them.
     if(typeof showBanner==='function'){
-      showBanner('wiz','!! Couldn\u2019t save \u2014 check your connection. Your work is still here; it will retry automatically.');
+      /* One message for every failure sent people to check their wifi while
+         Firestore was refusing the write or the SDK had crashed. Name the
+         three cases that actually happen — the recovery is different for
+         each, and "it will retry automatically" is a LIE for the first. */
+      var _m;
+      if (/INTERNAL ASSERTION/i.test((e && e.message) || '')) {
+        _m = '!! The database connection has crashed \u2014 a known Firebase bug, usually '
+           + 'from having the editor open in more than one tab. Your work is safe in this '
+           + 'tab, but RELOAD THE PAGE to save it. Retrying will not fix it.';
+      } else if (e && e.code === 'permission-denied') {
+        _m = '!! Save refused by Firestore \u2014 this project\u2019s orgId doesn\u2019t match '
+           + 'your account. Your work is still here. Send this to dev@clearsky-usa.com.';
+      } else if (/exceeds the maximum|too large|invalid-argument/i.test((e && e.message) || '')) {
+        _m = '!! This project is too large for one document (1 MB limit). Your work is still '
+           + 'here \u2014 remove terrain samples or imagery, then save again.';
+      } else {
+        _m = '!! Couldn\u2019t save \u2014 check your connection. Your work is still here; it '
+           + 'will retry automatically.';
+      }
+      showBanner('wiz', _m);
     }
   }finally{
     window._saveInFlight = false;
