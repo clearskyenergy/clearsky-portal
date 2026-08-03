@@ -3732,6 +3732,9 @@ if(document.readyState==='loading'){
               <option value="AWG-20AWG5MW">Aspen Woods 20AWG5MW — 2.58MW / 5MWh Grid-Forming Unit ⬢ Greenfield — Price TBD</option>
               <option value="AWG-5MW-SYSTEM">Aspen Woods 5MW / 20MWh System — 4× 20AWG5MW ⬢ Greenfield — Price TBD</option>
             </optgroup>
+            <optgroup label="FENECON (Quote Required)">
+              <option value="FENECON-IND-XXL">FENECON Industrial XXL -- 2.508 MW / 5.015 MWh 20ft (Liquid) -- Quote Req.</option>
+            </optgroup>
             <optgroup label="Gotion">
               <option value="GOTION-EDGE-760">Gotion EDGE 760 kWh C&I -- $84,740</option>
               <option value="GOTION-GRID-3421">Gotion Grid 3.42 MWh Container -- $381,486</option>
@@ -5784,6 +5787,7 @@ const GOTION_CATALOG_DIMS = {
   'GOTION-EDGE-760':  { l:'7\'-10.5"', w:'4\'-7.1"',  h:'8\'-2.4"',  wt:'~17,640 lbs', lf:7.875,  wf:4.59,  hf:8.20  },
   'AWG-20AWG5MW':     { l:'19\'-10.5"',w:'7\'-12.0"', h:'9\'-6.0"',  wt:'~97,000 lbs', lf:19.875, wf:8.0,   hf:9.5   },
   'AWG-5MW-SYSTEM':   { l:'19\'-10.5"',w:'7\'-12.0"', h:'9\'-6.0"',  wt:'~97,000 lbs ea', lf:19.875, wf:8.0, hf:9.5, sysQty:4 },
+  'FENECON-IND-XXL':  { l:'20\'-0.0"', w:'8\'-0.0"',  h:'9\'-6.0"',  wt:'~95,000 lbs', lf:20.0,   wf:8.0,   hf:9.5   },
   'GOTION-GRID-3421': { l:'19\'-10.5"',w:'7\'-12.0"', h:'9\'-6.0"',  wt:'~81,570 lbs', lf:19.875, wf:8.0,   hf:9.5   },
   'GOTION-GRID-4608': { l:'19\'-10.5"',w:'7\'-12.0"', h:'9\'-6.0"',  wt:'~94,800 lbs', lf:19.875, wf:8.0,   hf:9.5   },
   'GOTION-GRID-5068': { l:'19\'-10.5"',w:'7\'-12.0"', h:'9\'-6.0"',  wt:'~94,800 lbs', lf:19.875, wf:8.0,   hf:9.5   },
@@ -11689,9 +11693,39 @@ function openAutoLayout(){
     + '<div style="padding:12px 18px;border-top:1px solid #26364d;display:flex;gap:8px">'
     +   '<button onclick="document.getElementById(\'autolayout-modal\').remove()" style="flex:0 0 84px;padding:10px;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.16);color:#8FA3B8;border-radius:7px;cursor:pointer;font-family:inherit;font-size:11px">Cancel</button>'
     +   '<button id="al-preview-btn" onclick="alPreview()" '+(boundary?'':'disabled')+' style="flex:1;padding:10px;background:rgba(251,191,36,.2);border:1px solid rgba(251,191,36,.45);color:#FBBF24;font-weight:700;font-size:11px;border-radius:7px;cursor:pointer;font-family:inherit'+(boundary?'':';opacity:.4')+'">Preview</button>'
-    +   '<button id="al-go" onclick="alGenerate()" disabled style="flex:1;padding:10px;background:linear-gradient(135deg,#FBBF24,#22C55E);color:#0A1628;font-weight:800;font-size:11px;border:none;border-radius:7px;cursor:pointer;font-family:inherit;opacity:.4">Generate</button>'
+    +   '<button id="al-go" onclick="alGenerate()" disabled title="Run Preview first \u2014 then Generate places the array." style="flex:1;padding:10px;background:rgba(255,255,255,.06);color:#7D95B4;font-weight:800;font-size:11px;border:1px solid rgba(255,255,255,.18);border-radius:7px;cursor:not-allowed;font-family:inherit">Generate</button>'
     + '</div></div>';
   window._alBoundary=boundary;
+  /* The Generate button used to ship as a 40%-opacity gradient on a #0F1D30
+     modal, which read as empty space -- the modal looked like it only offered
+     Cancel and Preview. It is now a legible grey in its disabled state, and
+     Preview is auto-run on open so that when a boundary is already usable the
+     button arrives LIVE (gold-green) rather than waiting on a click nobody
+     knew was required. */
+  if(boundary){ setTimeout(function(){ try{ alPreview(); }catch(e){} }, 0); }
+}
+/* Single source of truth for the Generate button's two visual states.
+   Written into the source rather than patched onto window.* so it cannot be
+   bypassed by internal lexical calls to alPreview()/openAutoLayout(). */
+function _alSetGo(enabled){
+  var go=document.getElementById('al-go'); if(!go) return;
+  go.disabled=!enabled;
+  go.style.opacity='';
+  if(enabled){
+    go.style.background='linear-gradient(135deg,#FBBF24,#22C55E)';
+    go.style.color='#0A1628';
+    go.style.border='none';
+    go.style.cursor='pointer';
+    go.style.boxShadow='0 2px 10px rgba(251,191,36,.35)';
+    go.title='Place the array on the drawing';
+  } else {
+    go.style.background='rgba(255,255,255,.06)';
+    go.style.color='#7D95B4';
+    go.style.border='1px solid rgba(255,255,255,.18)';
+    go.style.cursor='not-allowed';
+    go.style.boxShadow='none';
+    go.title='Nothing fits this boundary yet \u2014 see the note above.';
+  }
 }
 
 /* Find the largest closed shape as boundary; smaller closed shapes flagged
@@ -12195,8 +12229,7 @@ function alPreview(){
         : 'The boundary ('+acres.toFixed(2)+' acres) is smaller than the '
           +layout.setbackFt+' ft perimeter setback leaves room for. Draw a larger area.')
       +'</div>';
-    var go0=document.getElementById('al-go');
-    if(go0){ go0.disabled=true; go0.style.opacity='.4'; }
+    _alSetGo(false);
     return;
   }
 
@@ -12214,8 +12247,7 @@ function alPreview(){
           +layout.tableCount.toLocaleString()+' tables exceeds the '+GM_ROW_DRAW_CAP.toLocaleString()
           +'-table draw cap \u2014 will render as a density fill with counts, not individual tables.</div>'
         : '');
-  var go=document.getElementById('al-go');
-  if(go){ go.disabled=false; go.style.opacity=''; }
+  _alSetGo(true);
 }
 
 function alGenerate(){
@@ -16127,6 +16159,10 @@ const BESS_CATALOG = {
   'GOTION-EDGE-760': {mfr:'Gotion',model:'Gotion EDGE 760 kWh C&I BESS',chem:'LFP',kwh:760,usable:700,kw:380,dur:2,dcv:'1267.2V',eqcost:84740,inv:'Dynapower CPS-1250',ikva:802,xfmr:'1000KVA 480/480V',disco:'1200A 480V',notes:'1267.2 Vdc nominal; 480V 3-phase AC via PCS/transformer. Verify against Gotion submittal.'},
   'AWG-20AWG5MW': {mfr:'Aspen Woods Group',model:'Aspen Woods 20AWG5MW (2.58MW / 5MWh unit)',chem:'LFP',kwh:5015,usable:4750,kw:2580,maxKw:2838,dur:1.94,dcv:'1164.8-1476.8V',eqcost:null,inv:'CBAC-430-HA-M (Grid-Forming PCS)',ikva:2838,xfmr:'3150KVA 690V/MV (13.2kV/34.5kV) step-up',disco:'2500A 690V',greenfield:true,gridForming:true,gridConnectV:'690V 3W+PE',acCurrent:2158,dcStrings:12,stringModel:'LS417',cells:'3.2V/314Ah',cycleLife:'8,000 @ 70% / 0.5C 25C',dims:'6058x2438x2896mm',weight:'44t',cooling:'Liquid (battery + PCS)',bms:'SPAC BMS',controller:'GridPoint Controller (GPC)',certs:'UL9540, IEC62933, UN3536, CE',notes:'GRID-FORMING (VSG) containerized BESS UNIT for GREENFIELD/utility sites. Rated AC 2,580kW nominal / 2,838kW max; 5,015kWh @ 20ft. Interconnects 690V 3W+PE -> step-up to MV (13.2kV/34.5kV) utility. Seamless PQ<->GFM (VSG) mode switching, inertia emulation + autonomous freq/voltage regulation. PRICE TBD -- enter manually. For a full 5MW/20MWh site use the 4-unit system preset. Verify final Aspen Woods submittal + interconnection study.'},
   'AWG-5MW-SYSTEM': {mfr:'Aspen Woods Group',model:'Aspen Woods 5MW / 20MWh System (4× 20AWG5MW)',chem:'LFP',kwh:20060,usable:19000,kw:5000,maxKw:11352,dur:4.0,dcv:'1164.8-1476.8V',eqcost:null,inv:'4× CBAC-430-HA-M (Grid-Forming PCS)',ikva:11352,xfmr:'4× 3150KVA 690V/MV step-up → shared MV collector bus',disco:'MV collector + POI breaker',greenfield:true,gridForming:true,isSystem:true,unitKey:'AWG-20AWG5MW',unitQty:4,poiCapKw:5000,gridConnectV:'690V 3W+PE (per unit) → MV collector',acCurrent:'2,158A per unit',dcStrings:'12 per unit (48 total)',stringModel:'LS417',cells:'3.2V/314Ah',cycleLife:'8,000 @ 70% / 0.5C 25C',dims:'4× 6058x2438x2896mm',weight:'~176t (4× 44t)',cooling:'Liquid (battery + PCS)',bms:'SPAC BMS (per unit)',controller:'GridPoint Controller (GPC)',certs:'UL9540, IEC62933, UN3536, CE',notes:'5MW / 20MWh GREENFIELD SITE = 4× 20AWG5MW containers on a shared MV collector bus. Installed AC capacity 10.32MW nominal (4×2.58MW); POI-rated / offered at 5MW (4-hour duration @ 20MWh). Each unit: BESS→GFM PCS(690V)→step-up→shared MV collector→POI. Grid-forming VSG. PRICE TBD -- enter manually. Verify interconnection study + POI cap with utility.'},
+  'FENECON-IND-XXL': {mfr:'FENECON',model:'FENECON Industrial XXL — 2.508 MW / 5.015 MWh (20ft Liquid-Cooled)',chem:'LFP',kwh:5015,usable:4750,kw:2508,dur:2,dcv:'1331.2V (1,040–1,500V)',eqcost:null,inv:'Central Inverter, 2.5 MW class (3-ph 480V AC)',ikva:2508,xfmr:'3000KVA 480/480V',disco:'4000A 480V',
+    cells:'3.2V / 314Ah',dcStrings:12,stringModel:'8 packs per string',cooling:'Liquid heating & cooling',bms:'FENECON BMS',controller:'FEMS (open-source core)',gridConnectV:'480V 3-phase AC',
+    certs:'UL 9540, UL 9540A, UL 1973, UN 38.3, UN 3536',dims:'20 ft x 8.0 ft x 9.5 ft',weight:'~95,000 lbs',
+    notes:'FENECON Industrial XXL, 20ft container. 5,015 kWh / 2,508 kW, LFP 314Ah cell, 12P x (1P52S x 8S), 12 strings x 8 packs. 1,331.2 Vdc nominal, 1,040-1,500 Vdc range, max I/O current 2,460 A. Central PCS 2.5 MW class, 3-phase 480 V AC, IEEE 1547 / UL 1741 SA, >95% round-trip efficiency. Liquid cooled, IP55, system-level fire protection, -25C to 55C (derate >50C). LAN/RS485/RS232; FEMS open API, DERMS / VPP / SCADA ready; FEMS EMS included with free firmware + app updates. Usable kWh shown at ~95% DoD -- CONFIRM with FENECON. PRICE: quote required. FENECON USA, Greenville SC, +1 (864) 920-7758.'},
   'GOTION-GRID-3421': {mfr:'Gotion',model:'Gotion Grid 3.42 MWh Container',chem:'LFP',kwh:3421.4,usable:3150,kw:1710,dur:2,dcv:'~1267V',eqcost:381486,inv:'Dynapower MPS-1250',ikva:1710,xfmr:'2000KVA 480/480V',disco:'3200A 480V',notes:'Model ESD1267-05P3421. Medium-voltage interconnection via PCS/transformer.'},
   'GOTION-GRID-3441': {mfr:'Gotion',model:'Gotion Grid 3.44 MWh Container',chem:'LFP',kwh:3440.6,usable:3165,kw:1720,dur:2,dcv:'~1228.8V',eqcost:383627,inv:'Dynapower MPS-1250',ikva:1720,xfmr:'2000KVA 480/480V',disco:'3200A 480V',notes:'~1228.8 Vdc class. 0.5P nominal. Verify final Gotion container submittal.'},
   'GOTION-GRID-4608': {mfr:'Gotion',model:'Gotion GRID 4608 kWh Container (Liquid-Cooled)',chem:'LFP',kwh:4608,usable:4300,kw:2304,dur:2,dcv:'1280V',eqcost:null,inv:'Dynapower MPS-2500',ikva:2304,xfmr:'3000KVA 480/480V',disco:'4000A 480V',notes:'Model ESD1280-05P4608. LFP-300Ah cell, 12P400S config. Liquid-cooled 20ft container. IP54. NFPA855 compliant. Quote required.'},
@@ -60714,6 +60750,9 @@ window._crmToastModal=_crmToastModal;
   function restyleButton() {
     var go = el('al-go');
     if (!go) return;
+    /* The source now owns this styling (_alSetGo). Defer to it so the two
+       cannot drift apart; the block below is the pre-source fallback. */
+    if (typeof window._alSetGo === 'function') { window._alSetGo(!go.disabled); return; }
     go.style.opacity = '';
     if (go.disabled) {
       go.style.background = 'rgba(255,255,255,.05)';
