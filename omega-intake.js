@@ -329,6 +329,9 @@
         return { key: d.key, label: d.label, requested: false, status: 'not_started', outputUrl: '', note: '', updatedAt: null };
       }),
       activity: [],
+      messages: [],
+      /* Client-reported payment. quote.paymentStatus stays ClearSky's. */
+      payment: { claimedAt: null, claimedBy: '', reference: '' },
       admin: { assignee: '', priority: 'normal', internalNotes: '', dueDate: '' },
       notify: { unreadForClient: false, lastNotifiedAt: null, lastMessage: '' }
     };
@@ -756,6 +759,98 @@
     return store().save(rec);
   }
 
+  /* -------------------------------------------------------------- messages
+     A two-way thread on the record. Deliberately an array on the document
+     rather than a subcollection: both sides already hold read+update on this
+     one document, so a thread costs no new rules and no second read.
+
+     `side` is what the reader needs — 'client' or 'omega' — not the role,
+     because a rep and an administrator are the same voice to a customer.
+
+     Capped at 300. A Firestore document has a 1 MB ceiling and a thread is
+     the one field with no natural bound; losing the oldest note is a far
+     better failure than a save that starts rejecting at 1 MB with no
+     explanation.                                                            */
+  var MSG_CAP = 300;
+
+  function postMessage(rec, text, side, actor) {
+    text = String(text || '').trim();
+    if (!text) return Promise.reject(new Error('Nothing to send.'));
+    rec.messages = rec.messages || [];
+    rec.messages.push({
+      id: uid('m'),
+      at: nowIso(),
+      side: (side === 'client') ? 'client' : 'omega',
+      by: actor || '',
+      byName: actor || '',
+      text: text.slice(0, 4000)
+    });
+    if (rec.messages.length > MSG_CAP) rec.messages = rec.messages.slice(-MSG_CAP);
+
+    /* Flag the OTHER side. A message the sender has to mark unread for
+       themselves would be noise. */
+    rec.notify = rec.notify || {};
+    if (side === 'client') {
+      rec.notify.unreadForOmega = true;
+    } else {
+      rec.notify.unreadForClient = true;
+      rec.notify.lastNotifiedAt = nowIso();
+      rec.notify.lastMessage = text.slice(0, 240);
+    }
+    logActivity(rec, 'message',
+      (side === 'client' ? 'Client wrote: ' : 'Message to client: ') + text.slice(0, 120), actor);
+    return store().save(rec);
+  }
+
+  function markMessagesRead(rec, side) {
+    rec.notify = rec.notify || {};
+    if (side === 'client') rec.notify.unreadForClient = false;
+    else rec.notify.unreadForOmega = false;
+    return store().save(rec);
+  }
+
+  function unreadFor(rec, side) {
+    var n = rec.notify || {};
+    return side === 'client' ? !!n.unreadForClient : !!n.unreadForOmega;
+  }
+
+  /* ------------------------------------------------------- payment (client)
+     The client says they have paid; ClearSky confirms the money arrived.
+
+     TWO FIELDS, DELIBERATELY. quote.paymentStatus is pinned to ClearSky by the
+     rules, and it should be: the party paying must not be the party who
+     records the payment as received. This writes a separate top-level
+     `payment` map the client CAN write, which shows up on the ops console as
+     "client says they paid" and waits for a human to confirm.
+
+     It is a claim, not a receipt, and the UI on both sides says so.          */
+  function claimPayment(rec, actor, reference) {
+    rec.payment = rec.payment || {};
+    rec.payment.claimedAt = nowIso();
+    rec.payment.claimedBy = actor || '';
+    rec.payment.reference = String(reference || '').slice(0, 120);
+    rec.notify = rec.notify || {};
+    rec.notify.unreadForOmega = true;
+    logActivity(rec, 'payment', 'Client reported payment sent'
+      + (reference ? ' (ref ' + rec.payment.reference + ')' : '') + '.', actor);
+    return store().save(rec);
+  }
+
+  /* Where the money actually stands, in one place, so three pages don't each
+     invent their own precedence. */
+  function paymentState(rec) {
+    var q = rec.quote || {}, p = rec.payment || {};
+    if (q.paymentStatus === 'paid') return { key:'paid',     label:'Paid',              at:q.paidAt };
+    if (p.claimedAt)                return { key:'claimed',  label:'Payment reported',  at:p.claimedAt };
+    if (q.paymentUrl)               return { key:'due',      label:'Payment due',       at:null };
+    if (typeof q.total === 'number')return { key:'awaiting', label:'Awaiting a payment link', at:null };
+    return { key:'none', label:'', at:null };
+  }
+
+  /* Standard quote rungs. Two people pricing the same job should land on the
+     same number; `custom` stays available for the jobs that genuinely are. */
+  var QUOTE_TIERS = [100, 250, 500, 750, 1000];
+
   /* ------------------------------------------------------- quoting (path 2) */
   /* NO DEFAULT PRICES SHIP IN THIS FILE, deliberately. A fabricated number in
      a customer-facing quote is worse than a blank one — the client either pays
@@ -887,6 +982,8 @@
     setStaffRole: setStaffRole, setStaffActive: setStaffActive,
     isDomainStaff: isDomainStaff, canWorkQueue: canWorkQueue, canAdminister: canAdminister,
     setPaymentLink: setPaymentLink, markPaid: markPaid,
+    postMessage: postMessage, markMessagesRead: markMessagesRead, unreadFor: unreadFor,
+    claimPayment: claimPayment, paymentState: paymentState, QUOTE_TIERS: QUOTE_TIERS,
     projectSeed: projectSeed, listProjects: listProjects,
     createProject: createProject, attachProject: attachProject,
     priceBook: priceBook, listPrice: listPrice, estimate: estimate,

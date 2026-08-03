@@ -225,6 +225,52 @@ textarea{min-height:70px;resize:vertical}
 @media (prefers-reduced-motion: reduce){*{transition:none!important;animation:none!important}}
 :focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 .sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+
+/* ---------- project portal (client-facing status, quote, payment, messages) ---------- */
+.pp{border:1px solid var(--line,#E4E8EC);border-radius:12px;background:#fff;padding:16px 18px;
+  margin-bottom:18px}
+.pp-h{display:flex;align-items:flex-start;justify-content:space-between;gap:14px;flex-wrap:wrap}
+.pp-k{font-size:10.5px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:#8FA0AE}
+.pp-t{font-size:17px;font-weight:700;color:var(--ink,#0F2733);margin-top:3px;letter-spacing:-.2px}
+.pp-flow{display:flex;gap:6px;margin:16px 0 4px;flex-wrap:wrap}
+.pp-step{flex:1 1 90px;min-width:78px}
+.pp-dot{display:block;height:4px;border-radius:3px;background:#E4E8EC}
+.pp-step.done .pp-dot{background:#16A34A}
+.pp-step.now .pp-dot{background:#0070F2}
+.pp-lbl{display:block;font-size:11px;color:#8FA0AE;margin-top:6px}
+.pp-step.now .pp-lbl{color:#0070F2;font-weight:600}
+.pp-step.done .pp-lbl{color:#5A7180}
+.pp-blurb{font-size:13px;color:var(--muted,#5A7180);margin-top:10px;line-height:1.55}
+.pp-card{border:1px solid var(--line,#E4E8EC);border-radius:10px;padding:14px 15px;margin-top:14px;
+  background:#FAFBFC}
+.pp-ct{font-size:10.5px;font-weight:700;letter-spacing:.9px;text-transform:uppercase;color:#8FA0AE;
+  margin-bottom:9px}
+.pp-amt{font:500 24px/1.1 'DM Mono',ui-monospace,monospace;color:#0F2733;letter-spacing:-.8px}
+.pp-lines{list-style:none;margin:11px 0 0;padding:0;font-size:13px}
+.pp-lines li{display:flex;justify-content:space-between;gap:12px;padding:5px 0;
+  border-bottom:1px solid #EEF1F4;color:var(--muted,#5A7180)}
+.pp-lines li:last-child{border-bottom:none}
+.pp-note{font-size:13px;line-height:1.55;color:var(--muted,#5A7180);margin-top:9px}
+.pp-when{font-size:11.5px;color:#A6B3BF;margin-top:7px}
+.pp-fine{font-size:11.5px;color:#8FA0AE;margin-top:8px;line-height:1.5}
+.pp-row{display:flex;gap:8px;margin-top:12px;flex-wrap:wrap;align-items:center}
+.pp-ok{font-size:13px;color:#16A34A;font-weight:600;margin-top:9px}
+.pp-no{font-size:13px;color:#DC2626;font-weight:600;margin-top:9px}
+.pp-thread{max-height:280px;overflow-y:auto;padding:2px}
+.pp-msg{margin-bottom:12px;max-width:88%}
+.pp-msg:last-child{margin-bottom:0}
+.pp-who{font-size:10.5px;font-weight:700;letter-spacing:.5px;text-transform:uppercase;color:#8FA0AE;
+  margin-bottom:3px}
+.pp-bub{font-size:13px;line-height:1.55;padding:9px 12px;border-radius:10px;white-space:pre-wrap;
+  word-break:break-word;background:#fff;border:1px solid var(--line,#E4E8EC)}
+.pp-msg.me{margin-left:auto}
+.pp-msg.me .pp-who{text-align:right}
+.pp-msg.me .pp-bub{background:#E8F1FE;border-color:#CBDDF0;color:#123A66}
+.pp-msg .pp-when{margin-top:3px}
+.pp-msg.me .pp-when{text-align:right}
+#ppMsg{width:100%;margin-top:12px;border:1.5px solid #DDE3E9;border-radius:9px;padding:10px 12px;
+  font:400 13.5px/1.5 inherit;color:inherit;background:#fff;outline:none;resize:vertical}
+#ppMsg:focus{border-color:#0070F2}
 </style>
 </head>
 <body>
@@ -887,7 +933,7 @@ textarea{min-height:70px;resize:vertical}
       var right = el('div', 'right');
       right.appendChild(el('span', 'badge ' + st.tone, st.label));
       if (r.notify && r.notify.unreadForClient) right.appendChild(el('span', 'badge good', 'New update'));
-      right.appendChild(el('span', 'mono', new Date(r.updatedAt).toLocaleDateString()))
+      right.appendChild(el('span', 'mono', when(r.updatedAt)))
         .style.cssText = 'font-size:11px;color:var(--faint)';
       item.appendChild(right);
 
@@ -907,40 +953,232 @@ textarea{min-height:70px;resize:vertical}
   }
 
   /* ---------- delivered notice ---------- */
-  function renderNotice() {
-    var slot = $('#noticeSlot'); slot.innerHTML = '';
-    var done = (rec.deliverables || []).filter(function (d) { return d.requested && d.outputUrl; });
-    var unread = rec.notify && rec.notify.unreadForClient;
-    if (!unread && !done.length) return;
-
-    var n = el('div', 'notice');
-    var body = el('div');
-    body.appendChild(el('div', 'nt', rec.status === 'delivered' ? 'Your package is ready' : svc('Update from {svc}')));
-    body.appendChild(el('div', 'nb', (rec.notify && rec.notify.lastMessage) || 'There is new activity on this project.'));
-    if (done.length) {
-      var ul = el('ul', 'outlist');
-      done.forEach(function (d) {
-        var li = el('li');
-        var a = el('a', null, d.label); a.href = d.outputUrl; a.target = '_blank'; a.rel = 'noopener';
-        li.appendChild(a);
-        if (d.note) { var nn = el('span', null, d.note);
-          nn.style.cssText = 'color:var(--muted);font-size:12px'; li.appendChild(nn); }
-        ul.appendChild(li);
-      });
-      body.appendChild(ul);
-    }
-    if (unread) {
-      var ack = el('button', 'btn sm', 'Mark as read'); ack.type = 'button';
-      ack.style.marginTop = '10px';
-      ack.addEventListener('click', function () {
-        OI.acknowledge(rec).then(function () { renderNotice(); refreshList(); });
-      });
-      body.appendChild(ack);
-    }
-    n.appendChild(body);
-    slot.appendChild(n);
+function esc(v) {
+    return String(v == null ? '' : v)
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+  }
+  /* Dates on this record are ISO strings. Anything else — a Firestore
+     Timestamp written by another tool — used to render as "Invalid Date",
+     which reads as a bug in the client's own project list. */
+  function when(v, withTime) {
+    if (!v) return '';
+    var t = null;
+    if (typeof v === 'string') { var p = Date.parse(v); if (!isNaN(p)) t = p; }
+    else if (typeof v === 'number') t = v;
+    else if (v && typeof v.toDate === 'function') { try { t = v.toDate().getTime(); } catch (e) {} }
+    else if (v instanceof Date) t = v.getTime();
+    else if (v && v.seconds) t = v.seconds * 1000;
+    if (t == null) return '';
+    var d = new Date(t);
+    return withTime
+      ? d.toLocaleDateString() + ' \u00b7 ' + d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
+      : d.toLocaleDateString();
+  }
+  function ago(v) {
+    var s = when(v, true);
+    if (!s) return '';
+    var t = Date.parse(typeof v === 'string' ? v : when(v, true));
+    if (isNaN(t)) return s;
+    var diff = Date.now() - t;
+    if (diff < 60000) return 'just now';
+    if (diff < 3600000) return Math.round(diff / 60000) + 'm ago';
+    if (diff < 86400000) return Math.round(diff / 3600000) + 'h ago';
+    if (diff < 604800000) return Math.round(diff / 86400000) + 'd ago';
+    return s;
   }
 
+  /* ---------- project portal ----------
+     Everything the customer needs to follow and act on the job, on the record
+     they already opened: where it is, what it costs, how to pay, and a way to
+     talk to whoever is building it.
+
+     Before this, a submitted project showed a status badge and nothing else —
+     a quote could be sent and the client had no way to see the number, let
+     alone accept it. */
+  function renderNotice() {
+    var slot = $('#noticeSlot');
+    slot.innerHTML = '';
+    if (!isExisting || rec.status === 'draft') return;
+
+    var st = OI.STATUS[rec.status] || { label: rec.status, stage: 0, tone: 'muted', blurb: '' };
+    var q = rec.quote || {};
+    var pay = OI.paymentState ? OI.paymentState(rec) : { key: 'none', label: '' };
+    var total = (typeof q.total === 'number') ? q.total : null;
+    var acc = rec.acceptance || {};
+    var done = (rec.deliverables || []).filter(function (d) { return d.requested && d.outputUrl; });
+    var msgs = (rec.messages || []).slice().sort(function (a, b) {
+      return Date.parse(a.at || 0) - Date.parse(b.at || 0);
+    });
+    var html = '';
+
+    /* ── where it is ── */
+    html += '<div class="pp">';
+    html += '<div class="pp-h"><div><div class="pp-k">Your project</div>'
+         +  '<div class="pp-t">' + esc(rec.project.name || 'Untitled project') + '</div></div>'
+         +  '<span class="badge ' + st.tone + '">' + esc(st.label) + '</span></div>';
+
+    html += '<div class="pp-flow">';
+    OI.PIPELINE.forEach(function (label, i) {
+      var cls = i < st.stage ? 'done' : (i === st.stage ? 'now' : '');
+      html += '<div class="pp-step ' + cls + '"><span class="pp-dot"></span>'
+           +  '<span class="pp-lbl">' + esc(label) + '</span></div>';
+    });
+    html += '</div>';
+    if (st.blurb) html += '<div class="pp-blurb">' + esc(st.blurb) + '</div>';
+
+    /* ── the quote ── */
+    if (total !== null || rec.status === 'quoted') {
+      html += '<div class="pp-card"><div class="pp-ct">Quote</div>';
+      if (total === null) {
+        html += '<div class="pp-note">A fee is being prepared. Nothing to approve yet.</div>';
+      } else {
+        html += '<div class="pp-amt">' + esc(OI.money(total, q.currency)) + '</div>';
+        if ((q.lines || []).length) {
+          html += '<ul class="pp-lines">';
+          q.lines.forEach(function (l) {
+            html += '<li><span>' + esc(l.label || l.key) + '</span><span class="mono">'
+                 +  esc(OI.money(l.amount, q.currency)) + '</span></li>';
+          });
+          html += '</ul>';
+        }
+        if (q.note) html += '<div class="pp-note">' + esc(q.note) + '</div>';
+        if (q.sentAt) html += '<div class="pp-when">Sent ' + esc(when(q.sentAt)) + '</div>';
+
+        if (rec.status === 'quoted') {
+          html += '<div class="pp-row">'
+               +  '<button class="btn primary" id="ppAccept" type="button">Accept this quote</button>'
+               +  '<button class="btn sm" id="ppDecline" type="button">Decline</button></div>'
+               +  '<div class="pp-fine">Accepting starts the work. You will be asked to pay '
+               +  'before delivery, not now.</div>';
+        } else if (acc.state === 'accepted') {
+          html += '<div class="pp-ok">Accepted ' + esc(when(acc.at))
+               +  (acc.poNumber ? ' \u00b7 PO ' + esc(acc.poNumber) : '') + '</div>';
+        } else if (acc.state === 'declined') {
+          html += '<div class="pp-no">Declined ' + esc(when(acc.at))
+               +  (acc.note ? ' \u2014 ' + esc(acc.note) : '') + '</div>';
+        }
+      }
+      html += '</div>';
+    }
+
+    /* ── payment ── */
+    if (pay.key !== 'none') {
+      html += '<div class="pp-card"><div class="pp-ct">Payment</div>';
+      if (pay.key === 'paid') {
+        html += '<div class="pp-ok">Paid ' + esc(when(q.paidAt)) + '. Nothing outstanding.</div>';
+      } else if (pay.key === 'claimed') {
+        html += '<div class="pp-note">You reported payment ' + esc(when(rec.payment.claimedAt))
+             +  (rec.payment.reference ? ' \u00b7 ref ' + esc(rec.payment.reference) : '')
+             +  '. We\u2019ll confirm once it lands.</div>';
+      } else if (pay.key === 'due') {
+        html += '<div class="pp-amt">' + esc(OI.money(total, q.currency)) + ' due</div>'
+             +  '<div class="pp-row">'
+             +  '<a class="btn primary" href="' + esc(q.paymentUrl) + '" target="_blank" '
+             +  'rel="noopener">Pay now</a>'
+             +  '<button class="btn sm" id="ppPaid" type="button">I\u2019ve paid</button></div>'
+             +  '<div class="pp-fine">Opens the payment page in a new tab. Tell us afterwards '
+             +  'and we\u2019ll confirm it against the account.</div>';
+      } else {
+        html += '<div class="pp-note">A payment link will appear here once the work is '
+             +  'scheduled.</div>';
+      }
+      html += '</div>';
+    }
+
+    /* ── delivered files ── */
+    if (done.length) {
+      html += '<div class="pp-card"><div class="pp-ct">Your files</div><ul class="outlist">';
+      done.forEach(function (d) {
+        html += '<li><a href="' + esc(d.outputUrl) + '" target="_blank" rel="noopener">'
+             +  esc(d.label) + '</a>'
+             +  (d.note ? '<span style="color:var(--muted);font-size:12px">' + esc(d.note)
+                        + '</span>' : '') + '</li>';
+      });
+      html += '</ul></div>';
+    }
+
+    /* ── messages ── */
+    html += '<div class="pp-card"><div class="pp-ct">Messages</div>';
+    if (!msgs.length) {
+      html += '<div class="pp-note">No messages yet. Ask anything about this project here \u2014 '
+           +  'it goes to whoever is working on it.</div>';
+    } else {
+      html += '<div class="pp-thread">';
+      msgs.forEach(function (m) {
+        var mine = m.side === 'client';
+        html += '<div class="pp-msg ' + (mine ? 'me' : 'them') + '">'
+             +  '<div class="pp-who">' + esc(mine ? 'You' : (SVC || 'Omega')) + '</div>'
+             +  '<div class="pp-bub">' + esc(m.text || '') + '</div>'
+             +  '<div class="pp-when">' + esc(ago(m.at)) + '</div></div>';
+      });
+      html += '</div>';
+    }
+    html += '<textarea id="ppMsg" rows="3" placeholder="Write a message\u2026"></textarea>'
+         +  '<div class="pp-row"><button class="btn sm" id="ppSend" type="button">Send</button></div>';
+    html += '</div>';
+
+    if (rec.notify && rec.notify.unreadForClient) {
+      html += '<div class="pp-row"><button class="btn sm" id="ppAck" type="button">'
+           +  'Mark updates as read</button></div>';
+    }
+    html += '</div>';
+
+    slot.innerHTML = html;
+
+    /* ---- actions ---- */
+    var me = OI.currentEmail();
+    function after(msg) {
+      return function () { hydrate(); renderNotice(); refreshList(); if (msg) setMsg(msg); };
+    }
+    function fail(e) { setMsg((e && e.message) || 'That didn\u2019t save. Try again.'); }
+
+    var bA = $('#ppAccept');
+    if (bA) bA.addEventListener('click', function () {
+      var po = prompt('Accepting ' + OI.money(total, q.currency)
+        + '.\n\nPO or reference number (optional):', '');
+      if (po === null) return;
+      bA.disabled = true;
+      OI.acceptQuote(rec, me, po).then(after('Quote accepted. We\u2019ll get started.'))
+        .catch(function (e) { bA.disabled = false; fail(e); });
+    });
+
+    var bD = $('#ppDecline');
+    if (bD) bD.addEventListener('click', function () {
+      var why = prompt('Declining this quote. Anything we should know?', '');
+      if (why === null) return;
+      bD.disabled = true;
+      OI.declineQuote(rec, me, why).then(after('Quote declined.'))
+        .catch(function (e) { bD.disabled = false; fail(e); });
+    });
+
+    var bP = $('#ppPaid');
+    if (bP) bP.addEventListener('click', function () {
+      var ref = prompt('Thanks. A payment reference or confirmation number, if you have one:', '');
+      if (ref === null) return;
+      bP.disabled = true;
+      OI.claimPayment(rec, me, ref)
+        .then(after('Thanks \u2014 we\u2019ll confirm once it lands.'))
+        .catch(function (e) { bP.disabled = false; fail(e); });
+    });
+
+    var bS = $('#ppSend');
+    if (bS) bS.addEventListener('click', function () {
+      var box = $('#ppMsg');
+      var text = (box && box.value || '').trim();
+      if (!text) return;
+      bS.disabled = true;
+      OI.postMessage(rec, text, 'client', me).then(after())
+        .catch(function (e) { bS.disabled = false; fail(e); });
+    });
+
+    var bK = $('#ppAck');
+    if (bK) bK.addEventListener('click', function () {
+      OI.markMessagesRead(rec, 'client').then(after()).catch(fail);
+    });
+  }
+
+  
   /* ---------- views ---------- */
   function showView(v) {
     $('#view-new').hidden = v !== 'new';
