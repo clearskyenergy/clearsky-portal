@@ -186,6 +186,25 @@ textarea:focus,input:focus{border-color:var(--accent)}
   <aside class="detail" id="detail" hidden></aside>
 </div>
 
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+<script src="./omega-tools.js"></script>
+<script>
+/* Same project and same values as intake.html and every other OMEGA tool. */
+window.OMEGA_FIREBASE = window.OMEGA_FIREBASE || {
+  apiKey:            'REPLACE_ME',
+  authDomain:        'REPLACE_ME.firebaseapp.com',
+  projectId:         'REPLACE_ME',
+  storageBucket:     'REPLACE_ME.appspot.com',
+  messagingSenderId: 'REPLACE_ME',
+  appId:             'REPLACE_ME'
+};
+if (window.firebase && !firebase.apps.length) {
+  try { firebase.initializeApp(window.OMEGA_FIREBASE); }
+  catch (e) { console.warn('[intake-admin] firebase init failed', e); }
+}
+</script>
 <script src="./omega-intake.js"></script>
 <script>
 (function () {
@@ -654,7 +673,108 @@ textarea:focus,input:focus{border-color:var(--accent)}
 
   document.addEventListener('keydown', function (e) { if (e.key === 'Escape' && sel) closeDetail(); });
 
-  load();
+  /* ---------- authentication & staff gate ----------
+     The Firestore rules are the real boundary: isAdmin() matches
+     @clearsky-usa.com and @csebuilders.com, and listAll() is an unfiltered
+     query, which Firestore rejects outright for anyone else — a tenant who
+     found this URL gets a permission error and an empty table, not a peek at
+     other customers.
+
+     The check below is not that boundary. It exists so a person who signs in
+     with the wrong account sees WHY the queue is empty instead of an
+     unexplained blank screen and a console error. */
+  var STAFF_DOMAINS = ['clearsky-usa.com', 'csebuilders.com'];
+  function isStaff(email) {
+    var d = String(email || '').split('@')[1];
+    return !!d && STAFF_DOMAINS.indexOf(d.toLowerCase()) >= 0;
+  }
+
+  function gateScreen(title, body, action) {
+    document.body.innerHTML =
+      '<div style="max-width:500px;margin:14vh auto;padding:0 24px;font-family:system-ui;color:#0F151C">' +
+        '<div style="font-family:ui-monospace,monospace;font-size:10px;letter-spacing:.14em;' +
+          'text-transform:uppercase;color:#6B7783">ClearSky Omega \u00b7 Intake queue</div>' +
+        '<h1 id="gTitle" style="font-size:21px;margin:8px 0 10px;letter-spacing:-.01em"></h1>' +
+        '<p id="gBody" style="color:#39434E;font-size:14px;line-height:1.6"></p>' +
+        '<div id="gActions" style="display:flex;gap:10px;margin-top:18px"></div>' +
+        '<p id="gErr" style="color:#B4302A;font-size:13px;margin-top:14px"></p>' +
+      '</div>';
+    document.getElementById('gTitle').textContent = title;
+    document.getElementById('gBody').textContent = body;
+    if (action) {
+      var b = document.createElement('button');
+      b.type = 'button'; b.textContent = action.label;
+      b.style.cssText = 'border:1px solid #0E5FA8;background:#0E5FA8;color:#fff;' +
+        'border-radius:8px;padding:9px 16px;font:inherit;font-weight:550;cursor:pointer';
+      b.addEventListener('click', action.onClick);
+      document.getElementById('gActions').appendChild(b);
+    }
+    return { err: function (m) { document.getElementById('gErr').textContent = m || ''; } };
+  }
+
+  function signIn() {
+    var auth = firebase.auth();
+    var provider = new firebase.auth.GoogleAuthProvider();
+    gateScreen('Signing you in\u2026', 'One moment.');
+    auth.signInWithPopup(provider)['catch'](function (e) {
+      if (e && (e.code === 'auth/popup-blocked' ||
+                e.code === 'auth/cancelled-popup-request' ||
+                e.code === 'auth/operation-not-supported-in-this-environment')) {
+        return auth.signInWithRedirect(provider);
+      }
+      throw e;
+    })['catch'](function (e) {
+      promptSignIn().err(e && e.message ? e.message : 'Sign-in failed.');
+    });
+  }
+  function promptSignIn() {
+    return gateScreen(
+      'Sign in to the intake queue',
+      'Use your ClearSky staff account. This console runs on its own domain, ' +
+      'so it keeps its own sign-in.',
+      { label: 'Sign in', onClick: signIn });
+  }
+
+  function configLooksUnset() {
+    var c = window.OMEGA_FIREBASE || {};
+    return !c.apiKey || String(c.apiKey).indexOf('REPLACE_ME') === 0;
+  }
+
+  if (window.firebase && firebase.apps.length && firebase.auth) {
+    if (configLooksUnset()) {
+      gateScreen('Firebase config not filled in',
+        'intake-admin.html still has REPLACE_ME placeholders in window.OMEGA_FIREBASE. ' +
+        'Paste the same config the other OMEGA tools use.');
+    } else {
+      var booted = false;
+      firebase.auth().setPersistence(firebase.auth.Auth.Persistence.LOCAL)
+        ['catch'](function () {})
+        .then(function () { return firebase.auth().getRedirectResult()['catch'](function () {}); })
+        .then(function () {
+          firebase.auth().onAuthStateChanged(function (u) {
+            if (booted) return;
+            if (!u) { promptSignIn(); return; }
+            if (!isStaff(u.email)) {
+              gateScreen('Not a ClearSky staff account',
+                'You are signed in as ' + u.email + '. The intake queue reads submissions ' +
+                'across every tenant, so it is limited to clearsky-usa.com and ' +
+                'csebuilders.com accounts. Sign out and use your staff address.',
+                { label: 'Sign out', onClick: function () {
+                    firebase.auth().signOut().then(function () { location.reload(); });
+                  } });
+              return;
+            }
+            booted = true;
+            admin = { uid: u.uid, email: u.email, displayName: u.displayName };
+            $('#who').textContent = u.email;
+            load();
+          });
+        });
+    }
+  } else {
+    // Local dev with no Firebase — the data layer uses localStorage.
+    load();
+  }
 })();
 </script>
 </body>
