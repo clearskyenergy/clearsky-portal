@@ -447,6 +447,8 @@ textarea{min-height:70px;resize:vertical}
 
 <div class="actionbar" id="actionbar">
   <span class="msg" id="statusMsg"></span>
+  <button class="btn" type="button" id="btnDelete" hidden
+     style="border-color:#E3C4C2;color:#B4302A">Delete</button>
   <button class="btn" type="button" id="btnNew">New intake</button>
   <button class="btn" type="button" id="btnSave">Save draft</button>
   <button class="btn primary" type="button" id="btnSubmit">Submit to Omega</button>
@@ -522,6 +524,7 @@ textarea{min-height:70px;resize:vertical}
   var rec = OI.blankRecord(user);
   var all = [];
   var dirty = false;
+  var isExisting = false;   // opened from My projects, not a fresh form
   var editorProjects = [];
 
   function setMsg(t) { $('#statusMsg').textContent = t || ''; }
@@ -540,6 +543,10 @@ textarea{min-height:70px;resize:vertical}
     Array.prototype.forEach.call(document.querySelectorAll('[data-bind]'), function (n) {
       n.addEventListener('input', function () {
         setPath(rec, n.dataset.bind, n.value); markDirty();
+        if (n.dataset.bind === 'project.name') {
+          $('#railTitle').textContent = rec.project.name || 'This intake';
+          syncRecordChrome();
+        }
       });
       n.addEventListener('change', function () {
         setPath(rec, n.dataset.bind, n.value); markDirty();
@@ -809,7 +816,8 @@ textarea{min-height:70px;resize:vertical}
       return OI.store().save(r);
     };
     return fn(rec, user.email).then(function () {
-      dirty = false; setMsg('Saved ' + new Date().toLocaleTimeString() + '.');
+      dirty = false; isExisting = true; syncRecordChrome();
+      setMsg('Saved ' + new Date().toLocaleTimeString() + '.');
       refreshList();
     }).catch(function (e) { setMsg('Could not save: ' + e.message); });
   }
@@ -831,6 +839,7 @@ textarea{min-height:70px;resize:vertical}
   $('#btnNew').addEventListener('click', function () {
     if (dirty && !confirm('Start a new intake? Unsaved changes will be lost.')) return;
     rec = OI.blankRecord(user);
+    isExisting = false;
     hydrate(); showView('new'); setMsg('New intake started.');
   });
 
@@ -882,7 +891,13 @@ textarea{min-height:70px;resize:vertical}
         .style.cssText = 'font-size:11px;color:var(--faint)';
       item.appendChild(right);
 
-      function open() { rec = OI.clone(r); hydrate(); showView('new'); window.scrollTo(0, 0); }
+      function open() {
+        rec = OI.clone(r);
+        isExisting = true;
+        hydrate();
+        showView('new');
+        window.scrollTo(0, 0);
+      }
       item.addEventListener('click', open);
       item.addEventListener('keydown', function (ev) {
         if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); open(); }
@@ -939,6 +954,39 @@ textarea{min-height:70px;resize:vertical}
     t.addEventListener('click', function () { showView(t.dataset.view); });
   });
 
+  /* ---------- which record am I looking at? ----------
+     Without this the tab still said "New intake" while a saved record was
+     loaded, so the only way to tell them apart was to notice the form was
+     already filled in. On an empty saved record there was no way to tell at
+     all — which is exactly the case that looked broken. */
+  function syncRecordChrome() {
+    var name = rec.project.name || 'Untitled project';
+    $('#tab-new').textContent = isExisting ? ('Editing \u00b7 ' + name) : 'New intake';
+
+    /* The rules allow a client to delete only what was never submitted.
+       Anything priced or in production is ClearSky's work product too, so the
+       button is hidden rather than shown-and-refused. */
+    var deletable = isExisting && (rec.status === 'draft' || rec.status === 'saved');
+    $('#btnDelete').hidden = !deletable;
+  }
+
+  $('#btnDelete').addEventListener('click', function () {
+    var name = rec.project.name || 'this untitled record';
+    if (!confirm('Delete ' + name + '? This cannot be undone.')) return;
+    $('#btnDelete').disabled = true;
+    OI.store().remove(rec.intakeId).then(function () {
+      setMsg('Deleted.');
+      rec = OI.blankRecord(user);
+      isExisting = false;
+      hydrate();
+      return refreshList();
+    }).then(function () {
+      showView('list');
+    })['catch'](function (e) {
+      setMsg('Could not delete: ' + e.message);
+    }).then(function () { $('#btnDelete').disabled = false; });
+  });
+
   /* ---------- hydrate ---------- */
   function hydrate() {
     // backfill schema for older records
@@ -949,6 +997,7 @@ textarea{min-height:70px;resize:vertical}
     renderMatrix(); renderScopePanels(); renderLinks(); renderDeliverables();
     syncRouteButtons(); renderEditorSelect(); renderRail(); renderNotice();
     $('#railTitle').textContent = rec.project.name || 'This intake';
+    syncRecordChrome();
     dirty = false;
   }
 
