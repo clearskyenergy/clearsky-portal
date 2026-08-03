@@ -475,7 +475,7 @@ body{font-family:'Inter',-apple-system,Arial,sans-serif;background:#F1F4F8;color
     <div class="p1-accent"></div>
     <div class="p1-content">
       <div class="p1-logo-area">
-        <img class="brand-logo" alt="" src="data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==" onerror="this.style.visibility='hidden'" style="width:52px;height:52px;object-fit:contain;border-radius:6px;background:#fff;padding:2px">
+        <img class="brand-logo" alt="" src="data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==" onerror="_logoFallback(this)" style="width:52px;height:52px;object-fit:contain;border-radius:6px;background:#fff;padding:2px">
         <div>
           <div class="p1-logo-text brand-name"></div>
           <div class="p1-logo-sub" id="p1-logo-sub"></div>
@@ -537,7 +537,7 @@ body{font-family:'Inter',-apple-system,Arial,sans-serif;background:#F1F4F8;color
   <div class="page" id="page2">
     <div class="p2-header">
       <div class="p2-logo-small">
-        <img class="brand-logo" alt="" src="data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==" onerror="this.style.visibility='hidden'" style="width:28px;height:28px;object-fit:contain;background:#fff;border-radius:4px;padding:1px">
+        <img class="brand-logo" alt="" src="data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==" onerror="_logoFallback(this)" style="width:28px;height:28px;object-fit:contain;background:#fff;border-radius:4px;padding:1px">
         <span class="brand-name"></span>
       </div>
       <div class="p2-page-title">SITE OVERVIEW &amp; AGREEMENT TERMS</div>
@@ -580,7 +580,7 @@ body{font-family:'Inter',-apple-system,Arial,sans-serif;background:#F1F4F8;color
   <div class="page" id="page4">
     <div class="p3-header">
       <div class="p2-logo-small">
-        <img class="brand-logo" alt="" src="data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==" onerror="this.style.visibility='hidden'" style="width:28px;height:28px;object-fit:contain;background:#fff;border-radius:4px;padding:1px">
+        <img class="brand-logo" alt="" src="data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==" onerror="_logoFallback(this)" style="width:28px;height:28px;object-fit:contain;background:#fff;border-radius:4px;padding:1px">
         <span class="brand-name"></span>
       </div>
       <div class="p2-page-title">MODEL OUTPUTS, GRAPHS &amp; KEY FIGURES</div>
@@ -602,7 +602,7 @@ body{font-family:'Inter',-apple-system,Arial,sans-serif;background:#F1F4F8;color
     </div>
     <div class="p3-footer">
       <div class="p3-footer-logo">
-        <img class="brand-logo" alt="" src="data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==" onerror="this.style.visibility='hidden'" style="width:28px;height:28px;object-fit:contain;background:#fff;border-radius:4px;padding:1px">
+        <img class="brand-logo" alt="" src="data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==" onerror="_logoFallback(this)" style="width:28px;height:28px;object-fit:contain;background:#fff;border-radius:4px;padding:1px">
         <span class="brand-name"></span>
       </div>
       <div class="p3-footer-contact">
@@ -615,7 +615,7 @@ body{font-family:'Inter',-apple-system,Arial,sans-serif;background:#F1F4F8;color
   <div class="page" id="page3">
     <div class="p3-header">
       <div class="p2-logo-small">
-        <img class="brand-logo" alt="" src="data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==" onerror="this.style.visibility='hidden'" style="width:28px;height:28px;object-fit:contain;background:#fff;border-radius:4px;padding:1px">
+        <img class="brand-logo" alt="" src="data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==" onerror="_logoFallback(this)" style="width:28px;height:28px;object-fit:contain;background:#fff;border-radius:4px;padding:1px">
         <span class="brand-name"></span>
       </div>
       <div class="p2-page-title">HOW IT WORKS — 5 SIMPLE STEPS</div>
@@ -687,7 +687,7 @@ body{font-family:'Inter',-apple-system,Arial,sans-serif;background:#F1F4F8;color
     </div>
     <div class="p3-footer">
       <div class="p3-footer-logo">
-        <img class="brand-logo" alt="" src="data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==" onerror="this.style.visibility='hidden'" style="width:28px;height:28px;object-fit:contain;background:#fff;border-radius:4px;padding:1px">
+        <img class="brand-logo" alt="" src="data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==" onerror="_logoFallback(this)" style="width:28px;height:28px;object-fit:contain;background:#fff;border-radius:4px;padding:1px">
         <span class="brand-name"></span>
       </div>
       <div class="p3-footer-contact">
@@ -758,16 +758,45 @@ function _slugFromHost() {
     return '';
   } catch(e){ return ''; }
 }
+// ── Tenant origin ────────────────────────────────────────────────
+// The tenant's live deployment is on clearskyomega.com (Vercel), NOT on
+// csebuilders.com — csebuilders.com hosts the shared tool registry. When the
+// portal launches this tool it passes ?return=<portal url>, which is the
+// authoritative origin for that tenant's assets. Use it before guessing.
+function _returnOrigin() {
+  try {
+    var m = (location.search||'').match(/[?&]return=([^&]+)/);
+    if (!m) return '';
+    var u = new URL(decodeURIComponent(m[1]), location.href);
+    if (u.protocol !== 'https:' && u.protocol !== 'http:') return '';
+    return u.origin;
+  } catch(e){ return ''; }
+}
+// Every origin that might serve this tenant's assets, best guess first.
+function _tenantOrigins(slug) {
+  var out = [], seen = {};
+  function push(o){ if (o && !seen[o]) { seen[o] = 1; out.push(o); } }
+  push(_returnOrigin());                                        // 1. told to us by the portal
+  if (slug) {
+    push('https://' + slug + '.clearskyomega.com');             // 2. tenant deployment convention
+    push('https://' + slug + '.csebuilders.com');               // 3. legacy
+  }
+  return out;
+}
+function _tenantOrigin(slug) {
+  var o = _tenantOrigins(slug);
+  return o.length ? o[0] : '';
+}
 // Portal URL for the tenant the user came from.
 function _portalUrl() {
-  var org = _tenantOrg();
-  var slug = org ? _orgToSlug(org) : _slugFromHost();
-  if (slug) return 'https://' + slug + '.csebuilders.com/';
+  try {
+    var m = (location.search||'').match(/[?&]return=([^&]+)/);
+    if (m) { var u = new URL(decodeURIComponent(m[1]), location.href);
+             if (u.protocol === 'https:' || u.protocol === 'http:') return u.href; }
+  } catch(e){}
+  var slug = _slugFromHost();
+  if (slug) return 'https://' + slug + '.clearskyomega.com/';
   return '/';
-}
-// Tenant portal origin — the one host we know serves that tenant's assets.
-function _tenantOrigin(slug) {
-  return slug ? 'https://' + slug + '.csebuilders.com' : '';
 }
 // Force every logo reference to an ABSOLUTE url.
 // Root-relative ("/sunesol-logo.png") was the original bug: it resolved against
@@ -778,8 +807,43 @@ function _absLogo(logo, slug) {
   logo = String(logo).trim();
   if (/^(https?:)?\/\//i.test(logo) || /^data:/i.test(logo)) return logo;   // already absolute
   var origin = _tenantOrigin(slug);
-  if (!origin) return logo;                                                 // no slug: leave as-is
+  if (!origin) return logo;                                                 // no origin: leave as-is
   return origin + '/' + logo.replace(/^\/+/, '');
+}
+// ── Logo URL candidates ──────────────────────────────────────────
+// We do not reliably know the filename each tenant repo uses for its mark, so
+// try the configured name first and then the common conventions across every
+// plausible origin. Each <img> walks this list via onerror and hides itself if
+// the list runs out — a client never sees a broken-image glyph.
+var LOGO_PATH_FALLBACKS = ['logo.png', 'logo.svg', 'assets/logo.png', 'img/logo.png'];
+function _logoCandidates(brand, slug) {
+  var out = [], seen = {};
+  function push(u){ if (u && !seen[u]) { seen[u] = 1; out.push(u); } }
+
+  if (brand && brand.logo && (/^(https?:)?\/\//i.test(brand.logo) || /^data:/i.test(brand.logo))) push(brand.logo);
+
+  var origins = _tenantOrigins(slug);
+  var paths   = [];
+  if (brand && brand.logo && !/^(https?:)?\/\//i.test(brand.logo) && !/^data:/i.test(brand.logo)) {
+    paths.push(String(brand.logo).replace(/^\/+/, ''));
+  }
+  if (slug) paths.push(slug + '-logo.png');
+  for (var p = 0; p < LOGO_PATH_FALLBACKS.length; p++) paths.push(LOGO_PATH_FALLBACKS[p]);
+
+  for (var o = 0; o < origins.length; o++)
+    for (var q = 0; q < paths.length; q++)
+      push(origins[o] + '/' + paths[q]);
+
+  return out;
+}
+// onerror handler wired onto every img.brand-logo
+function _logoFallback(img) {
+  try {
+    var list = (window.BRAND && BRAND.logoCandidates) || [];
+    var i = (parseInt(img.getAttribute('data-logo-i'), 10) || 0) + 1;
+    if (i < list.length) { img.setAttribute('data-logo-i', String(i)); img.src = list[i]; return; }
+  } catch(e){}
+  img.style.visibility = 'hidden';   // exhausted — fail invisibly, never show a glyph
 }
 function _qp(name) {
   try {
@@ -821,7 +885,8 @@ function resolveBrand() {
   }
   if (!b) b = { name:DEFAULT_BRAND.name, logo:DEFAULT_BRAND.logo, accent:DEFAULT_BRAND.accent, tagline:DEFAULT_BRAND.tagline };
 
-  b.logo = _absLogo(b.logo, slug);
+  b.logoCandidates = _logoCandidates(b, slug);
+  b.logo = b.logoCandidates.length ? b.logoCandidates[0] : _absLogo(b.logo, slug);
   b.slug = slug;
   return b;
 }
@@ -834,23 +899,43 @@ function _bn(){ return BRAND.name; }
 // failure — the onerror handler on each <img> hides it rather than printing
 // a broken-image glyph in front of a client.
 function inlineBrandLogo() {
-  if (!BRAND.logo || /^data:/i.test(BRAND.logo)) return Promise.resolve();
-  return fetch(BRAND.logo, { mode:'cors', cache:'force-cache' })
-    .then(function(r){ if (!r.ok) throw new Error(r.status); return r.blob(); })
-    .then(function(blob){
-      return new Promise(function(res, rej){
-        var fr = new FileReader();
-        fr.onload  = function(){ res(fr.result); };
-        fr.onerror = rej;
-        fr.readAsDataURL(blob);
+  // Wait for the candidate walk to settle on a URL that actually loaded, then
+  // inline THAT one. Reading BRAND.logo directly would inline the first guess,
+  // which may well be the 404 that triggered the fallback.
+  function settled() {
+    var l = document.querySelectorAll('img.brand-logo');
+    for (var i=0;i<l.length;i++) if (l[i].naturalWidth > 0 && l[i].currentSrc) return l[i].currentSrc;
+    return '';
+  }
+  var tries = 0;
+  (function poll(){
+    var url = settled();
+    if (!url) {
+      if (++tries > 40) return;           // ~6s of candidate walking, then give up
+      return setTimeout(poll, 150);
+    }
+    if (/^data:/i.test(url)) return;      // already inline
+    fetch(url, { mode:'cors', cache:'force-cache' })
+      .then(function(r){ if (!r.ok) throw new Error(r.status); return r.blob(); })
+      .then(function(blob){
+        return new Promise(function(res, rej){
+          var fr = new FileReader();
+          fr.onload  = function(){ res(fr.result); };
+          fr.onerror = rej;
+          fr.readAsDataURL(blob);
+        });
+      })
+      .then(function(dataUri){
+        BRAND.logo = dataUri;
+        var l = document.querySelectorAll('img.brand-logo');
+        for (var i=0;i<l.length;i++) l[i].src = dataUri;
+      })
+      .catch(function(){
+        // Cross-origin without CORS headers. The <img> still displays fine on
+        // screen and in Print/PDF; only a downloaded .html loses the logo.
+        // Fix by adding Access-Control-Allow-Origin to the logo on the tenant deploy.
       });
-    })
-    .then(function(dataUri){
-      BRAND.logo = dataUri;
-      var l = document.querySelectorAll('img.brand-logo');
-      for (var i=0;i<l.length;i++) l[i].src = dataUri;
-    })
-    .catch(function(){ /* cross-origin or 404 — <img> src already set, onerror covers it */ });
+  })();
 }
 
 function applyBrand() {
@@ -867,8 +952,14 @@ function applyBrand() {
   // what produced the broken-image "?" glyph in printed proposals.
   var logos = document.querySelectorAll('img.brand-logo');
   for (var i=0;i<logos.length;i++){
-    if (BRAND.logo) { logos[i].src = BRAND.logo; logos[i].alt = BRAND.name; logos[i].style.visibility = ''; }
-    else            { logos[i].style.visibility = 'hidden'; }
+    if (BRAND.logo) {
+      logos[i].setAttribute('data-logo-i','0');
+      logos[i].alt = BRAND.name;
+      logos[i].style.visibility = '';
+      logos[i].src = BRAND.logo;
+    } else {
+      logos[i].style.visibility = 'hidden';
+    }
   }
 
   // all brand-name text spans (marked with .brand-name)
