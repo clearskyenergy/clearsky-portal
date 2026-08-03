@@ -206,6 +206,11 @@ textarea{min-height:70px;resize:vertical}
 .empty{padding:44px 18px;text-align:center;color:var(--muted)}
 .empty h3{margin:0 0 6px;color:var(--ink);font-size:15px}
 
+.actingbar{background:var(--warn-soft);border-bottom:1px solid color-mix(in srgb,var(--warn) 32%,white);
+  padding:9px 20px;font-size:12.5px;color:var(--warn);display:flex;gap:10px;align-items:center;
+  flex-wrap:wrap}
+.actingbar b{color:var(--warn)}
+.actingbar button{margin-left:auto}
 .notice{border:1px solid color-mix(in srgb,var(--good) 30%,white);background:var(--good-soft);
   border-radius:var(--r-lg);padding:13px 16px;margin-bottom:18px;display:flex;
   gap:12px;align-items:flex-start}
@@ -230,12 +235,15 @@ textarea{min-height:70px;resize:vertical}
   <span class="sp"></span>
   <a class="whoami" id="backLink" href="#" hidden style="text-decoration:none">← Portal</a>
   <span class="whoami" id="whoami"></span>
+  <button class="btn sm" id="signOut" type="button" hidden style="margin-left:10px">Switch account</button>
 </div>
 
 <div class="tabs" role="tablist">
   <button class="tab" role="tab" id="tab-new"  aria-selected="true"  data-view="new">New intake</button>
   <button class="tab" role="tab" id="tab-list" aria-selected="false" data-view="list">My projects <span class="cnt" id="listCount"></span></button>
 </div>
+
+<div id="actingSlot"></div>
 
 <div class="wrap">
   <!-- ================= NEW / EDIT ================= -->
@@ -977,6 +985,49 @@ textarea{min-height:70px;resize:vertical}
     if (dirty) { e.preventDefault(); e.returnValue = ''; }
   });
 
+  var STAFF_DOMAINS = ['clearsky-usa.com', 'csebuilders.com'];
+  function isStaff(email) {
+    var d = String(email || '').split('@')[1];
+    return !!d && STAFF_DOMAINS.indexOf(d.toLowerCase()) >= 0;
+  }
+
+  function signOutHere() {
+    try {
+      firebase.auth().signOut().then(function () { location.reload(); });
+    } catch (e) { location.reload(); }
+  }
+
+  function checkIdentity() {
+    var so = $('#signOut');
+    if (window.firebase && firebase.apps && firebase.apps.length) {
+      so.hidden = false;
+      so.addEventListener('click', signOutHere);
+    }
+
+    var mine = OI.orgAlias(String(user.email || '').split('@')[1] || '');
+    var target = OI.orgId();
+    if (!mine || mine === target) return;          // signed in as the tenant
+
+    var slot = $('#actingSlot');
+    var bar = el('div', 'actingbar');
+    if (isStaff(user.email)) {
+      bar.innerHTML = '<span>Signed in as <b>' + esc(user.email) + '</b>, working in <b>' +
+        esc(target) + '</b>\u2019s workspace. Anything you save here belongs to ' +
+        esc(target) + ', not to you.</span>';
+    } else {
+      bar.innerHTML = '<span>Signed in as <b>' + esc(user.email) + '</b>, but this link is for <b>' +
+        esc(target) + '</b>. Saving will be refused. Switch to your ' +
+        esc(target) + ' account.</span>';
+      $('#btnSubmit').disabled = true;
+      $('#btnSave').disabled = true;
+    }
+    var b = el('button', 'btn sm', 'Switch account');
+    b.type = 'button';
+    b.addEventListener('click', signOutHere);
+    bar.appendChild(b);
+    slot.appendChild(bar);
+  }
+
   /* ---------- boot ----------
      Wait for Firebase to resolve the session before reading anything: orgId
      falls back to the signed-in email domain, and the rules reject an
@@ -988,6 +1039,16 @@ textarea{min-height:70px;resize:vertical}
 
     var back = OI.returnUrl();
     if (back) { $('#backLink').href = back; $('#backLink').hidden = false; }
+
+    /* ---------- whose session is this? ----------
+       Firebase keeps a session per ORIGIN, so the account signed in HERE is
+       not necessarily the one signed into the portal that linked here. The
+       ?org= param says which workspace to write to; the signed-in account
+       decides what the rules will actually allow. When those two disagree the
+       record still saves — isAdmin() permits it — so it has to be visible,
+       or ClearSky staff can file an intake into the wrong tenant and never
+       notice. */
+    checkIdentity();
 
     OI.loadBrand(db).then(function () {
       user = currentUser();
