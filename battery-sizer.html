@@ -574,6 +574,8 @@ var HELP = {
  'This is the honest answer to "what would this month have needed." It uses only the month you entered.<p>What it does <b>not</b> tell you is what to install. If this was not the site\u0027s worst month, the annual peak is higher and a system sized here will be short on power exactly when it matters most.</p>'],
 'rLadder':['Shave depth ladder',
  'Each row asks: what if you cut this percentage off that month\u0027s peak?<p><b>Duration</b> is the giveaway. Rows needing more than about 8 hours are marked \u2014 that means the load is flat, not peaky, and no amount of battery will make demand charges pencil.</p><p>The "if every month" column assumes an identical peak all twelve months. No site behaves that way. Treat it as a ceiling, never a forecast.</p>'],
+'rNoGood':['Nothing pencils here',
+ 'Every size and duration the tool tried costs more than it saves over the analysis term, so the system shown above is the least-bad of a bad set rather than something to quote.<p>Two things move it: a <b>higher demand charge</b>, which is set by the tariff and not negotiable, or a <b>lower installed cost</b>. The figures given are what each would have to reach on its own.</p><p><b>Check the duration first.</b> A 6-hour battery buys three times the kWh of a 2-hour one for the same kW of shaving. On a flat, high-load-factor site that difference alone decides whether the project works.</p>'],
 'rShort':['Not enough months yet',
  'Annual figures are scaled up from the months you provided.<p>Demand charges are driven by the single worst interval in each period, so if the months you have exclude the seasonal peak, both the savings and the required power rating are understated.</p>']
 };
@@ -2443,6 +2445,20 @@ function render(){
     +  kpi('Deepest cut', fmt(maxCut), 'kW', (cutMon?cutMon+' \u00b7 ':'')+fmt(pctShave,1)+'% of site peak', false, 'rCut')
     +  '</div>';
 
+  /* ---- does this pencil at all? ---- */
+  var term = Math.round(nv('term',10));
+  var noGood = !(REC.npv > 0) || !isFinite(REC.payback) || REC.payback > term;
+  if(noGood){
+    var be = breakEven(R, b, REC);
+    h += '<div class="note bad" data-help="rNoGood"><b>No size pencils at these inputs.</b> '
+      + 'Every configuration tried returns less than it costs, so the system above is simply the '
+      + 'least-bad one — it is not a recommendation.<br><br>'
+      + 'To break even this site would need a demand charge near <b>' + money(be.rateBe,2) + '/kW-month</b> '
+      + '(you entered ' + money(nv('dRate',18.5),2) + '), or an installed cost near <b>'
+      + money(be.costBe,0) + '/kWh</b> (you entered ' + money(nv('cKwh',450),0) + ').'
+      + '<span id="durProbe"></span></div>';
+  }
+
   /* ---- single / short period callout ---- */
   if(R.nMon < 12) h += shortPeriodCallout(R, b);
 
@@ -2529,6 +2545,25 @@ function render(){
 
   $('out').innerHTML = h;
   wireHelp($('out'));
+
+  if(noGood && $('durProbe')){
+    $('durProbe').innerHTML = '<br><br>Checking the durations you did not tick\u2026';
+    setTimeout(function(){
+      var alt = probeDurations();
+      var el = $('durProbe');
+      if(!el) return;
+      if(alt && alt.npv > 0){
+        el.innerHTML = '<br><br><b>A ' + alt.dur + '-hour system does pencil.</b> Roughly '
+          + fmt(alt.kW) + ' kW / ' + fmt(alt.kWh) + ' kWh pays back in ' + fmt(alt.payback,1)
+          + ' years at ' + money(alt.npv) + ' NPV. Tick <b>' + alt.dur + ' h</b> under '
+          + 'Durations to evaluate and run it again \u2014 a shorter battery buys the same kW of '
+          + 'shaving for less energy, which is usually what a flat load profile needs.';
+      } else if(alt){
+        el.innerHTML = '<br><br>The other durations were checked too and none of them pencil either, '
+          + 'so this is the tariff and the equipment cost talking, not the sizing.';
+      } else el.innerHTML = '';
+    }, 60);
+  }
   drawMonthly();
   drawSweep();
   if(R.mode==='interval') drawPeakDay();
@@ -2538,6 +2573,61 @@ function kpi(k,v,u,s,hl,hk){
   return '<div class="kpi'+(hl?' hl':'')+'"><div class="k"'+(hk?' data-help="'+hk+'"':'')+'>'+k+'</div><div class="v">'+v+(u?'<span class="u">'+u+'</span>':'')+'</div><div class="s">'+s+'</div></div>';
 }
 function bRow(k,v){ return '<tr><td class="tx" style="color:var(--sub)">'+k+'</td><td class="num" style="text-align:left;padding-left:20px">'+v+'</td></tr>'; }
+
+/* What would have to change for this to pencil? NPV is linear in annual
+   savings, so the break-even demand charge and installed cost fall straight
+   out rather than needing a search. */
+function breakEven(R, b, REC){
+  var term = Math.round(nv('term',10)), disc = nv('disc',8)/100, fade = nv('fade',2)/100;
+  var A = 0, B = 0, y;
+  for(y=1;y<=term;y++){
+    A += Math.pow(1-fade, y-1)/Math.pow(1+disc, y);
+    B += 1/Math.pow(1+disc, y);
+  }
+  var needSav = (REC.net + (b.lossCost + REC.om)*B) / A;
+  var mult = b.annSav > 0 ? needSav/b.annSav : Infinity;
+  /* cost side: net = nameplate * $/kWh * (1-itc) */
+  var dod = nv('dod',90)/100;
+  var nameplate = REC.kWh/dod;
+  var affordNet = b.annSav*A - (b.lossCost + REC.om)*B;
+  var costBe = nameplate > 0 ? affordNet/(nameplate*(1 - nv('itc',30)/100)) : 0;
+  return { needSav:needSav, mult:mult, rateBe: nv('dRate',18.5)*mult, costBe:costBe };
+}
+
+/* A duration the person did not tick is not a duration the tool checked. On a
+   flat site a 6-hour system buys three times the kWh for the same kW of
+   shaving, so the difference between "no good size exists" and "you did not
+   evaluate the size that works" is the whole answer. */
+function probeDurations(){
+  if(RESULT.mode !== 'interval' || !MONTHS || !MONTHS.length) return;
+  var checked = durations(), all = [1,2,4,6], missing = [], i;
+  for(i=0;i<all.length;i++) if(checked.indexOf(all[i]) < 0) missing.push(all[i]);
+  if(!missing.length) return;
+
+  var rte = nv('rte',88)/100, dRate = nv('dRate',18.5), ratchet = nv('ratchet',0);
+  var maxPeak = RESULT.maxPeak, best = null, k, d, ci;
+  var sizes = [RESULT.best.kW, maxPeak*0.05, maxPeak*0.12];
+
+  for(d=0; d<missing.length; d++){
+    for(ci=0; ci<sizes.length; ci++){
+      var kW = sizes[ci], Emax = kW*missing[d];
+      var peaks = [], dis = 0;
+      for(k=0;k<MONTHS.length;k++){
+        var r = solveMonth(MONTHS[k], kW, Emax, rte);
+        peaks.push(r.peak); dis += r.dis;
+      }
+      var billed = applyRatchet(peaks, ratchet), cost = 0;
+      for(k=0;k<MONTHS.length;k++) cost += billed[k]*dRate;
+      var ann = (RESULT.baseCost - cost)*(12/MONTHS.length);
+      var loss = dis*(1/rte-1)*(12/MONTHS.length)*nv('eRate',0.075);
+      var head = nv('headroom',10)/100;
+      var e = econ(kW*(1+head), Emax*(1+head), ann, loss);
+      e.dur = missing[d];
+      if(!best || e.npv > best.npv) best = e;
+    }
+  }
+  return best;
+}
 
 /* ---- the "one month of data" answer ---- */
 function shortPeriodCallout(R, b){
