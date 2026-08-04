@@ -259,13 +259,54 @@ code { background:#eef2f6; padding:1px 5px; border-radius:4px; font-size:12px; }
   var DEMO=false;
 
   /* ================= boot ================= */
+  /* MULTI-TENANT LAUNCH CONTEXT
+     tools.csebuilders.com is shared by EVERY OMEGA tenant, so this app must
+     never derive the tenant from whatever Firebase session happens to be
+     cached in the browser (that's how one org's login leaks into another
+     org's visit). Tenant is resolved in this priority order:
+       1. ?org=<domain> or ?email=<user@domain> on the URL (set by the
+          launching dashboard, e.g. the NextNRG portal tile)
+       2. sessionStorage for THIS TAB only (so in-app navigation and reloads
+          keep the same tenant, but a new tab starts clean)
+       3. a real, non-anonymous Firebase sign-in on this domain
+       4. otherwise: ask — never assume, never fall back to another org.
+     Firebase persistence is set to NONE and any prior session is signed out
+     on load, so no cached identity can carry across tenants. */
+  var CTX_KEY="fs_launch_ctx";
+  function qparam(name){
+    var m=new RegExp("[?&]"+name+"=([^&]*)").exec(window.location.search);
+    return m?decodeURIComponent(m[1].replace(/\+/g," ")):"";
+  }
+  function launchContext(){
+    var org=(qparam("org")||"").toLowerCase();
+    var email=qparam("email")||"";
+    var domain=org||(email.split("@")[1]||"").toLowerCase();
+    if(domain){
+      var ctx={ email: email||("workspace@"+domain), domain: domain };
+      try{ sessionStorage.setItem(CTX_KEY, JSON.stringify(ctx)); }catch(_){}
+      return ctx;
+    }
+    try{ var saved=sessionStorage.getItem(CTX_KEY); if(saved) return JSON.parse(saved); }catch(_){}
+    return null;
+  }
   function boot(){
     var keyMissing=!FB.apiKey||FB.apiKey.indexOf("PLACEHOLDER")!==-1;
     if(typeof firebase==="undefined"||keyMissing) return startDemo(keyMissing?"config":"sdk");
     try{ firebase.initializeApp(FB); db=firebase.firestore(); auth=firebase.auth(); }catch(e){ return startDemo("init"); }
-    auth.onAuthStateChanged(function(u){ if(!u){ auth.signInAnonymously().catch(function(){ startDemo("auth"); }); return; } onUser(u); }, function(){ startDemo("auth"); });
+    var ctx=launchContext();
+    auth.setPersistence(firebase.auth.Auth.Persistence.NONE).catch(function(){})
+      .then(function(){ return auth.signOut().catch(function(){}); })
+      .then(function(){ return auth.signInAnonymously().catch(function(){}); })
+      .then(function(){
+        if(ctx){ onUser(ctx); return; }
+        var u=auth.currentUser;
+        if(u && u.email){ onUser(u); return; }
+        renderNoAuth();
+      })
+      .catch(function(){ startDemo("auth"); });
   }
-  function startDemo(){ DEMO=true; db=makeMemDb(); onUser({ email:"admin@csebuilders.com" }); }
+  function startDemo(){ DEMO=true; db=makeMemDb(); var ctx=null; try{ ctx=launchContext(); }catch(_){}
+    onUser(ctx||{ email:"admin@csebuilders.com" }); }
 
   function makeMemDb(){
     var store={};
@@ -309,11 +350,15 @@ code { background:#eef2f6; padding:1px 5px; border-radius:4px; font-size:12px; }
   var TOOL_LABEL = "Field Service & Dispatch";
 
   function onUser(u){
-    USER=u; var email=u.email||"admin@csebuilders.com"; var domain=(email.split("@")[1]||"").toLowerCase();
+    USER=u; var email=u.email||""; var domain=(u.domain||(email.split("@")[1]||"")).toLowerCase();
     if(!domain){ renderNoAuth(); return; }
     $("userEmail").textContent=email; $("userInitial").textContent=(email[0]||"?").toUpperCase();
     resolveOrg(domain,email).then(function(org){
-      ORG=org; WS={ orgId:org.orgId, name:(COMPANY||org.orgId) };
+      /* Workspace label must reflect the RESOLVED org, never the deployment's
+         branding config — otherwise one tenant's name renders over another
+         tenant's data/lock screen. Admin (ClearSky) domains keep the branded
+         name; every other tenant sees their own org id. */
+      ORG=org; WS={ orgId:org.orgId, name:(org.isAdmin&&COMPANY)?COMPANY:org.orgId };
       $("wsName").textContent=WS.name+(DEMO?" · DEMO":"");
       var tb=$("tierBadge"); if(tb)tb.textContent=tierName(org.tierLevel).toUpperCase();
       if(!canOpenThisApp(org)){ renderUpgrade(org); return; }
@@ -328,13 +373,18 @@ code { background:#eef2f6; padding:1px 5px; border-radius:4px; font-size:12px; }
     if(typeof c.tierLevel==="number")return c.tierLevel; if(typeof c.tier==="number")return c.tier;
     if(typeof c.tier==="string"){ var t=c.tier.toLowerCase(); if(t.indexOf("enter")===0||t.indexOf("alpha")===0)return 3; if(t.indexOf("perf")===0||t==="deluxe")return 2; if(t==="core"||t==="standard")return 1; } return null; }
   function resolveOrg(domain){ var isAdmin=!!ADMIN_DOMAINS[domain]; var cfgTier=cfgTierLevel();
-    if(DEMO){ var lvl=isAdmin?3:(cfgTier!=null?cfgTier:2); var unl=(lvl<2)?[]:[APP_KEY]; return Promise.resolve({ orgId:domain, tierLevel:lvl, unlockedTools:unl, requiredTools:[], customToolUrls:{}, isAdmin:isAdmin }); }
-    return omegaOrgRef(domain).get().then(function(d){ if(d.exists){ var data=d.data(); var lvl=(typeof data.tierLevel==="number")?data.tierLevel:(cfgTier!=null?cfgTier:1);
+    /* Default for orgs with no explicit omega_orgs record: tier 2 (Performance),
+       so any tenant launched from a portal can use this app out of the box.
+       An explicit Firestore record still wins — set tierLevel there to
+       restrict a specific org. */
+    var fallbackTier=isAdmin?3:(cfgTier!=null?cfgTier:2);
+    if(DEMO){ var lvl=fallbackTier; var unl=(lvl<2)?[]:[APP_KEY]; return Promise.resolve({ orgId:domain, tierLevel:lvl, unlockedTools:unl, requiredTools:[], customToolUrls:{}, isAdmin:isAdmin }); }
+    return omegaOrgRef(domain).get().then(function(d){ if(d.exists){ var data=d.data(); var lvl=(typeof data.tierLevel==="number")?data.tierLevel:fallbackTier;
       return { orgId:domain, tierLevel:lvl, unlockedTools:data.unlockedTools||[], requiredTools:data.requiredTools||[], customToolUrls:data.customToolUrls||{}, isAdmin:isAdmin }; }
-      return { orgId:domain, tierLevel:(isAdmin?3:(cfgTier!=null?cfgTier:1)), unlockedTools:[], requiredTools:[], customToolUrls:{}, isAdmin:isAdmin };
-    }).catch(function(){ return { orgId:domain, tierLevel:(isAdmin?3:(cfgTier!=null?cfgTier:1)), unlockedTools:[], requiredTools:[], customToolUrls:{}, isAdmin:isAdmin }; });
+      return { orgId:domain, tierLevel:fallbackTier, unlockedTools:[], requiredTools:[], customToolUrls:{}, isAdmin:isAdmin };
+    }).catch(function(){ return { orgId:domain, tierLevel:fallbackTier, unlockedTools:[], requiredTools:[], customToolUrls:{}, isAdmin:isAdmin }; });
   }
-  function renderNoAuth(){ $("app").innerHTML='<div class="card"><div class="card-b"><h3>Sign-in required</h3><p class="muted">This console requires an authenticated account.</p></div></div>'; }
+  function renderNoAuth(){ $("app").innerHTML='<div class="card"><div class="card-b"><h3>Workspace required</h3><p class="muted">This console needs to know which workspace opened it. Launch it from your OMEGA dashboard, or open it with <code>?org=yourcompany.com</code> in the URL.</p></div></div>'; }
   function renderUpgrade(org){ $("app").innerHTML='<div class="card"><div class="card-b" style="text-align:center;padding:50px 20px"><div style="font-size:40px">🔒</div><h3 style="margin:12px 0 6px">Field Service &amp; Dispatch</h3><p class="muted">This is an <b>OMEGA Performance</b> &amp; <b>Enterprise</b> app.</p><p class="muted small">Your plan (<b>'+esc(tierName(org.tierLevel))+'</b>) doesn\'t include it yet.</p><p class="muted small">Contact ClearSky to add this app to <b>'+esc(org.orgId)+'</b>.</p></div></div>'; }
   function bindNav(){ var links=$("nav").getElementsByTagName("a"); for(var i=0;i<links.length;i++){ (function(a){ a.onclick=function(){ for(var j=0;j<links.length;j++)links[j].className=""; a.className="on"; STATE.mod=a.getAttribute("data-mod"); STATE.sel={}; render(); }; })(links[i]); } }
 
