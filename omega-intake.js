@@ -50,6 +50,35 @@
   }
   function setOrg(o) { _org = orgAlias(o); }
 
+  /* Staff can file into any tenant (isOmegaStaff in the rules), so the intake
+     UI needs the list of tenants to offer. omega_orgs is the registry the
+     console already discovers from; read it here too. Best-effort — if it's
+     unreadable the picker just doesn't appear and URL/domain still resolve. */
+  function listOrgs() {
+    var db = detectFirestore();
+    if (!db) return Promise.resolve([]);
+    return db.collection('omega_orgs').get().then(function (snap) {
+      var out = [];
+      snap.forEach(function (d) {
+        var v = d.data() || {};
+        if (v.active === false) return;
+        out.push({ orgId: String(v.orgId || d.id).toLowerCase(),
+                   name: v.name || v.clientName || v.displayName || '' });
+      });
+      out.sort(function (a, b) { return (a.name || a.orgId).localeCompare(b.name || b.orgId); });
+      return out;
+    })['catch'](function () { return []; });
+  }
+
+  /* Is the signed-in person ClearSky staff? Domain check mirrors the rules'
+     isAdmin(); the omega_staff role is confirmed server-side on write, so a
+     non-staff user who spoofs this only gets a picker whose writes the rules
+     then refuse. */
+  function isStaffEmail() {
+    var e = (currentEmail() || '').toLowerCase();
+    return /@(clearsky-usa|csebuilders)\.com$/.test(e);
+  }
+
   function currentEmail() {
     var c = cfg();
     if (c.user && c.user.email) return c.user.email;
@@ -489,6 +518,20 @@
   function submit(rec, actor) {
     var v = validate(rec);
     if (!v.ok) return Promise.reject(new Error('Missing: ' + v.missing.join(', ')));
+    /* Re-stamp createdBy from the LIVE auth user. The blank record is built at
+       page load, before Firebase auth has resolved, so createdBy.uid is null
+       then and is never refreshed when auth arrives. The create rule requires
+       createdBy.uid == request.auth.uid, so a null uid is refused — the
+       "Missing or insufficient permissions" on submit from a valid account. */
+    var _u = null;
+    try { _u = global.firebase && firebase.auth ? firebase.auth().currentUser : null; } catch (e) {}
+    if (_u) {
+      rec.createdBy = {
+        uid: _u.uid,
+        email: (_u.email || (rec.createdBy && rec.createdBy.email) || '').toLowerCase(),
+        name: _u.displayName || (rec.createdBy && rec.createdBy.name) || ''
+      };
+    }
     rec.purpose = 'service';
     rec.routing = 'omega';
     rec.status = 'submitted';
@@ -499,6 +542,15 @@
   }
 
   function saveSelfServe(rec, actor) {
+    var _u = null;
+    try { _u = global.firebase && firebase.auth ? firebase.auth().currentUser : null; } catch (e) {}
+    if (_u) {
+      rec.createdBy = {
+        uid: _u.uid,
+        email: (_u.email || (rec.createdBy && rec.createdBy.email) || '').toLowerCase(),
+        name: _u.displayName || (rec.createdBy && rec.createdBy.name) || ''
+      };
+    }
     rec.purpose = 'build';
     rec.routing = 'self';
     if (rec.status === 'draft') rec.status = 'saved';
@@ -991,6 +1043,7 @@
     PIPELINE: PIPELINE,
 
     cfg: cfg, orgId: orgId, setOrg: setOrg, orgAlias: orgAlias,
+    listOrgs: listOrgs, isStaffEmail: isStaffEmail,
     tenantKey: tenantKey, tenantName: tenantName, brand: brand, loadBrand: loadBrand,
     currentEmail: currentEmail, returnUrl: returnUrl,
     editorUrl: editorUrl, adminOrigin: adminOrigin, serviceName: serviceName,
