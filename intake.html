@@ -374,6 +374,10 @@ textarea{min-height:70px;resize:vertical}
 .plist-files{font-size:11.5px;color:var(--muted)}
 .plist-when{font-family:var(--mono);font-size:11px;color:var(--faint)}
 .pipe span.at{background:var(--accent);box-shadow:0 0 0 3px var(--accent-soft)}
+
+#orgWarn{margin:0 0 18px;padding:12px 15px;border-radius:var(--r);font-size:13px;line-height:1.55;
+  background:var(--warn-soft,#FDF3E7);border:1px solid var(--warn,#B7791F);color:var(--warn,#8A5A16)}
+#orgWarn b{font-weight:600}
 </style>
 </head>
 <body>
@@ -671,6 +675,28 @@ textarea{min-height:70px;resize:vertical}
     var who = user.displayName || user.email || '';
     $('#whoami').textContent = [who, OI.tenantName()].filter(Boolean).join(' \u00b7 ');
     document.title = OI.tenantName() + ' \u00b7 Project intake';
+
+    /* The record is stamped with the page's org (from ?org= / config), but
+       Firestore scopes the write by the caller's email domain unless they are
+       ClearSky staff or hold an org_members grant. When those disagree the
+       submit fails with a bare "insufficient permissions" and the header —
+       "you@iqgen.energy \u00b7 concordenergyusa.com" — reads like it's fine.
+       Say it plainly instead. */
+    (function warnOrgMismatch() {
+      var email = (user.email || '').toLowerCase();
+      var myDom = email.indexOf('@') > -1 ? email.split('@')[1] : '';
+      var pageOrg = (OI.orgId() || '').toLowerCase();
+      var staff = /@(clearsky-usa|csebuilders)\.com$/.test(email);
+      if (!pageOrg || staff || !myDom || myDom === pageOrg) return;
+      var bar = document.createElement('div');
+      bar.id = 'orgWarn';
+      bar.innerHTML = 'You\u2019re signed in as <b>' + esc(email) + '</b>, but this is the <b>'
+        + esc(pageOrg) + '</b> intake. Unless ClearSky has added you to this tenant, the '
+        + 'submit will be refused \u2014 use <b>Switch account</b> to sign in on a '
+        + esc(pageOrg) + ' address.';
+      var host = document.getElementById('noticeSlot') || document.body;
+      host.parentNode.insertBefore(bar, host);
+    })();
   }
 
   /* ---------- state ---------- */
