@@ -77,6 +77,14 @@
   .rail-h{padding:10px 12px;font-family:var(--mono);font-size:10px;letter-spacing:.16em;
     text-transform:uppercase;color:var(--muted);border-bottom:1px solid var(--line);display:flex;justify-content:space-between;align-items:center;flex:0 0 auto}
   .rail-h .cnt{color:var(--dim)}
+  #presets{flex:0 0 auto;padding:9px 10px;border-bottom:1px solid var(--line);background:var(--panel2)}
+  .preset-lbl{font-family:var(--mono);font-size:9px;letter-spacing:.14em;text-transform:uppercase;color:var(--dim);margin-bottom:7px}
+  #presetChips{display:flex;flex-wrap:wrap;gap:5px}
+  .pchip{font-size:11px;padding:5px 9px;border-radius:14px;border:1px solid var(--line);background:var(--panel);
+    color:var(--ink);cursor:pointer;user-select:none;white-space:nowrap;display:flex;align-items:center;gap:5px}
+  .pchip:hover{border-color:var(--amp)}
+  .pchip.on{background:var(--amp);border-color:var(--amp);color:#0a0e14;font-weight:700}
+  .pchip .pi{font-size:11px}
   #railFilter{position:relative;flex:0 0 auto;border-bottom:1px solid var(--line)}
   #railFilter input{width:100%;height:30px;border:0;background:var(--panel2);color:var(--ink);
     padding:0 26px 0 12px;font-size:12px;font-family:var(--sans);outline:none}
@@ -143,9 +151,12 @@
   #status .d{width:6px;height:6px;border-radius:50%;background:var(--ok)}
   #status.load .d{background:var(--warn);animation:pulse 1s infinite}
   @keyframes pulse{50%{opacity:.3}}
+  /* zoom bottom-right; basemap switcher sits just above it, both clear of panel */
+  .leaflet-bottom.leaflet-left .leaflet-control-zoom{margin-left:12px;margin-bottom:48px}
+  .leaflet-bottom.leaflet-right .leaflet-control-zoom{margin-right:12px;margin-bottom:12px}
 
   /* Basemap switcher */
-  #baseSwitch{position:absolute;right:12px;bottom:56px;z-index:1100;display:flex;gap:4px;
+  #baseSwitch{position:absolute;right:12px;bottom:14px;z-index:1100;display:flex;gap:4px;
     background:rgba(15,22,32,.9);border:1px solid var(--line);border-radius:8px;padding:4px;backdrop-filter:blur(8px)}
   #baseSwitch .bchip{font-family:var(--mono);font-size:10px;color:var(--muted);padding:5px 9px;border-radius:5px;
     cursor:pointer;user-select:none;letter-spacing:.04em;white-space:nowrap}
@@ -206,6 +217,10 @@
 
 <div id="rail">
   <div class="rail-h"><span>Grid Layers</span><span class="cnt" id="railCnt">—</span></div>
+  <div id="presets">
+    <div class="preset-lbl">Quick views</div>
+    <div id="presetChips"></div>
+  </div>
   <div id="railFilter"><input id="lyrFilter" placeholder="Filter layers…" autocomplete="off"><span class="fx" id="lyrFilterClear" style="display:none">✕</span></div>
   <div id="layers"></div>
   <div class="rail-h" style="border-top:1px solid var(--line)"><span>Voltage</span></div>
@@ -514,7 +529,7 @@ function plantColor(props){
 
 /* ---------- Map ---------- */
 var map=L.map("map",{zoomControl:false,minZoom:3,maxZoom:18,worldCopyJump:true}).setView([41.84,-90.19],6); // Clinton, IA
-L.control.zoom({position:"bottomright"}).addTo(map);
+L.control.zoom({position:"bottomleft"}).addTo(map);
 
 /* Dedicated basemap pane, kept BELOW all overlays regardless of add order */
 map.createPane("basePane");
@@ -675,11 +690,12 @@ function fetchEIA(key,cb){
 function fetchStatic(key,cb){
   var L2=LAYERS[key];
   ajax(L2.staticFile,function(err,json){
-    if(err||!json){ status("Data not found — "+L2.staticFile,false); cb([]); return; }
+    if(err||!json){ status(L2.name+": no data available for this source",false); cb([]); return; }
     var raw = json.features ? json.features : (json.length!=null ? json : []);
     var feats=[];
     for(var i=0;i<raw.length;i++){ var f=raw[i]; if(!f||!f.geometry) continue;
       feats.push({props:f.properties||{}, geom:f.geometry}); }
+    if(!feats.length){ status(L2.name+": source returned no US features",false); }
     cb(feats);
   });
 }
@@ -806,6 +822,60 @@ var CATS=[
   {key:"load",         name:"Load · Demand"}
 ];
 var catCollapsed={generation:true, connectivity:true, market:true, site:true, load:true}; // interconnect open by default
+
+/* ---------- Quick-view PRESETS: one click selects the right layer set ----------
+   Each preset lists the layer keys to turn ON (all others turn OFF). */
+var PRESETS=[
+  {key:"bess", name:"BESS", icon:"▮", layers:["substations","transmission","osm_subs","utility_terr","iso_rto"]},
+  {key:"solar", name:"Solar", icon:"☀", layers:["substations","transmission","plants","eia_plants","utility_terr"]},
+  {key:"solarbess", name:"Solar+BESS", icon:"⌁", layers:["substations","transmission","plants","eia_plants","osm_subs","utility_terr","iso_rto"]},
+  {key:"datacenter", name:"Data Center", icon:"▤", layers:["substations","transmission","eia_plants","fiber","fiber_verified","ll_backbone","subsea","water","flood","utility_terr","iso_rto"]},
+  {key:"ev", name:"EV Charging", icon:"⌁", layers:["substations","ev","osm_subs","utility_terr"]},
+  {key:"der", name:"DER", icon:"◇", layers:["substations","transmission","osm_subs","osm_plants","bess","utility_terr","ba_area"]},
+  {key:"derdata", name:"DER + Data", icon:"◈", layers:["substations","transmission","osm_subs","eia_plants","fiber","fiber_verified","water","flood","utility_terr","iso_rto","ba_area"]}
+];
+var activePreset=null;
+function applyPreset(p){
+  var want={}; for(var i=0;i<p.layers.length;i++) want[p.layers[i]]=1;
+  ORDER.forEach(function(k){
+    var shouldOn=!!want[k], L2=LAYERS[k];
+    if(L2.on!==shouldOn){
+      L2.on=shouldOn;
+      if(shouldOn) groups[k].addTo(map); else map.removeLayer(groups[k]);
+    }
+  });
+  // expand categories that now have active layers so the user sees what's on
+  CATS.forEach(function(cat){
+    var anyOn=ORDER.some(function(k){return (LAYERS[k].role||"other")===cat.key && LAYERS[k].on;});
+    if(anyOn) catCollapsed[cat.key]=false;
+  });
+  activePreset=p.key;
+  buildRail(); updateRailCounts(); renderPresetChips();
+  loadVisible();
+  status("Preset: "+p.name+" — "+p.layers.length+" layers on",false);
+}
+function renderPresetChips(){
+  var el=document.getElementById("presetChips"); if(!el) return;
+  var h="";
+  for(var i=0;i<PRESETS.length;i++){
+    var p=PRESETS[i];
+    h+='<span class="pchip'+(activePreset===p.key?" on":"")+'" data-p="'+p.key+'">'+
+       '<span class="pi">'+p.icon+'</span>'+p.name+'</span>';
+  }
+  el.innerHTML=h;
+  var chips=el.querySelectorAll(".pchip");
+  for(var j=0;j<chips.length;j++){
+    (function(chip){
+      chip.onclick=function(){
+        var key=chip.getAttribute("data-p");
+        var p=null; for(var k=0;k<PRESETS.length;k++){ if(PRESETS[k].key===key) p=PRESETS[k]; }
+        if(p) applyPreset(p);
+      };
+    })(chips[j]);
+  }
+}
+function buildPresets(){ renderPresetChips(); }
+
 function buildRail(){
   layersEl.innerHTML="";
   CATS.forEach(function(cat){
@@ -837,6 +907,7 @@ function buildRail(){
         el.className="lyr"+(L2.on?"":" off");
         if(L2.on){ groups[k].addTo(map); loadVisible(); }
         else { map.removeLayer(groups[k]); }
+        if(activePreset){ activePreset=null; renderPresetChips(); } // manual edit breaks preset match
         updateRailCounts();
       };
       body.appendChild(el);
@@ -1183,6 +1254,7 @@ q.addEventListener("keydown",function(e){
 })();
 
 buildRail(); updateRailCounts();
+buildPresets();
 map.whenReady(function(){
   setTimeout(function(){ map.invalidateSize(); },200);
   setTimeout(loadVisible,400);
