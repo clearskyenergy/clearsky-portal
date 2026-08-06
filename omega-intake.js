@@ -437,9 +437,32 @@
     return {
       name: 'firestore',
       listForOrg: function (org) {
-        return col().where('orgId', '==', org).get().then(function (snap) {
-          return snap.docs.map(function (d) { return d.data(); });
-        });
+        /* Two query shapes, mirroring the rules' two read paths (and the
+           financing portal's owner scoping):
+
+           - Same-domain users and ClearSky staff may read the WHOLE tenant,
+             so they query by orgId and see every record in the workspace.
+           - Everyone else — an allowlisted gmail signup, a partner — may
+             read only what THEY created, so their list queries by their own
+             uid. Firestore rejects a query the rules can't prove for every
+             possible result, which is why the org query would hard-fail for
+             them rather than merely return less. */
+        var me = null;
+        try { me = global.firebase && firebase.auth ? firebase.auth().currentUser : null; } catch (e) {}
+        var email = ((me && me.email) || '').toLowerCase();
+        var dom = email.indexOf('@') > -1 ? email.split('@')[1] : '';
+        var staff = /@(clearsky-usa|csebuilders)\.com$/.test(email);
+        var sameOrg = orgAlias(dom) === String(org || '').toLowerCase();
+        if (staff || sameOrg) {
+          return col().where('orgId', '==', org).get().then(function (snap) {
+            return snap.docs.map(function (d) { return d.data(); });
+          });
+        }
+        return col().where('createdBy.uid', '==', (me && me.uid) || '__none__')
+          .get().then(function (snap) {
+            return snap.docs.map(function (d) { return d.data(); })
+              .filter(function (r) { return String(r.orgId || '').toLowerCase() === String(org || '').toLowerCase(); });
+          });
       },
       listAll: function () {
         return col().get().then(function (snap) {

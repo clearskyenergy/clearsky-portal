@@ -714,12 +714,16 @@ textarea{min-height:70px;resize:vertical}
         return;
       }
       if (!pageOrg || !myDom || myDom === pageOrg) return;
+      /* Submissions are owner-scoped now (any signed-in user may file; the
+         record carries their identity), so a domain mismatch is worth a
+         heads-up, not a refusal warning: they'll see only their OWN records
+         here, not the whole workspace. */
       var bar = document.createElement('div');
       bar.id = 'orgWarn';
-      bar.innerHTML = 'You\u2019re signed in as <b>' + esc(email) + '</b>, but this is the <b>'
-        + esc(pageOrg) + '</b> intake. Unless ClearSky has added you to this tenant, the '
-        + 'submit will be refused \u2014 use <b>Switch account</b> to sign in on a '
-        + esc(pageOrg) + ' address.';
+      bar.innerHTML = 'You\u2019re signed in as <b>' + esc(email) + '</b> on the <b>'
+        + esc(pageOrg) + '</b> intake. Your submissions will file to this workspace under '
+        + 'your name \u2014 but this list shows only your own records, not the '
+        + 'whole company\u2019s.';
       var host = document.getElementById('noticeSlot') || document.body;
       host.parentNode.insertBefore(bar, host);
     })();
