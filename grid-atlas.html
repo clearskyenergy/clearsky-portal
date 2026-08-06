@@ -9,12 +9,9 @@
 
   Full-screen grid explorer + pin-drop interconnect scoring over public data:
   HIFLD/ArcGIS substations·transmission·plants, OSM power network (Overpass) with
-  OpenInfraMap voltage styling, EIA-860M operable generators (MW bubbles + national
-  technology breakdown), and a Greenfield land-for-sale layer (real LandSearch/Land.com
-  listings via a committed static file and/or serverless proxy; acreage-scaled bubbles,
-  $/ac, listing links) as a site-control overlay for siting analysis. Served from
-  tools.csebuilders.com, shared across tenants; brand/tier from window.OMEGA_WORKSPACE,
-  keys/paths from config.js. ES5 only.
+  OpenInfraMap voltage styling, and EIA-860M operable generators (MW bubbles +
+  national technology breakdown). Served from tools.csebuilders.com, shared across
+  tenants; brand/tier from window.OMEGA_WORKSPACE, EIA key from config.js. ES5 only.
   ═══════════════════════════════════════════════════════════════════════════════
 -->
 <html lang="en">
@@ -159,110 +156,6 @@
   #baseSwitch .invtoggle.on{background:rgba(255,176,32,.16);color:var(--amp);font-weight:700}
   @media(max-width:720px){ #baseSwitch{bottom:52px;left:12px;right:auto;flex-wrap:wrap;max-width:60vw} }
 
-  /* ── Zip Radius Report ── */
-  #zipChip{font-family:var(--mono);font-size:10px;color:var(--amp);border:1px solid rgba(255,176,32,.4);
-    border-radius:20px;padding:6px 12px;letter-spacing:.1em;text-transform:uppercase;cursor:pointer;user-select:none;white-space:nowrap}
-  #zipChip:hover{background:rgba(255,176,32,.16);border-color:var(--amp)}
-
-  /* Owner-data settings modal (reuses zip modal chrome) */
-  #ownSetWrap{position:fixed;inset:0;z-index:1450;display:none;align-items:flex-start;justify-content:center;
-    background:rgba(4,7,11,.62);backdrop-filter:blur(3px)}
-  #ownSetWrap.on{display:flex}
-  #ownSet{margin-top:9vh;width:min(440px,94vw);background:var(--panel);border:1px solid var(--line);
-    border-radius:14px;box-shadow:0 24px 70px rgba(0,0,0,.6);overflow:hidden;max-height:82vh;display:flex;flex-direction:column}
-  #ownSet .os-h{padding:14px 18px;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:10px;flex:0 0 auto}
-  #ownSet .os-h .ti{font-weight:700;font-size:14px;flex:1}
-  #ownSet .os-h .x{cursor:pointer;color:var(--muted);font-size:14px}
-  #ownSet .os-h .x:hover{color:var(--ink)}
-  #ownSet .os-b{padding:18px;overflow-y:auto}
-  #ownSet .os-note{font-size:11.5px;line-height:1.5;color:var(--muted);background:var(--panel2);
-    border:1px solid var(--line);border-radius:8px;padding:11px 12px;margin-bottom:16px}
-  #ownSet .os-note b{color:var(--ink)}
-  #ownSet label{display:block;font-family:var(--mono);font-size:10px;letter-spacing:.14em;text-transform:uppercase;
-    color:var(--muted);margin:14px 0 6px}
-  #ownSet select,#ownSet input[type=text]{width:100%;height:38px;border:1px solid var(--line);background:var(--panel2);
-    color:var(--ink);border-radius:8px;padding:0 12px;font-size:13px;font-family:var(--mono);outline:none}
-  #ownSet select:focus,#ownSet input[type=text]:focus{border-color:var(--amp)}
-  #ownSet .os-hint{font-size:10.5px;color:var(--dim);margin-top:5px;line-height:1.4}
-  #ownSet .os-hint a{color:var(--ev);text-decoration:none}
-  #ownSetSave{width:100%;height:42px;margin-top:20px;border:0;border-radius:9px;background:var(--amp);color:#0a0e14;
-    font-weight:800;font-size:13px;cursor:pointer;font-family:var(--sans)}
-  #ownSetSave:hover{filter:brightness(1.06)}
-  #ownSetStatus{font-size:11px;margin-top:9px;min-height:15px;color:var(--ok)}
-
-  /* Call-sheet button + progress in report header */
-  #zrCall{font-family:var(--mono);font-size:10px;letter-spacing:.06em;color:#0a0e14;font-weight:700;
-    background:var(--amp);border:1px solid var(--amp);border-radius:6px;padding:5px 9px;cursor:pointer;white-space:nowrap}
-  #zrCall:hover{filter:brightness(1.06)}
-  #zrCall:disabled{opacity:.4;cursor:default}
-  #zrGear{cursor:pointer;color:var(--muted);font-size:14px;line-height:1}
-  #zrGear:hover{color:var(--amp)}
-  #zrProg{padding:8px 14px;font-family:var(--mono);font-size:10px;color:var(--amp);
-    border-bottom:1px solid var(--line);background:rgba(255,176,32,.06);display:none;flex:0 0 auto}
-  #zrProg.on{display:block}
-  #zipModalWrap{position:fixed;inset:0;z-index:1400;display:none;align-items:flex-start;justify-content:center;
-    background:rgba(4,7,11,.62);backdrop-filter:blur(3px)}
-  #zipModalWrap.on{display:flex}
-  #zipModal{margin-top:12vh;width:min(380px,92vw);background:var(--panel);border:1px solid var(--line);
-    border-radius:14px;box-shadow:0 24px 70px rgba(0,0,0,.6);overflow:hidden}
-  #zipModal .zm-h{padding:14px 18px;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:10px}
-  #zipModal .zm-h .ti{font-weight:700;font-size:14px;letter-spacing:-.2px;flex:1}
-  #zipModal .zm-h .x{cursor:pointer;color:var(--muted);font-size:14px}
-  #zipModal .zm-h .x:hover{color:var(--ink)}
-  #zipModal .zm-b{padding:18px}
-  #zipModal label{display:block;font-family:var(--mono);font-size:10px;letter-spacing:.14em;text-transform:uppercase;
-    color:var(--muted);margin:0 0 7px}
-  #zipModal input[type=text]{width:100%;height:40px;border:1px solid var(--line);background:var(--panel2);color:var(--ink);
-    border-radius:8px;padding:0 13px;font-size:16px;font-family:var(--mono);outline:none;letter-spacing:.12em}
-  #zipModal input[type=text]:focus{border-color:var(--amp)}
-  .zm-radrow{display:flex;gap:8px;margin:16px 0 4px}
-  .zm-rad{flex:1;text-align:center;padding:11px 0;border:1px solid var(--line);border-radius:9px;cursor:pointer;
-    font-family:var(--mono);font-size:13px;color:var(--muted);user-select:none;background:var(--panel2)}
-  .zm-rad:hover{border-color:var(--dim);color:var(--ink)}
-  .zm-rad.on{background:var(--amp);color:#0a0e14;font-weight:700;border-color:var(--amp)}
-  .zm-rad small{display:block;font-size:9px;letter-spacing:.08em;opacity:.7;margin-top:2px}
-  #zipGo{width:100%;height:44px;margin-top:16px;border:0;border-radius:9px;background:var(--amp);color:#0a0e14;
-    font-weight:800;font-size:14px;letter-spacing:.02em;cursor:pointer;font-family:var(--sans)}
-  #zipGo:hover{filter:brightness(1.06)}
-  #zipGo:disabled{opacity:.5;cursor:default}
-  #zipErr{color:var(--bad);font-size:12px;margin-top:10px;min-height:16px}
-
-  /* Report results panel (reuses #panel geometry, left side) */
-  #zipReport{position:absolute;left:12px;top:72px;bottom:12px;z-index:1160;width:360px;
-    background:var(--panel);border:1px solid var(--line);border-radius:11px;box-shadow:0 14px 40px rgba(0,0,0,.5);
-    display:none;flex-direction:column;overflow:hidden}
-  #zipReport.open{display:flex}
-  #zipReport .zr-h{padding:12px 14px;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:9px;flex:0 0 auto}
-  #zipReport .zr-h .dot{width:8px;height:8px;border-radius:50%;background:var(--amp)}
-  #zipReport .zr-h .ti{flex:1;font-weight:700;font-size:13px;letter-spacing:-.2px}
-  #zipReport .zr-h .x{cursor:pointer;color:var(--muted);font-size:13px}
-  #zipReport .zr-h .x:hover{color:var(--ink)}
-  .zr-exp{display:flex;gap:5px}
-  .zr-exp button{font-family:var(--mono);font-size:10px;letter-spacing:.06em;color:var(--amp);
-    background:rgba(255,176,32,.1);border:1px solid rgba(255,176,32,.35);border-radius:6px;
-    padding:5px 9px;cursor:pointer;white-space:nowrap}
-  .zr-exp button:hover{background:rgba(255,176,32,.2)}
-  .zr-exp button:disabled{opacity:.35;cursor:default}
-  #zrSub{padding:8px 14px;font-family:var(--mono);font-size:10px;color:var(--muted);border-bottom:1px solid var(--line);flex:0 0 auto}
-  #zrBody{overflow-y:auto;flex:1 1 auto}
-  .zr-sec{padding:10px 14px 4px;font-family:var(--mono);font-size:10px;letter-spacing:.14em;text-transform:uppercase;
-    color:var(--amp);border-bottom:1px solid var(--line);background:var(--panel2);
-    display:flex;justify-content:space-between;align-items:center;position:sticky;top:0}
-  .zr-sec .cnt{color:var(--dim)}
-  .zr-item{padding:10px 14px;border-bottom:1px solid rgba(30,43,58,.5);cursor:pointer}
-  .zr-item:hover{background:var(--panel2)}
-  .zr-item .r1{display:flex;justify-content:space-between;gap:10px;align-items:baseline}
-  .zr-item .nm{font-size:13px;font-weight:600;color:var(--ink);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-  .zr-item .di{font-family:var(--mono);font-size:11px;color:var(--amp);white-space:nowrap;flex:0 0 auto}
-  .zr-item .r2{font-family:var(--mono);font-size:11px;color:var(--muted);margin-top:3px}
-  .zr-item a.lnk{color:var(--ev);text-decoration:none;font-size:11px;font-family:var(--mono)}
-  .zr-item a.lnk:hover{text-decoration:underline}
-  .zr-empty{padding:16px 14px;color:var(--dim);font-size:12px;font-style:italic}
-  .zr-loading{padding:16px 14px;color:var(--muted);font-size:12px}
-  @media(max-width:720px){
-    #zipReport{width:calc(100vw - 16px);left:8px;right:8px;top:auto;bottom:8px;height:56vh}
-  }
-
   .leaflet-popup-content-wrapper{background:var(--panel);color:var(--ink);border:1px solid var(--line);border-radius:9px}
   .leaflet-popup-tip{background:var(--panel);border:1px solid var(--line)}
   .leaflet-popup-content{margin:11px 13px;font-size:12.5px}
@@ -307,7 +200,6 @@
   <div class="tb-title">Grid Atlas</div>
   <div class="tb-spacer"></div>
   <div class="modechip on" id="pinBtn" title="Drop a site pin to analyze grid proximity">◎ Pin&nbsp;Site</div>
-  <div id="zipChip" title="Enter a ZIP and radius — get a list of land for sale + substations">⌖ Zip&nbsp;Report</div>
   <div id="search"><input id="q" placeholder="Search address or place…" autocomplete="off"><span class="ic">⌕</span></div>
   <a href="/" id="tb-back-link" class="tb-back">← Platform</a>
 </div>
@@ -327,74 +219,12 @@
   <div class="p-b" id="pBody">
     <div class="empty">
       <div class="big">◎</div>
-      <div class="t">Drop a pin anywhere on the map to score interconnection proximity — nearest substation, transmission voltage, generation, data-center clusters, EV/BESS context, and nearby land for sale for site control.</div>
+      <div class="t">Drop a pin anywhere on the map to score interconnection proximity — nearest substation, transmission voltage, generation, data-center clusters, and EV/BESS context.</div>
     </div>
   </div>
 </div>
 
 <div id="status"><span class="d"></span><span id="stTxt">Ready · public grid data</span></div>
-
-<!-- Zip Radius report dialog -->
-<div id="zipModalWrap">
-  <div id="zipModal">
-    <div class="zm-h"><span class="ti">⌖ Zip Radius Report</span><span class="x" id="zipModalClose">✕</span></div>
-    <div class="zm-b">
-      <label for="zipInput">ZIP code</label>
-      <input id="zipInput" type="text" inputmode="numeric" maxlength="5" placeholder="e.g. 52732" autocomplete="off">
-      <div class="zm-radrow" id="zipRadRow">
-        <div class="zm-rad" data-mi="25">25 mi<small>tight</small></div>
-        <div class="zm-rad on" data-mi="50">50 mi<small>default</small></div>
-        <div class="zm-rad" data-mi="100">100 mi<small>wide</small></div>
-      </div>
-      <button id="zipGo">Run Report</button>
-      <div id="zipErr"></div>
-    </div>
-  </div>
-</div>
-
-<!-- Owner-data provider settings -->
-<div id="ownSetWrap">
-  <div id="ownSet">
-    <div class="os-h"><span class="ti">⚙ Owner-Data Settings</span><span class="x" id="ownSetClose">✕</span></div>
-    <div class="os-b">
-      <div class="os-note">
-        Owner lookups use <b>verified Illinois county parcel records first</b> — DuPage, DeKalb, Lake,
-        Kane, McHenry, St. Clair (the ComEd / PJM-north footprint) — free, high-accuracy on home turf.
-        Outside those counties (or in <b>Cook</b>, whose public layer has no owner field) add a
-        <b>licensed provider</b> below for nationwide coverage.
-        Owner info is public assessor record — <b>your team is responsible for TCPA/DNC compliance</b> on any outreach.
-      </div>
-      <label for="ownProvider">Preferred provider</label>
-      <select id="ownProvider">
-        <option value="county">County parcel GIS (free)</option>
-        <option value="regrid">Regrid — licensed, nationwide</option>
-        <option value="attom">ATTOM — licensed, nationwide</option>
-      </select>
-      <label for="ownRegridKey">Regrid API token</label>
-      <input id="ownRegridKey" type="text" placeholder="paste Regrid token (optional)" autocomplete="off">
-      <div class="os-hint">Get one at <a href="https://regrid.com/api" target="_blank" rel="noopener">regrid.com/api</a>. Licensed for outreach use.</div>
-      <label for="ownAttomKey">ATTOM API key</label>
-      <input id="ownAttomKey" type="text" placeholder="paste ATTOM key (optional)" autocomplete="off">
-      <div class="os-hint">Get one at <a href="https://api.developer.attomdata.com" target="_blank" rel="noopener">api.developer.attomdata.com</a>.</div>
-      <label for="ownMaxLookups">Max lookups per call sheet</label>
-      <input id="ownMaxLookups" type="text" inputmode="numeric" placeholder="40" autocomplete="off">
-      <div class="os-hint">Caps how many parcels are resolved at once (protects free endpoints &amp; API quotas). Default 40.</div>
-      <button id="ownSetSave">Save Settings</button>
-      <div id="ownSetStatus"></div>
-    </div>
-  </div>
-</div>
-
-<!-- Zip Radius report results -->
-<div id="zipReport">
-  <div class="zr-h"><span class="dot"></span><span class="ti" id="zrTitle">Zip Report</span>
-    <span class="zr-exp"><button id="zrCall" disabled title="Look up owner info for all land listings and open a call sheet">☎ Call&nbsp;Sheet</button><button id="zrCsv" disabled title="Download as CSV">CSV</button><button id="zrPdf" disabled title="Print / save as PDF">PDF</button></span>
-    <span id="zrGear" title="Owner-data settings">⚙</span>
-    <span class="x" id="zrClose">✕</span></div>
-  <div id="zrSub">—</div>
-  <div id="zrProg"></div>
-  <div id="zrBody"></div>
-</div>
 
 <div id="baseSwitch">
   <span class="bchip on" data-b="dark" onclick="__setBase('dark')">Dark</span>
@@ -410,20 +240,8 @@
 <!-- config.js should provide (browser-visible; free-tier keys only, NEVER paid backend keys):
        window.CLEARSKY_CONFIG.eiaApiKey   = "...";  // EIA plants layer  (free)
        window.CLEARSKY_CONFIG.fccBbKey    = "...";  // live fiber-at-point (broadbandmap.com free demo)
-       window.CLEARSKY_CONFIG.greenfieldStatic = "/data/land-listings.json"; // committed listings file (RECOMMENDED)
-       window.CLEARSKY_CONFIG.greenfieldProxy  = "/api/greenfield";          // live serverless scrape (optional)
-       window.CLEARSKY_CONFIG.commercialStatic = "/data/commercial-listings.json"; // committed commercial/industrial file
-       window.CLEARSKY_CONFIG.commercialProxy  = "/api/commercial";          // live commercial/industrial listings proxy
      Paid fiber route data (GeoTel/FiberLocator/LandGate) needs a serverless proxy — do NOT
-     put those keys here; wire them behind a Vercel function and point the tool at that.
-     GREENFIELD (land-for-sale) layer — two sources, merged & deduped if both set:
-     1) greenfieldStatic (RECOMMENDED, deterministic): a listings file committed to the repo.
-        Accepts GeoJSON *or* the RAW dataset JSON downloaded from an Apify Land.com actor run —
-        no conversion needed. Workflow: run the actor in the Apify console for your corridor,
-        Storage → Dataset → download JSON, commit as /data/land-listings.json, set this path.
-     2) greenfieldProxy: live /api/greenfield Vercel function (LandSearch scrape, or Apify if
-        APIFY_TOKEN env is set). Use the "test" link in the Land rail to verify it end-to-end.
-     The Land rail shows a sticky status line (#gfNote) with source-by-source results/errors. -->
+     put those keys here; wire them behind a Vercel function and point the tool at that. -->
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
@@ -433,8 +251,6 @@
 <script>
 (function(){
 "use strict";
-/* Build tag — check window.GRID_ATLAS_BUILD in the console to confirm which version is live. */
-window.GRID_ATLAS_BUILD = "2026-07-31-national-v2";
 
 function fail(msg){
   var s=document.getElementById("stTxt"), b=document.getElementById("status");
@@ -457,53 +273,25 @@ window.onerror=function(m){ fail("Error: "+m); };
     }
   }catch(e){}
 })();
-/* Route "← Platform" and logo back to the TENANT portal (client dashboard), never the
-   admin host (tools.csebuilders.com). Tenant portals live on *.clearskyomega.com.
-
-   Resolution priority (first hit wins):
-     1) Current hostname — if we're already on <tenant>.clearskyomega.com, that host's
-        root IS the client dashboard.
-     2) The portal that launched this tool (document.referrer host on clearskyomega.com).
-     3) ?org= param (or org= in the referrer) — may be an email domain like "sunesol.com";
-        take only the first label → sunesol.clearskyomega.com.
-   If the tenant can't be resolved, links are left INERT rather than exposing the admin
-   host. */
-function gaTenantHome(){
-  try{
-    /* 1) Current hostname — served directly from a tenant subdomain. */
-    var host=(location.hostname||"").toLowerCase();
-    if(/\.clearskyomega\.com$/i.test(host) && host!=="tools.csebuilders.com"){
-      return location.origin+"/";
-    }
-    /* 2) The portal that launched this tool. Its host IS the tenant. */
-    if(document.referrer){
-      var ru=new URL(document.referrer);
-      if(/\.clearskyomega\.com$/i.test(ru.hostname) && ru.hostname!=="tools.csebuilders.com"){
-        return ru.origin+"/";
-      }
-    }
-    /* 3) Fallback: build subdomain from a BARE slug. org may be an email domain
-          like "sunesol.com" — take only the first label. */
-    var org=new URLSearchParams(location.search).get("org");
-    if(!org){ var m=/[?&]org=([^&]+)/.exec(document.referrer||""); if(m) org=decodeURIComponent(m[1]); }
-    if(org){
-      var slug=org.trim().toLowerCase().split(".")[0].replace(/[^a-z0-9-]/g,"");
-      if(slug) return "https://"+slug+".clearskyomega.com/";
-    }
-  }catch(e){}
-  return null; /* unknown tenant: leave links inert rather than exposing admin host */
+/* Rewrite logo + "← Platform" to the tenant portal the user came from.
+   Served from tools.csebuilders.com and shared, so bare "/" would land on the tool host. */
+function gaTenantPortalUrl(){
+  var BRAND={"nextnrg.com":"nextnrg","solela.com":"solela","chileasing.com":"chileasing",
+    "spatco.com":"spatco","ogisolar.com":"ogisolar"};
+  var slug=null;
+  try{ var org=((window.OMEGATools&&OMEGATools.orgFromUrl?OMEGATools.orgFromUrl(""):"")||"").toLowerCase();
+       if(BRAND[org]) slug=BRAND[org]; }catch(e){}
+  if(!slug&&document.referrer){
+    try{ var h=new URL(document.referrer).hostname;
+      if(/\.csebuilders\.com$/.test(h)){ var sub=h.split(".")[0]; if(sub&&sub!=="tools") slug=sub; } }catch(e2){}
+  }
+  return slug?"https://"+slug+".csebuilders.com/":"https://tools.csebuilders.com/";
 }
 (function wireNav(){
-  function fixLinks(){
-    var home=gaTenantHome();
-    ["tb-back-link","tb-logo-link"].forEach(function(id){
-      var el=document.getElementById(id);
-      if(!el) return;
-      if(home){ el.setAttribute("href",home); }
-      else { el.removeAttribute("href"); el.style.cursor="default"; }
-    });
-  }
-  if(document.readyState==="loading") document.addEventListener("DOMContentLoaded",fixLinks); else fixLinks();
+  var url=gaTenantPortalUrl();
+  var back=document.getElementById("tb-back-link"), logo=document.getElementById("tb-logo-link");
+  if(back) back.setAttribute("href",url);
+  if(logo) logo.setAttribute("href",url);
 })();
 
 /* ---------- Layer registry: real public ArcGIS/HIFLD + open endpoints ---------- */
@@ -550,29 +338,6 @@ var LAYERS = {
     url:"__OSM__", osmTag:'["telecom"="data_center"]',
     label:function(a){return a.name||"Data center";},
     meta:function(a){return a.operator||a.brand||"colo / compute";}
-  },
-  greenfield: {
-    name:"Land for Sale", color:"#7CFF6B", on:false, geom:"bubble", role:"land",
-    url:"__PROXY__", proxyKind:"greenfield",
-    label:function(a){return a.address||a.name||"Parcel for sale";},
-    meta:function(a){
-      var p=(a.price!=null?"$"+Number(a.price).toLocaleString():"");
-      var ac=(a.acres!=null?Number(a.acres).toLocaleString()+" ac":"");
-      var pa=(a.ppa!=null&&isFinite(a.ppa)?"$"+Math.round(a.ppa).toLocaleString()+"/ac":"");
-      return [p,ac,pa].filter(Boolean).join(" · ")||(a.status||"listing");
-    }
-  },
-  commercial: {
-    name:"Commercial / Industrial", color:"#4EA3FF", on:false, geom:"bubble", role:"land",
-    url:"__PROXY__", proxyKind:"commercial",
-    label:function(a){return a.address||a.name||"Commercial site";},
-    meta:function(a){
-      var t=(a.propType||a.propertyType||"");
-      var p=(a.price!=null?"$"+Number(a.price).toLocaleString():"");
-      var sf=(a.sqft!=null?Number(a.sqft).toLocaleString()+" sf":"");
-      var ac=(a.acres!=null?Number(a.acres).toLocaleString()+" ac":"");
-      return [t,p,sf||ac].filter(Boolean).join(" · ")||(a.status||"listing");
-    }
   },
   ev: {
     name:"EV Chargers", color:"#4ea3ff", on:false, geom:"point", role:"load",
@@ -686,9 +451,22 @@ var LAYERS = {
     url:"https://maps.nccs.nasa.gov/mapping/rest/services/hifld_open/energy/FeatureServer/23",
     label:function(a){return a.NAME||a.name||"Balancing authority";},
     meta:function(a){return "control area / BA";}
+  },
+  /* ── SITE SUITABILITY (data-center analysis) — federal, public, GeoJSON ── */
+  flood: {
+    name:"Flood Zones (FEMA)", color:"#4FA8FF", on:false, geom:"poly", role:"site",
+    url:"https://hazards.fema.gov/arcgis/rest/services/public/NFHL/MapServer/28",
+    label:function(a){return "Flood zone "+(a.FLD_ZONE||a.fld_zone||"");},
+    meta:function(a){return (a.ZONE_SUBTY||a.zone_subty||"FEMA NFHL");}
+  },
+  water: {
+    name:"Water (USGS)", color:"#2FD0E0", on:false, geom:"line", role:"site",
+    url:"https://hydro.nationalmap.gov/arcgis/rest/services/nhd/MapServer/6",
+    label:function(a){return a.GNIS_NAME||a.gnis_name||"Waterway";},
+    meta:function(a){return (a.FTYPE||a.ftype||"stream/river");}
   }
 };
-var ORDER=["substations","transmission","plants","greenfield","commercial","datacenters","ev","bess","osm_lines","osm_subs","osm_plants","eia_plants","fiber","fiber_cls","backbone","fiber_ca","subsea","ll_backbone","fiber_verified","fiber_estimated","utility_terr","iso_rto","ba_area"];
+var ORDER=["substations","transmission","plants","datacenters","ev","bess","osm_lines","osm_subs","osm_plants","eia_plants","fiber","fiber_cls","backbone","fiber_ca","subsea","ll_backbone","fiber_verified","fiber_estimated","utility_terr","iso_rto","ba_area","flood","water"];
 
 /* ---------- EIA technology taxonomy (matches EIA energy_source_code / technology) ---------- */
 var EIA_TECH={
@@ -906,203 +684,6 @@ function fetchStatic(key,cb){
   });
 }
 
-/* ---------- Greenfield (Land for Sale) sources ---------- */
-function normalizeParcel(f){
-  var g=f.geometry||f.geom, p=f.properties||f.props||{};
-  if(!g||!g.coordinates) return null;
-  var price=(p.price!=null?+p.price:(p.unformattedPrice!=null?+p.unformattedPrice:null));
-  var acres=(p.acres!=null?+p.acres:(p.lotSizeAcres!=null?+p.lotSizeAcres:
-             (p.lotAreaValue!=null&&/acre/i.test(p.lotAreaUnit||"")?+p.lotAreaValue:null)));
-  var ppa=(p.ppa!=null?+p.ppa:(price!=null&&acres&&acres>0?price/acres:null));
-  var props={
-    address:p.address||p.streetAddress||p.name||"Parcel for sale",
-    price:price, acres:acres, ppa:ppa,
-    status:p.status||p.homeStatus||p.statusType||"FOR_SALE",
-    url:p.url||p.detailUrl||""
-  };
-  return {props:props, geom:{type:"Point",coordinates:[+g.coordinates[0],+g.coordinates[1]]},
-          bubbleMw:acres||null, bubbleColor:LAYERS.greenfield.color, parcel:true,
-          pending:/pending/i.test(props.status||"")};
-}
-
-var gfFilter={minAcres:5, maxPpa:0}; // defaults tuned for BESS/compute siting; 0 = no cap
-
-/* Sticky land-layer status — shown in the Land rail (#gfNote) so failures are visible. */
-var gfNote="";
-function gfSetNote(msg){ gfNote=msg||""; var el=document.getElementById("gfNote");
-  if(el){ el.textContent=gfNote; el.title=gfNote; } }
-
-/* Accepts GeoJSON OR raw Apify dataset JSON (array of items with lat/lon fields). */
-function normalizeLandJson(json){
-  var out=[];
-  var raw=json&&json.features?json.features:(json&&json.length!=null?json:[]);
-  for(var i=0;i<raw.length;i++){
-    var f=raw[i]; if(!f) continue;
-    if(f.geometry||f.geom){ var n=normalizeParcel(f); if(n) out.push(n); continue; }
-    var lat=+(f.latitude!=null?f.latitude:(f.lat!=null?f.lat:(f.location&&f.location.lat)));
-    var lon=+(f.longitude!=null?f.longitude:(f.lon!=null?f.lon:(f.lng!=null?f.lng:(f.location&&f.location.lng))));
-    if(isNaN(lat)||isNaN(lon)) continue;
-    var n2=normalizeParcel({geometry:{type:"Point",coordinates:[lon,lat]},properties:{
-      address:f.address||f.title||f.name, price:f.price||f.listPrice||f.unformattedPrice,
-      acres:f.acres||f.acreage||f.lotSizeAcres||f.size, status:f.status,
-      url:f.url||f.detailUrl||f.link }});
-    if(n2) out.push(n2);
-  }
-  return out;
-}
-function gfScreen(feats){
-  var out=[];
-  for(var i=0;i<feats.length;i++){ var p=feats[i].props||{};
-    if(gfFilter.minAcres>0 && !(p.acres>=gfFilter.minAcres)) continue;
-    if(gfFilter.maxPpa>0 && p.ppa!=null && p.ppa>gfFilter.maxPpa) continue;
-    out.push(feats[i]); }
-  return out;
-}
-
-/* ---------- Commercial / Industrial listings normalizer ----------
-   Parallel to normalizeLandJson but for commercial & industrial buildings/sites.
-   Adds `propType` (SALE / INDUSTRIAL / OFFICE / RETAIL / FLEX / LAND) and building
-   size in sqft. Accepts GeoJSON or a flat array from the /api/commercial proxy. */
-function classifyPropType(raw){
-  var t=(raw||"").toString().toLowerCase();
-  if(/industr|manufactur|factory|warehouse|distribution|flex|logistics/.test(t)) return "INDUSTRIAL";
-  if(/office/.test(t)) return "OFFICE";
-  if(/retail|storefront|shop/.test(t)) return "RETAIL";
-  if(/land|lot|acre|greenfield/.test(t)) return "LAND";
-  return "COMMERCIAL";
-}
-function commTypeColor(t){
-  return ({ INDUSTRIAL:"#ff8f3a", OFFICE:"#a78bfa", RETAIL:"#4ea3ff", LAND:"#7CFF6B" })[t]||"#4ea3ff";
-}
-function normalizeCommercialJson(json){
-  var out=[];
-  var raw=json&&json.features?json.features:(json&&json.length!=null?json:[]);
-  for(var i=0;i<raw.length;i++){
-    var f=raw[i]; if(!f) continue;
-    var g=f.geometry||f.geom, pr=f.properties||f.props||f;
-    var lat,lon;
-    if(g&&g.coordinates){ lon=+g.coordinates[0]; lat=+g.coordinates[1]; }
-    else {
-      lat=+(pr.latitude!=null?pr.latitude:(pr.lat!=null?pr.lat:(pr.location&&pr.location.lat)));
-      lon=+(pr.longitude!=null?pr.longitude:(pr.lon!=null?pr.lon:(pr.lng!=null?pr.lng:(pr.location&&pr.location.lng))));
-    }
-    if(isNaN(lat)||isNaN(lon)) continue;
-    var price=(pr.price!=null?+pr.price:(pr.listPrice!=null?+pr.listPrice:(pr.unformattedPrice!=null?+pr.unformattedPrice:null)));
-    var acres=(pr.acres!=null?+pr.acres:(pr.lotSizeAcres!=null?+pr.lotSizeAcres:(pr.lotAcres!=null?+pr.lotAcres:null)));
-    var sqft=(pr.sqft!=null?+pr.sqft:(pr.buildingSize!=null?+pr.buildingSize:(pr.buildingSqft!=null?+pr.buildingSqft:(pr.size!=null&&/sqft|sf/i.test(pr.sizeUnit||"")?+pr.size:null))));
-    var propType=classifyPropType(pr.propertyType||pr.propType||pr.type||pr.category||pr.subtype);
-    var props={
-      address:pr.address||pr.streetAddress||pr.title||pr.name||"Commercial site",
-      price:(isNaN(price)?null:price),
-      acres:(isNaN(acres)?null:acres),
-      sqft:(isNaN(sqft)?null:sqft),
-      propType:propType,
-      tenancy:(pr.tenancy||pr.occupancy||null),
-      status:pr.status||pr.homeStatus||pr.statusType||"FOR_SALE",
-      url:pr.url||pr.detailUrl||pr.link||""
-    };
-    // Size the bubble by acreage if present, else by building footprint (sqft→acres),
-    // else a fixed default so every commercial site is visibly clickable on the map.
-    var bubbleVal=(acres&&!isNaN(acres))?acres:(sqft&&!isNaN(sqft)?(sqft/43560):3);
-    out.push({ props:props, geom:{type:"Point",coordinates:[lon,lat]},
-               bubbleMw:bubbleVal, bubbleColor:commTypeColor(propType), parcel:true, commercial:true,
-               pending:/pending|under contract/i.test(props.status||"") });
-  }
-  return out;
-}
-
-/* Two sources, merged & deduped by listing URL: greenfieldStatic (committed file,
-   recommended) and greenfieldProxy (live serverless). Never fabricates points. */
-function fetchProxy(key,cb){
-  var cfg=window.CLEARSKY_CONFIG||{};
-  var proxy=cfg.greenfieldProxy||(cfg.apiKeys&&cfg.apiKeys.greenfieldProxy)||"";
-  var staticUrl=cfg.greenfieldStatic||"";
-  if(!proxy&&!staticUrl){
-    gfSetNote("not configured — set greenfieldStatic or greenfieldProxy in config.js");
-    cb([]); return;
-  }
-  var merged=[], seen={}, pending=0, notes=[];
-  function add(feats){ for(var i=0;i<feats.length;i++){ var u=(feats[i].props&&feats[i].props.url)||("@"+i+Math.random());
-    if(seen[u]) continue; seen[u]=1; merged.push(feats[i]); } }
-  function done(){ if(--pending>0) return;
-    gfSetNote(merged.length?(merged.length+" listings"+(notes.length?" · "+notes.join(" · "):"")):(notes.join(" · ")||"no listings"));
-    cb(merged); }
-
-  if(staticUrl){
-    pending++;
-    ajax(staticUrl,function(err,json){
-      if(err||!json){ notes.push("static file unreachable ("+staticUrl+")"); }
-      else { var sf=gfScreen(normalizeLandJson(json)); notes.push("static: "+sf.length); add(sf); }
-      done();
-    });
-  }
-  if(proxy){
-    pending++;
-    var b=map.getBounds();
-    var bbox=b.getWest()+","+b.getSouth()+","+b.getEast()+","+b.getNorth();
-    var qs="bbox="+encodeURIComponent(bbox);
-    if(gfFilter.minAcres>0) qs+="&minAcres="+gfFilter.minAcres;
-    if(gfFilter.maxPpa>0) qs+="&maxPpa="+gfFilter.maxPpa;
-    ajax(proxy+(proxy.indexOf("?")>-1?"&":"?")+qs,function(err,json){
-      if(err){ notes.push("proxy error: "+err.message); }
-      else if(json&&json.note){ notes.push("proxy: "+json.note); if(json.features) add(normalizeLandJson(json)); }
-      else if(json){ var pf=normalizeLandJson(json); notes.push("proxy: "+pf.length); add(pf); }
-      done();
-    });
-  }
-}
-
-/* Commercial/Industrial map layer — sibling to fetchProxy, uses the commercial
-   source keys and normalizer. Renders bubbles in the atlas the same way land does. */
-function fetchCommercialProxy(key,cb){
-  var cfg=window.CLEARSKY_CONFIG||{};
-  var proxy=cfg.commercialProxy||(cfg.apiKeys&&cfg.apiKeys.commercialProxy)||"";
-  var staticUrl=cfg.commercialStatic||"";
-  if(!proxy&&!staticUrl){
-    status("Commercial layer not configured — set commercialStatic or commercialProxy in config.js",false);
-    cb([]); return;
-  }
-  var merged=[], seen={}, pending=0;
-  function add(feats){ for(var i=0;i<feats.length;i++){ var u=(feats[i].props&&feats[i].props.url)||("@"+i+Math.random());
-    if(seen[u]) continue; seen[u]=1; merged.push(feats[i]); } }
-  function done(){ if(--pending>0) return; cb(merged); }
-
-  if(staticUrl){
-    pending++;
-    ajax(staticUrl,function(err,json){
-      if(!err&&json){ add(normalizeCommercialJson(json)); }
-      done();
-    });
-  }
-  if(proxy){
-    pending++;
-    var b=map.getBounds();
-    var bbox=b.getWest()+","+b.getSouth()+","+b.getEast()+","+b.getNorth();
-    ajax(proxy+(proxy.indexOf("?")>-1?"&":"?")+"bbox="+encodeURIComponent(bbox),function(err,json){
-      if(!err&&json&&json.features){ add(normalizeCommercialJson(json)); }
-      done();
-    });
-  }
-}
-
-/* "test" link handler — hits the proxy with debug=1, shows stage counts in #gfNote. */
-function gfTestProxy(){
-  var cfg=window.CLEARSKY_CONFIG||{};
-  var proxy=cfg.greenfieldProxy||(cfg.apiKeys&&cfg.apiKeys.greenfieldProxy)||"";
-  if(!proxy){ gfSetNote("no proxy configured — set greenfieldProxy in config.js"); return; }
-  var b=map.getBounds();
-  var bbox=b.getWest()+","+b.getSouth()+","+b.getEast()+","+b.getNorth();
-  gfSetNote("testing proxy…");
-  ajax(proxy+(proxy.indexOf("?")>-1?"&":"?")+"bbox="+encodeURIComponent(bbox)+"&debug=1",function(err,json){
-    if(err){ gfSetNote("proxy TEST FAILED: "+err.message+" — is api/greenfield.js deployed?"); return; }
-    var d=(json&&json.diag)||{};
-    var n=(json&&json.features&&json.features.length)||0;
-    gfSetNote("proxy OK ["+(d.source||"?")+"] "+n+" feats · counties:"+(d.counties||0)+
-      " listings:"+(d.listings||0)+" geocoded:"+(d.geocoded||0)+(json.note?(" · "+json.note):""));
-    try{ console.log("greenfield proxy diag:",json.diag||json); }catch(e){}
-  });
-}
-
 function ajax(url,cb){
   var x=new XMLHttpRequest();
   x.open("GET",url,true); x.timeout=28000;
@@ -1132,13 +713,10 @@ function renderLayer(key,feats){
     if(gm.type==="Point"){
       var c=gm.coordinates;
       if(f.bubbleMw!=null){
-        // Sqrt-scaled bubble (area ~ magnitude). Parcels scale by acreage, plants by MW.
-        var val=f.bubbleMw, r=f.parcel?Math.max(5,Math.min(22,Math.sqrt(val)*1.7))
-                                       :Math.max(3,Math.min(26,Math.sqrt(val)*0.55));
+        // MW-scaled bubble (sqrt scale so area ~ capacity), like OpenGridWorks
+        var mw=f.bubbleMw, r=Math.max(3,Math.min(26,Math.sqrt(mw)*0.55));
         var bc=f.bubbleColor||col;
-        L.circleMarker([c[1],c[0]],{radius:r,color:bc,weight:f.parcel?1.6:1,
-          fillColor:bc,fillOpacity:f.pending?.1:(f.parcel?.28:.4),
-          dashArray:f.pending?"3,3":null,opacity:f.pending?.55:1})
+        L.circleMarker([c[1],c[0]],{radius:r,color:bc,weight:1,fillColor:bc,fillOpacity:.4})
           .bindPopup(popup(L2,f.props,bc)).addTo(g);
       } else {
         L.circleMarker([c[1],c[0]],{radius:L2.geom==="point"?5:4,color:col,weight:1.5,
@@ -1161,17 +739,11 @@ function renderLayer(key,feats){
       }
     }
   }
-  /* PATCH · national extension: lets a layer take over its own drawing when
-     the default renderer would lose meaning (power-flow direction/magnitude). */
-  if(window.GA_EXT&&window.GA_EXT.onRendered){
-    try{ window.GA_EXT.onRendered(key,feats,g); }catch(e){}
-  }
 }
 function popup(L2,a,col){
   col=col||L2.color;
-  var link=(a&&a.url)?'<div class="pp-r"><a href="'+esc(a.url)+'" target="_blank" rel="noopener" style="color:'+col+'">view listing ↗</a></div>':"";
   return '<div class="pp-t" style="color:'+col+'">'+esc(L2.label(a))+'</div>'+
-         '<div class="pp-r">'+esc(L2.meta(a)||"")+'</div>'+link;
+         '<div class="pp-r">'+esc(L2.meta(a)||"")+'</div>';
 }
 
 /* ---------- EIA national technology-breakdown panel (image-2 style) ---------- */
@@ -1205,15 +777,8 @@ function loadVisible(){
   status("Loading "+todo.length+" layer"+(todo.length>1?"s":"")+"…",true);
   todo.forEach(function(k){
     var isOSM=(LAYERS[k].url==="__OSM__"||LAYERS[k].url==="__OSMGEOM__");
-    /* PATCH · national extension: layers registered with url "__EXT__" are
-       fetched by grid-atlas-national.js. Falls through to the base fetchers
-       if the extension is absent, so the tool works either way. */
-    var fn=LAYERS[k].url==="__EXT__"?function(kk,done){
-             if(window.GA_EXT&&window.GA_EXT.fetch(kk,done))return; done([]);
-           }:
-           LAYERS[k].url==="__STATIC__"?fetchStatic:
-           (LAYERS[k].url==="__EIA__"?fetchEIA:
-           (LAYERS[k].url==="__PROXY__"?(LAYERS[k].proxyKind==="commercial"?fetchCommercialProxy:fetchProxy):(isOSM?fetchOSM:fetchArc)));
+    var fn=LAYERS[k].url==="__STATIC__"?fetchStatic:
+           (LAYERS[k].url==="__EIA__"?fetchEIA:(isOSM?fetchOSM:fetchArc));
     fn(k,function(feats){
       renderLayer(k,feats); if(feats.length) any=true;
       updateRailCounts();
@@ -1237,10 +802,10 @@ var CATS=[
   {key:"generation",   name:"Generation"},
   {key:"connectivity", name:"Fiber · Connectivity"},
   {key:"market",       name:"Market · Utility"},
-  {key:"land",         name:"Land · Commercial · Sites"},
+  {key:"site",         name:"Site Suitability"},
   {key:"load",         name:"Load · Demand"}
 ];
-var catCollapsed={generation:true, connectivity:true, market:true, land:false, load:true}; // interconnect + land open by default
+var catCollapsed={generation:true, connectivity:true, market:true, site:true, load:true}; // interconnect open by default
 function buildRail(){
   layersEl.innerHTML="";
   CATS.forEach(function(cat){
@@ -1276,38 +841,6 @@ function buildRail(){
       };
       body.appendChild(el);
     });
-    /* Land screening controls — minAcres kills residential-lot noise; maxPpa caps $/acre. */
-    if(cat.key==="land"){
-      var fbox=document.createElement("div");
-      fbox.style.cssText="padding:6px 14px 8px;font:10px var(--mono);color:var(--muted)";
-      fbox.innerHTML=
-        '<div style="display:flex;gap:6px;align-items:center">'+
-        '<span>≥</span><input id="gfMinAc" type="number" min="0" step="1" value="'+gfFilter.minAcres+'" '+
-          'style="width:42px;background:#0d1420;border:1px solid var(--line);border-radius:4px;'+
-          'color:var(--txt);font:10px var(--mono);padding:2px 4px" title="Minimum acres">'+
-        '<span>ac</span><span style="margin-left:6px">≤$</span>'+
-        '<input id="gfMaxPpa" type="number" min="0" step="1000" value="'+(gfFilter.maxPpa||"")+'" placeholder="any" '+
-          'style="width:56px;background:#0d1420;border:1px solid var(--line);border-radius:4px;'+
-          'color:var(--txt);font:10px var(--mono);padding:2px 4px" title="Max price per acre">'+
-        '<span>/ac</span>'+
-        '<span id="gfApply" style="margin-left:auto;color:var(--amp);cursor:pointer">apply</span>'+
-        '<span id="gfTest" style="color:var(--amp);cursor:pointer" title="Test the /api/greenfield proxy end-to-end">test</span>'+
-        '</div>'+
-        '<div id="gfNote" style="margin-top:4px;color:var(--muted);white-space:normal;line-height:1.4">'+esc(gfNote||"")+'</div>';
-      body.appendChild(fbox);
-      setTimeout(function(){
-        var ap=document.getElementById("gfApply");
-        if(ap) ap.onclick=function(){
-          var ma=parseFloat(document.getElementById("gfMinAc").value); gfFilter.minAcres=isNaN(ma)?0:ma;
-          var mp=parseFloat(document.getElementById("gfMaxPpa").value); gfFilter.maxPpa=isNaN(mp)?0:mp;
-          drawnBounds.greenfield=null;
-          if(LAYERS.greenfield.on) loadVisible(); else gfSetNote("filters set — enable Land for Sale layer");
-        };
-        var ts=document.getElementById("gfTest");
-        if(ts) ts.onclick=gfTestProxy;
-        gfSetNote(gfNote);
-      },0);
-    }
     layersEl.appendChild(body);
   });
   updateRailCounts();
@@ -1450,21 +983,6 @@ function analyze(ll){
   var plant=nearestPoint(ll,cache.plants,LAYERS.plants);
   var dcN=within(ll,cache.datacenters,40);
   var evN=within(ll,cache.ev,15);
-  var parcel=nearestPoint(ll,cache.greenfield,LAYERS.greenfield);
-  var parcelN=within(ll,cache.greenfield,25);
-  /* Nearest DEVELOPABLE parcel: >= the screening threshold (min 5 ac). */
-  var devMin=Math.max(5,gfFilter.minAcres||0);
-  var devFeats=(cache.greenfield||[]).filter(function(f){return f.props&&f.props.acres>=devMin;});
-  var devParcel=nearestPoint(ll,devFeats,LAYERS.greenfield);
-  /* In-view land market stats: median $/ac and median size across loaded listings. */
-  function median(arr){ if(!arr.length)return null; arr.sort(function(a,b){return a-b;});
-    var m=Math.floor(arr.length/2); return arr.length%2?arr[m]:(arr[m-1]+arr[m])/2; }
-  var ppas=[],sizes=[];
-  (cache.greenfield||[]).forEach(function(f){ var p=f.props||{};
-    if(p.ppa!=null&&isFinite(p.ppa))ppas.push(p.ppa);
-    else if(p.price!=null&&p.acres>0)ppas.push(p.price/p.acres);
-    if(p.acres!=null)sizes.push(p.acres); });
-  var medPpa=median(ppas), medAc=median(sizes);
   var fiberSets=[cache.fiber_verified,cache.ll_backbone,cache.fiber_ca,cache.fiber,cache.fiber_estimated,cache.subsea];
   var fiber=null;
   for(var fi=0;fi<fiberSets.length;fi++){
@@ -1506,44 +1024,6 @@ function analyze(ll){
   h+=infoRow(LAYERS.datacenters.color,"Data centers","within 40 km"+(LAYERS.datacenters.on?"":" · layer off"),String(dcN));
   h+=infoRow(LAYERS.ev.color,"EV charging sites","within 15 km"+(LAYERS.ev.on?"":" · layer off"),String(evN));
 
-  h+='<div class="sec">Land / Site Control</div>';
-  if(parcel){
-    if(devParcel){
-      var dp=devParcel.f.props, dm=[];
-      if(dp.acres!=null) dm.push(Number(dp.acres).toLocaleString()+" ac");
-      if(dp.price!=null) dm.push("$"+Number(dp.price).toLocaleString());
-      var dpp=(dp.ppa!=null?dp.ppa:(dp.price!=null&&dp.acres>0?dp.price/dp.acres:null));
-      if(dpp!=null&&isFinite(dpp)) dm.push("$"+Math.round(dpp).toLocaleString()+"/ac");
-      h+=infoRow(LAYERS.greenfield.color, "Developable ≥"+devMin+" ac: "+(dp.address||"parcel"),
-            dm.join(" · ")||"listing", fmtKm(devParcel.km));
-      if(dp.url) h+='<div class="hint" style="margin:2px 0 0"><a href="'+esc(dp.url)+'" target="_blank" rel="noopener" style="color:'+LAYERS.greenfield.color+'">Open listing ↗</a></div>';
-    } else {
-      h+=infoRow(LAYERS.greenfield.color,"Developable ≥"+devMin+" ac","none in view — widen map or lower min-acres filter","—");
-    }
-    var pp=parcel.f.props;
-    if(!devParcel||parcel.f!==devParcel.f){
-      var pmeta=[];
-      if(pp.price!=null) pmeta.push("$"+Number(pp.price).toLocaleString());
-      if(pp.acres!=null) pmeta.push(Number(pp.acres).toLocaleString()+" ac");
-      h+=infoRow(LAYERS.greenfield.color, "Nearest any: "+(pp.address||"parcel"),
-            pmeta.join(" · ")||(pp.status||"listing"), fmtKm(parcel.km));
-    }
-    h+=infoRow(LAYERS.greenfield.color,"Listings nearby","for-sale parcels within 25 km"+(LAYERS.greenfield.on?"":" · layer off"),String(parcelN));
-    if(medPpa!=null){
-      h+=infoRow(LAYERS.greenfield.color,"Market in view",
-            "median $"+Math.round(medPpa).toLocaleString()+"/ac"+(medAc!=null?" · median "+(medAc<10?medAc.toFixed(1):Math.round(medAc))+" ac":""),
-            String((cache.greenfield||[]).length));
-    }
-    var ref=devParcel||parcel;
-    var lv=ref.km<=1?"On/adjacent to a for-sale parcel — site control is actionable":
-           ref.km<=8?"For-sale land near this point — assemble against grid proximity":
-           "No close listings — off-market outreach or wider search needed";
-    h+='<div class="hint" style="margin:2px 0 0;color:var(--muted)">'+lv+'. Land data is live from your sources (LandSearch/Land.com) — verify acreage, zoning, and title before acting.</div>';
-  } else {
-    h+=infoRow(LAYERS.greenfield.color,"Land for sale",
-          LAYERS.greenfield.on?"no listings in view (check min-acres filter)":"enable Land for Sale layer","—");
-  }
-
   h+='<div class="sec">Connectivity</div>';
   h+=infoRow(LAYERS.fiber.color, fiber?"Fiber route":"No fiber in view",
         fiber?"nearest backbone"+(LAYERS.fiber.on?"":" · layer off"):"enable Fiber Routes layer",
@@ -1571,10 +1051,36 @@ function analyze(ll){
           ba?"↳":"—");
   }
 
+  // ── Data Center Site Report — composite suitability ──
+  var water=nearestLine(ll,cache.water);
+  var floodF=containingFeature(ll,cache.flood);
+  var inFlood=floodF&&/^(A|AE|AO|AH|AR|A99|V|VE)$/i.test((floodF.props.FLD_ZONE||floodF.props.fld_zone||"").replace(/\s/g,""));
+  var pPower=Math.max(0,100-subKm*12)*0.6 + Math.max(0,100-txKm*16)*0.4;
+  var txV2=tx?(+(tx.props.VOLTAGE||tx.props.VOLT_CLASS||0)):0;
+  if(txV2>=230) pPower=Math.min(100,pPower+12);
+  var pFiber=fiber?Math.max(0,100-fiber.km*8):15;
+  var pWater=water?Math.max(0,100-water.km*10):30;
+  var pFlood=floodF?(inFlood?12:58):85;
+  var pMarket=containingFeature(ll,cache.iso_rto)?100:70;
+  var dcScore=Math.round(pPower*0.42+pFiber*0.24+pWater*0.14+pFlood*0.12+pMarket*0.08);
+  dcScore=Math.max(1,Math.min(100,dcScore));
+  var dcBand=dcScore>=72?"var(--ok)":dcScore>=50?"var(--warn)":"var(--bad)";
+  var dcVerdict=dcScore>=72?"Strong data-center candidate":dcScore>=50?"Viable — diligence the constraints":"Challenged for DC scale";
+  h+='<div class="sec">◆ Data Center Site Report</div>';
+  h+='<div class="score"><span class="n" style="color:'+dcBand+'">'+dcScore+'</span><span class="lab">/ 100 DC suitability</span></div>';
+  h+='<div class="bar"><span style="width:'+dcScore+'%;background:'+dcBand+'"></span></div>';
+  h+='<div class="hint" style="margin:6px 0 8px;color:'+dcBand+'">'+dcVerdict+'</div>';
+  h+=dcFactor("Power access", pPower, sub?fmtKm(subKm)+" to substation":"no substation loaded");
+  h+=dcFactor("Fiber / connectivity", pFiber, fiber?fmtKm(fiber.km)+" to route":"enable a fiber layer");
+  h+=dcFactor("Cooling water", pWater, water?fmtKm(water.km)+" to water":"enable Water layer");
+  h+=dcFactor("Flood risk", pFlood, floodF?(inFlood?"in FEMA zone "+(floodF.props.FLD_ZONE||floodF.props.fld_zone||""):"mapped low-risk zone"):"no mapped flood zone");
+  h+=dcFactor("Market liquidity", pMarket, containingFeature(ll,cache.iso_rto)?"in organized ISO/RTO":"bilateral market");
+  h+='<div class="hint" style="margin:4px 0 0;color:var(--muted)">Weights: power 42%, fiber 24%, water 14%, flood 12%, market 8%. Enable Site Suitability + Fiber + Market layers for a full read. Screening only — confirm utility capacity, water rights & Phase I before acquisition.</div>';
+
   h+='<div class="sec">Notes</div>';
-  h+='<div class="hint">Score weights substation distance (42%), transmission distance (33%), and voltage class (25%). '+
+  h+='<div class="hint">Interconnect score weights substation distance (42%), transmission distance (33%), and voltage class (25%). '+
      'Coverage depends on active layers and map extent — enable a layer and it feeds the score automatically. '+
-     'Public data (HIFLD / OSM); confirm hosting capacity with the utility before siting.</div>';
+     'Public data (HIFLD / EIA / OSM); confirm hosting capacity with the utility before siting.</div>';
 
   document.getElementById("pBody").innerHTML=h;
   var cc=document.getElementById("copyc");
@@ -1629,6 +1135,15 @@ function infoRow(color,nm,meta,dist){
     '<div class="main"><div class="nm">'+esc(nm)+'</div><div class="meta">'+esc(meta)+'</div></div>'+
     '<div class="dist">'+esc(dist)+'</div></div>';
 }
+function dcFactor(name,score,detail){
+  score=Math.max(0,Math.min(100,Math.round(score)));
+  var c=score>=70?"var(--ok)":score>=45?"var(--warn)":"var(--bad)";
+  return '<div style="padding:5px 0">'+
+    '<div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:3px">'+
+    '<span>'+esc(name)+'</span><span style="font-family:var(--mono);font-size:10px;color:'+c+'">'+score+'</span></div>'+
+    '<div class="bar" style="height:4px"><span style="width:'+score+'%;background:'+c+'"></span></div>'+
+    '<div class="meta" style="font-size:10px;margin-top:2px">'+esc(detail)+'</div></div>';
+}
 function fmtKm(km){ return km<1?Math.round(km*1000)+" m":km.toFixed(1)+" km"; }
 function copy(t){ try{var i=document.createElement("textarea");i.value=t;document.body.appendChild(i);i.select();document.execCommand("copy");document.body.removeChild(i);}catch(e){} }
 
@@ -1636,894 +1151,6 @@ function copy(t){ try{var i=document.createElement("textarea");i.value=t;documen
 var panel=document.getElementById("panel");
 function openPanel(){ panel.className="open"; }
 document.getElementById("pClose").onclick=function(){ panel.className=""; };
-
-/* ═══════════════════════════════════════════════════════════════════════════
-   Zip Radius Report — enter a ZIP + radius (25/50/100 mi), get a list of
-   land-for-sale (clickable listing links) and substations, sorted by distance.
-   Reuses the same public data sources as the map layers (ArcGIS substations,
-   greenfield proxy/static). ES5 only.
-   ═══════════════════════════════════════════════════════════════════════════ */
-(function(){
-  var wrap=document.getElementById("zipModalWrap");
-  var modal=document.getElementById("zipModal");
-  var inp=document.getElementById("zipInput");
-  var errEl=document.getElementById("zipErr");
-  var goBtn=document.getElementById("zipGo");
-  var radRow=document.getElementById("zipRadRow");
-  var rep=document.getElementById("zipReport");
-  var zrTitle=document.getElementById("zrTitle");
-  var zrSub=document.getElementById("zrSub");
-  var zrBody=document.getElementById("zrBody");
-  var csvBtn=document.getElementById("zrCsv");
-  var pdfBtn=document.getElementById("zrPdf");
-  var callBtn=document.getElementById("zrCall");
-  var gearBtn=document.getElementById("zrGear");
-  var progEl=document.getElementById("zrProg");
-  var chosenMi=50;
-  var zipLayer=L.layerGroup(); // radius circle + result markers live here
-  var lastReport=null; // {zip,place,lat,lon,mi,subs,land} — set on render, used by export
-
-  csvBtn.addEventListener("click",function(){ if(lastReport) exportCsv(lastReport); });
-  pdfBtn.addEventListener("click",function(){ if(lastReport) exportPdf(lastReport); });
-  callBtn.addEventListener("click",function(){ if(lastReport) buildCallSheet(lastReport); });
-  gearBtn.addEventListener("click",openOwnerSettings);
-
-  function openModal(){ errEl.textContent=""; wrap.className="on"; setTimeout(function(){inp.focus();},50); }
-  function closeModal(){ wrap.className=""; }
-  document.getElementById("zipChip").addEventListener("click",openModal);
-  document.getElementById("zipModalClose").addEventListener("click",closeModal);
-  wrap.addEventListener("click",function(e){ if(e.target===wrap) closeModal(); });
-  document.getElementById("zrClose").addEventListener("click",function(){
-    rep.className=""; if(map.hasLayer(zipLayer)) map.removeLayer(zipLayer);
-  });
-
-  radRow.addEventListener("click",function(e){
-    var t=e.target; while(t&&t!==radRow&&!t.getAttribute("data-mi")) t=t.parentNode;
-    if(!t||t===radRow) return;
-    chosenMi=parseInt(t.getAttribute("data-mi"),10);
-    var kids=radRow.getElementsByClassName("zm-rad");
-    for(var i=0;i<kids.length;i++) kids[i].className="zm-rad"+(kids[i]===t?" on":"");
-  });
-  inp.addEventListener("keydown",function(e){ if(e.key==="Enter"){ e.preventDefault(); run(); } });
-  goBtn.addEventListener("click",run);
-
-  /* Haversine distance in miles */
-  function distMi(lat1,lon1,lat2,lon2){
-    var R=3958.8, toR=Math.PI/180;
-    var dLat=(lat2-lat1)*toR, dLon=(lon2-lon1)*toR;
-    var a=Math.sin(dLat/2)*Math.sin(dLat/2)+
-          Math.cos(lat1*toR)*Math.cos(lat2*toR)*Math.sin(dLon/2)*Math.sin(dLon/2);
-    return R*2*Math.atan2(Math.sqrt(a),Math.sqrt(1-a));
-  }
-  /* Degree box padding for a given radius (lat is ~69 mi/deg; lon scaled by cos) */
-  function bboxFor(lat,lon,mi){
-    var dLat=mi/69.0;
-    var dLon=mi/(69.0*Math.max(0.15,Math.cos(lat*Math.PI/180)));
-    return { w:lon-dLon, s:lat-dLat, e:lon+dLon, n:lat+dLat };
-  }
-  function fmtMoney(v){
-    if(v==null||isNaN(v)) return "—";
-    return "$"+Math.round(v).toString().replace(/\B(?=(\d{3})+(?!\d))/g,",");
-  }
-
-  function esc(s){ return String(s==null?"":s).replace(/[&<>"]/g,function(c){
-    return {"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;"}[c]; }); }
-
-  /* Small colored pill for the property type in the commercial list. */
-  function commBadge(t){
-    var map={ INDUSTRIAL:["#ff8f3a","IND"], OFFICE:["#a78bfa","OFC"], RETAIL:["#4ea3ff","RTL"],
-              LAND:["#6ee76e","LND"], COMMERCIAL:["#4ea3ff","COM"] };
-    var m=map[t]||map.COMMERCIAL;
-    return '<span style="display:inline-block;font-family:var(--mono);font-size:8px;font-weight:700;'+
-      'letter-spacing:.06em;color:'+m[0]+';border:1px solid '+m[0]+';border-radius:4px;'+
-      'padding:1px 4px;margin-right:5px;vertical-align:1px">'+m[1]+'</span>';
-  }
-  function commColor(t){
-    return ({ INDUSTRIAL:"#ff8f3a", OFFICE:"#a78bfa", RETAIL:"#4ea3ff", LAND:"#6ee76e" })[t]||"#4ea3ff";
-  }
-
-  function run(){
-    var zip=(inp.value||"").trim();
-    if(!/^\d{5}$/.test(zip)){ errEl.textContent="Enter a valid 5-digit ZIP code."; return; }
-    errEl.textContent=""; goBtn.disabled=true; goBtn.textContent="Locating ZIP…";
-
-    /* Geocode the ZIP via Nominatim (US, postalcode). */
-    ajax("https://nominatim.openstreetmap.org/search?format=json&limit=1&countrycodes=us&postalcode="+
-      encodeURIComponent(zip),function(err,res){
-      if(err||!res||!res.length){
-        goBtn.disabled=false; goBtn.textContent="Run Report";
-        errEl.textContent="Couldn't locate that ZIP. Try another."; return;
-      }
-      var r=res[0], lat=+r.lat, lon=+r.lon;
-      var place=(r.display_name||zip).split(",").slice(0,2).join(",").trim();
-      closeModal(); goBtn.disabled=false; goBtn.textContent="Run Report";
-      buildReport(zip,place,lat,lon,chosenMi);
-    });
-  }
-
-  function buildReport(zip,place,lat,lon,mi){
-    zrTitle.textContent=zip+" · "+mi+" mi";
-    zrSub.textContent="Loading… "+place;
-    zrBody.innerHTML='<div class="zr-loading">Fetching substations and land listings…</div>';
-    rep.className="open";
-    lastReport=null; csvBtn.disabled=true; pdfBtn.disabled=true; callBtn.disabled=true;
-    progEl.className=""; progEl.textContent="";
-
-    /* Reset the map view + result layer, drop a center pin + radius ring. */
-    zipLayer.clearLayers();
-    if(!map.hasLayer(zipLayer)) zipLayer.addTo(map);
-    var meters=mi*1609.34;
-    L.circle([lat,lon],{radius:meters,color:"#ffb020",weight:1.5,opacity:.7,
-      fillColor:"#ffb020",fillOpacity:.05,dashArray:"5,6"}).addTo(zipLayer);
-    L.circleMarker([lat,lon],{radius:6,color:"#fff",weight:2,fillColor:"#ffb020",fillOpacity:1})
-      .bindPopup("ZIP "+zip+"<br>"+esc(place)).addTo(zipLayer);
-    // fit map to the ring
-    var bb=bboxFor(lat,lon,mi);
-    map.fitBounds([[bb.s,bb.w],[bb.n,bb.e]],{padding:[30,30]});
-
-    var state={subs:null, land:null, comm:null};
-    fetchSubsInRadius(lat,lon,mi,function(subs){ state.subs=subs; maybeRender(); });
-    fetchLandInRadius(lat,lon,mi,function(land){ state.land=land; maybeRender(); });
-    fetchCommercialInRadius(lat,lon,mi,function(comm){ state.comm=comm; maybeRender(); });
-
-    function maybeRender(){
-      if(state.subs===null||state.land===null||state.comm===null) return;
-      render(zip,place,lat,lon,mi,state.subs,state.land,state.comm);
-    }
-  }
-
-  /* Substations: query the same ArcGIS chain used by the map layer, by envelope,
-     then distance-filter to the radius. Falls back through mirrors. */
-  function fetchSubsInRadius(lat,lon,mi,cb){
-    var L2=LAYERS.substations;
-    var chain=(L2.urls&&L2.urls.length)?L2.urls.slice():(L2.url?[L2.url]:[]);
-    var bb=bboxFor(lat,lon,mi);
-    var env=bb.w+","+bb.s+","+bb.e+","+bb.n;
-    var qs="/query?f=geojson&where=1%3D1&outFields=*&returnGeometry=true"+
-      "&geometryType=esriGeometryEnvelope&inSR=4326&outSR=4326&spatialRel=esriSpatialRelIntersects"+
-      "&resultRecordCount=2000&geometry="+encodeURIComponent(env);
-    var i=0;
-    function attempt(){
-      if(i>=chain.length){ cb([]); return; }
-      var base=chain[i++];
-      ajax(base+qs,function(err,json){
-        if(err||!json||!json.features||!json.features.length){ attempt(); return; }
-        var out=[];
-        for(var k=0;k<json.features.length;k++){
-          var f=json.features[k], g=f.geometry; if(!g||!g.coordinates) continue;
-          var la=g.coordinates[1], lo=g.coordinates[0];
-          var d=distMi(lat,lon,la,lo);
-          if(d>mi) continue;
-          var a=f.properties||{};
-          out.push({ name:L2.label(a), meta:L2.meta(a), lat:la, lon:lo, dist:d });
-        }
-        out.sort(function(a,b){return a.dist-b.dist;});
-        cb(out);
-      });
-    }
-    attempt();
-  }
-
-  /* Land: reuse greenfield proxy/static exactly like the map layer, scoped to the
-     radius bbox, then distance-filter. Honors the same minAcres/maxPpa filters. */
-  function fetchLandInRadius(lat,lon,mi,cb){
-    var cfg=window.CLEARSKY_CONFIG||{};
-    var proxy=cfg.greenfieldProxy||(cfg.apiKeys&&cfg.apiKeys.greenfieldProxy)||"";
-    var staticUrl=cfg.greenfieldStatic||"";
-    var bb=bboxFor(lat,lon,mi);
-    if(!proxy&&!staticUrl){ cb([]); return; }
-
-    var merged=[], seen={}, pending=0;
-    function add(feats){ for(var i=0;i<feats.length;i++){
-      var p=feats[i].props||{}, u=p.url||("@"+i+Math.random());
-      if(seen[u]) continue; seen[u]=1;
-      var g=feats[i].geom; if(!g||!g.coordinates) continue;
-      var la=g.coordinates[1], lo=g.coordinates[0];
-      var d=distMi(lat,lon,la,lo);
-      if(d>mi) continue;
-      merged.push({ address:p.address, price:p.price, acres:p.acres, ppa:p.ppa,
-        status:p.status, url:p.url, lat:la, lon:lo, dist:d });
-    } }
-    function done(){ if(--pending>0) return;
-      merged.sort(function(a,b){return a.dist-b.dist;}); cb(merged); }
-
-    if(staticUrl){
-      pending++;
-      ajax(staticUrl,function(err,json){
-        if(!err&&json){ add(gfScreen(normalizeLandJson(json))); } done();
-      });
-    }
-    if(proxy){
-      pending++;
-      var qs="bbox="+encodeURIComponent(bb.w+","+bb.s+","+bb.e+","+bb.n);
-      if(gfFilter.minAcres>0) qs+="&minAcres="+gfFilter.minAcres;
-      if(gfFilter.maxPpa>0) qs+="&maxPpa="+gfFilter.maxPpa;
-      ajax(proxy+(proxy.indexOf("?")>-1?"&":"?")+qs,function(err,json){
-        if(!err&&json&&json.features){ add(gfScreen(normalizeLandJson(json))); } done();
-      });
-    }
-  }
-
-  /* Commercial & industrial listings in radius. Mirrors fetchLandInRadius but pulls
-     from commercialProxy / commercialStatic and normalizes building/industrial data. */
-  function fetchCommercialInRadius(lat,lon,mi,cb){
-    var cfg=window.CLEARSKY_CONFIG||{};
-    var proxy=cfg.commercialProxy||(cfg.apiKeys&&cfg.apiKeys.commercialProxy)||"";
-    var staticUrl=cfg.commercialStatic||"";
-    var bb=bboxFor(lat,lon,mi);
-    if(!proxy&&!staticUrl){ cb([]); return; }
-
-    var merged=[], seen={}, pending=0;
-    function add(feats){ for(var i=0;i<feats.length;i++){
-      var p=feats[i].props||{}, u=p.url||("@"+i+Math.random());
-      if(seen[u]) continue; seen[u]=1;
-      var g=feats[i].geom; if(!g||!g.coordinates) continue;
-      var la=g.coordinates[1], lo=g.coordinates[0];
-      var d=distMi(lat,lon,la,lo);
-      if(d>mi) continue;
-      merged.push({ address:p.address, price:p.price, acres:p.acres, sqft:p.sqft,
-        propType:p.propType, tenancy:p.tenancy, status:p.status, url:p.url,
-        lat:la, lon:lo, dist:d });
-    } }
-    function done(){ if(--pending>0) return;
-      merged.sort(function(a,b){return a.dist-b.dist;}); cb(merged); }
-
-    if(staticUrl){
-      pending++;
-      ajax(staticUrl,function(err,json){
-        if(!err&&json){ add(normalizeCommercialJson(json)); } done();
-      });
-    }
-    if(proxy){
-      pending++;
-      var qs="bbox="+encodeURIComponent(bb.w+","+bb.s+","+bb.e+","+bb.n);
-      ajax(proxy+(proxy.indexOf("?")>-1?"&":"?")+qs,function(err,json){
-        if(!err&&json&&json.features){ add(normalizeCommercialJson(json)); } done();
-      });
-    }
-  }
-
-  function render(zip,place,lat,lon,mi,subs,land,comm){
-    comm=comm||[];
-    zrSub.textContent=place+"  ·  "+land.length+" land · "+comm.length+" commercial · "+subs.length+" substations";
-    var h="";
-
-    /* ── Land for sale ── */
-    h+='<div class="zr-sec"><span>Land for Sale</span><span class="cnt">'+land.length+'</span></div>';
-    if(!land.length){
-      var cfg=window.CLEARSKY_CONFIG||{};
-      var configured=(cfg.greenfieldProxy||cfg.greenfieldStatic);
-      h+='<div class="zr-empty">'+(configured
-        ? "No listings found in this radius (try a wider radius or loosen the Land filters)."
-        : "Land source not configured — set greenfieldStatic or greenfieldProxy in config.js.")+'</div>';
-    } else {
-      for(var i=0;i<land.length;i++){
-        var L2=land[i];
-        var acresTxt=(L2.acres!=null?(Math.round(L2.acres*10)/10+" ac"):"— ac");
-        var priceTxt=fmtMoney(L2.price);
-        var ppaTxt=(L2.ppa!=null?" · "+fmtMoney(L2.ppa)+"/ac":"");
-        var pend=(/pending/i.test(L2.status||"")?' · <span style="color:var(--warn)">pending</span>':"");
-        var link=L2.url?('<a class="lnk" href="'+esc(L2.url)+'" target="_blank" rel="noopener" onclick="event.stopPropagation()">view listing ↗</a>'):"";
-        h+='<div class="zr-item" data-lat="'+L2.lat+'" data-lon="'+L2.lon+'">'+
-             '<div class="r1"><span class="nm">'+esc(L2.address||"Parcel for sale")+'</span>'+
-             '<span class="di">'+L2.dist.toFixed(1)+' mi</span></div>'+
-             '<div class="r2">'+priceTxt+' · '+acresTxt+ppaTxt+pend+'</div>'+
-             (link?'<div class="r2">'+link+'</div>':"")+
-           '</div>';
-      }
-    }
-
-    /* ── Commercial & Industrial ── */
-    h+='<div class="zr-sec"><span>Commercial &amp; Industrial</span><span class="cnt">'+comm.length+'</span></div>';
-    if(!comm.length){
-      var cfgC=window.CLEARSKY_CONFIG||{};
-      var configuredC=(cfgC.commercialProxy||cfgC.commercialStatic);
-      h+='<div class="zr-empty">'+(configuredC
-        ? "No commercial/industrial listings in this radius."
-        : "Commercial source not configured — set commercialStatic or commercialProxy in config.js.")+'</div>';
-    } else {
-      for(var ci=0;ci<comm.length;ci++){
-        var C=comm[ci];
-        var sizeTxt=(C.sqft!=null?(Math.round(C.sqft).toLocaleString()+" sf"):(C.acres!=null?(Math.round(C.acres*10)/10+" ac"):"— "));
-        var priceTxtC=fmtMoney(C.price);
-        var badge=commBadge(C.propType);
-        var pendC=(/pending|under contract/i.test(C.status||"")?' · <span style="color:var(--warn)">pending</span>':"");
-        var linkC=C.url?('<a class="lnk" href="'+esc(C.url)+'" target="_blank" rel="noopener" onclick="event.stopPropagation()">view listing ↗</a>'):"";
-        h+='<div class="zr-item" data-lat="'+C.lat+'" data-lon="'+C.lon+'">'+
-             '<div class="r1"><span class="nm">'+badge+' '+esc(C.address||"Commercial site")+'</span>'+
-             '<span class="di">'+C.dist.toFixed(1)+' mi</span></div>'+
-             '<div class="r2">'+priceTxtC+' · '+sizeTxt+pendC+'</div>'+
-             (linkC?'<div class="r2">'+linkC+'</div>':"")+
-           '</div>';
-      }
-    }
-
-    /* ── Substations ── */
-    h+='<div class="zr-sec"><span>Substations</span><span class="cnt">'+subs.length+'</span></div>';
-    if(!subs.length){
-      h+='<div class="zr-empty">No substations returned for this area.</div>';
-    } else {
-      for(var s=0;s<subs.length;s++){
-        var S=subs[s];
-        h+='<div class="zr-item" data-lat="'+S.lat+'" data-lon="'+S.lon+'">'+
-             '<div class="r1"><span class="nm">'+esc(S.name)+'</span>'+
-             '<span class="di">'+S.dist.toFixed(1)+' mi</span></div>'+
-             (S.meta?'<div class="r2">'+esc(S.meta)+'</div>':"")+
-           '</div>';
-      }
-    }
-    zrBody.innerHTML=h;
-
-    /* Drop result markers on the map + wire list→map clicks. */
-    for(var li=0;li<land.length;li++){
-      (function(P){
-        L.circleMarker([P.lat,P.lon],{radius:6,color:"#6ee76e",weight:1.5,fillColor:"#6ee76e",fillOpacity:.5})
-          .bindPopup('<b>'+esc(P.address||"Parcel")+'</b><br>'+fmtMoney(P.price)+
-            (P.acres!=null?" · "+(Math.round(P.acres*10)/10)+" ac":"")+
-            (P.url?'<br><a href="'+esc(P.url)+'" target="_blank" rel="noopener">view listing ↗</a>':""))
-          .addTo(zipLayer);
-      })(land[li]);
-    }
-    for(var si=0;si<subs.length;si++){
-      (function(S){
-        L.circleMarker([S.lat,S.lon],{radius:5,color:"#ffb020",weight:1.5,fillColor:"#ffb020",fillOpacity:.65})
-          .bindPopup('<b>'+esc(S.name)+'</b>'+(S.meta?'<br>'+esc(S.meta):""))
-          .addTo(zipLayer);
-      })(subs[si]);
-    }
-    for(var mi2=0;mi2<comm.length;mi2++){
-      (function(C){
-        var col=commColor(C.propType);
-        L.circleMarker([C.lat,C.lon],{radius:6,color:col,weight:1.6,fillColor:col,fillOpacity:.45})
-          .bindPopup('<b>'+esc(C.address||"Commercial site")+'</b><br>'+
-            (C.propType?C.propType+" · ":"")+fmtMoney(C.price)+
-            (C.sqft!=null?"<br>"+Math.round(C.sqft).toLocaleString()+" sf":"")+
-            (C.url?'<br><a href="'+esc(C.url)+'" target="_blank" rel="noopener">view listing ↗</a>':""))
-          .addTo(zipLayer);
-      })(comm[mi2]);
-    }
-    var items=zrBody.getElementsByClassName("zr-item");
-    for(var it=0;it<items.length;it++){
-      items[it].addEventListener("click",function(){
-        var la=parseFloat(this.getAttribute("data-lat")), lo=parseFloat(this.getAttribute("data-lon"));
-        if(!isNaN(la)&&!isNaN(lo)) map.setView([la,lo],13);
-      });
-    }
-
-    /* Retain for export + enable the buttons. */
-    lastReport={ zip:zip, place:place, lat:lat, lon:lon, mi:mi, subs:subs, land:land, comm:comm };
-    csvBtn.disabled=false; pdfBtn.disabled=false;
-    callBtn.disabled=!(land.length||comm.length);
-  }
-
-  /* ── Export: CSV (opens in Excel/Sheets) ── */
-  function csvCell(v){
-    if(v==null) return "";
-    var s=String(v);
-    return /[",\n]/.test(s) ? '"'+s.replace(/"/g,'""')+'"' : s;
-  }
-  function exportCsv(R){
-    var rows=[];
-    rows.push(["ClearSky-OMEGA Grid Atlas — Zip Radius Report"]);
-    rows.push(["ZIP",R.zip,"Area",R.place,"Radius (mi)",R.mi,"Generated",new Date().toLocaleString()]);
-    rows.push([]);
-    rows.push(["LAND FOR SALE ("+R.land.length+")"]);
-    rows.push(["Distance (mi)","Address","Price","Acres","$/Acre","Status","Listing URL"]);
-    for(var i=0;i<R.land.length;i++){ var L2=R.land[i];
-      rows.push([ L2.dist.toFixed(1), L2.address||"", (L2.price!=null?L2.price:""),
-        (L2.acres!=null?L2.acres:""), (L2.ppa!=null?Math.round(L2.ppa):""),
-        L2.status||"", L2.url||"" ]);
-    }
-    rows.push([]);
-    rows.push(["COMMERCIAL & INDUSTRIAL ("+((R.comm&&R.comm.length)||0)+")"]);
-    rows.push(["Distance (mi)","Type","Address","Price","Building SqFt","Acres","Status","Listing URL"]);
-    var CC=R.comm||[];
-    for(var ic=0;ic<CC.length;ic++){ var C=CC[ic];
-      rows.push([ C.dist.toFixed(1), C.propType||"", C.address||"", (C.price!=null?C.price:""),
-        (C.sqft!=null?C.sqft:""), (C.acres!=null?C.acres:""), C.status||"", C.url||"" ]);
-    }
-    rows.push([]);
-    rows.push(["SUBSTATIONS ("+R.subs.length+")"]);
-    rows.push(["Distance (mi)","Name","Detail","Lat","Lon"]);
-    for(var s=0;s<R.subs.length;s++){ var S=R.subs[s];
-      rows.push([ S.dist.toFixed(1), S.name||"", S.meta||"", S.lat, S.lon ]);
-    }
-    var csv=rows.map(function(r){ return r.map(csvCell).join(","); }).join("\r\n");
-    download(csv,"text/csv;charset=utf-8","grid-atlas-"+R.zip+"-"+R.mi+"mi.csv");
-  }
-  function download(text,mime,fname){
-    var blob=new Blob(["\ufeff"+text],{type:mime});
-    var url=URL.createObjectURL(blob);
-    var a=document.createElement("a");
-    a.href=url; a.download=fname;
-    document.body.appendChild(a); a.click();
-    setTimeout(function(){ document.body.removeChild(a); URL.revokeObjectURL(url); },400);
-  }
-
-  /* ── Export: PDF (via a clean print window → browser "Save as PDF") ── */
-  function exportPdf(R){
-    var w=window.open("","_blank");
-    if(!w){ alert("Pop-up blocked — allow pop-ups to export the PDF."); return; }
-    function row(cells,tag){ tag=tag||"td";
-      return "<tr>"+cells.map(function(c){ return "<"+tag+">"+esc(c==null?"":c)+"</"+tag+">"; }).join("")+"</tr>"; }
-    var landRows="", i;
-    for(i=0;i<R.land.length;i++){ var L2=R.land[i];
-      var link=L2.url?('<a href="'+esc(L2.url)+'">'+esc(L2.url)+'</a>'):"";
-      landRows+='<tr><td>'+L2.dist.toFixed(1)+'</td><td>'+esc(L2.address||"")+'</td><td>'+
-        fmtMoney(L2.price)+'</td><td>'+(L2.acres!=null?Math.round(L2.acres*10)/10:"—")+'</td><td>'+
-        (L2.ppa!=null?fmtMoney(L2.ppa):"—")+'</td><td>'+esc(L2.status||"")+'</td><td class="u">'+link+'</td></tr>';
-    }
-    var subRows="";
-    for(i=0;i<R.subs.length;i++){ var S=R.subs[i];
-      subRows+=row([S.dist.toFixed(1), S.name||"", S.meta||""]);
-    }
-    var commRows="", CC=R.comm||[];
-    for(i=0;i<CC.length;i++){ var C=CC[i];
-      var clink=C.url?('<a href="'+esc(C.url)+'">'+esc(C.url)+'</a>'):"";
-      commRows+='<tr><td>'+C.dist.toFixed(1)+'</td><td>'+esc(C.propType||"")+'</td><td>'+esc(C.address||"")+'</td><td>'+
-        fmtMoney(C.price)+'</td><td>'+(C.sqft!=null?Math.round(C.sqft).toLocaleString():"—")+'</td><td>'+
-        (C.acres!=null?Math.round(C.acres*10)/10:"—")+'</td><td>'+esc(C.status||"")+'</td><td class="u">'+clink+'</td></tr>';
-    }
-    var html='<!doctype html><html><head><meta charset="utf-8"><title>Grid Atlas · '+esc(R.zip)+' · '+R.mi+'mi</title>'+
-      '<style>'+
-      'body{font-family:-apple-system,Segoe UI,Roboto,Arial,sans-serif;color:#111;margin:32px;font-size:12px}'+
-      'h1{font-size:18px;margin:0 0 2px}h2{font-size:13px;margin:22px 0 6px;border-bottom:2px solid #ffb020;padding-bottom:3px}'+
-      '.meta{color:#555;font-size:11px;margin-bottom:4px}'+
-      'table{border-collapse:collapse;width:100%;margin-top:4px}'+
-      'th,td{border:1px solid #ddd;padding:5px 7px;text-align:left;vertical-align:top}'+
-      'th{background:#f4f4f4;font-size:10px;text-transform:uppercase;letter-spacing:.04em}'+
-      'td.u a{color:#1155cc;word-break:break-all;font-size:10px}'+
-      '.foot{margin-top:20px;color:#888;font-size:10px}'+
-      '@media print{body{margin:14mm}a{color:#1155cc}}'+
-      '</style></head><body>'+
-      '<h1>Grid Atlas — Zip Radius Report</h1>'+
-      '<div class="meta"><b>ZIP '+esc(R.zip)+'</b> · '+esc(R.place)+' · '+R.mi+' mi radius · '+
-        new Date().toLocaleString()+'</div>'+
-      '<h2>Land for Sale ('+R.land.length+')</h2>'+
-      (R.land.length?('<table><thead><tr><th>Dist (mi)</th><th>Address</th><th>Price</th><th>Acres</th><th>$/Ac</th><th>Status</th><th>Listing</th></tr></thead><tbody>'+landRows+'</tbody></table>')
-                    :'<div class="meta">No listings in this radius.</div>')+
-      '<h2>Commercial &amp; Industrial ('+CC.length+')</h2>'+
-      (CC.length?('<table><thead><tr><th>Dist (mi)</th><th>Type</th><th>Address</th><th>Price</th><th>Bldg SqFt</th><th>Acres</th><th>Status</th><th>Listing</th></tr></thead><tbody>'+commRows+'</tbody></table>')
-                    :'<div class="meta">No commercial/industrial listings in this radius.</div>')+
-      '<h2>Substations ('+R.subs.length+')</h2>'+
-      (R.subs.length?('<table><thead><tr><th>Dist (mi)</th><th>Name</th><th>Detail</th></tr></thead><tbody>'+subRows+'</tbody></table>')
-                    :'<div class="meta">No substations returned.</div>')+
-      '<div class="foot">ClearSky-OMEGA · Grid Atlas · public data (ArcGIS/HIFLD substations, LandSearch/Land.com listings). Distances are straight-line from ZIP centroid.</div>'+
-      '</body></html>';
-    w.document.open(); w.document.write(html); w.document.close();
-    setTimeout(function(){ try{ w.focus(); w.print(); }catch(e){} },350);
-  }
-
-  /* ═══════════════════════════════════════════════════════════════════════
-     OWNER LOOKUP + CALL SHEET
-     For each land listing, resolve the parcel owner. Provider priority:
-       1) licensed API (Regrid or ATTOM) if a key is set in settings
-       2) public county parcel GIS (point-in-polygon ArcGIS query) — free
-     Owner info is public assessor record. Outreach compliance (TCPA/DNC) is
-     the caller's responsibility — surfaced in the call-sheet banner.
-     ═══════════════════════════════════════════════════════════════════════ */
-
-  var OWN_LS="omega_owner_settings_v1";
-  function ownerSettings(){
-    var s={ provider:"county", regridKey:"", attomKey:"", maxLookups:40 };
-    try{ var raw=localStorage.getItem(OWN_LS); if(raw){ var j=JSON.parse(raw);
-      if(j){ if(j.provider)s.provider=j.provider; if(j.regridKey)s.regridKey=j.regridKey;
-        if(j.attomKey)s.attomKey=j.attomKey; if(j.maxLookups)s.maxLookups=+j.maxLookups||40; } }
-    }catch(e){}
-    // Firestore/global config can seed keys too (never overrides a user-entered key)
-    var cfg=window.CLEARSKY_CONFIG||{};
-    if(!s.regridKey && cfg.regridKey) s.regridKey=cfg.regridKey;
-    if(!s.attomKey && cfg.attomKey) s.attomKey=cfg.attomKey;
-    return s;
-  }
-
-  /* ---- Settings modal wiring ---- */
-  var osWrap=document.getElementById("ownSetWrap");
-  function openOwnerSettings(){
-    var s=ownerSettings();
-    document.getElementById("ownProvider").value=s.provider;
-    document.getElementById("ownRegridKey").value=s.regridKey||"";
-    document.getElementById("ownAttomKey").value=s.attomKey||"";
-    document.getElementById("ownMaxLookups").value=s.maxLookups||40;
-    document.getElementById("ownSetStatus").textContent="";
-    osWrap.className="on";
-  }
-  function closeOwnerSettings(){ osWrap.className=""; }
-  document.getElementById("ownSetClose").addEventListener("click",closeOwnerSettings);
-  osWrap.addEventListener("click",function(e){ if(e.target===osWrap) closeOwnerSettings(); });
-  document.getElementById("ownSetSave").addEventListener("click",function(){
-    var s={
-      provider:document.getElementById("ownProvider").value,
-      regridKey:document.getElementById("ownRegridKey").value.trim(),
-      attomKey:document.getElementById("ownAttomKey").value.trim(),
-      maxLookups:parseInt(document.getElementById("ownMaxLookups").value,10)||40
-    };
-    try{ localStorage.setItem(OWN_LS,JSON.stringify(s)); }catch(e){}
-    document.getElementById("ownSetStatus").textContent="Saved. Applies to the next Call Sheet.";
-  });
-
-  /* ---- Provider: Regrid (licensed) ----
-     Point query returns parcel with owner + mailing fields under properties.fields. */
-  function ownerRegrid(lat,lon,key,cb){
-    var url="https://app.regrid.com/api/v2/parcels/point?lat="+lat+"&lon="+lon+
-            "&token="+encodeURIComponent(key)+"&limit=1";
-    ajax(url,function(err,j){
-      if(err||!j){ cb(null); return; }
-      var feats=(j.parcels&&j.parcels.features)||j.features||[];
-      var f=feats[0]; if(!f){ cb(null); return; }
-      var p=(f.properties&&(f.properties.fields||f.properties))||{};
-      cb({
-        owner:p.owner||p.owner1||p.ownername||null,
-        mailAddress:joinAddr(p.mailadd,p.mail_address1),
-        mailCityStateZip:joinCsz(p.mailcity||p.scity,p.mailstate||p.state2||p.mail_state,p.mailzip||p.szip),
-        apn:p.parcelnumb||p.apn||null,
-        acres:num(p.ll_gisacre||p.gisacre||p.deededacreage),
-        landUse:p.usedesc||p.zoning||p.lbcs_activity_desc||null,
-        zoning:p.zoning||null,
-        assessedValue:num(p.parval||p.landval||p.improvval),
-        situs:joinAddr(p.address,p.saddno&&(p.saddno+" "+(p.saddstr||"")))||p.address||null,
-        source:"Regrid"
-      });
-    });
-  }
-
-  /* ---- Provider: ATTOM (licensed) ---- */
-  function ownerAttom(lat,lon,key,cb){
-    var url="https://api.gateway.attomdata.com/propertyapi/v1.0.0/property/detailowner?latitude="+
-            lat+"&longitude="+lon;
-    var x=new XMLHttpRequest();
-    x.open("GET",url,true); x.timeout=22000;
-    x.setRequestHeader("Accept","application/json");
-    x.setRequestHeader("apikey",key);
-    x.onreadystatechange=function(){
-      if(x.readyState!==4) return;
-      if(x.status<200||x.status>=300){ cb(null); return; }
-      try{
-        var j=JSON.parse(x.responseText);
-        var prop=(j.property&&j.property[0])||null; if(!prop){ cb(null); return; }
-        var o=(prop.owner)||{}, a=(prop.address)||{}, lot=(prop.lot)||{}, sum=(prop.summary)||{}, asm=(prop.assessment)||{};
-        var ownerName=null;
-        if(o.owner1&&(o.owner1.lastname||o.owner1.firstname))
-          ownerName=[o.owner1.firstname,o.owner1.lastname].filter(Boolean).join(" ");
-        else if(o.description) ownerName=o.description;
-        var mail=(o.mailingaddressoneline)||((o.mailAddress&&o.mailAddress.oneLine)||null);
-        cb({
-          owner:ownerName, mailAddress:mail, mailCityStateZip:null,
-          apn:(prop.identifier&&(prop.identifier.apn||prop.identifier.fips))||null,
-          acres:num(lot.lotsize1||lot.lotSize1),
-          landUse:sum.proptype||sum.propclass||null, zoning:lot.zoningtype||null,
-          assessedValue:num(asm.assessed&&asm.assessed.assdttlvalue),
-          situs:a.oneLine||null, source:"ATTOM"
-        });
-      }catch(e){ cb(null); }
-    };
-    x.ontimeout=function(){ cb(null); };
-    x.onerror=function(){ cb(null); };
-    x.send();
-  }
-
-  /* ---- Provider: free county parcel GIS — ILLINOIS-FIRST, VERIFIED ENDPOINTS ----
-     Illinois has no single statewide owner layer; owner data is per-county. Each
-     entry below was verified live (endpoint responds, owner field confirmed) as of
-     Jul 2026. `fields` maps this county's real column names into our common shape.
-     `layerQuery` is the point-query path for that service (FeatureServer vs MapServer
-     sublayer differ). Coverage is the ComEd / PJM-north footprint plus downstate hubs.
-
-     IMPORTANT — COOK COUNTY: the public Cook parcel REST layer exposes only PIN +
-     street address, NOT owner name. We detect Cook and return a clear flag telling
-     the user to use a licensed provider or cookcountypropertyinfo.com, rather than
-     silently emitting a blank owner. */
-  var IL_COUNTY_PARCELS=[
-    { county:"DuPage", type:"map",
-      url:"https://gis.dupageco.org/arcgis/rest/services/DuPage_County_IL/ParcelsWithRealEstateCC/MapServer/0",
-      f:{ owner:["BILLNAME"], apn:["PIN"], acres:["ACREAGE"],
-          mail1:["BILLADDRL1"], mail2:["BILLADDRL2"], situs1:["PROPADDRL1"], situs2:["PROPADDRL2"],
-          city:["BILLCITY"], state:["BILLSTATE"], zip:["BILLZIP"],
-          use:["REA017_PROP_CLASS"], val:["REA017_FCV_TOTAL"] } },
-    { county:"DeKalb", type:"feat",
-      url:"https://services7.arcgis.com/hEXJrPwm89CLXBYe/arcgis/rest/services/DeKalbIL_Parcels/FeatureServer/0",
-      f:{ owner:["Owner"], apn:["Parcel_Number"], acres:["gross_current_acres"],
-          mail1:["MailingAddress","TaxBillMailedTo"], situs1:["SiteAddress"],
-          zoning:["Zone_Code"], use:["Special_Use","Zone_Code"], val:["net_taxable_value"] } },
-    { county:"Lake", type:"map",
-      url:"https://maps.lakecountyil.gov/arcgis/rest/services/GISMapping/WABParcels/MapServer/12",
-      f:{ owner:["taxpayer_name","TAXPAYER_NAME","Taxpayer_Name","TaxpayerName"],
-          apn:["PIN","parcel_number","PARCEL"], acres:["acreage","ACREAGE","gis_acres"],
-          mail1:["mail_address","MAIL_ADDRESS","taxpayer_address"],
-          city:["mail_city","MAIL_CITY"], state:["mail_state","MAIL_STATE"], zip:["mail_zip","MAIL_ZIP"],
-          situs1:["site_address","property_address","SITE_ADDRESS"],
-          use:["class","property_class","CLASS"], val:["assessed_value","total_value","ASSESSED"] } },
-    { county:"Kane", type:"map",
-      url:"https://gistech.countyofkane.org/arcgis/rest/services/KanePINList/MapServer/0",
-      f:{ owner:["TaxName","TAXNAME"], apn:["PIN"], acres:["Acres","ACRES","GIS_Acres"],
-          mail1:["MailAddress","MAIL_ADDR","TaxAddress"], situs1:["SiteAddress","SITE_ADDR"],
-          city:["SiteCity","MailCity"], use:["Class","PROP_CLASS"], val:["AssessedValue","ASSESSED"] } },
-    { county:"McHenry", type:"feat",
-      url:"https://gis.mchenrycountyil.gov/server/rest/services/Hosted/Parcels/FeatureServer/0",
-      f:{ owner:["Owner","OWNER","OwnerName"], apn:["PIN","Parcel","APN"], acres:["Acres","ACRES","GISacres"],
-          mail1:["MailAddress","MAIL_ADDR","OwnerAddress"], situs1:["SiteAddress","SITE_ADDR","Address"],
-          use:["LandUse","Class","USE"], zoning:["Zoning","ZONE"], val:["Assessed","TOTAL_VAL"] } },
-    { county:"St. Clair", type:"map",
-      url:"https://arcgispublicmap.co.st-clair.il.us/server/rest/services/SCC_parcel_map_data/MapServer/29",
-      f:{ owner:["owner","OWNER","OwnerName"], apn:["parcel","PIN","APN","parcel_number"],
-          acres:["acres","ACRES","gis_acres"], mail1:["mail_address","owner_address","MAIL_ADDR"],
-          situs1:["situs","site_address","address"], use:["class","land_use","USE"],
-          val:["assessed","total_value","ASSESSED"] } }
-  ];
-
-  // National fallback (owner not guaranteed; used outside IL or when a county misses).
-  var NATIONAL_PARCELS=[
-    { county:"USA", type:"feat",
-      url:"https://services.arcgis.com/P3ePLMYs2RVChkJx/arcgis/rest/services/USA_Parcels/FeatureServer/0",
-      f:{ owner:["OWNER","OWNER_NAME","OWNERNME1","OwnerName","Owner","OWNNAME"],
-          apn:["APN","PARCELID","PARCEL_ID","PIN","PARCELNUMB"], acres:["ACRES","GIS_ACRES","ACREAGE"],
-          mail1:["MAIL_ADDR","MAILADD","MAILING_ADDRESS","OWNER_ADDR"],
-          situs1:["SITUS","SITE_ADDR","PROP_ADDR","ADDRESS"], use:["USE_DESC","LANDUSE","USE","CLASS"],
-          zoning:["ZONING","ZONE"], val:["ASSD_VAL","TOTAL_VAL","ASSESSED","APPR_VAL"] } }
-  ];
-
-  // Cook County public layer has PIN + address but NO owner — flag, don't fake it.
-  var COOK_PARCEL_URL="https://gis12.cookcountyil.gov/arcgis/rest/services/cookVieweReflect/MapServer/0";
-
-  function ilPick(p,keys){ if(!keys) return null;
-    for(var i=0;i<keys.length;i++){ var v=p[keys[i]];
-      if(v!=null && String(v).trim()!=="") return String(v).trim(); } return null; }
-
-  function mapAttrs(p,f,county){
-    var mail=joinAddr(ilPick(p,f.mail1),ilPick(p,f.mail2));
-    var situs=joinAddr(ilPick(p,f.situs1),ilPick(p,f.situs2));
-    var csz=joinCsz(ilPick(p,f.city),ilPick(p,f.state),ilPick(p,f.zip));
-    return {
-      owner:ilPick(p,f.owner),
-      mailAddress:mail, mailCityStateZip:csz,
-      apn:ilPick(p,f.apn), acres:num(ilPick(p,f.acres)),
-      landUse:ilPick(p,f.use), zoning:ilPick(p,f.zoning),
-      assessedValue:num(ilPick(p,f.val)),
-      situs:situs, source:county+" County GIS"
-    };
-  }
-
-  /* Query one parcel service by point. FeatureServer & MapServer sublayers both
-     accept the same /query with a point geometry + intersects. */
-  function queryParcelService(svc,lat,lon,cb){
-    var geom=encodeURIComponent(JSON.stringify({x:lon,y:lat,spatialReference:{wkid:4326}}));
-    var qs="/query?f=geojson&geometryType=esriGeometryPoint&inSR=4326&outSR=4326"+
-      "&spatialRel=esriSpatialRelIntersects&outFields=*&returnGeometry=false"+
-      "&resultRecordCount=1&geometry="+geom;
-    ajax(svc.url+qs,function(err,j){
-      if(err||!j||!j.features||!j.features.length){ cb(null); return; }
-      var p=j.features[0].properties||{};
-      var o=mapAttrs(p,svc.f,svc.county);
-      if(!o.owner && !o.apn){ cb(null); return; }
-      cb(o);
-    });
-  }
-
-  /* Rough IL bounding box so we only try IL county services for IL points. */
-  function inIllinois(lat,lon){ return lat>=36.9 && lat<=42.6 && lon>=-91.6 && lon<=-87.0; }
-  /* Cook County rough box (Chicago metro core). */
-  function inCook(lat,lon){ return lat>=41.44 && lat<=42.16 && lon>=-88.30 && lon<=-87.52; }
-
-  /* Try Illinois county services (all, first hit wins), then national fallback. */
-  function ownerCounty(lat,lon,cb){
-    if(inCook(lat,lon)){
-      // Public Cook layer has no owner; surface an explicit, honest flag.
-      cb({ owner:null, mailAddress:null, mailCityStateZip:null, apn:null, acres:null,
-           landUse:null, zoning:null, assessedValue:null, situs:null,
-           source:"Cook — owner not in public layer", cookFlag:true });
-      return;
-    }
-    var chain=[];
-    if(inIllinois(lat,lon)) chain=IL_COUNTY_PARCELS.slice();
-    chain=chain.concat(NATIONAL_PARCELS);
-    var i=0;
-    function attempt(){
-      if(i>=chain.length){ cb(null); return; }
-      queryParcelService(chain[i++],lat,lon,function(o){ o?cb(o):attempt(); });
-    }
-    attempt();
-  }
-
-  function num(v){ if(v==null) return null; var n=parseFloat(String(v).replace(/[^0-9.\-]/g,""));
-    return isNaN(n)?null:n; }
-  function joinAddr(a,b){ return [a,b].filter(function(x){return x&&String(x).trim();}).join(" ").trim()||null; }
-  function joinCsz(c,s,z){ var t=[c,s].filter(Boolean).join(", "); if(z)t=(t?t+" ":"")+z; return t||null; }
-
-  /* Resolve one parcel through the configured provider chain.
-     For Illinois we prioritize the verified free county data (highest accuracy on
-     home turf); licensed providers fill non-IL / Cook / any county miss. */
-  function resolveOwner(lat,lon,cb){
-    var s=ownerSettings();
-    function licensedThen(fallbackToCounty){
-      if(s.provider==="regrid" && s.regridKey){ ownerRegrid(lat,lon,s.regridKey,function(o){ o?cb(o):(fallbackToCounty?county():cb(null)); }); return true; }
-      if(s.provider==="attom" && s.attomKey){ ownerAttom(lat,lon,s.attomKey,function(o){ o?cb(o):(fallbackToCounty?county():cb(null)); }); return true; }
-      return false;
-    }
-    function county(){ ownerCounty(lat,lon,function(o){
-      // If county came back as the Cook "no owner" flag, try licensed to actually get an owner.
-      if(o && o.cookFlag){
-        if(s.regridKey){ ownerRegrid(lat,lon,s.regridKey,function(o2){ cb(o2||o); }); return; }
-        if(s.attomKey){ ownerAttom(lat,lon,s.attomKey,function(o3){ cb(o3||o); }); return; }
-        cb(o); return; // honest Cook flag, no licensed key available
-      }
-      if(o){ cb(o); return; }
-      if(s.regridKey){ ownerRegrid(lat,lon,s.regridKey,function(o2){ cb(o2); }); return; }
-      if(s.attomKey){ ownerAttom(lat,lon,s.attomKey,function(o3){ cb(o3); }); return; }
-      cb(null);
-    }); }
-
-    // Explicit licensed provider selected → use it first, county as backup.
-    if((s.provider==="regrid"||s.provider==="attom")){ if(licensedThen(true)) return; }
-    // Default (county): free verified IL data first, licensed as backup.
-    county();
-  }
-
-  /* Build the call sheet: resolve owners sequentially (rate-friendly), show
-     progress, then open a new tab with a filterable owner table + exports. */
-  function buildCallSheet(R){
-    var s=ownerSettings();
-    // Combine land + commercial/industrial into one owner-resolution list, tagged.
-    var combined=[];
-    var landArr=R.land||[], commArr=R.comm||[];
-    for(var a=0;a<landArr.length;a++){ combined.push({ item:landArr[a], category:"Land" }); }
-    for(var b=0;b<commArr.length;b++){
-      combined.push({ item:commArr[b], category:(commArr[b].propType==="INDUSTRIAL"?"Industrial":"Commercial") });
-    }
-    // nearest-first across both
-    combined.sort(function(x,y){ return (x.item.dist||0)-(y.item.dist||0); });
-    var list=combined.slice(0, Math.max(1,s.maxLookups));
-    callBtn.disabled=true;
-    progEl.className="on";
-    progEl.textContent="Resolving owners… 0/"+list.length;
-    var rows=[], idx=0;
-
-    function step(){
-      if(idx>=list.length){ done(); return; }
-      var entry=list[idx], P=entry.item;
-      progEl.textContent="Resolving owners… "+(idx+1)+"/"+list.length+
-        (P.address?(" · "+P.address.split(",")[0]):"");
-      resolveOwner(P.lat,P.lon,function(o){
-        rows.push({ listing:P, owner:o||null, category:entry.category });
-        idx++;
-        setTimeout(step,180); // gentle pacing for free endpoints
-      });
-    }
-    function done(){
-      progEl.textContent="Owners resolved: "+
-        rows.filter(function(r){return r.owner&&r.owner.owner;}).length+"/"+rows.length+
-        " · opening call sheet…";
-      openCallSheetTab(R,rows,s);
-      callBtn.disabled=false;
-      setTimeout(function(){ progEl.className=""; progEl.textContent=""; },4000);
-    }
-    step();
-  }
-
-  function openCallSheetTab(R,rows,s){
-    var w=window.open("","_blank");
-    if(!w){ alert("Pop-up blocked — allow pop-ups to open the call sheet."); callBtn.disabled=false; return; }
-
-    // Store rows as JSON for the in-tab filter/sort + export (no external deps).
-    var data=[];
-    for(var i=0;i<rows.length;i++){
-      var L2=rows[i].listing, o=rows[i].owner||{};
-      data.push({
-        category:rows[i].category||"Land",
-        propType:L2.propType||"",
-        dist:+L2.dist.toFixed(1),
-        listingAddress:L2.listingAddress=L2.address||"",
-        price:(L2.price!=null?L2.price:null),
-        listingAcres:(L2.acres!=null?L2.acres:null),
-        buildingSqft:(L2.sqft!=null?L2.sqft:null),
-        listingUrl:L2.url||"",
-        owner:o.owner||"",
-        situs:o.situs||"",
-        mailAddress:o.mailAddress||"",
-        mailCsz:o.mailCityStateZip||"",
-        apn:o.apn||"",
-        parcelAcres:(o.acres!=null?o.acres:null),
-        landUse:o.landUse||"",
-        zoning:o.zoning||"",
-        assessedValue:(o.assessedValue!=null?o.assessedValue:null),
-        source:o.source||"—"
-      });
-    }
-    var providerLabel = s.provider==="regrid"?"Regrid (licensed)":s.provider==="attom"?"ATTOM (licensed)":"County parcel GIS (free)";
-    var meta={ zip:R.zip, place:R.place, mi:R.mi, generated:new Date().toLocaleString(),
-               provider:providerLabel, count:data.length };
-
-    var doc=callSheetHtml(meta,data);
-    w.document.open(); w.document.write(doc); w.document.close();
-  }
-
-  /* The call-sheet document: self-contained HTML with client-side filter, sort,
-     CSV + print. Owner-data-safe: shows a compliance banner. */
-  function callSheetHtml(meta,data){
-    var json=JSON.stringify(data).replace(/</g,"\\u003c");
-    var m=JSON.stringify(meta).replace(/</g,"\\u003c");
-    return '<!doctype html><html><head><meta charset="utf-8">'+
-      '<title>Owner Call Sheet · '+esc(meta.zip)+' · '+meta.mi+'mi</title>'+
-      '<style>'+
-      ':root{--amp:#d68a00;--ink:#14202b;--muted:#5b6b7a;--line:#dfe6ec;--bg:#f6f8fa}'+
-      '*{box-sizing:border-box}'+
-      'body{font-family:-apple-system,Segoe UI,Roboto,Arial,sans-serif;color:var(--ink);margin:0;background:var(--bg)}'+
-      '.wrap{max-width:1180px;margin:0 auto;padding:22px}'+
-      'h1{font-size:20px;margin:0 0 3px}'+
-      '.meta{color:var(--muted);font-size:12px;margin-bottom:12px}'+
-      '.banner{background:#fff6e5;border:1px solid #f0d9a8;border-radius:8px;padding:10px 13px;font-size:12px;color:#7a5a10;margin-bottom:16px;line-height:1.5}'+
-      '.banner b{color:#5a4308}'+
-      '.bar{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:12px}'+
-      '.bar input{height:34px;border:1px solid var(--line);border-radius:7px;padding:0 11px;font-size:13px;min-width:220px}'+
-      '.bar button{height:34px;border:1px solid var(--amp);background:var(--amp);color:#fff;font-weight:700;border-radius:7px;padding:0 14px;cursor:pointer;font-size:12px}'+
-      '.bar button.sec{background:#fff;color:var(--amp)}'+
-      '.bar .ct{color:var(--muted);font-size:12px;margin-left:auto}'+
-      'table{border-collapse:collapse;width:100%;background:#fff;border:1px solid var(--line);border-radius:8px;overflow:hidden;font-size:12px}'+
-      'th,td{border-bottom:1px solid var(--line);padding:7px 9px;text-align:left;vertical-align:top}'+
-      'th{background:#eef2f5;font-size:10px;text-transform:uppercase;letter-spacing:.04em;cursor:pointer;white-space:nowrap;position:sticky;top:0}'+
-      'th:hover{color:var(--amp)}'+
-      'tr:hover td{background:#fafcfd}'+
-      'td.n{text-align:right;white-space:nowrap}'+
-      'a{color:#1155cc;text-decoration:none}a:hover{text-decoration:underline}'+
-      '.noown{color:#b23b3b}'+
-      '.foot{margin-top:16px;color:#98a4b0;font-size:11px;line-height:1.5}'+
-      '@media print{.bar{display:none}body{background:#fff}.banner{background:#fff}}'+
-      '</style></head><body><div class="wrap">'+
-      '<h1>Owner Call Sheet</h1>'+
-      '<div class="meta" id="meta"></div>'+
-      '<div class="banner"><b>Compliance:</b> Owner &amp; mailing data is public assessor record, provided for research and outreach. '+
-        'Before calling, scrub numbers against the National <b>Do-Not-Call Registry</b> and follow <b>TCPA</b> rules '+
-        '(no autodialed/prerecorded calls to wireless numbers without consent). Phone numbers are <b>not</b> included here — '+
-        'source them through a compliant provider. This tool uses public parcel records only.</div>'+
-      '<div class="bar">'+
-        '<input id="q" placeholder="Filter (owner, address, APN, use…)">'+
-        '<select id="catf" style="height:34px;border:1px solid var(--line);border-radius:7px;padding:0 8px;font-size:13px"><option value="">All categories</option><option value="Land">Land</option><option value="Commercial">Commercial</option><option value="Industrial">Industrial</option></select>'+
-        '<button class="sec" id="csv">Download CSV</button>'+
-        '<button id="print">Print / PDF</button>'+
-        '<span class="ct" id="ct"></span>'+
-      '</div>'+
-      '<table id="tbl"><thead><tr>'+
-        thh("category","Cat")+thh("dist","Dist mi")+thh("owner","Owner")+thh("mailAddress","Mailing Addr")+thh("mailCsz","City/ST/ZIP")+
-        thh("listingAddress","Listing / Situs")+thh("price","List $")+thh("buildingSqft","Bldg SqFt")+thh("parcelAcres","Acres")+
-        thh("apn","APN")+thh("landUse","Use")+thh("zoning","Zoning")+thh("assessedValue","Assessed $")+
-        thh("source","Src")+thh("listingUrl","Listing")+
-      '</tr></thead><tbody id="tb"></tbody></table>'+
-      '<div class="foot">ClearSky-OMEGA · Grid Atlas — Owner Call Sheet. Distances are straight-line from ZIP centroid. '+
-        'Owner data via public county parcel GIS and/or your configured licensed provider. Verify before outreach.</div>'+
-      '</div><script>'+
-      'var DATA='+json+';var META='+m+';'+
-      'function money(v){return v==null?"":"$"+Math.round(v).toString().replace(/\\B(?=(\\d{3})+(?!\\d))/g,",");}'+
-      'function esc(s){return String(s==null?"":s).replace(/[&<>\"]/g,function(c){return{"&":"&amp;","<":"&lt;",">":"&gt;","\\"":"&quot;"}[c];});}'+
-      'document.getElementById("meta").textContent="ZIP "+META.zip+" · "+META.place+" · "+META.mi+" mi · "+META.count+" parcels · source: "+META.provider+" · "+META.generated;'+
-      'var sortKey="dist",sortDir=1,view=DATA.slice();'+
-      'function catPill(c){var m={"Land":"#3a8f2e","Industrial":"#c56a1a","Commercial":"#1a6ac5"};var col=m[c]||"#666";return "<span style=\\"font-size:9px;font-weight:700;color:#fff;background:"+col+";border-radius:4px;padding:1px 5px\\">"+esc(c||"—")+"</span>";}'+
-      'function render(){var tb=document.getElementById("tb");var h="";for(var i=0;i<view.length;i++){var r=view[i];'+
-        'var own=r.owner?esc(r.owner):"<span class=noown>—</span>";'+
-        'var link=r.listingUrl?("<a href=\\""+esc(r.listingUrl)+"\\" target=_blank>view ↗</a>"):"";'+
-        'h+="<tr><td>"+catPill(r.category)+"</td><td class=n>"+r.dist+"</td><td>"+own+"</td><td>"+esc(r.mailAddress)+"</td><td>"+esc(r.mailCsz)+"</td>"+'+
-        '"<td>"+esc(r.listingAddress||r.situs)+"</td><td class=n>"+money(r.price)+"</td><td class=n>"+(r.buildingSqft!=null?Math.round(r.buildingSqft).toLocaleString():"")+"</td><td class=n>"+(r.parcelAcres!=null?r.parcelAcres:(r.listingAcres!=null?r.listingAcres:""))+"</td>"+'+
-        '"<td>"+esc(r.apn)+"</td><td>"+esc(r.landUse)+"</td><td>"+esc(r.zoning)+"</td><td class=n>"+money(r.assessedValue)+"</td><td>"+esc(r.source)+"</td><td>"+link+"</td></tr>";}'+
-        'tb.innerHTML=h;document.getElementById("ct").textContent=view.length+" of "+DATA.length+" shown";}'+
-      'function applyFilter(){var q=document.getElementById("q").value.toLowerCase();var cf=document.getElementById("catf").value;'+
-        'view=DATA.filter(function(r){if(cf&&r.category!==cf)return false;if(!q)return true;return[r.owner,r.mailAddress,r.mailCsz,r.listingAddress,r.situs,r.apn,r.landUse,r.zoning,r.source,r.category,r.propType].join(" ").toLowerCase().indexOf(q)>-1;});'+
-        'sortNow();}'+
-      'function sortNow(){view.sort(function(a,b){var x=a[sortKey],y=b[sortKey];if(x==null)x="";if(y==null)y="";'+
-        'if(typeof x==="number"&&typeof y==="number")return (x-y)*sortDir;return String(x).localeCompare(String(y))*sortDir;});render();}'+
-      'document.getElementById("q").addEventListener("input",applyFilter);'+
-      'document.getElementById("catf").addEventListener("change",applyFilter);'+
-      'var ths=document.querySelectorAll("th[data-k]");for(var t=0;t<ths.length;t++){ths[t].addEventListener("click",function(){var k=this.getAttribute("data-k");if(k===sortKey)sortDir=-sortDir;else{sortKey=k;sortDir=1;}sortNow();});}'+
-      'document.getElementById("print").addEventListener("click",function(){window.print();});'+
-      'document.getElementById("csv").addEventListener("click",function(){'+
-        'var cols=[["category","Category"],["propType","Property Type"],["dist","Distance (mi)"],["owner","Owner"],["mailAddress","Mailing Address"],["mailCsz","Mail City/State/ZIP"],["listingAddress","Listing Address"],["situs","Situs"],["price","List Price"],["buildingSqft","Building SqFt"],["listingAcres","Listing Acres"],["parcelAcres","Parcel Acres"],["apn","APN"],["landUse","Land Use"],["zoning","Zoning"],["assessedValue","Assessed Value"],["source","Source"],["listingUrl","Listing URL"]];'+
-        'function cell(v){if(v==null)return "";var s=String(v);return /[\",\\n]/.test(s)?(\'\"\'+s.replace(/\"/g,\'\"\"\')+\'\"\'):s;}'+
-        'var out=[cols.map(function(c){return c[1];}).join(",")];'+
-        'for(var i=0;i<view.length;i++){var r=view[i];out.push(cols.map(function(c){return cell(r[c[0]]);}).join(","));}'+
-        'var blob=new Blob(["\\ufeff"+out.join("\\r\\n")],{type:"text/csv;charset=utf-8"});'+
-        'var u=URL.createObjectURL(blob);var a=document.createElement("a");a.href=u;a.download="call-sheet-"+META.zip+"-"+META.mi+"mi.csv";document.body.appendChild(a);a.click();setTimeout(function(){document.body.removeChild(a);URL.revokeObjectURL(u);},400);});'+
-      'applyFilter();'+
-      '\x3c/script></body></html>';
-  }
-  function thh(k,label){ return '<th data-k="'+k+'">'+label+'</th>'; }
-})();
 
 /* ---------- Geocode search (OSM Nominatim) ---------- */
 var q=document.getElementById("q");
@@ -2562,35 +1189,7 @@ map.whenReady(function(){
 });
 window.addEventListener("resize",function(){ map.invalidateSize(); });
 
-/* ═══════════════════════════════════════════════════════════════════════════
-   PATCH · NATIONAL EXTENSION INTEGRATION SURFACE
-   Publishes the handful of internals grid-atlas-national.js needs. Nothing is
-   removed or altered above this line — if the extension file is missing, the
-   tool behaves exactly as it did before.
-   ═══════════════════════════════════════════════════════════════════════════ */
-window.GA = {
-  map:map, L:L, LAYERS:LAYERS, ORDER:ORDER, CATS:CATS,
-  cache:cache, groups:groups,
-  ajax:ajax, status:status, esc:esc,
-  buildRail:buildRail, loadVisible:loadVisible, renderLayer:renderLayer,
-  dropPin:dropPin, openPanel:openPanel, analyze:analyze,
-  fetchArc:fetchArc, fetchOSM:fetchOSM, fetchStatic:fetchStatic, fetchEIA:fetchEIA,
-  updateRailCounts:updateRailCounts,
-  viewBbox:function(){
-    var b=map.getBounds();
-    return { xmin:b.getWest(), ymin:b.getSouth(), xmax:b.getEast(), ymax:b.getNorth() };
-  }
-};
-if(window.GA_EXT&&window.GA_EXT.init){
-  try{ window.GA_EXT.init(window.GA); }
-  catch(e){ if(window.console) console.error("national extension init failed:",e); }
-}
-
 })();
 </script>
-<!-- PATCH · National extension: carrier-facility + stranded-capacity + power-flow
-     layers, and the address-driven Site Viability Report. Must load AFTER the
-     main script block above. Safe to remove: the base tool is unaffected. -->
-<script src="/grid-atlas-national.js"></script>
 </body>
 </html>
