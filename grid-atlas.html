@@ -482,6 +482,12 @@ var LAYERS = {
     label:function(a){return (a.Provider||a.provider||a.brand_name||"Fiber provider");},
     meta:function(a){var d=a.max_advertised_download_speed||a.MaxDown;return "Fiber"+(d?" · "+d+" Mbps":"")+(a.state?" · "+a.state:"");}
   },
+  zayo: {
+    name:"Zayo Backbone (ref)", color:"#F5822A", on:false, geom:"line", role:"connectivity",
+    url:"__STATIC__", staticFile:"/data/zayo-backbone.geojson",
+    label:function(a){return a.name||"Zayo node";},
+    meta:function(a){return a.role==="long_haul"?"long-haul corridor":(a.role==="core_pop"?"core PoP":"Zayo")+" · published ref";}
+  },
   /* ── MARKET / UTILITY CONTEXT (polygons) — NASA-hosted HIFLD energy mirror ──
      Federal, stable, WGS84, GeoJSON. Pin-drop reports which territory a site falls in. */
   utility_terr: {
@@ -516,7 +522,7 @@ var LAYERS = {
     meta:function(a){return (a.FTYPE||a.ftype||"stream/river");}
   }
 };
-var ORDER=["substations","transmission","plants","datacenters","ev","bess","osm_lines","osm_subs","osm_plants","eia_plants","fiber","fiber_cls","backbone","fiber_ca","subsea","ll_backbone","fiber_verified","fiber_estimated","fiber_licensed","ixp","colo","fcc_fiber","utility_terr","iso_rto","ba_area","flood","water"];
+var ORDER=["substations","transmission","plants","datacenters","ev","bess","osm_lines","osm_subs","osm_plants","eia_plants","fiber","fiber_cls","backbone","fiber_ca","subsea","ll_backbone","fiber_verified","fiber_estimated","fiber_licensed","ixp","colo","fcc_fiber","zayo","utility_terr","iso_rto","ba_area","flood","water"];
 
 /* ---------- EIA technology taxonomy (matches EIA energy_source_code / technology) ---------- */
 var EIA_TECH={
