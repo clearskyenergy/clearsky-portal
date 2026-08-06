@@ -471,6 +471,17 @@ var LAYERS = {
     label:function(a){return a.name||"Colo facility";},
     meta:function(a){return (a.city||"")+(a.net_count?" · "+a.net_count+" networks":"");}
   },
+  /* ── FCC fiber-SERVICE coverage (the govt "fiber like water" layer) ──
+     ISPs must report fiber availability to the FCC by law (Broadband DATA Act).
+     Utah SGID republishes the FCC BDC API monthly as per-provider fiber hexes.
+     This is coverage geography (where fiber SERVICE exists), not conduit routes. */
+  fcc_fiber: {
+    name:"FCC Fiber Coverage", color:"#FFB020", on:false, geom:"poly", role:"connectivity",
+    url:"https://services.arcgis.com/j195B8Fn38z3xQw8/arcgis/rest/services/all_record_hexes_dissolved/FeatureServer/0",
+    where:"Technology IN (50)", // 50 = Fiber to the Premises in FCC BDC coding
+    label:function(a){return (a.Provider||a.provider||a.brand_name||"Fiber provider");},
+    meta:function(a){var d=a.max_advertised_download_speed||a.MaxDown;return "Fiber"+(d?" · "+d+" Mbps":"")+(a.state?" · "+a.state:"");}
+  },
   /* ── MARKET / UTILITY CONTEXT (polygons) — NASA-hosted HIFLD energy mirror ──
      Federal, stable, WGS84, GeoJSON. Pin-drop reports which territory a site falls in. */
   utility_terr: {
@@ -505,7 +516,7 @@ var LAYERS = {
     meta:function(a){return (a.FTYPE||a.ftype||"stream/river");}
   }
 };
-var ORDER=["substations","transmission","plants","datacenters","ev","bess","osm_lines","osm_subs","osm_plants","eia_plants","fiber","fiber_cls","backbone","fiber_ca","subsea","ll_backbone","fiber_verified","fiber_estimated","fiber_licensed","ixp","colo","utility_terr","iso_rto","ba_area","flood","water"];
+var ORDER=["substations","transmission","plants","datacenters","ev","bess","osm_lines","osm_subs","osm_plants","eia_plants","fiber","fiber_cls","backbone","fiber_ca","subsea","ll_backbone","fiber_verified","fiber_estimated","fiber_licensed","ixp","colo","fcc_fiber","utility_terr","iso_rto","ba_area","flood","water"];
 
 /* ---------- EIA technology taxonomy (matches EIA energy_source_code / technology) ---------- */
 var EIA_TECH={
@@ -615,7 +626,8 @@ function status(msg,loading){ stTxt.textContent=msg; stEl.className=loading?"loa
 function fetchArc(key,cb){
   var L2=LAYERS[key], b=map.getBounds();
   var env=b.getWest()+","+b.getSouth()+","+b.getEast()+","+b.getNorth();
-  var qs="/query?f=geojson&where=1%3D1&outFields=*&returnGeometry=true"+
+  var where=L2.where?encodeURIComponent(L2.where):"1%3D1";
+  var qs="/query?f=geojson&where="+where+"&outFields=*&returnGeometry=true"+
     "&geometryType=esriGeometryEnvelope&inSR=4326&outSR=4326&spatialRel=esriSpatialRelIntersects"+
     "&resultRecordCount=1000&geometry="+encodeURIComponent(env);
   // Build the ordered list of endpoints to try
@@ -1158,13 +1170,31 @@ function analyze(ll){
   h+=infoRow(LAYERS.ev.color,"EV charging sites","within 15 km"+(LAYERS.ev.on?"":" · layer off"),String(evN));
 
   h+='<div class="sec">Connectivity</div>';
-  h+=infoRow(LAYERS.fiber.color, fiber?"Fiber route":"No fiber in view",
-        fiber?"nearest backbone"+(LAYERS.fiber.on?"":" · layer off"):"enable Fiber Routes layer",
+  // ── Fiber Confidence — blends every free signal into one screening read ──
+  var fcRoute=fiber?Math.max(0,100-fiber.km*7):0;
+  var ixpN=within(ll,cache.ixp,60), coloN=within(ll,cache.colo,60);
+  var fcInterconnect=Math.min(100,(ixpN*20)+(coloN*12)); // peering/colo nearby = strong
+  var fccCov=containingFeature(ll,cache.fcc_fiber);
+  var fcCoverage=fccCov?90:0;
+  // weight: route 45%, interconnect points 30%, FCC coverage 25% (live check adds in bbRow)
+  var haveAny=(fiber||ixpN||coloN||fccCov);
+  var fcScore=Math.round(fcRoute*0.45+fcInterconnect*0.30+fcCoverage*0.25);
+  fcScore=Math.max(haveAny?1:0,Math.min(100,fcScore));
+  var fcBand=fcScore>=65?"var(--ok)":fcScore>=35?"var(--warn)":"var(--bad)";
+  var fcWord=fcScore>=65?"High — multiple fiber signals present":fcScore>=35?"Moderate — some signal, verify":haveAny?"Low — thin fiber signal here":"No fiber layers loaded";
+  h+='<div class="score" style="margin-top:2px"><span class="n" style="color:'+fcBand+';font-size:26px">'+fcScore+'</span><span class="lab">/ 100 fiber confidence</span></div>';
+  h+='<div class="bar"><span style="width:'+fcScore+'%;background:'+fcBand+'"></span></div>';
+  h+='<div class="hint" style="margin:5px 0 8px;color:'+fcBand+'">'+fcWord+'</div>';
+  h+=infoRow(LAYERS.fiber.color, fiber?"Nearest fiber route":"No route in view",
+        fiber?"across all route layers":"enable fiber layers",
         fiber?fmtKm(fiber.km):"—");
+  h+=infoRow(LAYERS.ixp.color,"Internet exchanges","within 60 km"+(LAYERS.ixp.on?"":" · layer off"),String(ixpN));
+  h+=infoRow(LAYERS.colo.color,"Colo facilities","within 60 km"+(LAYERS.colo.on?"":" · layer off"),String(coloN));
+  h+=infoRow(LAYERS.fcc_fiber.color,"FCC fiber service",fccCov?"reported at this point":(LAYERS.fcc_fiber.on?"none mapped here":"enable FCC Fiber Coverage"),fccCov?"✓":"—");
   h+='<div id="bbRow"></div>'; // live FCC broadband-at-point, filled async
   if(fiber){
     var fv=fiber.km<=2?"On-net — minimal lateral build":fiber.km<=8?"Near backbone — modest lateral":"Fiber build is a cost driver";
-    h+='<div class="hint" style="margin:2px 0 0;color:var(--muted)">'+fv+'. OSM fiber coverage is partial (backbones/submarine); absence isn\'t proof of no fiber.</div>';
+    h+='<div class="hint" style="margin:2px 0 0;color:var(--muted)">'+fv+'. Confidence blends routes, peering/colo, and FCC service coverage — screening only; no free source maps every carrier conduit.</div>';
   }
 
   // Market / utility context via point-in-polygon
