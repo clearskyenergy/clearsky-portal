@@ -703,7 +703,14 @@ textarea{min-height:70px;resize:vertical}
       var pageOrg = (OI.orgId() || '').toLowerCase();
 
       if (OI.isStaffEmail && OI.isStaffEmail()) {
-        buildTenantPicker(pageOrg);
+        /* Only offer the tenant switcher when the URL carries NO tenant.
+           Opened from a tenant's portal (?org=...), the workspace is already
+           decided — the record stamps that org, and a dropdown there is just
+           an invitation to file into the wrong one. The picker's home is the
+           bare tools.csebuilders.com/intake.html, where staff arrive with no
+           tenant context at all. */
+        var urlOrg = new URLSearchParams(location.search).get('org');
+        if (!urlOrg) buildTenantPicker(pageOrg);
         return;
       }
       if (!pageOrg || !myDom || myDom === pageOrg) return;
