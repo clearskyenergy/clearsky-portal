@@ -447,6 +447,30 @@ var LAYERS = {
     label:function(a){return a.name||a.operator||"Fiber corridor";},
     meta:function(a){return (a.operator||a.carrier||"estimated corridor")+" · est.";}
   },
+  /* ── LICENSED fiber (FiberLocator/GeoTel) via serverless proxy ──
+     Inert until CLEARSKY_CONFIG.fiberProxyUrl is set to your Vercel proxy path.
+     The proxy holds the vendor key server-side and returns GeoJSON for the map view.
+     This is the ONE layer that gives carrier-complete US routes — and it's licensed,
+     so it's yours to show tenants. Never put the vendor key in the browser. */
+  fiber_licensed: {
+    name:"Fiber (licensed)", color:"#FF9F1C", on:false, geom:"line", role:"connectivity",
+    url:"__PROXY__", proxyKey:"fiber",
+    label:function(a){return a.carrier||a.operator||a.name||"Licensed fiber route";},
+    meta:function(a){return (a.carrier||a.network||"carrier fiber")+(a.type?" · "+a.type:"");}
+  },
+  /* ── PeeringDB (free, community, anonymous read) — interconnection points for DC siting ── */
+  ixp: {
+    name:"Internet Exchanges", color:"#E24A6B", on:false, geom:"point", role:"connectivity",
+    url:"__PEERINGDB__", pdbType:"ix",
+    label:function(a){return a.name||"IXP";},
+    meta:function(a){return (a.city||"")+(a.net_count?" · "+a.net_count+" networks":"");}
+  },
+  colo: {
+    name:"Colo Facilities", color:"#B07ED6", on:false, geom:"point", role:"connectivity",
+    url:"__PEERINGDB__", pdbType:"fac",
+    label:function(a){return a.name||"Colo facility";},
+    meta:function(a){return (a.city||"")+(a.net_count?" · "+a.net_count+" networks":"");}
+  },
   /* ── MARKET / UTILITY CONTEXT (polygons) — NASA-hosted HIFLD energy mirror ──
      Federal, stable, WGS84, GeoJSON. Pin-drop reports which territory a site falls in. */
   utility_terr: {
@@ -481,7 +505,7 @@ var LAYERS = {
     meta:function(a){return (a.FTYPE||a.ftype||"stream/river");}
   }
 };
-var ORDER=["substations","transmission","plants","datacenters","ev","bess","osm_lines","osm_subs","osm_plants","eia_plants","fiber","fiber_cls","backbone","fiber_ca","subsea","ll_backbone","fiber_verified","fiber_estimated","utility_terr","iso_rto","ba_area","flood","water"];
+var ORDER=["substations","transmission","plants","datacenters","ev","bess","osm_lines","osm_subs","osm_plants","eia_plants","fiber","fiber_cls","backbone","fiber_ca","subsea","ll_backbone","fiber_verified","fiber_estimated","fiber_licensed","ixp","colo","utility_terr","iso_rto","ba_area","flood","water"];
 
 /* ---------- EIA technology taxonomy (matches EIA energy_source_code / technology) ---------- */
 var EIA_TECH={
@@ -685,6 +709,42 @@ function fetchEIA(key,cb){
   });
 }
 
+/* ---------- PeeringDB (free, anonymous read) — IXPs and colo facilities ----------
+   Returns global records; filtered to the current map view client-side. */
+function fetchPeeringDB(key,cb){
+  var L2=LAYERS[key], b=map.getBounds();
+  ajax("https://www.peeringdb.com/api/"+(L2.pdbType||"ix"),function(err,json){
+    if(err||!json||!json.data){ status(L2.name+": PeeringDB unavailable",false); cb([]); return; }
+    var rows=json.data, feats=[];
+    for(var i=0;i<rows.length;i++){
+      var r=rows[i], lat=parseFloat(r.latitude), lon=parseFloat(r.longitude);
+      if(isNaN(lat)||isNaN(lon)) continue;
+      if(lat<b.getSouth()||lat>b.getNorth()||lon<b.getWest()||lon>b.getEast()) continue;
+      feats.push({props:r, geom:{type:"Point",coordinates:[lon,lat]}});
+    }
+    cb(feats);
+  });
+}
+
+/* ---------- Licensed vendor data via serverless proxy (FiberLocator/GeoTel) ----------
+   The proxy holds the vendor API key server-side. Inert until CLEARSKY_CONFIG.fiberProxyUrl set. */
+function fetchProxy(key,cb){
+  var L2=LAYERS[key], cfg=window.CLEARSKY_CONFIG||{};
+  var base=cfg.fiberProxyUrl||"";
+  if(!base){ status(L2.name+": needs a license — set fiberProxyUrl in config.js",false); cb([]); return; }
+  var b=map.getBounds();
+  var bbox=b.getWest()+","+b.getSouth()+","+b.getEast()+","+b.getNorth();
+  var url=base+(base.indexOf("?")>=0?"&":"?")+"layer="+encodeURIComponent(L2.proxyKey||"fiber")+"&bbox="+encodeURIComponent(bbox);
+  ajax(url,function(err,json){
+    if(err||!json){ status(L2.name+": proxy unavailable",false); cb([]); return; }
+    var raw=json.features?json.features:(json.length!=null?json:[]);
+    var feats=[];
+    for(var i=0;i<raw.length;i++){ var f=raw[i]; if(!f||!f.geometry) continue;
+      feats.push({props:f.properties||{}, geom:f.geometry}); }
+    cb(feats);
+  });
+}
+
 /* ---------- Static GeoJSON loader (InterTubes backbone, or any bundled geo) ----------
    Loads a GeoJSON bundled on the tools host. National — ignores map extent. */
 function fetchStatic(key,cb){
@@ -793,8 +853,10 @@ function loadVisible(){
   status("Loading "+todo.length+" layer"+(todo.length>1?"s":"")+"…",true);
   todo.forEach(function(k){
     var isOSM=(LAYERS[k].url==="__OSM__"||LAYERS[k].url==="__OSMGEOM__");
-    var fn=LAYERS[k].url==="__STATIC__"?fetchStatic:
-           (LAYERS[k].url==="__EIA__"?fetchEIA:(isOSM?fetchOSM:fetchArc));
+    var fn=LAYERS[k].url==="__PEERINGDB__"?fetchPeeringDB:
+           (LAYERS[k].url==="__PROXY__"?fetchProxy:
+           (LAYERS[k].url==="__STATIC__"?fetchStatic:
+           (LAYERS[k].url==="__EIA__"?fetchEIA:(isOSM?fetchOSM:fetchArc))));
     fn(k,function(feats){
       renderLayer(k,feats); if(feats.length) any=true;
       updateRailCounts();
