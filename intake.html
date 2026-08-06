@@ -1129,13 +1129,22 @@ textarea{min-height:70px;resize:vertical}
       host.appendChild(e); return;
     }
     all.forEach(function (r) {
-      var st = OI.STATUS[r.status] || { label: r.status, stage: 0, tone: 'muted' };
+      /* One malformed record must not blank the whole list. A record written
+         by an older tool (or the staff quick-form) can arrive with no nested
+         `project` object — reading r.project.name off undefined throws, the
+         forEach dies, and every row vanishes while the count still says 5.
+         Normalise defensively and skip anything that still can't render. */
+      var proj = r.project || {};
+      var cust = r.customer || {};
+      var name = proj.name || r.projectName || cust.company || 'Untitled project';
+      try {
+      var st = OI.STATUS[r.status] || { label: r.status || 'unknown', stage: 0, tone: 'muted' };
       var item = el('div', 'pitem'); item.tabIndex = 0; item.setAttribute('role', 'button');
       var left = el('div');
-      left.appendChild(el('h3', null, r.project.name || 'Untitled project'));
+      left.appendChild(el('h3', null, name));
       var bits = [
-        [r.project.city, r.project.state].filter(Boolean).join(', '),
-        OI.activeScopes(r).map(function (s) { return s.short; }).join(' · '),
+        [proj.city || cust.city, proj.state || cust.state].filter(Boolean).join(', '),
+        (OI.activeScopes(r) || []).map(function (s) { return s.short; }).join(' · '),
         r.routing === 'self' ? 'Self-serve' : SVC
       ].filter(Boolean);
       left.appendChild(el('div', 'meta', bits.join('  ·  ')));
@@ -1177,6 +1186,14 @@ textarea{min-height:70px;resize:vertical}
         if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); open(); }
       });
       host.appendChild(item);
+      } catch (rowErr) {
+        /* Draw a minimal row rather than dropping the record silently, and
+           log which one is malformed so it can be cleaned up. */
+        console.error('[intake] skipped a malformed record:', r && r.intakeId, rowErr);
+        var bad = el('div', 'pitem');
+        bad.appendChild(el('h3', null, name + ' (could not fully load)'));
+        host.appendChild(bad);
+      }
     });
   }
 
@@ -1551,7 +1568,14 @@ function esc(v) {
 
   /* ---------- hydrate ---------- */
   function hydrate() {
-    // backfill schema for older records
+    // backfill schema for older records — including whole objects a record
+    // written by an older tool may be missing entirely. Without these the
+    // first rec.scope[...] / rec.project.name access throws.
+    if (!rec.project)  rec.project  = {};
+    if (!rec.customer) rec.customer = {};
+    if (!rec.scope)    rec.scope    = {};
+    if (!rec.notify)   rec.notify   = {};
+    if (!rec.quote)    rec.quote    = {};
     OI.SCOPES.forEach(function (s) { if (!rec.scope[s.key]) rec.scope[s.key] = { enabled: false }; });
     if (!rec.categories || !rec.categories.length) rec.categories = OI.DEFAULT_CATEGORIES.slice();
     if (!rec.deliverables) rec.deliverables = [];
