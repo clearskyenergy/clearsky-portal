@@ -8695,7 +8695,16 @@ function covClick(e){
     else if(S.mode==='bgbplace' && typeof placeBgbAt==='function') placeBgbAt(xp);
     return;
   }
-  if(typeof SHAPE_MODES!=='undefined' && SHAPE_MODES[S.mode]){ shapeCovClick(e); return; }
+  /* Call THROUGH window: five separate wrappers reassign
+     window.shapeCovClick (EV zones, substation, stencils, dimension...).
+     A bare-name call resolves to this file's original hoisted declaration
+     and silently bypasses every one of them -- which is why the dimension
+     branch never ran even though it was correctly registered and wired.
+     This is the same lexical-binding trap that has bitten the reprojector
+     and the placement hooks in this file before. */
+  if(typeof SHAPE_MODES!=='undefined' && SHAPE_MODES[S.mode]){
+    (window.shapeCovClick||shapeCovClick)(e); return;
+  }
   if(S.mode!=='conduit')return;
   e.stopPropagation();
   const scr=document.getElementById('sc').getBoundingClientRect();
@@ -8712,7 +8721,11 @@ function covClick(e){
   }
 }
 function covMove(e){
-  if(typeof SHAPE_MODES!=='undefined' && SHAPE_MODES[S.mode]){ shapeCovMove(e); return; }
+  /* Same window-dispatch fix as covClick above -- five wrappers reassign
+     window.shapeCovMove, and a bare-name call bypassed all of them. */
+  if(typeof SHAPE_MODES!=='undefined' && SHAPE_MODES[S.mode]){
+    (window.shapeCovMove||shapeCovMove)(e); return;
+  }
   if(S.mode!=='conduit'||!S.condDrawing)return;
   const scr=document.getElementById('sc').getBoundingClientRect();
   const p=(typeof _plotUnproject==='function')
