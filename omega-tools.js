@@ -309,6 +309,26 @@
        on intake_projects — listAll() is an unfiltered query, which Firestore
        refuses for anyone isAdmin() is false for, so a tenant who found this
        page gets a permission error and an empty table. */
+    /* ── EV COST WORKBOOK (ClearSky staff only) ──
+       Turns an electrical estimate into the customer proposal and the
+       utility program forms. Reps use it while working an intake, so it
+       carries the same orgs restriction as the intake queue itself.
+
+       Same caveat as intake_admin: the orgs list is convenience, not
+       security. The file sits on the public tools host and the URL is
+       guessable. The boundary is the tool's own gate — it requires a
+       signed-in clearsky-usa.com / csebuilders.com account and fails
+       closed, so a tenant who finds the page gets a sign-in wall.
+
+       No savesData: the estimate is pasted or handed over from the
+       editor and never written to Firestore, so there is no per-tenant
+       toolData document to reopen. */
+    { key:'evcostwb', name:'EV Cost Workbook', category:'sales',
+      desc:'Estimate \u2192 customer proposal + utility make-ready forms in one workbook. Level 2 and DC fast charging.',
+      file:'/ev-cost-workbook.html', badge:'new', tier:TIER.ALL,
+      orgs:['clearsky-usa.com','csebuilders.com'],
+      icon:'M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8zM14 2v6h6M8 13h3l-1 3h3M16 13v6' },
+
     { key:'intake_admin', name:'Intake Queue', category:'operations',
       desc:'Work tenant-submitted sites \u2014 triage, quote, produce the packages and push progress back to the client.',
       file:'/intake-admin.html', badge:'new', tier:TIER.ALL, savesData:true,

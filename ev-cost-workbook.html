@@ -1,0 +1,2171 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>EV Cost Workbook</title>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js" onerror="void 0"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js" onerror="void 0"></script>
+<script src="/config.js" onerror="void 0"></script>
+<script src="/omega-tools.js" onerror="void 0"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.4.0/exceljs.min.js" onerror="window._XLFAIL=1"></script>
+<style>
+:root{
+  --bg:#F4F1EC; --surface:#FFFFFF; --ink:#0B1E35; --gold:#C9A84C;
+  --line:#DFD9CF; --line2:#EBE6DE; --sub:#5B6B7E; --dim:#8A94A0;
+  --green:#1E7A44; --red:#B4342B;
+}
+*{box-sizing:border-box}
+html,body{margin:0;padding:0}
+body{
+  background:var(--bg); color:var(--ink);
+  font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+  font-size:13px; line-height:1.45; -webkit-text-size-adjust:100%;
+}
+.mono{font-family:"IBM Plex Mono",ui-monospace,Menlo,Consolas,monospace;font-variant-numeric:tabular-nums}
+
+.tb{
+  position:sticky;top:0;z-index:60;display:flex;align-items:center;gap:12px;
+  padding:11px 18px;background:var(--surface);
+  border-bottom:2px solid var(--gold);box-shadow:0 1px 3px rgba(11,30,53,.06);
+}
+.tb-omega{height:19px;width:auto;display:block}
+.tb-logo-txt{font-size:14px;font-weight:800;letter-spacing:.2px;color:var(--ink)}
+.tb-logo-txt span{color:var(--gold)}
+.tb-sub{font-size:10px;color:var(--sub);letter-spacing:1.3px;text-transform:uppercase;padding-left:12px;border-left:1px solid var(--line)}
+.tb-sp{flex:1}
+
+.wrap{display:grid;grid-template-columns:minmax(320px,392px) 1fr;gap:16px;padding:16px;align-items:start}
+@media(max-width:940px){ .wrap{grid-template-columns:1fr;padding:11px;gap:11px} }
+.col{display:flex;flex-direction:column;gap:14px;min-width:0}
+
+.card{background:var(--surface);border:1px solid var(--line);border-radius:4px;overflow:hidden}
+.card>h3{
+  margin:0;padding:10px 14px;font-size:10px;font-weight:700;letter-spacing:1.2px;
+  text-transform:uppercase;color:var(--ink);background:#FBF9F6;
+  border-bottom:1px solid var(--line2);display:flex;align-items:center;gap:9px;
+}
+.card>h3:before{content:"";width:3px;height:12px;background:var(--gold);flex:none;border-radius:1px}
+.card>h3 .hint{margin-left:auto;font-weight:400;letter-spacing:0;text-transform:none;color:var(--dim);font-size:10px}
+.body{padding:14px}
+.sect{font-size:9.5px;font-weight:700;letter-spacing:.9px;text-transform:uppercase;color:var(--sub);margin:4px 0 8px;padding-bottom:5px;border-bottom:1px solid var(--line2)}
+.sect.mt{margin-top:16px}
+
+label.f{display:block;margin-bottom:10px}
+label.f>span{display:block;font-size:10px;color:var(--sub);margin-bottom:4px;letter-spacing:.2px}
+input[type=text],input[type=number],input[type=date],select,textarea{
+  width:100%;padding:7px 9px;background:var(--surface);
+  border:1px solid #CFC8BC;border-radius:3px;color:var(--ink);
+  font-family:inherit;font-size:12.5px;outline:none;
+}
+input:focus,select:focus,textarea:focus{border-color:var(--ink);box-shadow:0 0 0 2px rgba(11,30,53,.09)}
+input:disabled{background:#F6F4F0;color:var(--dim)}
+select{appearance:none;-webkit-appearance:none;background-image:linear-gradient(45deg,transparent 50%,var(--sub) 50%),linear-gradient(135deg,var(--sub) 50%,transparent 50%);background-position:calc(100% - 14px) 13px,calc(100% - 10px) 13px;background-size:4px 4px;background-repeat:no-repeat;padding-right:26px}
+textarea{resize:vertical;min-height:66px;font-size:12px}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:0 10px}
+.grid3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:0 10px}
+
+button{font-family:inherit;cursor:pointer;border-radius:3px}
+.btn{padding:8px 13px;font-size:11.5px;font-weight:600;background:var(--surface);border:1px solid #CFC8BC;color:var(--ink)}
+.btn:hover{background:#FBF9F6;border-color:var(--ink)}
+.btn.p{background:var(--ink);color:#fff;border:1px solid var(--ink);font-weight:700}
+.btn.p:hover{background:#152D48}
+.btn.g{border-color:var(--gold);color:#8A6F1E;background:#FDFAF2}
+.btn.sm{padding:6px 10px;font-size:11px}
+.btn:disabled{opacity:.45;cursor:not-allowed}
+.row-btn{display:flex;gap:8px;flex-wrap:wrap}
+
+.chk{display:flex;align-items:flex-start;gap:9px;padding:9px 0;border-bottom:1px solid var(--line2)}
+.chk:last-child{border-bottom:none}
+.chk input{width:15px;height:15px;margin:2px 0 0;flex:none;accent-color:var(--ink)}
+.chk .t{font-size:12px;font-weight:600}
+.chk .s{font-size:10px;color:var(--dim);margin-top:1px}
+
+.note{font-size:10.5px;color:var(--dim);line-height:1.55}
+.warn{margin-top:9px;padding:8px 10px;border-radius:3px;font-size:11px;background:#FDF6E7;border:1px solid #E6D3A3;border-left:3px solid var(--gold);color:#7A5C10}
+.ok{margin-top:9px;padding:8px 10px;border-radius:3px;font-size:11px;background:#F0F7F2;border:1px solid #BFDCC9;border-left:3px solid var(--green);color:#1B5E38}
+
+.mapscroll{max-height:50vh;overflow:auto;-webkit-overflow-scrolling:touch;border-top:1px solid var(--line2)}
+table.map{width:100%;border-collapse:collapse;font-size:11.5px}
+table.map th{position:sticky;top:0;z-index:2;background:#FBF9F6;text-align:left;padding:7px 8px;font-size:9px;letter-spacing:.7px;text-transform:uppercase;color:var(--sub);border-bottom:1px solid var(--line);white-space:nowrap}
+table.map td{padding:4px 8px;border-bottom:1px solid var(--line2);vertical-align:middle}
+table.map tr.manual td{background:#FBF9F6}
+table.map tr.orphan td{background:#FDF6E7}
+table.map tr.orphan td:first-child{box-shadow:inset 3px 0 0 var(--gold)}
+table.map tr:hover td{background:#F7F4EF}
+.cell-in{width:100%;padding:5px 6px;font-size:11.5px;text-align:right}
+.desc-in{width:100%;padding:4px 6px;font-size:11.5px;border-color:transparent;background:transparent}
+.desc-in:hover{border-color:#CFC8BC}
+.meta{display:block;color:var(--dim);font-size:9.5px;margin-top:1px;padding-left:6px}
+.sel-sm{padding:5px 6px;font-size:11px;background-position:calc(100% - 12px) 12px,calc(100% - 8px) 12px}
+.x{background:none;border:none;color:var(--dim);font-size:15px;padding:2px 5px;line-height:1}
+.x:hover{color:var(--red)}
+
+.pvwrap{overflow:auto;-webkit-overflow-scrolling:touch;background:#fff;border:1px solid var(--line2);padding:12px}
+table.pv{border-collapse:collapse;font-family:Calibri,Arial,sans-serif;font-size:11px;color:#000;min-width:620px}
+table.pv td{border:1px solid #000;padding:2px 5px;white-space:nowrap}
+table.pv td.num{text-align:right;font-variant-numeric:tabular-nums}
+.pv-band{background:#92D050;color:#fff;font-weight:700}
+.pv-hdr{background:#ED2024;color:#fff;font-weight:700;text-align:center}
+.pv-hdr.o{background:#FFC000}
+.pv-grey{background:#BFBFBF;font-weight:700}
+.pv-gold{background:#FFC000;font-weight:700}
+.pvtabs{display:flex;padding:0 14px;border-bottom:1px solid var(--line2);overflow-x:auto}
+.pvtab{padding:9px 14px;font-size:11px;font-weight:600;background:none;border:none;border-bottom:2px solid transparent;color:var(--sub);cursor:pointer;white-space:nowrap}
+.pvtab.on{color:var(--ink);border-bottom-color:var(--gold)}
+
+.tot-strip{display:grid;grid-template-columns:repeat(4,1fr);gap:1px;background:var(--line2);border-bottom:1px solid var(--line2)}
+@media(max-width:640px){.tot-strip{grid-template-columns:1fr 1fr}}
+.tot-strip>div{background:var(--surface);padding:11px 14px}
+.tot-strip .k{font-size:9px;text-transform:uppercase;letter-spacing:.9px;color:var(--sub)}
+.tot-strip .v{font-size:17px;font-weight:700;margin-top:3px;letter-spacing:-.3px}
+.tot-strip .v.net{color:var(--green)}
+
+.sw{display:flex;gap:7px;flex-wrap:wrap;margin-bottom:11px}
+.sw button{width:36px;height:26px;border:1px solid #CFC8BC;padding:0}
+.sw button.on{outline:2px solid var(--ink);outline-offset:1px}
+
+/* ── access gate ────────────────────────────────────────────────── */
+#gate{position:fixed;inset:0;z-index:200;background:var(--bg);display:flex;align-items:center;justify-content:center;padding:24px}
+.gate-card{max-width:440px;width:100%;background:var(--surface);border:1px solid var(--line);border-top:3px solid var(--gold);border-radius:4px;padding:30px 28px;text-align:center;box-shadow:0 2px 10px rgba(11,30,53,.06)}
+.gate-mark{font-size:13px;font-weight:800;letter-spacing:.3px;color:var(--ink);margin-bottom:20px}
+.gate-mark b{color:var(--gold);font-weight:800}
+.gate-title{font-size:17px;font-weight:700;margin-bottom:8px}
+.gate-msg{font-size:12.5px;color:var(--sub);line-height:1.6}
+.gate-msg code{background:#F6F4F0;border:1px solid var(--line2);border-radius:3px;padding:1px 5px;font-size:11.5px}
+.gate-foot{margin-top:22px;padding-top:14px;border-top:1px solid var(--line2);font-size:10px;letter-spacing:.9px;text-transform:uppercase;color:var(--dim)}
+.tb-who{font-size:11px;color:var(--sub);padding-right:12px;border-right:1px solid var(--line);margin-right:2px}
+</style>
+</head>
+<body>
+
+<!-- Internal gate. The app stays hidden until both checks pass. -->
+<div id="gate">
+  <div class="gate-card">
+    <div class="gate-mark">ClearSky <b>OMEGA</b></div>
+    <div class="gate-title" id="gateTitle">Checking access…</div>
+    <div class="gate-msg" id="gateMsg">One moment.</div>
+    <div id="gateActions" class="row-btn" style="justify-content:center;margin-top:16px"></div>
+    <div class="gate-foot">Internal tool — ClearSky Energy Solutions</div>
+  </div>
+</div>
+
+<div id="app" style="display:none">
+<div class="tb">
+  <img id="tbLogo" alt="" class="tb-omega" style="display:none">
+  <div class="tb-logo-txt" id="tbName"></div>
+  <div class="tb-sub">EV Cost Workbook</div>
+  <div class="tb-sp"></div>
+  <span class="tb-who" id="tbWho"></span>
+  <button class="btn p" id="btnExport" onclick="exportWorkbook()">Export workbook</button>
+</div>
+
+<div class="wrap">
+
+  <div class="col">
+
+    <div class="card">
+      <h3>Estimate source</h3>
+      <div class="body">
+        <div class="row-btn">
+          <button class="btn g sm" onclick="pullFromEditor()">Pull from Site Map editor</button>
+          <button class="btn sm" onclick="togglePaste()">Paste estimate CSV</button>
+          <button class="btn sm" onclick="startBlank()">Start blank</button>
+        </div>
+        <div id="pasteBox" style="display:none;margin-top:10px">
+          <label class="f"><span>Paste the CSV from the editor's <b>Export Estimate CSV</b> button</span>
+            <textarea id="csvIn" placeholder="Category,Description,Size,Qty,Unit,Labor h/unit,Labor h,Material $/unit,Material $,Labor $,Extended $,Source"></textarea>
+          </label>
+          <button class="btn p sm" onclick="importCSV()">Load lines</button>
+        </div>
+        <div id="srcMsg" class="note" style="margin-top:10px"></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h3>Sheets to build<span class="hint">one workbook</span></h3>
+      <div class="body" id="outPick"></div>
+    </div>
+
+    <div class="card">
+      <h3>Contractor<span class="hint">the company submitting</span></h3>
+      <div class="body">
+        <label class="f"><span>Saved profiles</span>
+          <select id="c_profile" onchange="loadProfile(this.value)"><option value="">— select a profile —</option></select>
+        </label>
+        <div class="row-btn" style="margin-bottom:12px">
+          <button class="btn sm" onclick="saveProfile()">Save these details</button>
+          <button class="btn sm" onclick="document.getElementById('c_file').click()">Import file</button>
+          <button class="btn sm" onclick="exportProfile()">Export</button>
+          <button class="btn sm" onclick="togglePasteC()">Paste</button>
+          <button class="btn sm" onclick="deleteProfile()">Delete</button>
+        </div>
+        <input type="file" id="c_file" accept=".json,.txt,application/json" style="display:none" onchange="importProfileFile(this)">
+        <div id="pasteCBox" style="display:none;margin-bottom:12px">
+          <label class="f"><span>Paste JSON, or one detail per line (Company: …, Email: …)</span>
+            <textarea id="c_paste" placeholder='{"company":"","contact":"","email":"","phone":""}'></textarea>
+          </label>
+          <button class="btn p sm" onclick="importProfilePaste()">Read details</button>
+        </div>
+        <label class="f"><span>Company name</span><input type="text" id="f-company" oninput="setD('company',this.value)"></label>
+        <label class="f"><span>Contact name &amp; title</span><input type="text" id="f-contact" oninput="setD('contact',this.value)"></label>
+        <div class="grid2">
+          <label class="f"><span>Email</span><input type="text" id="f-email" oninput="setD('email',this.value)"></label>
+          <label class="f"><span>Phone</span><input type="text" id="f-phone" oninput="setD('phone',this.value)"></label>
+        </div>
+        <div class="grid2">
+          <label class="f"><span>License / EIN</span><input type="text" id="f-license" oninput="setD('license',this.value)"></label>
+          <label class="f"><span>Business address</span><input type="text" id="f-cAddress" oninput="setD('cAddress',this.value)"></label>
+        </div>
+        <button class="btn sm" onclick="contractorToBrand()">Use these details on the proposal</button>
+        <div id="cMsg" class="note" style="margin-top:9px"></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h3>Site &amp; program<span class="hint" id="formHint"></span></h3>
+      <div class="body" id="siteForm"></div>
+    </div>
+
+    <div class="card">
+      <h3>Pricing rules</h3>
+      <div class="body">
+        <div class="grid2">
+          <label class="f"><span>Crew rate ($/hr)</span><input type="number" id="p_crew" value="95" step="1" oninput="render()"></label>
+          <label class="f"><span id="taxLbl">Sales tax (%)</span><input type="number" id="p_tax" value="6.35" step="0.01" oninput="taxKnob()"></label>
+        </div>
+        <div class="grid2">
+          <label class="f"><span>Markup on cost (%)</span><input type="number" id="p_markup" value="0" step="0.1" oninput="render()"></label>
+          <label class="f"><span>Trench split to future-proofing (%)</span><input type="number" id="p_fp" value="50" step="1" oninput="applyTrenchSplit()"></label>
+        </div>
+        <label class="f" style="margin-bottom:6px"><span>Tax base</span>
+          <select id="p_taxlab" onchange="taxKnob()">
+            <option value="1">Material + labor</option>
+            <option value="0">Material only</option>
+          </select>
+        </label>
+        <div class="note">Markup spreads overhead and profit across material and labor before tax. Leave it at 0 if the estimate lines already carry your margin.</div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h3>Proposal appearance<span class="hint">what the customer sees</span></h3>
+      <div class="body">
+        <label class="f"><span>Brand this proposal as</span>
+          <select id="b_tenant" onchange="applyTenant(this.value)"></select>
+        </label>
+        <div id="tenantMsg" class="note" style="margin-bottom:12px"></div>
+        <div class="sect">Colour</div>
+        <div class="sw" id="swatches"></div>
+        <div class="grid2">
+          <label class="f"><span>Band colour (hex)</span><input type="text" id="b_band" value="2F3437" oninput="setCustomBand()"></label>
+          <label class="f"><span>Total incentive ($)</span><input type="number" id="b_incent" value="0" step="1" oninput="render()"></label>
+        </div>
+        <label class="f"><span>Company name on proposal</span><input type="text" id="b_name" oninput="render()"></label>
+        <label class="f"><span>Footer line</span><input type="text" id="b_foot" placeholder="Address  |  Phone  |  Website" oninput="render()"></label>
+        <label class="f"><span>Header logo (PNG, optional)</span><input type="file" id="b_logo" accept="image/png,image/jpeg" onchange="loadLogo(this)" style="padding:5px;font-size:11px"></label>
+        <div id="logoMsg" class="note"></div>
+        <button class="btn sm" style="margin-top:8px" onclick="colourFromLoadedLogo()">Take colours from this logo</button>
+      </div>
+    </div>
+
+  </div>
+
+  <div class="col">
+
+    <div class="card">
+      <h3>Cost mapping<span class="hint" id="mapCount"></span></h3>
+      <div class="body" style="padding-bottom:11px">
+        <div class="row-btn">
+          <button class="btn sm" onclick="addManual()">Add cost line</button>
+          <button class="btn sm" onclick="addStandardRows()">Add permitting, design, activation…</button>
+          <button class="btn sm" onclick="reclassifyAll()">Re-run auto mapping</button>
+        </div>
+      </div>
+      <div class="mapscroll">
+        <table class="map">
+          <thead><tr>
+            <th style="min-width:200px">Cost line</th>
+            <th style="width:72px">Qty</th>
+            <th style="width:118px">Block</th>
+            <th style="width:136px">Row</th>
+            <th style="width:52px" title="Share of this line moved to the Future Proofing block">FP&nbsp;%</th>
+            <th style="width:94px">Material $</th>
+            <th style="width:94px">Labor $</th>
+            <th style="width:26px"></th>
+          </tr></thead>
+          <tbody id="mapBody"></tbody>
+        </table>
+      </div>
+      <div class="body" style="padding-top:11px"><div id="mapEmpty" class="note"></div></div>
+    </div>
+
+    <div class="card">
+      <h3>Workbook preview<span class="hint">what lands in the .xlsx</span></h3>
+      <div class="tot-strip" id="totStrip"></div>
+      <div class="pvtabs" id="pvTabs"></div>
+      <div class="body">
+        <div class="pvwrap" id="pvHost"></div>
+        <div id="xlWarn"></div>
+      </div>
+    </div>
+
+  </div>
+</div>
+</div><!-- /#app -->
+
+<script>
+'use strict';
+
+/* ══════════════════════════════════════════════════════════════════
+   EV COST WORKBOOK  (ClearSky-OMEGA)
+   ------------------------------------------------------------------
+   Takes the Site Map editor's Electrical Estimate and produces one
+   workbook containing:
+
+     · the CONTRACTOR PROPOSAL — the estimate priced for the customer,
+       carrying the contractor's own name and colours; and
+     · one sheet per UTILITY PROGRAM FORM selected.
+
+   Forms live in the FORMS registry below. Each one owns its own field
+   layout, cost categories, sales-tax label and column headings, so a
+   new utility is a new data object — not new code. United Illuminating
+   is the form shipped here; the template at the bottom of the registry
+   shows exactly what a second utility needs.
+
+   ES5 only, single file, no build step.
+   ================================================================== */
+
+/* ── 0. TENANT BRANDING ────────────────────────────────────────────
+   Highest-priority overrides, same convention as sales-proposal.html.
+   Set these per tenant repo; leave blank to fall back.
+   ------------------------------------------------------------------ */
+var BRAND_NAME_OVERRIDE   = '';          /* e.g. 'SPATCO Energy Solutions' */
+var LOGO_OVERRIDE         = '';          /* e.g. '/spatco-mark.png'        */
+var BRAND_ACCENT_OVERRIDE = '';          /* e.g. '2F3437' proposal band    */
+
+function platformName(){ return BRAND_NAME_OVERRIDE || 'ClearSky OMEGA'; }
+
+/* Who the customer-facing proposal belongs to. The contractor submitting
+   the job outranks the platform brand — it's their estimate, not ours. */
+function proposalName(){
+  return val('b_name') || d('company') || BRAND_NAME_OVERRIDE || 'Company';
+}
+
+/* ── 1. SHARED COST-BLOCK LIBRARY ─────────────────────────────────
+   Most state EV make-ready programs sort costs the same way: EVSE,
+   make-ready, future-proofing, and non-eligible. A form can use this
+   set or define its own.
+   ------------------------------------------------------------------ */
+var BLOCKS_MAKEREADY = [
+  { id:'evse', title:'EVSE Eligible Costs Total', fill:'FFBFBFBF', rows:[
+      {k:'charger',   l:'Charger Hardware'},
+      {k:'pedestal',  l:'Pedestal'},
+      {k:'activation',l:'Activation'},
+      {k:'shipping',  l:'Shipping'},
+      {k:'other',     l:'Other'}
+  ]},
+  { id:'mr', title:'Make-Ready Eligible Costs Total', fill:'FFBFBFBF', rows:[
+      {k:'panel',  l:'Electrical Panel'},
+      {k:'boards', l:'Service Boards'},
+      {k:'meter',  l:'Meter Provision', sub:' (if separate from panel)'},
+      {k:'trench', l:'Trenching/Restoration'},
+      {k:'conduit',l:'Conduit & Conductors'},
+      {k:'wire',   l:'Wiring'},
+      {k:'permit', l:'Permitting Costs'},
+      {k:'design', l:'Design Costs'},
+      {k:'other',  l:'Other'}
+  ]},
+  { id:'fp', title:'Future Proofing Eligible Costs Total', fill:'FFFFC000', rows:[
+      {k:'xfmr',   l:'Transformers'},
+      {k:'trench', l:'Trenching/Restoration'},
+      {k:'conduit',l:'Conduit & Conductors'},
+      {k:'wire',   l:'Wiring'},
+      {k:'panel',  l:'Panel'},
+      {k:'other',  l:'Other'}
+  ]},
+  { id:'ne', title:'Make-Ready & EVSE Non-Eligible Costs Total', fill:'FFFFC000', rows:[
+      {k:'bollard', l:'Bollards for EVSE'},
+      {k:'signage', l:'Signage'},
+      {k:'striping',l:'Striping'},
+      {k:'network', l:'EVSE Networking/Software'},
+      {k:'warranty',l:'EVSE Warranty'},
+      {k:'other',   l:'Other'}
+  ]}
+];
+var FP_MIRROR = { trench:'trench', conduit:'conduit', wire:'wire', panel:'panel', xfmr:'xfmr' };
+
+/* ── 1b. CHARGER CLASS ────────────────────────────────────────────
+   Level 2 and DC fast charging are different jobs, and the paperwork
+   follows: different utility programs, and a different shape of
+   customer proposal. A project is one or the other.
+
+   The blocks below are the CUSTOMER PROPOSAL layout for each class —
+   our document, so we define it. Utility forms bring their own blocks
+   and are matched to a class by their "classes" list.
+
+   DCFC differs from L2 in ways that matter on the page: the transformer
+   and service entrance are required work today rather than future-
+   proofing, there are concrete foundations and commissioning to price,
+   and the equipment line is a power cabinet plus dispensers rather than
+   a wall or pedestal unit.
+   ------------------------------------------------------------------ */
+var BLOCKS_PROPOSAL_DCFC = [
+  { id:'evse', title:'EV Charging Equipment Total', fill:'FFBFBFBF', rows:[
+      {k:'charger',   l:'DC Fast Chargers (power cabinet + dispensers)'},
+      {k:'pedestal',  l:'Mounting, pedestals & cable management'},
+      {k:'activation',l:'Activation & commissioning fees'},
+      {k:'shipping',  l:'Freight & delivery'},
+      {k:'other',     l:'Other'}
+  ]},
+  { id:'mr', title:'Make-Ready, Utility Service & Construction Total', fill:'FFBFBFBF', rows:[
+      {k:'xfmr',      l:'Transformer & primary service'},
+      {k:'boards',    l:'Service entrance / switchboard'},
+      {k:'meter',     l:'Utility metering'},
+      {k:'panel',     l:'Switchgear / distribution panel'},
+      {k:'trench',    l:'Trenching & restoration'},
+      {k:'conduit',   l:'Conduit & conductors'},
+      {k:'wire',      l:'Wiring'},
+      {k:'pad',       l:'Concrete pads & foundations'},
+      {k:'permit',    l:'Permitting'},
+      {k:'design',    l:'Engineering & design'},
+      {k:'commission',l:'Commissioning & startup'},
+      {k:'other',     l:'Other'}
+  ]},
+  { id:'fp', title:'Future Capacity (spare) Total', fill:'FFFFC000', rows:[
+      {k:'xfmr',   l:'Transformer capacity'},
+      {k:'trench', l:'Trenching & restoration'},
+      {k:'conduit',l:'Spare conduit & conductors'},
+      {k:'wire',   l:'Spare wiring'},
+      {k:'panel',  l:'Spare gear / breaker positions'},
+      {k:'other',  l:'Other'}
+  ]},
+  { id:'ne', title:'Site & Operating Costs Total', fill:'FFFFC000', rows:[
+      {k:'bollard', l:'Bollards & impact protection'},
+      {k:'signage', l:'Signage'},
+      {k:'striping',l:'Striping & ADA markings'},
+      {k:'network', l:'Networking / software subscription'},
+      {k:'warranty',l:'Extended warranty'},
+      {k:'other',   l:'Other'}
+  ]}
+];
+
+var PROFILES = {
+  l2: {
+    id:'l2', name:'Level 2 (AC)', short:'L2',
+    proposalTitle:'EV Charging Station Proposal',
+    blocks: BLOCKS_MAKEREADY
+  },
+  dcfc: {
+    id:'dcfc', name:'DC Fast Charging', short:'DCFC',
+    proposalTitle:'DC Fast Charging Station Proposal',
+    blocks: BLOCKS_PROPOSAL_DCFC
+  }
+};
+function chargerClass(){ return d('class')==='dcfc' ? 'dcfc' : 'l2'; }
+function profile(){ return PROFILES[chargerClass()]; }
+
+/* Reads the class off the estimate rather than making the rep remember.
+   The editor places DC fast chargers at 250 kW; anything at or above
+   25 kW on a charger line is DC, as is an explicit DCFC label. */
+function detectClass(){
+  var i, l, t, kw, m;
+  for(i=0;i<LINES.length;i++){
+    l=LINES[i];
+    t=String(l.desc||'').toLowerCase()+' '+String(l.size||'').toLowerCase()+' '+String(l.cat||'').toLowerCase();
+    if(/dcfc|dc fast|fast charg|ccs|chademo/.test(t)) return 'dcfc';
+    if(l.bucket==='evse' && l.row==='charger'){
+      m=t.match(/([\d.]+)\s*kw/);
+      kw=m?parseFloat(m[1]):0;
+      if(kw>=25) return 'dcfc';
+    }
+  }
+  return null;   /* nothing conclusive — leave the rep's choice alone */
+}
+function applyDetectedClass(){
+  var c=detectClass();
+  if(!c || c===chargerClass()){ return false; }
+  DATA['class']=c;
+  return true;
+}
+
+/* ── 2. FORM REGISTRY ─────────────────────────────────────────────
+   left    : label/value groups down the left of the Site Information
+             block. "from:'contractor'" means the value comes from the
+             Contractor card rather than its own input.
+   right   : blocks down the right. 'table' = header row over a value
+             row; 'stack' = label row over a value row.
+   tax     : rate, the label the form prints, and whether labor is taxed.
+   ------------------------------------------------------------------ */
+var FORM_UI_L2 = {
+  id:'ui-ct-l2',
+  utility:'United Illuminating',
+  program:'EV Charging Program — Level 2',
+  short:'United Illuminating — L2',
+  classes:['l2'],          /* offered only on Level 2 projects */
+  sheet:'L2 Costs ({site})',
+  banners:{ site:'Site Information', costs:'Customer-Side Costs' },
+  headers:{ type:'Cost Type', desc:'If Other, Provide Description',
+            mat:'Material Costs', lab:'Labor Costs', tot:'Material + Labor' },
+  totalLabel:'Total',
+  tax:{ rate:6.35, label:'CT Sales Tax', onLabor:true },
+  left:[
+    { title:'Application Information', fields:[
+        {k:'applicant', label:'Account/Applicant Name'},
+        {k:'address',   label:'Application Address'},
+        {k:'city',      label:'Application City'} ]},
+    { title:'Contractor Information', fields:[
+        {k:'company', label:'Contractor Company Name',         from:'contractor'},
+        {k:'contact', label:'Contractor Contact Name & Title', from:'contractor'},
+        {k:'email',   label:'Contractor Contact Email',        from:'contractor'},
+        {k:'phone',   label:'Contractor Contact Phone',        from:'contractor'} ]},
+    { title:'Expected Construction Schedule', fields:[
+        {k:'start', label:'Expected Construction Start Date', type:'date'},
+        {k:'end',   label:'Expected Construction End Date',   type:'date'} ]}
+  ],
+  right:[
+    { type:'table', cols:[
+        {k:'plugs', label:'# of Level 2 Plugs', type:'number', fmt:'0'},
+        {k:'kw1',   label:'Single Plug (kW)',   type:'number', fmt:'0.#'},
+        {k:'kwsim', label:'Simultaneous (kW)',  type:'number', fmt:'0.#'} ]},
+    { type:'stack', label:'Site Category (Public Parking, MUDs, Workplace, Fleet)',
+      k:'category', type2:'select', options:['Workplace','Public Parking','MUDs','Fleet'] },
+    { type:'stack', label:'Total Feet of Trenching', k:'ftTrench',  type2:'number', fmt:'#,##0' },
+    { type:'stack', label:'Total Feet of Conduit',   k:'ftConduit', type2:'number', fmt:'#,##0' },
+    { type:'stack', label:'Total Feet of Cable',     k:'ftCable',   type2:'number', fmt:'#,##0' }
+  ],
+  blocks: BLOCKS_MAKEREADY
+};
+
+/* ------------------------------------------------------------------
+   ADDING THE NEXT UTILITY
+   Copy the object above, change what that program actually asks for,
+   and push it into FORMS. Nothing else in the file needs to change —
+   the sheet writer, the preview and the cost mapping all read the
+   definition. Don't copy United Illuminating's categories across to
+   another utility without checking their form; the block titles and
+   the tax treatment are theirs, not a standard.
+
+   var FORM_EVERSOURCE_L2 = {
+     id:'es-ct-l2', utility:'Eversource', program:'…', short:'Eversource — L2',
+     sheet:'L2 Costs ({site})',
+     banners:{…}, headers:{…}, totalLabel:'Total',
+     tax:{ rate:6.35, label:'CT Sales Tax', onLabor:true },
+     left:[…], right:[…], blocks:[…]
+   };
+   ------------------------------------------------------------------ */
+
+var FORMS = [ FORM_UI_L2 ];
+
+function formById(id){ for(var i=0;i<FORMS.length;i++){ if(FORMS[i].id===id) return FORMS[i]; } return FORMS[0]; }
+var FORM = FORMS[0];                       /* utility form driving the cost blocks (may be null) */
+var TAXOV = {};                            /* per-form tax knob overrides */
+var PICK = { proposal:true };              /* which sheets to build */
+(function(){ var i; for(i=0;i<FORMS.length;i++) PICK[FORMS[i].id] = (i===0); })();
+
+function blocksOf(){ return FORM ? FORM.blocks : profile().blocks; }
+
+/* The proposal is our document, not the utility's. It can either mirror
+   the program form (useful when a customer wants the two to line up) or
+   use the standard layout for the charger class — which is the only
+   option when no utility form covers the class yet. */
+function mirroringForm(){
+  return val('b_mirror')==='1' && FORM && formAppliesToClass(FORM);
+}
+function proposalForm(){
+  var mirror=mirroringForm();
+  var tax = (mirror && FORM.tax) ? FORM.tax
+          : { rate:nval('p_tax'), label:'Sales Tax', onLabor:val('p_taxlab')==='1' };
+  return { id: mirror ? ('proposal-'+FORM.id) : ('proposal-'+chargerClass()),
+           blocks: mirror ? FORM.blocks : profile().blocks,
+           tax: tax };
+}
+function formAppliesToClass(f){
+  if(!f || !f.classes) return true;
+  var i;
+  for(i=0;i<f.classes.length;i++){ if(f.classes[i]===chargerClass()) return true; }
+  return false;
+}
+function formsForClass(){
+  var out=[], i;
+  for(i=0;i<FORMS.length;i++){ if(formAppliesToClass(FORMS[i])) out.push(FORMS[i]); }
+  return out;
+}
+/* Whichever layout the rep is currently mapping against. */
+function activeBlocks(){
+  return (FORM && formAppliesToClass(FORM)) ? FORM.blocks : profile().blocks;
+}
+function blockById(id){ var b=activeBlocks(), i; for(i=0;i<b.length;i++){ if(b[i].id===id) return b[i]; } return b[0]; }
+function rowExists(bid,k){ var b=blockById(bid), i; for(i=0;i<b.rows.length;i++){ if(b.rows[i].k===k) return true; } return false; }
+
+/* ── 2b. TENANT REGISTRY ──────────────────────────────────────────
+   Keyed by email domain, mirroring window.CS_TENANTS in editor.html so
+   there's one vocabulary across the platform. Names and logo paths are
+   the real ones; "brand" is the proposal colour set.
+
+   IMPORTANT: brand:null means nobody has set that tenant's colours yet.
+   Rather than guess a hex, the tool reads the colours off the tenant's
+   own logo (see deriveFromLogo) and the rep confirms. Once you know a
+   tenant's real brand hex, put it here and it stops being derived:
+       brand:{ band:'1B2A3E', head:'EEF0F2', tot:'DADEE2' }
+   ------------------------------------------------------------------ */
+var TENANTS = [
+  { key:'',              name:'— no tenant / generic —', logo:'',                       site:'',               brand:null },
+  { key:'nextnrg.com',   name:'NextNRG',                 logo:'',                       site:'nextnrg.com',    brand:null },
+  { key:'spatco.com',    name:'SPATCO',                  logo:'/spatco-logo.jpg',       site:'spatco.com',     brand:null },
+  { key:'sunesol.com',   name:'SUN Energy Solutions',    logo:'/sunesol-logo-color.png',site:'sunesol.com',    brand:null },
+  { key:'ogisolar.com',  name:'OGI Solar',               logo:'/ogisolar-logo.png',     site:'ogisolar.com',   brand:null },
+  { key:'solela.com',    name:'Solela LLC',              logo:'/solela-logo.png',       site:'solela.com',     brand:null },
+  { key:'chileasing.com',name:'Chileasing Energy',       logo:'/chileasing-logo.png',   site:'chileasing.com', brand:null }
+];
+function tenantByKey(k){ var i; for(i=0;i<TENANTS.length;i++){ if(TENANTS[i].key===k) return TENANTS[i]; } return TENANTS[0]; }
+
+/* ---- colour maths, all ES5 ---- */
+function hex2rgb(h){
+  h=String(h).replace(/[^0-9A-Fa-f]/g,'');
+  if(h.length!==6) return null;
+  return { r:parseInt(h.slice(0,2),16), g:parseInt(h.slice(2,4),16), b:parseInt(h.slice(4,6),16) };
+}
+function rgb2hex(c){
+  function p(n){ n=Math.max(0,Math.min(255,Math.round(n))).toString(16).toUpperCase(); return n.length<2?'0'+n:n; }
+  return p(c.r)+p(c.g)+p(c.b);
+}
+function lum(c){ return (0.2126*c.r + 0.7152*c.g + 0.0722*c.b)/255; }
+function mixWhite(c, t){   /* t=0 keeps colour, t=1 goes white */
+  return { r:c.r+(255-c.r)*t, g:c.g+(255-c.g)*t, b:c.b+(255-c.b)*t };
+}
+function darkenTo(c, target){
+  var l=lum(c);
+  if(l<=target || l===0) return c;
+  var k=target/l;
+  return { r:c.r*k, g:c.g*k, b:c.b*k };
+}
+/* A band carries white text, so it has to be dark enough to read on.
+   Tints for the header and total rows are the same hue, mostly white. */
+function paletteFromColour(c, name){
+  var band=darkenTo(c, 0.20);
+  return { k:'derived', name:(name||'From logo'),
+           band:rgb2hex(band), head:rgb2hex(mixWhite(c,0.90)), tot:rgb2hex(mixWhite(c,0.80)) };
+}
+
+/* Pulls the dominant brand colour out of an image. Near-white, near-black
+   and washed-out pixels are skipped so the logo's background doesn't win. */
+function dominantColour(img){
+  var N=64, cv=document.createElement('canvas');
+  cv.width=N; cv.height=N;
+  var ctx=cv.getContext('2d');
+  if(!ctx) return null;
+  ctx.drawImage(img,0,0,N,N);
+  var data;
+  try{ data=ctx.getImageData(0,0,N,N).data; }
+  catch(e){ return null; }        /* cross-origin image taints the canvas */
+  var buckets={}, i, r, g, b, a, mx, mn, sat, key, best=null, bestN=0;
+  for(i=0;i<data.length;i+=4){
+    a=data[i+3]; if(a<128) continue;
+    r=data[i]; g=data[i+1]; b=data[i+2];
+    mx=Math.max(r,g,b); mn=Math.min(r,g,b);
+    if(mx>242 && mn>242) continue;          /* white */
+    if(mx<18) continue;                     /* black */
+    sat=mx===0?0:(mx-mn)/mx;
+    if(sat<0.12 && mx>200) continue;        /* pale grey */
+    key=(r>>4)+','+(g>>4)+','+(b>>4);
+    if(!buckets[key]) buckets[key]={ r:0,g:0,b:0,n:0 };
+    buckets[key].r+=r; buckets[key].g+=g; buckets[key].b+=b; buckets[key].n++;
+  }
+  for(key in buckets){
+    if(!buckets.hasOwnProperty(key)) continue;
+    if(buckets[key].n>bestN){ bestN=buckets[key].n; best=buckets[key]; }
+  }
+  if(!best || !bestN) return null;
+  return { r:best.r/bestN, g:best.g/bestN, b:best.b/bestN };
+}
+
+function applyTenant(key){
+  var t=tenantByKey(key);
+  DATA.tenant=key;
+  if(!key){ msg('tenantMsg','Generic proposal — pick a scheme below or set a hex.',''); render(); return; }
+  if(!val('b_name')) document.getElementById('b_name').value=t.name;
+  if(!val('b_foot') && t.site) document.getElementById('b_foot').value=t.site;
+  if(t.brand){
+    PAL={ k:'tenant', name:t.name, band:t.brand.band, head:t.brand.head, tot:t.brand.tot };
+    document.getElementById('b_band').value=PAL.band;
+    renderSwatches(); render();
+    msg('tenantMsg','Using '+esc(t.name)+'\u2019s registered colours.','ok');
+    return;
+  }
+  /* No registered hex — read it off their logo instead of guessing. */
+  if(t.logo){ colourFromLogoPath(t.logo, t.name); }
+  else {
+    msg('tenantMsg','No colours on file for '+esc(t.name)+' and no logo to read. '
+      + 'Upload their logo below and I\u2019ll take the colours from it, or type a hex.','warn');
+    render();
+  }
+}
+
+function colourFromLogoPath(src, name){
+  var img=new Image();
+  img.crossOrigin='anonymous';
+  img.onload=function(){
+    var c=dominantColour(img);
+    if(!c){
+      msg('tenantMsg','That logo couldn\u2019t be read for colour (it may be served from another domain). '
+        + 'Upload the logo file below and I\u2019ll take the colours from it.','warn');
+      return;
+    }
+    PAL=paletteFromColour(c, name);
+    document.getElementById('b_band').value=PAL.band;
+    renderSwatches(); render();
+    msg('tenantMsg','Colours taken from '+esc(name)+'\u2019s logo \u2014 band #'+PAL.band
+      + '. Adjust the hex if it\u2019s off, then tell dev to record it in TENANTS.','ok');
+  };
+  img.onerror=function(){
+    msg('tenantMsg','Couldn\u2019t load '+esc(src)+' on this host. Upload the logo below and '
+      + 'I\u2019ll take the colours from it.','warn');
+  };
+  img.src=src;
+}
+
+/* ── 3. PALETTES ──────────────────────────────────────────────────── */
+var PALETTES = [
+  { k:'charcoal', name:'Charcoal',      band:'2F3437', head:'EFEFEF', tot:'DCDCDC' },
+  { k:'slate',    name:'Slate',         band:'46525F', head:'EEF0F2', tot:'DADEE2' },
+  { k:'stone',    name:'Warm stone',    band:'57534E', head:'F0EEEB', tot:'DEDAD5' },
+  { k:'ink',      name:'Black & white', band:'1A1A1A', head:'F0F0F0', tot:'D9D9D9' },
+  { k:'sage',     name:'Sage',          band:'4A5A50', head:'EDF1EE', tot:'D8E0DB' }
+];
+var PAL = PALETTES[0];
+
+function renderTenantList(){
+  var h='', i, t, cur=d('tenant');
+  for(i=0;i<TENANTS.length;i++){
+    t=TENANTS[i];
+    h+='<option value="'+esc(t.key)+'"'+(t.key===cur?' selected':'')+'>'+esc(t.name)
+     + (t.key && !t.brand ? '  (colours from logo)' : '')+'</option>';
+  }
+  document.getElementById('b_tenant').innerHTML=h;
+}
+
+/* Uses the logo the rep just uploaded — works even when the tenant's own
+   logo file isn't reachable from this host. */
+function colourFromLoadedLogo(){
+  if(!LOGO){ msg('tenantMsg','Upload a logo first, then I can read its colours.','warn'); return; }
+  var img=new Image();
+  img.onload=function(){
+    var c=dominantColour(img);
+    if(!c){ msg('tenantMsg','No usable colour in that image — it may be all white or all black.','warn'); return; }
+    PAL=paletteFromColour(c, 'From logo');
+    document.getElementById('b_band').value=PAL.band;
+    renderSwatches(); render();
+    msg('tenantMsg','Colours taken from the uploaded logo — band #'+PAL.band+'. Adjust the hex if it\u2019s off.','ok');
+  };
+  img.onerror=function(){ msg('tenantMsg','That image could not be read.','warn'); };
+  img.src=LOGO.b64;
+}
+
+function renderSwatches(){
+  var h='', i, p;
+  if(PAL.k==='derived' || PAL.k==='tenant' || PAL.k==='custom'){
+    h+='<button title="'+esc(PAL.name)+'" class="on" style="background:#'+PAL.band+'"></button>';
+  }
+  for(i=0;i<PALETTES.length;i++){
+    p=PALETTES[i];
+    h+='<button title="'+esc(p.name)+'" class="'+(p.k===PAL.k?'on':'')+'" style="background:#'+p.band+'" onclick="setPalette(\''+p.k+'\')"></button>';
+  }
+  document.getElementById('swatches').innerHTML=h;
+}
+function setPalette(k){
+  var i;
+  for(i=0;i<PALETTES.length;i++){ if(PALETTES[i].k===k) PAL=PALETTES[i]; }
+  document.getElementById('b_band').value=PAL.band;
+  renderSwatches(); render();
+}
+function setCustomBand(){
+  var hex=String(val('b_band')).replace(/[^0-9A-Fa-f]/g,'').slice(0,6).toUpperCase();
+  PAL={ k:'custom', name:'Custom', band:(hex.length===6?hex:PAL.band), head:PAL.head, tot:PAL.tot };
+  renderSwatches(); render();
+}
+
+/* ── 4. STATE + HELPERS ───────────────────────────────────────────── */
+var LINES = [];
+var DATA  = {};        /* every form field, keyed — survives form switches */
+var LOGO  = null;
+var _nid  = 1;
+var _pv   = 'proposal';
+
+function num(v){
+  if(v==null) return 0;
+  var s=String(v).replace(/[$,%\s]/g,'');
+  if(s==='') return 0;
+  var n=parseFloat(s);
+  if(!isFinite(n) || n<0) return 0;
+  return n;
+}
+function r2(n){ return Math.round((n||0)*100)/100; }
+function d(k){ return DATA[k]==null?'':String(DATA[k]); }
+function dn(k){ return num(DATA[k]); }
+function setD(k,v){ DATA[k]=v; render(); }
+function val(id){ var e=document.getElementById(id); return e?e.value:''; }
+function nval(id){ return num(val(id)); }
+function money(n){ return '$'+r2(n).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2}); }
+function esc(s){ return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;'); }
+function msg(id, html, kind){
+  var e=document.getElementById(id); if(!e) return;
+  e.className = kind==='warn'?'warn':(kind==='ok'?'ok':'note');
+  e.innerHTML = html;
+}
+function syncField(k){
+  var e=document.getElementById('f-'+k);
+  if(e && e.value!==d(k)) e.value=d(k);
+}
+
+/* ── 5. CONTRACTOR PROFILES ───────────────────────────────────────── */
+var PKEY='OMEGA_CONTRACTOR_PROFILES';
+var CFIELDS=['company','contact','email','phone','license','cAddress'];
+
+function readProfiles(){
+  try{ var raw=localStorage.getItem(PKEY); return raw?JSON.parse(raw):{}; }catch(e){ return {}; }
+}
+function writeProfiles(o){
+  try{ localStorage.setItem(PKEY, JSON.stringify(o)); return true; }
+  catch(e){ msg('cMsg','Profiles could not be saved — storage is full or blocked in this browser.','warn'); return false; }
+}
+function currentContractor(){
+  return { company:d('company'), contact:d('contact'), email:d('email'),
+           phone:d('phone'), license:d('license'), address:d('cAddress') };
+}
+function applyContractor(c){
+  if(!c) return;
+  var m={ company:(c.company||c.companyName||c.name), contact:(c.contact||c.contactName),
+          email:c.email, phone:(c.phone||c.telephone), license:(c.license||c.ein),
+          cAddress:(c.address||c.addr) };
+  var i;
+  for(i=0;i<CFIELDS.length;i++){
+    if(m[CFIELDS[i]]) DATA[CFIELDS[i]]=m[CFIELDS[i]];
+  }
+  for(i=0;i<CFIELDS.length;i++) syncField(CFIELDS[i]);
+  render();
+}
+function refreshProfileList(sel){
+  var p=readProfiles(), k, h='<option value="">— select a profile —</option>';
+  for(k in p){ if(p.hasOwnProperty(k)) h+='<option value="'+esc(k)+'"'+(k===sel?' selected':'')+'>'+esc(k)+'</option>'; }
+  document.getElementById('c_profile').innerHTML=h;
+}
+function saveProfile(){
+  var c=currentContractor();
+  if(!c.company){ msg('cMsg','Enter a company name before saving the profile.','warn'); return; }
+  var p=readProfiles(); p[c.company]=c;
+  if(writeProfiles(p)){ refreshProfileList(c.company); msg('cMsg','Saved. '+esc(c.company)+' is ready to reuse on the next submission.','ok'); }
+}
+function loadProfile(name){
+  if(!name) return;
+  var p=readProfiles();
+  if(!p[name]){ msg('cMsg','That profile is no longer on this device.','warn'); return; }
+  applyContractor(p[name]);
+  msg('cMsg','Loaded '+esc(name)+'.','ok');
+}
+function deleteProfile(){
+  var name=val('c_profile');
+  if(!name){ msg('cMsg','Pick a profile to delete first.','warn'); return; }
+  if(!confirm('Delete the saved profile for '+name+'?')) return;
+  var p=readProfiles(); delete p[name];
+  writeProfiles(p); refreshProfileList('');
+  msg('cMsg','Deleted '+esc(name)+'.','ok');
+}
+function exportProfile(){
+  var c=currentContractor();
+  var blob=new Blob([JSON.stringify(c,null,2)],{type:'application/json'});
+  var url=URL.createObjectURL(blob), a=document.createElement('a');
+  a.href=url; a.download='contractor-'+(c.company||'profile').replace(/[^A-Za-z0-9]+/g,'-').toLowerCase()+'.json';
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  setTimeout(function(){ URL.revokeObjectURL(url); },1200);
+  msg('cMsg','Exported. Send the file so another estimator imports the same details.','ok');
+}
+function importProfileFile(inp){
+  var f=inp.files && inp.files[0];
+  if(!f) return;
+  var fr=new FileReader();
+  fr.onload=function(){
+    var c=parseContractor(String(fr.result));
+    if(!c){ msg('cMsg','That file held no contractor details. Expected JSON, or one detail per line.','warn'); return; }
+    applyContractor(c);
+    msg('cMsg','Imported '+esc(c.company||'details')+' from '+esc(f.name)+'.','ok');
+  };
+  fr.onerror=function(){ msg('cMsg','That file could not be read.','warn'); };
+  fr.readAsText(f);
+  inp.value='';
+}
+function togglePasteC(){
+  var b=document.getElementById('pasteCBox');
+  b.style.display=(b.style.display==='none')?'block':'none';
+}
+function importProfilePaste(){
+  var c=parseContractor(val('c_paste'));
+  if(!c){ msg('cMsg','Nothing recognisable in there. Paste JSON, or lines like "Company: Acme Electric".','warn'); return; }
+  applyContractor(c);
+  document.getElementById('pasteCBox').style.display='none';
+  msg('cMsg','Read '+esc(c.company||'details')+'.','ok');
+}
+function parseContractor(txt){
+  if(!txt || !txt.replace(/\s/g,'')) return null;
+  var t=String(txt).replace(/^\s+|\s+$/g,''), c=null;
+  if(t.charAt(0)==='{'){
+    try{ c=JSON.parse(t); }catch(e){ c=null; }
+    if(c && c.contractor) c=c.contractor;
+    if(c) return c;
+  }
+  var MAP={ company:'company','company name':'company', contractor:'company', business:'company',
+            contact:'contact','contact name':'contact', name:'contact','contact name & title':'contact',
+            email:'email','e-mail':'email', phone:'phone', tel:'phone', telephone:'phone',
+            license:'license','license #':'license', ein:'license',
+            address:'address','business address':'address' };
+  var lines=t.split('\n'), i, m, key, found=false;
+  c={};
+  for(i=0;i<lines.length;i++){
+    m=lines[i].match(/^\s*([^:=]{2,32}?)\s*[:=]\s*(.+?)\s*$/);
+    if(!m) continue;
+    key=m[1].toLowerCase().replace(/\s+/g,' ');
+    if(MAP[key]){ c[MAP[key]]=m[2]; found=true; }
+  }
+  return found?c:null;
+}
+function contractorToBrand(){
+  var c=currentContractor();
+  if(!c.company){ msg('cMsg','Fill in the contractor company first.','warn'); return; }
+  document.getElementById('b_name').value=c.company;
+  var bits=[];
+  if(c.address) bits.push(c.address);
+  if(c.phone)   bits.push(c.phone);
+  if(c.email)   bits.push(c.email);
+  document.getElementById('b_foot').value=bits.join('  |  ');
+  render();
+  msg('cMsg','The proposal header and footer now carry '+esc(c.company)+'.','ok');
+}
+
+/* ── 6. CLASSIFIER ────────────────────────────────────────────────── */
+function classify(cat, desc, size){
+  var c=String(cat||'').toLowerCase();
+  var t=String(desc||'').toLowerCase()+' '+String(size||'').toLowerCase();
+  var future=/spare|future.?proof/.test(t);
+  var dc=(chargerClass()==='dcfc');
+
+  if(/ev charging/.test(c)){
+    if(/make.?ready/.test(t)) return {b:'mr', r:'other', fp:0};
+    if(/pedestal|mount|stanchion/.test(t)) return {b:'evse', r:'pedestal', fp:0};
+    return {b:'evse', r:'charger', fp:0};
+  }
+  if(/conduit|fitting/.test(c)) return future?{b:'fp',r:'conduit',fp:0}:{b:'mr',r:'conduit',fp:0};
+  if(/wire|cable/.test(c))      return future?{b:'fp',r:'wire',fp:0}   :{b:'mr',r:'wire',fp:0};
+  if(/civil/.test(c))           return {b:'mr', r:'trench', fp:nval('p_fp')};
+
+  if(/bollard/.test(t))                            return {b:'ne', r:'bollard',  fp:0};
+  if(/label|signage|arc.?flash/.test(t))           return {b:'ne', r:'signage',  fp:0};
+  if(/network|software|ocpp|telemetr|bms/.test(t)) return {b:'ne', r:'network',  fp:0};
+  if(/warrant/.test(t))                            return {b:'ne', r:'warranty', fp:0};
+  if(/transformer|xfmr/.test(t))                   return future ? {b:'fp',r:'xfmr',fp:0}
+                                                                : {b:(dc?'mr':'fp'), r:'xfmr', fp:0};
+  /* rows that only exist on the DCFC layout */
+  if(dc && /pad|slab|foundation/.test(t))          return {b:'mr', r:'pad',        fp:0};
+  if(dc && /commission|startup|start-up|energiz/.test(t)) return {b:'mr', r:'commission', fp:0};
+  if(/meter/.test(t))                              return {b:'mr', r:'meter',    fp:0};
+  if(/panel|switchgear|mdp|breaker|disconnect|lug|termination/.test(t)) return {b:'mr', r:'panel', fp:0};
+  if(/service point|poi|service board|utility service/.test(t)) return {b:'mr', r:'boards', fp:0};
+  if(/permit/.test(t))                             return {b:'mr', r:'permit',   fp:0};
+  if(/design|engineer/.test(t))                    return {b:'mr', r:'design',   fp:0};
+  return {b:'mr', r:'other', fp:0};
+}
+
+/* ── 7. IMPORT PATHS ──────────────────────────────────────────────── */
+function addLine(o){
+  var cls=classify(o.category, o.description, o.size);
+  LINES.push({
+    id:_nid++, desc:o.description||'(unnamed)', size:o.size||'', cat:o.category||'',
+    qty:(o.qty==null?'':o.qty), unit:o.unit||'',
+    mat:num(o.mat), lab:num(o.lab),
+    bucket:cls.b, row:cls.r, fp:cls.fp, src:o.src||'estimate'
+  });
+}
+function pullFromEditor(){
+  var pay=null, why='';
+  try{
+    if(window.opener && window.opener._ELEC_EST) pay=packEstimate(window.opener._ELEC_EST, window.opener);
+  }catch(e){ why='The editor window blocked direct access. '; }
+  if(!pay){
+    try{ var raw=localStorage.getItem('OMEGA_EV_COST_HANDOFF'); if(raw) pay=JSON.parse(raw); }catch(e2){}
+  }
+  if(!pay){
+    if(pingOpener()){
+      msg('srcMsg','Asked the editor window for the estimate\u2026 if nothing appears, use <b>Export Estimate CSV</b> and paste it here.','');
+      return;
+    }
+    msg('srcMsg', why+'Nothing handed over yet. In the editor open <b>Electrical Estimate</b> and press <b>EV Cost Workbook</b>, or paste the estimate CSV here.','warn');
+    return;
+  }
+  loadPayload(pay);
+}
+function packEstimate(est, w){
+  var crew=(w && w.ELEC_BID && w.ELEC_BID.crewRate)?w.ELEC_BID.crewRate:nval('p_crew');
+  var items=[], i, l;
+  for(i=0;i<est.lines.length;i++){
+    l=est.lines[i];
+    items.push({ category:l.category, description:l.description, size:l.size, qty:l.qty, unit:l.unit,
+                 mat:l.mat, lab:(l.hrs||0)*crew });
+  }
+  var site={};
+  try{
+    site.applicant=(w.document.getElementById('pname')||{}).value||'';
+    site.address  =(w.document.getElementById('addr-in')||{}).value||'';
+  }catch(e){}
+  return { lines:items, crewRate:crew, site:site, trenchFt:(est.bom&&est.bom.trenchFt)||0 };
+}
+function loadPayload(pay){
+  LINES=[];
+  var i;
+  for(i=0;i<pay.lines.length;i++) addLine(pay.lines[i]);
+  if(pay.crewRate) document.getElementById('p_crew').value=pay.crewRate;
+  if(pay.site){
+    if(!d('applicant') && pay.site.applicant) DATA.applicant=pay.site.applicant;
+    if(!d('address')   && pay.site.address)   DATA.address  =pay.site.address;
+  }
+  if(pay.contractor) applyContractor(pay.contractor);
+  if(applyDetectedClass()) setClass(DATA['class']);
+  autofillFeet(); autofillPlugs();
+  msg('srcMsg','Loaded '+LINES.length+' cost lines from the electrical estimate. Check the mapping before exporting.','ok');
+  try{ localStorage.removeItem('OMEGA_EV_COST_HANDOFF'); }catch(e){}
+  renderSiteForm(); render();
+}
+function togglePaste(){
+  var b=document.getElementById('pasteBox');
+  b.style.display=(b.style.display==='none')?'block':'none';
+}
+
+/* A double quote only opens a quoted field at the START of a field — so an
+   unquoted size like 2" PVC Sch40 keeps its inch mark instead of swallowing
+   the rest of the row. */
+function splitCSV(line){
+  var out=[], cur='', q=false, started=false, i, ch;
+  for(i=0;i<line.length;i++){
+    ch=line.charAt(i);
+    if(q){
+      if(ch==='"'){ if(line.charAt(i+1)==='"'){ cur+='"'; i++; } else q=false; }
+      else cur+=ch;
+    } else if(ch==='"' && !started){ q=true; started=true; }
+    else if(ch===','||ch==='\t'){ out.push(cur); cur=''; started=false; }
+    else { cur+=ch; started=true; }
+  }
+  out.push(cur);
+  return out;
+}
+function importCSV(){
+  var txt=val('csvIn');
+  if(!txt || !txt.replace(/\s/g,'')){ msg('srcMsg','Paste the estimate CSV first.','warn'); return; }
+  var rows=txt.replace(/\r/g,'').split('\n'), head=-1, i, j, cells;
+  for(i=0;i<rows.length;i++){ if(/^\s*"?category"?\s*[,\t]/i.test(rows[i])){ head=i; break; } }
+  if(head<0){ msg('srcMsg','No header row found. The CSV needs the estimate export\'s <b>Category, Description, Size, Qty…</b> row.','warn'); return; }
+  var hdr=splitCSV(rows[head]), col={};
+  for(j=0;j<hdr.length;j++){
+    var h=hdr[j].toLowerCase().replace(/\s+/g,' ').replace(/^\s+|\s+$/g,'');
+    if(h==='category') col.cat=j;
+    else if(h==='description') col.desc=j;
+    else if(h==='size'||h==='size/rating') col.size=j;
+    else if(h==='qty') col.qty=j;
+    else if(h==='unit') col.unit=j;
+    else if(h==='material $') col.mat=j;
+    else if(h==='labor $') col.lab=j;
+  }
+  if(col.desc==null){ msg('srcMsg','That header row has no Description column.','warn'); return; }
+  LINES=[];
+  var n=0;
+  for(i=head+1;i<rows.length;i++){
+    if(!rows[i].replace(/[\s,]/g,'')) break;
+    cells=splitCSV(rows[i]);
+    if(/^\s*#/.test(cells[0]||'')) continue;
+    if(!(cells[col.desc]||'').replace(/\s/g,'')) continue;
+    addLine({ category:cells[col.cat]||'', description:cells[col.desc], size:cells[col.size]||'',
+              qty:cells[col.qty]||'', unit:cells[col.unit]||'',
+              mat:cells[col.mat]||0, lab:cells[col.lab]||0 });
+    n++;
+  }
+  var switched=applyDetectedClass();
+  if(switched) setClass(DATA['class']);
+  autofillFeet(); autofillPlugs();
+  msg('srcMsg', (n?('Loaded '+n+' cost lines from the pasted CSV.'):'No data rows found under the header.')
+      + (switched?' Detected <b>'+esc(profile().name)+'</b> from the charger sizes and switched the layout.':''),
+      n?'ok':'warn');
+  document.getElementById('pasteBox').style.display='none';
+  render();
+}
+function startBlank(){
+  LINES=[];
+  addStandardRows();
+  msg('srcMsg','Blank workbook. Add cost lines by hand, or load an estimate later.','ok');
+}
+
+/* ── 8. LINE EDITING ──────────────────────────────────────────────── */
+function addManual(){
+  LINES.push({ id:_nid++, desc:'New cost line', size:'', cat:'', qty:'', unit:'',
+               mat:0, lab:0, bucket:'mr', row:'other', fp:0, src:'manual' });
+  render();
+  var el=document.getElementById('d-'+(_nid-1));
+  if(el){ el.focus(); el.select(); }
+}
+var STANDARD=[
+  ['Permitting Costs','mr','permit'], ['Design Costs','mr','design'],
+  ['Activation','evse','activation'], ['Shipping','evse','shipping'],
+  ['EVSE Networking/Software','ne','network'], ['EVSE Warranty','ne','warranty'],
+  ['Signage','ne','signage'], ['Striping','ne','striping']
+];
+function addStandardRows(){
+  var i, j, have;
+  for(i=0;i<STANDARD.length;i++){
+    if(!rowExists(STANDARD[i][1], STANDARD[i][2])) continue;   /* form may not have that row */
+    have=false;
+    for(j=0;j<LINES.length;j++){ if(LINES[j].bucket===STANDARD[i][1] && LINES[j].row===STANDARD[i][2]) have=true; }
+    if(!have) LINES.push({ id:_nid++, desc:STANDARD[i][0], size:'', cat:'', qty:'', unit:'',
+                           mat:0, lab:0, bucket:STANDARD[i][1], row:STANDARD[i][2], fp:0, src:'manual' });
+  }
+  render();
+}
+function reclassifyAll(){
+  var i, c;
+  for(i=0;i<LINES.length;i++){
+    if(LINES[i].src!=='estimate') continue;
+    c=classify(LINES[i].cat, LINES[i].desc, LINES[i].size);
+    LINES[i].bucket=c.b; LINES[i].row=c.r; LINES[i].fp=c.fp;
+  }
+  render();
+}
+function applyTrenchSplit(){
+  var pct=nval('p_fp'), i;
+  for(i=0;i<LINES.length;i++){
+    if(LINES[i].row==='trench' && LINES[i].bucket==='mr') LINES[i].fp=pct;
+  }
+  render();
+}
+function setLine(id, field, v){
+  var i;
+  for(i=0;i<LINES.length;i++){
+    if(LINES[i].id!==id) continue;
+    if(field==='mat'||field==='lab'||field==='fp') LINES[i][field]=num(v);
+    else if(field==='bucket'){
+      LINES[i].bucket=v; LINES[i].orphan=false;
+      if(!rowExists(v, LINES[i].row)) LINES[i].row=blockById(v).rows[blockById(v).rows.length-1].k;
+      renderMap();
+    }
+    else { LINES[i][field]=v; if(field==='row') LINES[i].orphan=false; }
+    break;
+  }
+  renderOutputs();
+}
+function delLine(id){
+  var out=[], i;
+  for(i=0;i<LINES.length;i++){ if(LINES[i].id!==id) out.push(LINES[i]); }
+  LINES=out; render();
+}
+
+/* ── 9. AUTOFILL ──────────────────────────────────────────────────── */
+function autofillFeet(){
+  var trench=0, cond=0, cable=0, i, l, t;
+  for(i=0;i<LINES.length;i++){
+    l=LINES[i]; t=(l.desc||'').toLowerCase();
+    if(String(l.unit||'').toLowerCase()!=='lf') continue;
+    if(/civil/i.test(l.cat)){
+      if(/trench|sawcut/.test(t) && !/tape|bedding|patch|restoration/.test(t)) trench+=num(l.qty);
+    }
+    else if(/conduit/i.test(l.cat)) cond+=num(l.qty);
+    else if(/wire|cable/i.test(l.cat)) cable+=num(l.qty);
+  }
+  DATA.ftTrench=Math.round(trench);
+  DATA.ftConduit=Math.round(cond);
+  DATA.ftCable=Math.round(cable);
+  syncField('ftTrench'); syncField('ftConduit'); syncField('ftCable');
+  render();
+}
+function autofillPlugs(){
+  var units=0, kw=0, i, l, m;
+  for(i=0;i<LINES.length;i++){
+    l=LINES[i];
+    if(l.bucket==='evse' && l.row==='charger'){
+      units += num(l.qty) || 1;
+      m=String(l.size||'').match(/([\d.]+)\s*kw/i);
+      if(m && parseFloat(m[1])>kw) kw=parseFloat(m[1]);
+    }
+  }
+  if(units>0){
+    DATA.plugs=Math.round(units);
+    if(kw>0){ DATA.kw1=kw; DATA.kwsim=Math.round(kw*units*10)/10; }
+    syncField('plugs'); syncField('kw1'); syncField('kwsim');
+  }
+}
+
+/* ── 10. MODEL ────────────────────────────────────────────────────── */
+function buildModel(form){
+  form = form || proposalForm();
+  var BL=form.blocks;
+  var mk=1+nval('p_markup')/100;
+  /* Each form carries its own rate and labor rule. The knob overrides only
+     the form it was edited against, so exporting two programs at once can't
+     apply one utility's tax treatment to the other's sheet. */
+  var t = TAXOV[form.id] || { rate:(form.tax?form.tax.rate:0), onLabor:!!(form.tax&&form.tax.onLabor) };
+  var rate=num(t.rate)/100;
+  var taxLab=!!t.onLabor;
+  var taxLabel=(form.tax && form.tax.label) || 'Sales Tax';
+
+  var grid={}, bi, ri, b;
+  for(bi=0;bi<BL.length;bi++){
+    b=BL[bi]; grid[b.id]={};
+    for(ri=0;ri<b.rows.length;ri++) grid[b.id][b.rows[ri].k]={ mat:0, lab:0, notes:[] };
+  }
+  function put(bid,k,mat,lab,note){
+    if(!grid[bid] || !grid[bid][k]){ bid=BL[BL.length-1].id; k=BL[BL.length-1].rows[BL[BL.length-1].rows.length-1].k; }
+    grid[bid][k].mat+=mat; grid[bid][k].lab+=lab;
+    if(note && (mat||lab)) grid[bid][k].notes.push(note);
+  }
+
+  var i, l, fp, mm, ll, mirror;
+  for(i=0;i<LINES.length;i++){
+    l=LINES[i];
+    mm=num(l.mat)*mk; ll=num(l.lab)*mk;
+    fp=Math.max(0, Math.min(100, num(l.fp)))/100;
+    if(fp>0 && l.bucket!=='fp' && grid.fp){
+      mirror=FP_MIRROR[l.row]||'other';
+      put(l.bucket, l.row, mm*(1-fp), ll*(1-fp), l.desc);
+      put('fp', mirror,    mm*fp,     ll*fp,     l.desc);
+    } else {
+      put(l.bucket, l.row, mm, ll, l.desc);
+    }
+  }
+
+  /* Rounded to cents at every level, and each total summed from the rounded
+     values below it — so the columns foot by hand for a reviewer. */
+  var out=[], gm=0, gl=0;
+  for(bi=0;bi<BL.length;bi++){
+    b=BL[bi];
+    var rows=[], sm=0, sl=0;
+    for(ri=0;ri<b.rows.length;ri++){
+      var k=b.rows[ri].k, g=grid[b.id][k];
+      var rm=r2(g.mat), rl=r2(g.lab);
+      sm+=rm; sl+=rl;
+      rows.push({ k:k, label:b.rows[ri].l, sub:b.rows[ri].sub||'', mat:rm, lab:rl,
+                  note:(k==='other'||k==='charger')?uniqJoin(g.notes, b.rows[ri].l):'' });
+    }
+    sm=r2(sm); sl=r2(sl);
+    var tm=r2(sm*rate), tl=taxLab?r2(sl*rate):0;
+    rows.push({ k:'_tax', label:taxLabel, sub:'', mat:tm, lab:tl, note:'', tax:true });
+    var bm=r2(sm+tm), bl=r2(sl+tl);
+    gm+=bm; gl+=bl;
+    out.push({ id:b.id, title:b.title, fill:b.fill, rows:rows, mat:bm, lab:bl });
+  }
+  gm=r2(gm); gl=r2(gl);
+  var inc=r2(nval('b_incent'));
+  return { blocks:out, mat:gm, lab:gl, total:r2(gm+gl), incentive:inc, net:r2(gm+gl-inc) };
+}
+
+/* Joins the descriptions behind a row, skipping any that just repeat the row's
+   own label — an "Other" line called "Other" tells a reviewer nothing. */
+function uniqJoin(arr, label){
+  var seen={}, out=[], i, s, lab=String(label||'').toLowerCase();
+  for(i=0;i<arr.length;i++){
+    s=String(arr[i]||'').replace(/\s*\(.*$/,'').replace(/^\s+|\s+$/g,'');
+    if(!s || seen[s] || s.toLowerCase()===lab) continue;
+    seen[s]=1; out.push(s);
+  }
+  return out.slice(0,4).join(', ');
+}
+
+/* ── 11. RENDER — sheet picker + site form ────────────────────────── */
+function renderPicker(){
+  var h='', i, f;
+  h+='<div class="chk"><input type="checkbox" id="pk-proposal"'+(PICK.proposal?' checked':'')
+    +' onchange="setPick(\'proposal\',this.checked)"><div><div class="t">Contractor proposal</div>'
+    +'<div class="s">Priced for the customer, in '+esc(proposalName())+'\'s name</div></div></div>';
+  var avail=formsForClass();
+  for(i=0;i<avail.length;i++){
+    f=avail[i];
+    h+='<div class="chk"><input type="checkbox" id="pk-'+f.id+'"'+(PICK[f.id]?' checked':'')
+      +' onchange="setPick(\''+f.id+'\',this.checked)"><div><div class="t">'+esc(f.utility)+'</div>'
+      +'<div class="s">'+esc(f.program)+'</div></div></div>';
+  }
+  if(!avail.length){
+    h+='<div class="warn" style="margin-top:4px">No utility program form is registered for '
+      +esc(profile().name)+' yet. The contractor proposal still builds; add the program to the '
+      +'FORMS registry once you have the real form.</div>';
+  }
+  if(avail.length){
+    h+='<div class="chk" style="border-top:1px solid var(--line2);margin-top:4px">'
+      +'<input type="checkbox" id="b_mirror_cb"'+(val('b_mirror')==='1'?' checked':'')
+      +' onchange="setMirror(this.checked)"><div><div class="t">Match proposal to the program form</div>'
+      +'<div class="s">Off: proposal uses the standard '+esc(profile().short)+' layout</div></div></div>';
+  }
+  h+='<input type="hidden" id="b_mirror" value="'+(val('b_mirror')==='1'?'1':'0')+'">';
+  document.getElementById('outPick').innerHTML=h;
+}
+function setMirror(on){
+  var el=document.getElementById('b_mirror');
+  if(el) el.value = on ? '1' : '0';
+  render();
+}
+function setPick(id, on){
+  PICK[id]=!!on;
+  if(id!=='proposal' && on){ FORM=formById(id); onFormChange(); reconcileToForm(); }
+  renderPicker(); renderSiteForm(); render();
+}
+function taxKnob(){
+  var id = FORM ? FORM.id : proposalForm().id;
+  TAXOV[id]={ rate:nval('p_tax'), onLabor:val('p_taxlab')==='1' };
+  render();
+}
+/* Forms don't share categories. When the active form changes, any line whose
+   block or row doesn't exist in the new form is parked in the last block and
+   flagged, so it shows up for re-mapping instead of quietly inflating Other. */
+function reconcileToForm(){
+  var BL=activeBlocks(), last=BL[BL.length-1], lastRow=last.rows[last.rows.length-1];
+  var i, l, ok, bi;
+  for(i=0;i<LINES.length;i++){
+    l=LINES[i]; ok=false;
+    for(bi=0;bi<BL.length;bi++){ if(BL[bi].id===l.bucket) ok=true; }
+    if(ok && !rowExists(l.bucket, l.row)) ok=false;
+    if(ok){ l.orphan=false; continue; }
+    l.orphan=true; l.bucket=last.id; l.row=lastRow.k;
+  }
+}
+function orphanCount(){ var n=0, i; for(i=0;i<LINES.length;i++){ if(LINES[i].orphan) n++; } return n; }
+
+/* Changing charger type swaps the proposal layout and the set of utility
+   forms on offer, then re-maps every line into the new categories. */
+function setClass(v){
+  DATA['class'] = (v==='dcfc') ? 'dcfc' : 'l2';
+  var avail=formsForClass(), i;
+  if(!FORM || !formAppliesToClass(FORM)){
+    FORM = avail.length ? avail[0] : null;
+    for(i=0;i<FORMS.length;i++) PICK[FORMS[i].id]=false;
+    if(FORM) PICK[FORM.id]=true;
+  }
+  reclassifyAll();
+  reconcileToForm();
+  if(FORM) onFormChange();
+  renderPicker(); renderSiteForm(); render();
+  noteClass();
+}
+function noteClass(){
+  var n=document.getElementById('classMsg');
+  if(!n) return;
+  var avail=formsForClass();
+  n.className='note';
+  n.innerHTML = avail.length
+    ? 'Proposal uses the '+esc(profile().name)+' layout. '+avail.length+' utility form'
+      +(avail.length>1?'s':'')+' available.'
+    : '<span style="color:#7A5C10">Proposal uses the '+esc(profile().name)+' layout. '
+      +'No utility program form is registered for '+esc(profile().short)+' yet — the proposal still builds.</span>';
+}
+
+function onFormChange(){
+  if(!FORM){
+    document.getElementById('taxLbl').textContent='Sales tax (%)';
+    document.getElementById('formHint').textContent=profile().short+' — no utility form';
+    return;
+  }
+  if(FORM.tax){
+    var t=TAXOV[FORM.id]||FORM.tax;
+    document.getElementById('p_tax').value=(t.rate!=null?t.rate:FORM.tax.rate);
+    document.getElementById('p_taxlab').value=(t.onLabor!=null?t.onLabor:FORM.tax.onLabor)?'1':'0';
+    document.getElementById('taxLbl').textContent=FORM.tax.label+' (%)';
+  }
+  document.getElementById('formHint').textContent=FORM.short||FORM.utility;
+}
+
+/* Builds the site inputs from the selected form's own definition. Fields
+   sourced from the Contractor card are skipped — they already have inputs. */
+var PROPOSAL_FIELDS = [
+  { title:'Project', fields:[
+      {k:'applicant', label:'Customer / applicant name'},
+      {k:'address',   label:'Site address'},
+      {k:'city',      label:'City / state'},
+      {k:'desc',      label:'Project description'} ]}
+];
+
+function renderSiteForm(){
+  var h='', gi, fi, g, f, it, ci, c, cls=chargerClass();
+  h+='<label class="f"><span>Charger type</span><select id="f-class" onchange="setClass(this.value)">'
+   +   '<option value="l2"'+(cls==='l2'?' selected':'')+'>Level 2 (AC)</option>'
+   +   '<option value="dcfc"'+(cls==='dcfc'?' selected':'')+'>DC Fast Charging</option>'
+   + '</select></label>'
+   + '<div id="classMsg" class="note" style="margin-top:-4px;margin-bottom:12px"></div>';
+  h+='<label class="f"><span>Site label (used in the sheet tab name)</span>'
+    +'<input type="text" id="f-site" value="'+esc(d('site')||'Site 1')+'" oninput="setD(\'site\',this.value)"></label>';
+  /* With no utility form there's no form-defined field list, so ask for the
+     handful the proposal itself prints. */
+  var LEFT  = FORM ? FORM.left  : PROPOSAL_FIELDS;
+  var RIGHT = FORM ? FORM.right : [];
+  for(gi=0;gi<LEFT.length;gi++){
+    g=LEFT[gi];
+    var inner='';
+    for(fi=0;fi<g.fields.length;fi++){
+      f=g.fields[fi];
+      if(f.from==='contractor') continue;
+      inner+=fieldHTML(f);
+    }
+    if(inner) h+='<div class="sect'+(gi?' mt':'')+'">'+esc(g.title)+'</div>'+inner;
+  }
+  var rh='';
+  for(gi=0;gi<RIGHT.length;gi++){
+    it=RIGHT[gi];
+    if(it.type==='table'){
+      rh+='<div class="grid3">';
+      for(ci=0;ci<it.cols.length;ci++){ c=it.cols[ci]; rh+=fieldHTML(c, true); }
+      rh+='</div>';
+    } else {
+      rh+=fieldHTML({ k:it.k, label:it.label, type:it.type2, options:it.options });
+    }
+  }
+  if(rh) h+='<div class="sect mt">Program details</div>'+rh;
+  h+='<button class="btn sm" onclick="autofillFeet()">Recalculate footages from lines</button>';
+  document.getElementById('siteForm').innerHTML=h;
+}
+function fieldHTML(f, tight){
+  var lbl=f.label, k=f.k, v=d(k), oi, o;
+  if(f.type==='select'){
+    var opts='';
+    for(oi=0;oi<(f.options||[]).length;oi++){
+      o=f.options[oi];
+      if(!v && oi===0){ DATA[k]=o; v=o; }
+      opts+='<option'+(o===v?' selected':'')+'>'+esc(o)+'</option>';
+    }
+    return '<label class="f"><span>'+esc(lbl)+'</span><select id="f-'+k+'" onchange="setD(\''+k+'\',this.value)">'+opts+'</select></label>';
+  }
+  var type = f.type==='date' ? 'date' : (f.type==='number' ? 'number' : 'text');
+  return '<label class="f"><span>'+esc(tight?shortLabel(lbl):lbl)+'</span>'
+       + '<input type="'+type+'" id="f-'+k+'" value="'+esc(v)+'" oninput="setD(\''+k+'\',this.value)"></label>';
+}
+function shortLabel(l){ return String(l).replace(/^#\s*of\s*/i,'# ').replace(/^Total Feet of\s*/i,'Feet — '); }
+
+/* ── 12. RENDER — mapping + previews ──────────────────────────────── */
+function render(){ renderMap(); renderOutputs(); }
+
+function renderMap(){
+  var BL=activeBlocks();
+  var tb=document.getElementById('mapBody'), h='', i, l, bi, ri, b;
+  for(i=0;i<LINES.length;i++){
+    l=LINES[i];
+    var bopts='', ropts='';
+    for(bi=0;bi<BL.length;bi++){
+      b=BL[bi];
+      bopts+='<option value="'+b.id+'"'+(b.id===l.bucket?' selected':'')+'>'+esc(shortBlock(b))+'</option>';
+    }
+    b=blockById(l.bucket);
+    for(ri=0;ri<b.rows.length;ri++){
+      ropts+='<option value="'+b.rows[ri].k+'"'+(b.rows[ri].k===l.row?' selected':'')+'>'+esc(b.rows[ri].l)+'</option>';
+    }
+    h+='<tr class="'+(l.src==='manual'?'manual':'')+(l.orphan?' orphan':'')+'">'
+      +'<td><input id="d-'+l.id+'" class="desc-in" value="'+esc(l.desc)+'" oninput="setLine('+l.id+',\'desc\',this.value)">'
+      +   (l.size||l.cat ? '<span class="meta">'+esc(l.cat)+(l.size?' · '+esc(l.size):'')+'</span>' : '')+'</td>'
+      +'<td class="mono" style="color:var(--dim);font-size:10.5px">'+esc(l.qty!==''?l.qty+' '+l.unit:'—')+'</td>'
+      +'<td><select class="sel-sm" onchange="setLine('+l.id+',\'bucket\',this.value)">'+bopts+'</select></td>'
+      +'<td><select class="sel-sm" onchange="setLine('+l.id+',\'row\',this.value)">'+ropts+'</select></td>'
+      +'<td><input class="cell-in mono" type="number" value="'+l.fp+'" onchange="setLine('+l.id+',\'fp\',this.value)"'+(l.bucket==='fp'?' disabled':'')+'></td>'
+      +'<td><input class="cell-in mono" type="number" step="0.01" value="'+r2(l.mat)+'" onchange="setLine('+l.id+',\'mat\',this.value)"></td>'
+      +'<td><input class="cell-in mono" type="number" step="0.01" value="'+r2(l.lab)+'" onchange="setLine('+l.id+',\'lab\',this.value)"></td>'
+      +'<td><button class="x" title="Remove line" onclick="delLine('+l.id+')">&times;</button></td>'
+      +'</tr>';
+  }
+  tb.innerHTML=h;
+  document.getElementById('mapCount').textContent = LINES.length?LINES.length+' lines':'';
+  var orph=orphanCount();
+  document.getElementById('mapEmpty').innerHTML = !LINES.length
+    ? 'No lines yet. Load an estimate above, or add cost lines by hand.'
+    : (orph
+        ? '<div class="warn" style="margin-top:0">'+orph+' line'+(orph>1?'s have':' has')+' no matching category in the '
+          +esc(layoutName())+', so '+(orph>1?'they were':'it was')+' parked in the last block. Pick the right row for '
+          +(orph>1?'each':'it')+' before exporting.</div>'
+        : '')
+      + '<div style="margin-top:'+(orph?'8px':'0')+'">Blocks and rows come from '+esc(layoutName())
+      + '. FP % moves part of a line into Future Proofing — shared trenching defaults to a '
+      + nval('p_fp')+'/'+(100-nval('p_fp'))+' split.</div>';
+}
+function layoutName(){
+  return (FORM && formAppliesToClass(FORM))
+    ? (FORM.utility+' form')
+    : ('the standard '+profile().short+' proposal layout');
+}
+function shortBlock(b){
+  if(b.id==='evse') return 'EVSE eligible';
+  if(b.id==='mr')   return 'Make-ready';
+  if(b.id==='fp')   return 'Future proofing';
+  if(b.id==='ne')   return 'Non-eligible';
+  return b.title;
+}
+
+function renderOutputs(){
+  var m=buildModel();
+  document.getElementById('totStrip').innerHTML =
+      '<div><div class="k">Material</div><div class="v mono">'+money(m.mat)+'</div></div>'
+    + '<div><div class="k">Labor</div><div class="v mono">'+money(m.lab)+'</div></div>'
+    + '<div><div class="k">Total</div><div class="v mono">'+money(m.total)+'</div></div>'
+    + '<div><div class="k">Net after incentive</div><div class="v mono net">'+money(m.net)+'</div></div>';
+
+  var tabs='', i, f;
+  tabs+='<button class="pvtab'+(_pv==='proposal'?' on':'')+'" onclick="pvTab(\'proposal\')">Contractor proposal</button>';
+  for(i=0;i<FORMS.length;i++){
+    f=FORMS[i];
+    if(!PICK[f.id]) continue;
+    tabs+='<button class="pvtab'+(_pv===f.id?' on':'')+'" onclick="pvTab(\''+f.id+'\')">'+esc(f.utility)+'</button>';
+  }
+  document.getElementById('pvTabs').innerHTML=tabs;
+  document.getElementById('pvHost').innerHTML =
+    (_pv==='proposal') ? previewProposal(buildModel(proposalForm()))
+                       : previewForm(buildModel(formById(_pv)), formById(_pv));
+
+  document.getElementById('xlWarn').innerHTML = window._XLFAIL
+    ? '<div class="warn">The Excel writer didn\'t load. Check the connection and reload — export needs it.</div>' : '';
+}
+function pvTab(t){ _pv=t; renderOutputs(); }
+
+function acct(n){
+  if(!n) return '$    -';
+  return '$'+r2(n).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2});
+}
+function cur(n){ return '$'+r2(n).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2}); }
+function dmy(iso){
+  if(!iso) return '';
+  var p=String(iso).split('-'); if(p.length!==3) return iso;
+  var M=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  return parseInt(p[2],10)+'-'+M[parseInt(p[1],10)-1]+'-'+p[0].slice(2);
+}
+function fieldOut(f){
+  var v=d(f.k);
+  return (f.type==='date') ? dmy(v) : v;
+}
+
+function previewForm(m, form){
+  var h='<table class="pv">';
+  function r(c){ return '<tr>'+c+'</tr>'; }
+  function td(v,cls,span){ return '<td'+(cls?' class="'+cls+'"':'')+(span?' colspan="'+span+'"':'')+'>'+(v===''||v==null?'&nbsp;':esc(v))+'</td>'; }
+
+  h+=r(td(form.banners.site,'pv-band',5));
+  /* left groups and right blocks side by side, flowed the same way the
+     sheet writer flows them */
+  var left=[], right=[], gi, fi, g, f, it, ci;
+  for(gi=0;gi<form.left.length;gi++){
+    g=form.left[gi];
+    left.push({t:'h', a:g.title});
+    for(fi=0;fi<g.fields.length;fi++){ f=g.fields[fi]; left.push({t:'f', a:f.label, b:fieldOut(f)}); }
+    if(gi<form.left.length-1) left.push({t:'sp'});
+  }
+  for(gi=0;gi<form.right.length;gi++){
+    it=form.right[gi];
+    if(it.type==='table'){
+      var hs=[], vs=[];
+      for(ci=0;ci<it.cols.length;ci++){ hs.push(it.cols[ci].label); vs.push(d(it.cols[ci].k)); }
+      right.push({t:'th', cols:hs}); right.push({t:'tv', cols:vs});
+    } else {
+      right.push({t:'sl', a:it.label}); right.push({t:'sv', a:d(it.k)});
+    }
+    if(gi<form.right.length-1) right.push({t:'sp'});
+  }
+  var n=Math.max(left.length, right.length), i;
+  for(i=0;i<n;i++){
+    var L=left[i]||{t:'sp'}, Rr=right[i]||{t:'sp'};
+    var c1, c2;
+    if(L.t==='h'){ c1='<td style="font-weight:700;border:none">'+esc(L.a)+'</td><td style="border:none">&nbsp;</td>'; }
+    else if(L.t==='f'){ c1=td(L.a)+td(L.b); }
+    else { c1='<td style="border:none">&nbsp;</td><td style="border:none">&nbsp;</td>'; }
+    if(Rr.t==='th'){ c2=td(Rr.cols[0])+td(Rr.cols[1])+td(Rr.cols[2]); }
+    else if(Rr.t==='tv'){ c2=td(Rr.cols[0],'num')+td(Rr.cols[1],'num')+td(Rr.cols[2],'num'); }
+    else if(Rr.t==='sl'){ c2=td(Rr.a,null,3); }
+    else if(Rr.t==='sv'){ c2=td(Rr.a,'num',3); }
+    else { c2='<td style="border:none" colspan="3">&nbsp;</td>'; }
+    h+=r(c1+c2);
+  }
+
+  h+=r(td(form.banners.costs,'pv-band',5));
+  h+=r(td(form.headers.type,'pv-hdr')+td(form.headers.desc,'pv-hdr o')+td(form.headers.mat,'pv-hdr')+td(form.headers.lab,'pv-hdr')+td(form.headers.tot,'pv-hdr'));
+  var bi, ri, b, rw, cls;
+  for(bi=0;bi<m.blocks.length;bi++){
+    b=m.blocks[bi];
+    cls = b.fill==='FFFFC000'?'pv-gold':'pv-grey';
+    h+=r(td(b.title,cls)+td('',cls)+td(acct(b.mat),cls+' num')+td(acct(b.lab),cls+' num')+td(acct(b.mat+b.lab),cls+' num'));
+    for(ri=0;ri<b.rows.length;ri++){
+      rw=b.rows[ri];
+      h+=r(td(rw.label+rw.sub)+td(rw.note||'')+td(acct(rw.mat),'num')+td(acct(rw.lab),'num')+td(acct(rw.mat+rw.lab),'num'));
+    }
+  }
+  h+=r(td(form.totalLabel,'pv-gold')+td('','pv-gold')+td(acct(m.mat),'pv-gold num')+td(acct(m.lab),'pv-gold num')+td(acct(m.total),'pv-gold num'));
+  return h+'</table>';
+}
+
+function previewProposal(m){
+  var h='<table class="pv">';
+  function r(c){ return '<tr>'+c+'</tr>'; }
+  function td(v,cls,span,style){ return '<td'+(cls?' class="'+cls+'"':'')+(span?' colspan="'+span+'"':'')+(style?' style="'+style+'"':'')+'>'+(v===''||v==null?'&nbsp;':esc(v))+'</td>'; }
+  var band='#'+PAL.band, hs='background:#'+PAL.head+';font-weight:700', ts='background:#'+PAL.tot+';font-weight:700';
+  var who=proposalName();
+
+  h+=r('<td colspan="4" style="height:44px;background:'+band+';color:#fff;font-weight:700">'+esc(who)+'</td>');
+  h+=r(td(who)+td(profile().proposalTitle,null,3));
+  h+=r(td('Description: '+(d('address')||'')+(d('city')?', '+d('city'):'')+(d('desc')?' - '+d('desc'):''),null,4));
+  h+=r(td('COSTS',null,null,hs)+td('MATERIAL','num',null,hs)+td('LABOR','num',null,hs)+td('AMOUNT MATERIAL + LABOR TOTAL','num',null,hs));
+  var bi, ri, b, rw;
+  for(bi=0;bi<m.blocks.length;bi++){
+    b=m.blocks[bi];
+    h+=r(td(b.title,null,null,hs)+td(cur(b.mat),'num',null,hs)+td(cur(b.lab),'num',null,hs)+td(cur(b.mat+b.lab),'num',null,hs));
+    for(ri=0;ri<b.rows.length;ri++){
+      rw=b.rows[ri];
+      h+=r(td(rw.label+rw.sub)+td(cur(rw.mat),'num')+td(cur(rw.lab),'num')+td(cur(rw.mat+rw.lab),'num'));
+    }
+  }
+  h+=r(td('TOTAL','num',null,ts)+td(cur(m.mat),'num',null,ts)+td(cur(m.lab),'num',null,ts)+td(cur(m.total),'num',null,ts));
+  h+=r(td('TOTAL INCENTIVE','num',3,ts)+td(cur(m.incentive),'num',null,ts));
+  h+=r(td('NET COST','num',3,'font-weight:700')+td(cur(m.net),'num',null,'font-weight:700'));
+  h+=r('<td colspan="4" style="height:24px;text-align:center;background:'+band+';color:#fff">'+esc(val('b_foot'))+'</td>');
+  return h+'</table>';
+}
+
+/* ── 13. LOGO ─────────────────────────────────────────────────────── */
+function loadLogo(inp){
+  var f=inp.files && inp.files[0];
+  if(!f){ LOGO=null; msg('logoMsg','',''); return; }
+  if(f.size>900000){ msg('logoMsg','That image is over 900 KB — use a smaller PNG so the workbook stays light.','warn'); inp.value=''; return; }
+  var fr=new FileReader();
+  fr.onload=function(){
+    LOGO={ b64:String(fr.result), ext:(/png/i.test(f.type)?'png':'jpeg') };
+    msg('logoMsg','Logo ready — it sits in the proposal header band.','ok');
+  };
+  fr.onerror=function(){ msg('logoMsg','That file could not be read. Try a different PNG.','warn'); };
+  fr.readAsDataURL(f);
+}
+
+/* ── 14. EXCEL EXPORT ─────────────────────────────────────────────── */
+var FMT_ACCT = '_("$"* #,##0.00_);_("$"* \\(#,##0.00\\);_("$"* "-"??_);_(@_)';
+var FMT_CUR  = '"$"#,##0.00';
+var THIN={style:'thin', color:{argb:'FF000000'}};
+var BOX ={top:THIN,left:THIN,bottom:THIN,right:THIN};
+
+function cell(ws, addr, value, opt){
+  var c=ws.getCell(addr);
+  c.value=(value===''||value==null)?null:value;
+  opt=opt||{};
+  c.font={ name:'Calibri', size:opt.size||11, bold:!!opt.bold, color:{argb:opt.color||'FF000000'} };
+  if(opt.fill) c.fill={ type:'pattern', pattern:'solid', fgColor:{argb:opt.fill} };
+  c.alignment={ vertical:'middle', horizontal:opt.align||'left', wrapText:!!opt.wrap };
+  if(opt.border!==false) c.border=BOX;
+  if(opt.fmt) c.numFmt=opt.fmt;
+  return c;
+}
+function merge(ws,range){ try{ ws.mergeCells(range); }catch(e){} }
+
+/* One page wide, however many tall. Without this the money columns break
+   onto a second sheet of paper when anyone prints or PDFs it. */
+function fitPage(ws, area, tall){
+  ws.pageSetup = {
+    paperSize:9, orientation:'portrait',
+    fitToPage:true, fitToWidth:1, fitToHeight:(tall||0),
+    horizontalCentered:true, printArea:area,
+    margins:{ left:0.4, right:0.4, top:0.5, bottom:0.5, header:0.2, footer:0.2 }
+  };
+}
+function safeSheetName(s){
+  return String(s).replace(/[\\\/\?\*\[\]:]/g,' ').replace(/\s+/g,' ').slice(0,31);
+}
+
+function exportWorkbook(){
+  if(window._XLFAIL || typeof ExcelJS==='undefined'){
+    alert('The Excel writer did not load. Check the connection and reload the page.');
+    return;
+  }
+  var any=PICK.proposal, i;
+  for(i=0;i<FORMS.length;i++){ if(PICK[FORMS[i].id]) any=true; }
+  if(!any){ alert('Pick at least one sheet to build.'); return; }
+  if(!LINES.length && !confirm('There are no cost lines. Export an empty workbook anyway?')) return;
+
+  var btn=document.getElementById('btnExport');
+  btn.disabled=true; btn.textContent='Building…';
+
+  var site=d('site')||'Site 1';
+  var wb=new ExcelJS.Workbook();
+  wb.creator = PREPARED_BY ? (platformName()+' — '+PREPARED_BY) : platformName();
+  wb.created=new Date();
+
+  /* Each form owns its cost blocks and tax rules, so the model is rebuilt
+     per form rather than shared. */
+  for(i=0;i<FORMS.length;i++){
+    if(!PICK[FORMS[i].id]) continue;
+    sheetForm(wb, buildModel(FORMS[i]), FORMS[i], site);
+  }
+  if(PICK.proposal) sheetProposal(wb, buildModel(proposalForm()), site);
+
+  wb.xlsx.writeBuffer().then(function(buf){
+    var blob=new Blob([buf],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
+    var name='EV_Costs_'+(d('applicant')||'Site').replace(/[^A-Za-z0-9]+/g,'_').slice(0,34)
+            +'_'+new Date().toISOString().slice(0,10)+'.xlsx';
+    var url=URL.createObjectURL(blob), a=document.createElement('a');
+    a.href=url; a.download=name;
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    setTimeout(function(){ URL.revokeObjectURL(url); },1500);
+    btn.disabled=false; btn.textContent='Export workbook';
+  })['catch'](function(err){
+    btn.disabled=false; btn.textContent='Export workbook';
+    alert('The workbook could not be written: '+(err && err.message ? err.message : err));
+  });
+}
+
+/* ── Utility program form — written from its own definition ───────── */
+function sheetForm(wb, m, form, site){
+  var title=safeSheetName((form.sheet||'{site}').replace('{site}', site));
+  var ws=wb.addWorksheet(title, { views:[{showGridLines:false}] });
+  var W=[2,30,32,1.6,14,13,16], i;
+  for(i=0;i<W.length;i++) ws.getColumn(i+1).width=W[i];
+
+  var GREEN={ fill:'FF92D050', bold:true, color:'FFFFFFFF' };
+  merge(ws,'B2:G2'); cell(ws,'B2',form.banners.site,GREEN);
+  ws.getRow(2).height=17;
+
+  /* left column: group heading, then label/value pairs, blank between groups */
+  var R=4, gi, fi, g, f;
+  for(gi=0;gi<form.left.length;gi++){
+    g=form.left[gi];
+    cell(ws,'B'+R,g.title,{bold:true,border:false});
+    R++;
+    for(fi=0;fi<g.fields.length;fi++){
+      f=g.fields[fi];
+      cell(ws,'B'+R,f.label,{});
+      cell(ws,'C'+R,fieldOut(f),{align:(f.type==='date'?'right':'left')});
+      R++;
+    }
+    R++;   /* spacer */
+  }
+  var leftEnd=R;
+
+  /* right column: tables and stacks, blank between */
+  R=4;
+  var ci, it, c;
+  for(gi=0;gi<form.right.length;gi++){
+    it=form.right[gi];
+    if(it.type==='table'){
+      var COL=['E','F','G'];
+      for(ci=0;ci<it.cols.length && ci<3;ci++){
+        c=it.cols[ci];
+        cell(ws,COL[ci]+R, c.label, {bold:true,size:9,align:'center',wrap:true});
+      }
+      ws.getRow(R).height=26;
+      R++;
+      for(ci=0;ci<it.cols.length && ci<3;ci++){
+        c=it.cols[ci];
+        cell(ws,COL[ci]+R, dn(c.k), {align:'right',fmt:c.fmt||'0'});
+      }
+      R++;
+    } else {
+      merge(ws,'E'+R+':G'+R);
+      cell(ws,'E'+R, it.label, {bold:true,size:9,align:'center',wrap:true});
+      if(String(it.label).length>34) ws.getRow(R).height=24;
+      R++;
+      merge(ws,'E'+R+':G'+R);
+      if(it.type2==='number') cell(ws,'E'+R, dn(it.k), {align:'center',fmt:it.fmt||'#,##0'});
+      else                    cell(ws,'E'+R, d(it.k),  {align:'center'});
+      R++;
+    }
+    R++;   /* spacer */
+  }
+  var rightEnd=R;
+
+  R=Math.max(leftEnd, rightEnd)+1;
+  merge(ws,'B'+R+':G'+R); cell(ws,'B'+R,form.banners.costs,GREEN);
+  ws.getRow(R).height=17;
+  R++;
+
+  var HDR={ fill:'FFED2024', bold:true, color:'FFFFFFFF', align:'center', wrap:true };
+  cell(ws,'B'+R,form.headers.type,HDR);
+  cell(ws,'C'+R,form.headers.desc,{fill:'FFFFC000',bold:true,color:'FFFFFFFF',align:'center',wrap:true});
+  cell(ws,'E'+R,form.headers.mat,HDR);
+  cell(ws,'F'+R,form.headers.lab,HDR);
+  cell(ws,'G'+R,form.headers.tot,HDR);
+  R++;
+
+  var bi, ri, b, rw;
+  for(bi=0;bi<m.blocks.length;bi++){
+    b=m.blocks[bi];
+    cell(ws,'B'+R,b.title,    {fill:b.fill,bold:true});
+    cell(ws,'C'+R,'',         {fill:'FFFFC000'});
+    cell(ws,'E'+R,b.mat,      {fill:b.fill,bold:true,align:'right',fmt:FMT_ACCT});
+    cell(ws,'F'+R,b.lab,      {fill:b.fill,bold:true,align:'right',fmt:FMT_ACCT});
+    cell(ws,'G'+R,b.mat+b.lab,{fill:b.fill,bold:true,align:'right',fmt:FMT_ACCT});
+    R++;
+    for(ri=0;ri<b.rows.length;ri++){
+      rw=b.rows[ri];
+      cell(ws,'B'+R, rw.label+rw.sub, {});
+      cell(ws,'C'+R, rw.note||'', { bold:rw.k==='charger' });
+      cell(ws,'E'+R, rw.mat,        {align:'right',fmt:FMT_ACCT});
+      cell(ws,'F'+R, rw.lab,        {align:'right',fmt:FMT_ACCT});
+      cell(ws,'G'+R, rw.mat+rw.lab, {align:'right',fmt:FMT_ACCT});
+      R++;
+    }
+  }
+  cell(ws,'B'+R,form.totalLabel,{fill:'FFFFC000',bold:true});
+  cell(ws,'C'+R,'',             {fill:'FFFFC000'});
+  cell(ws,'E'+R,m.mat,          {fill:'FFFFC000',bold:true,align:'right',fmt:FMT_ACCT});
+  cell(ws,'F'+R,m.lab,          {fill:'FFFFC000',bold:true,align:'right',fmt:FMT_ACCT});
+  cell(ws,'G'+R,m.total,        {fill:'FFFFC000',bold:true,align:'right',fmt:FMT_ACCT});
+
+  fitPage(ws, 'B1:G'+(R+1));
+}
+
+/* ── Contractor proposal ──────────────────────────────────────────── */
+function sheetProposal(wb, m, site){
+  var ws=wb.addWorksheet(safeSheetName('Proposal ('+site+')'), { views:[{showGridLines:false}] });
+  var W=[46,15,15,21], i;
+  for(i=0;i<W.length;i++) ws.getColumn(i+1).width=W[i];
+
+  var raw=val('b_band')||BRAND_ACCENT_OVERRIDE||PAL.band;
+  var band=String(raw).replace(/[^0-9A-Fa-f]/g,'').slice(0,6).toUpperCase();
+  if(band.length!==6) band=PAL.band;
+  var BAND='FF'+band, HEAD='FF'+PAL.head, TOT='FF'+PAL.tot;
+  var who=proposalName();
+
+  merge(ws,'A1:D1');
+  cell(ws,'A1','',{fill:BAND,border:false});
+  ws.getRow(1).height=62;
+  if(LOGO){
+    try{
+      var id=wb.addImage({ base64:LOGO.b64, extension:LOGO.ext });
+      ws.addImage(id, { tl:{col:2.55,row:0.15}, ext:{width:210,height:66} });
+    }catch(e){}
+  }
+
+  var R=2;
+  cell(ws,'A'+R, who, {bold:true,border:false});
+  merge(ws,'B'+R+':D'+R);
+  cell(ws,'B'+R,profile().proposalTitle,{bold:true,border:false});
+  R++;
+  merge(ws,'A'+R+':D'+R);
+  cell(ws,'A'+R,'Description: '+(d('address')||'')+(d('city')?', '+d('city'):'')
+       +(d('desc')?' - '+d('desc'):''),{bold:true,size:10,border:false,wrap:true});
+  R++;
+
+  cell(ws,'A'+R,'COSTS',   {bold:true,fill:HEAD});
+  cell(ws,'B'+R,'MATERIAL',{bold:true,align:'center',wrap:true,fill:HEAD});
+  cell(ws,'C'+R,'LABOR',   {bold:true,align:'center',wrap:true,fill:HEAD});
+  cell(ws,'D'+R,'AMOUNT MATERIAL + LABOR TOTAL',{bold:true,align:'center',wrap:true,fill:HEAD});
+  ws.getRow(R).height=30;
+  R++;
+
+  var bi, ri, b, rw;
+  for(bi=0;bi<m.blocks.length;bi++){
+    b=m.blocks[bi];
+    cell(ws,'A'+R,b.title,     {bold:true,fill:HEAD});
+    cell(ws,'B'+R,b.mat,       {bold:true,fill:HEAD,align:'right',fmt:FMT_CUR});
+    cell(ws,'C'+R,b.lab,       {bold:true,fill:HEAD,align:'right',fmt:FMT_CUR});
+    cell(ws,'D'+R,b.mat+b.lab, {bold:true,fill:HEAD,align:'right',fmt:FMT_CUR});
+    ws.getRow(R).height=17; R++;
+    for(ri=0;ri<b.rows.length;ri++){
+      rw=b.rows[ri];
+      cell(ws,'A'+R, rw.label+rw.sub, {});
+      /* zeros print as $0.00 here, matching the customer-facing original */
+      cell(ws,'B'+R, rw.mat,        {align:'right',fmt:FMT_CUR});
+      cell(ws,'C'+R, rw.lab,        {align:'right',fmt:FMT_CUR});
+      cell(ws,'D'+R, rw.mat+rw.lab, {align:'right',fmt:FMT_CUR});
+      ws.getRow(R).height=17; R++;
+    }
+  }
+  cell(ws,'A'+R,'TOTAL', {bold:true,align:'right',fill:TOT});
+  cell(ws,'B'+R,m.mat,   {bold:true,align:'right',fmt:FMT_CUR,fill:TOT});
+  cell(ws,'C'+R,m.lab,   {bold:true,align:'right',fmt:FMT_CUR,fill:TOT});
+  cell(ws,'D'+R,m.total, {bold:true,align:'right',fmt:FMT_CUR,fill:TOT});
+  R++;
+  merge(ws,'A'+R+':C'+R);
+  cell(ws,'A'+R,'TOTAL INCENTIVE',{bold:true,align:'right',fill:TOT});
+  cell(ws,'D'+R,m.incentive,{bold:true,align:'right',fmt:FMT_CUR,fill:TOT});
+  R++;
+  merge(ws,'A'+R+':C'+R);
+  cell(ws,'A'+R,'NET COST',{bold:true,size:13,align:'right'});
+  cell(ws,'D'+R,m.net,{bold:true,size:13,align:'right',fmt:FMT_CUR});
+  ws.getRow(R).height=24;
+  R+=2;
+
+  merge(ws,'A'+R+':D'+R);
+  cell(ws,'A'+R, val('b_foot')||'', {fill:BAND,color:'FFFFFFFF',align:'center',size:10,border:false});
+  ws.getRow(R).height=28;
+
+  fitPage(ws, 'A1:D'+R, 1);   /* customer-facing: always one page */
+}
+
+/* ── 15. BOOT ─────────────────────────────────────────────────────── */
+function readQueryContractor(){
+  var q=(window.location && window.location.search)||'';
+  if(q.length<2) return null;
+  var MAP={ company:'company', contractor:'company', contact:'contact', name:'contact',
+            email:'email', phone:'phone', license:'license', address:'address' };
+  var parts=q.slice(1).split('&'), i, kv, o={}, found=false, k, v;
+  for(i=0;i<parts.length;i++){
+    kv=parts[i].split('=');
+    k=decodeURIComponent(kv[0]||'').toLowerCase();
+    v=decodeURIComponent((kv[1]||'').replace(/\+/g,' '));
+    if(MAP[k] && v){ o[MAP[k]]=v; found=true; }
+  }
+  return found?o:null;
+}
+
+function applyBrand(){
+  var n=document.getElementById('tbName');
+  if(BRAND_NAME_OVERRIDE){
+    n.textContent=BRAND_NAME_OVERRIDE;
+  } else {
+    n.innerHTML='Clear<span>Sky</span> OMEGA';
+  }
+  var img=document.getElementById('tbLogo');
+  if(LOGO_OVERRIDE){
+    img.src=LOGO_OVERRIDE;
+    img.style.display='block';
+    img.onerror=function(){ img.style.display='none'; };
+  }
+  if(BRAND_ACCENT_OVERRIDE){
+    document.getElementById('b_band').value=BRAND_ACCENT_OVERRIDE.replace(/[^0-9A-Fa-f]/g,'').slice(0,6).toUpperCase();
+    setCustomBand();
+  }
+}
+
+function boot(){
+  renderTenantList();
+  DATA['class']='l2';
+  applyBrand();
+  renderSwatches();
+  refreshProfileList('');
+  DATA.site='Site 1';
+  onFormChange();
+  renderPicker();
+  renderSiteForm();
+  noteClass();
+
+  var q=readQueryContractor();
+  if(q){ applyContractor(q); msg('cMsg','Contractor details came in with the link.','ok'); }
+
+  var raw=null;
+  try{ raw=localStorage.getItem('OMEGA_EV_COST_HANDOFF'); }catch(e){}
+  if(raw){
+    try{ loadPayload(JSON.parse(raw)); return; }catch(e2){}
+  }
+  addStandardRows();
+  if(pingOpener()){
+    msg('srcMsg','Waiting for the estimate from the Site Map editor\u2026','');
+    /* If nothing arrives the editor probably wasn't the opener. */
+    setTimeout(function(){
+      if(!LINES.length || allZero()){
+        msg('srcMsg','No estimate came through. Paste the estimate CSV here, or reopen '
+          + 'the workbook from the editor\u2019s Electrical Estimate window.','');
+      }
+    }, 4000);
+  } else {
+    msg('srcMsg','No estimate loaded yet. Open the Electrical Estimate in the Site Map editor, then use the workbook button \u2014 or paste its CSV here.','');
+  }
+}
+function allZero(){
+  var i;
+  for(i=0;i<LINES.length;i++){ if(LINES[i].mat||LINES[i].lab) return false; }
+  return true;
+}
+window.__omegaBoot = boot;
+
+/* Stamped into the workbook's document properties so a file can be traced
+   back to the rep who produced it. Never printed on a customer-facing page. */
+var PREPARED_BY = '';
+window.__omegaSetRep = function(email){
+  PREPARED_BY = email || '';
+  var w=document.getElementById('tbWho');
+  if(w) w.textContent = PREPARED_BY;
+};
+
+/* ── CROSS-ORIGIN HANDOFF FROM THE EDITOR ─────────────────────────
+   The ops console runs on alpha.clearskyomega.com and this tool is served
+   from tools.csebuilders.com, so localStorage can't carry the estimate
+   between them — different origins, separate stores. postMessage is the
+   only route that works, and it needs a handshake: the opener can't post
+   until this page is listening.
+
+   On load we ping the opener; it replies with the estimate. The ping
+   carries no data, so it's safe to send without knowing the opener's
+   origin. Incoming payloads are checked against an origin allowlist
+   before we touch them — an estimate arriving from an unknown site is
+   dropped rather than priced. */
+var HANDOFF_ORIGINS = [
+  'https://alpha.clearskyomega.com',
+  'https://tools.csebuilders.com'
+];
+function originTrusted(o){
+  var i;
+  for(i=0;i<HANDOFF_ORIGINS.length;i++){ if(o===HANDOFF_ORIGINS[i]) return true; }
+  if(/^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(String(o||''))) return true;
+  return false;
+}
+
+window.addEventListener('message', function(ev){
+  var x=ev.data;
+  if(!x || x.type!=='OMEGA_EV_COST') return;
+  if(!originTrusted(ev.origin)){
+    msg('srcMsg','An estimate arrived from an unrecognised site ('+esc(ev.origin)
+      + ') and was ignored. Paste the CSV instead.','warn');
+    return;
+  }
+  if(x.payload && x.payload.lines){
+    try{ loadPayload(x.payload); }catch(e){}
+  }
+}, false);
+
+/* Tell the opener we're ready to receive. */
+function pingOpener(){
+  try{
+    if(window.opener && !window.opener.closed){
+      window.opener.postMessage({ type:'OMEGA_EV_COST_READY' }, '*');
+      return true;
+    }
+  }catch(e){}
+  return false;
+}
+</script>
+
+<script>
+/* ══════════════════════════════════════════════════════════════════
+   INTERNAL ACCESS GATE
+   ------------------------------------------------------------------
+   This tool is for ClearSky reps completing customer project intakes.
+   It is NOT a tenant tool and must not be published to the tenant
+   marketplace. Two independent checks, both of which must pass:
+
+     1. HOST  — the page is served from an approved internal host.
+     2. IDENTITY — a signed-in Google account on an internal domain.
+
+   It fails CLOSED: if the Firebase SDK, config.js, or the network is
+   unavailable, access is denied rather than assumed. That's the right
+   default for an internal tool even though it costs offline use.
+
+   Client-side gating keeps the tool off the wrong screens; it is not
+   a security boundary on data. There's nothing secret in this file,
+   and it reads no Firestore — the sensitive material is the estimate
+   the rep pastes in, which never leaves the browser.
+   ================================================================== */
+(function(){
+'use strict';
+
+/* The file is served from the shared tools host, because that's where every
+   OMEGA tool lives and how the ecosystem works. The ops console at
+   alpha.clearskyomega.com links to it cross-domain in a new tab, the same way
+   it links to intake.html — so the hostname here is tools.csebuilders.com,
+   not alpha.
+
+   That means the host check is weak by construction: it only rules out the
+   file being framed or copied somewhere unexpected. THE REAL BOUNDARY IS THE
+   IDENTITY CHECK BELOW — a signed-in clearsky-usa.com / csebuilders.com
+   account. A tenant who guesses the URL reaches a sign-in wall and stops
+   there. This mirrors what omega-tools.js already says about intake_admin:
+   the orgs restriction is convenience, the auth check is the boundary. */
+var ALLOWED_HOSTS = (window.OMEGA_INTERNAL_HOSTS && window.OMEGA_INTERNAL_HOSTS.length)
+  ? window.OMEGA_INTERNAL_HOSTS
+  : ['tools.csebuilders.com', 'alpha.clearskyomega.com'];
+var DEV_HOSTS = ['localhost','127.0.0.1',''];   /* '' covers file:// */
+
+/* Email domains that count as internal staff. Same two domains the
+   Firestore rules treat as isAdmin(). */
+var INTERNAL_DOMAINS = ['clearsky-usa.com','csebuilders.com'];
+
+var FB = {
+  apiKey:            "AIzaSyABoM1lgOYUnd5ZadaoTMhYmA9cHa8Tyo0",
+  authDomain:        "clearsky-portal.firebaseapp.com",
+  projectId:         "clearsky-portal",
+  storageBucket:     "clearsky-portal.firebasestorage.app",
+  messagingSenderId: "742134484347",
+  appId:             "1:742134484347:web:ab0f95fd221536158481de"
+};
+
+function $(id){ return document.getElementById(id); }
+function show(title, msg, actions){
+  $('gateTitle').textContent = title;
+  $('gateMsg').innerHTML = msg;
+  $('gateActions').innerHTML = actions || '';
+}
+function openApp(email){
+  $('gate').style.display='none';
+  $('app').style.display='block';
+  if(window.__omegaSetRep) window.__omegaSetRep(email);
+  if(window.__omegaBoot) window.__omegaBoot();
+}
+function domainOf(email){
+  var m=String(email||'').toLowerCase().split('@');
+  return m.length===2 ? m[1] : '';
+}
+function isInternal(email){
+  var dom=domainOf(email), i;
+  for(i=0;i<INTERNAL_DOMAINS.length;i++){ if(dom===INTERNAL_DOMAINS[i]) return true; }
+  return false;
+}
+function hostOk(){
+  var h=String(location.hostname||'').toLowerCase(), i;
+  for(i=0;i<ALLOWED_HOSTS.length;i++){ if(h===ALLOWED_HOSTS[i]) return true; }
+  for(i=0;i<DEV_HOSTS.length;i++){ if(h===DEV_HOSTS[i]) return true; }
+  return false;
+}
+
+/* ---- 1. host ---- */
+if(!hostOk()){
+  show('Not available here',
+       'The EV Cost Workbook runs only on the internal OMEGA portal at '
+     + '<code>alpha.clearskyomega.com</code>. This page is being served from '
+     + '<code>'+String(location.hostname||'file://')+'</code>.');
+  return;
+}
+
+/* ---- 2. identity ---- */
+var cfg = (window.CONFIG && window.CONFIG.firebase) || window.FIREBASE_CONFIG || FB;
+
+if(typeof firebase==='undefined' || !firebase.initializeApp){
+  show('Sign-in unavailable',
+       'The authentication service didn\'t load, so access can\'t be confirmed. '
+     + 'Check the connection and reload. If it keeps failing, tell dev@clearsky-usa.com.',
+       '<button class="btn" onclick="location.reload()">Reload</button>');
+  return;
+}
+
+var auth;
+try{
+  if(!firebase.apps || !firebase.apps.length) firebase.initializeApp(cfg);
+  auth = firebase.auth();
+}catch(e){
+  show('Sign-in unavailable',
+       'Authentication could not start: '+String(e && e.message ? e.message : e),
+       '<button class="btn" onclick="location.reload()">Reload</button>');
+  return;
+}
+
+function signIn(){
+  var p=new firebase.auth.GoogleAuthProvider();
+  auth.signInWithPopup(p)['catch'](function(err){
+    var code=(err && err.code)||'';
+    if(code==='auth/popup-blocked'){
+      show('Pop-up blocked','Allow pop-ups for this site, then sign in again.',
+           '<button class="btn p" onclick="window.__gateSignIn()">Sign in with Google</button>');
+    } else if(code!=='auth/popup-closed-by-user' && code!=='auth/cancelled-popup-request'){
+      show('Sign-in failed', String(err && err.message ? err.message : err),
+           '<button class="btn p" onclick="window.__gateSignIn()">Try again</button>');
+    }
+  });
+}
+window.__gateSignIn=signIn;
+window.__gateSignOut=function(){ auth.signOut(); };
+
+auth.onAuthStateChanged(function(user){
+  if(!user){
+    show('Internal tool',
+         'Sign in with your ClearSky account to build project intake workbooks.',
+         '<button class="btn p" onclick="window.__gateSignIn()">Sign in with Google</button>');
+    return;
+  }
+  if(!isInternal(user.email)){
+    show('No access',
+         '<b>'+String(user.email||'')+'</b> isn\'t a ClearSky staff account. This tool is '
+       + 'for internal reps completing customer intakes. If you need access, '
+       + 'contact dev@clearsky-usa.com.',
+         '<button class="btn" onclick="window.__gateSignOut()">Sign in as someone else</button>');
+    return;
+  }
+  openApp(user.email);
+});
+
+})();
+</script>
+</body>
+</html>
