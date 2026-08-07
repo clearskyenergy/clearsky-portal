@@ -1392,21 +1392,52 @@ var panel=document.getElementById("panel");
 function openPanel(){ panel.className="open"; }
 document.getElementById("pClose").onclick=function(){ panel.className=""; };
 
-/* ---------- Geocode search (OSM Nominatim) ---------- */
+/* ---------- Geocode search (OSM Nominatim) with fallback chain ----------
+   Full street addresses often miss in OSM (new industrial streets aren't mapped).
+   Try the full query, then progressively simpler versions, so we always land close. */
 var q=document.getElementById("q");
+function geocodeChain(raw){
+  var t=raw.trim(); if(!t) return;
+  // Build progressively looser queries
+  var attempts=[t];
+  var parts=t.split(",").map(function(s){return s.trim();}).filter(Boolean);
+  if(parts.length>1){
+    // drop leading street number from first part (e.g. "6561 North Lone Wolf Drive" -> "North Lone Wolf Drive")
+    var p0=parts[0].replace(/^\s*\d+\s+/,"");
+    if(p0!==parts[0]){ attempts.push([p0].concat(parts.slice(1)).join(", ")); }
+    // city, state, zip only (drop the street entirely)
+    attempts.push(parts.slice(1).join(", "));
+    // last resort: just the last two tokens (city+state or state+zip)
+    if(parts.length>=2) attempts.push(parts.slice(-2).join(", "));
+  }
+  // also try a US-biased structured version if a 5-digit zip is present
+  var zip=(t.match(/\b\d{5}\b/)||[])[0];
+  if(zip) attempts.push(zip+", USA");
+
+  status("Searching…",true);
+  var i=0;
+  function tryNext(){
+    if(i>=attempts.length){ status("No match — try just the city & state, or ZIP",false); return; }
+    var qy=attempts[i++];
+    var url="https://nominatim.openstreetmap.org/search?format=json&addressdetails=1&countrycodes=us&limit=1&q="+encodeURIComponent(qy);
+    ajax(url,function(err,res){
+      if(err||!res||!res.length){ tryNext(); return; }
+      var r=res[0], lat=+r.lat, lon=+r.lon;
+      var exact=(i===1); // first attempt was the full address
+      map.setView([lat,lon], exact?16:13);
+      // auto-drop a pin so the site analysis runs at the searched address
+      if(typeof dropPin==="function"){ dropPin(L.latLng(lat,lon)); }
+      var where=(r.display_name||qy).split(",").slice(0,3).join(", ");
+      status((exact?"Found: ":"Nearest match: ")+where,false);
+    });
+  }
+  tryNext();
+}
 q.addEventListener("keydown",function(e){
   if(e.key!=="Enter")return;
-  var t=q.value.trim(); if(!t)return;
-  status("Searching…",true);
-  ajax("https://nominatim.openstreetmap.org/search?format=json&limit=1&q="+encodeURIComponent(t),
-    function(err,res){
-      if(err||!res||!res.length){ status("No match for that search",false); return; }
-      var r=res[0]; map.setView([+r.lat,+r.lon],12);
-      status("Found: "+(r.display_name||t).split(",")[0],false);
-    });
+  geocodeChain(q.value);
 });
 
-/* ---------- Boot ---------- */
 /* ---------- Boot ---------- */
 (function buildLegend(){
   var labels=["<10","10","25","52","132","220","310","550+"];
