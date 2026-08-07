@@ -37072,7 +37072,22 @@ function _dimPreviewTo(x2, y2){
     svg.appendChild(prev);
   }
   const dist = Math.hypot(x2-x1, y2-y1);
-  const ft = S.pxPerFt ? (dist/S.pxPerFt).toFixed(1)+' ft' : Math.round(dist)+'px';
+  /* Preview uses the same true-ground measurement as the placed dimension,
+     so the number you see while dragging matches the number you get. */
+  let ft;
+  try{
+    const ms=(typeof _liveMapState==='function')?_liveMapState():null;
+    const sz=(typeof _getCanvasSize==='function')?_getCanvasSize():null;
+    if(ms && sz && window.google && google.maps && google.maps.geometry && typeof _pxToLatLng==='function'){
+      const a=_pxToLatLng(x1,y1,ms,sz.w,sz.h), b=_pxToLatLng(x2,y2,ms,sz.w,sz.h);
+      if(a && b){
+        const m=google.maps.geometry.spherical.computeDistanceBetween(
+          new google.maps.LatLng(a.lat,a.lng), new google.maps.LatLng(b.lat,b.lng));
+        ft=(m*3.28084).toFixed(1)+' ft';
+      }
+    }
+  }catch(e){}
+  if(!ft) ft = S.pxPerFt ? (dist/S.pxPerFt).toFixed(1)+' ft' : Math.round(dist)+'px';
   prev.innerHTML = `
     <line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="#00D4FF" stroke-width="1.5" stroke-dasharray="6 3" opacity=".7"/>
     <text x="${(x1+x2)/2}" y="${(y1+y2)/2-6}" text-anchor="middle" fill="#00D4FF" font-size="11" font-family="monospace" font-weight="700">${ft}</text>`;
@@ -37089,9 +37104,32 @@ document.getElementById('sc')?.addEventListener('mousemove', function(e) {
 
 function _placeDimension(x1,y1,x2,y2) {
   const pxDist = Math.hypot(x2-x1,y2-y1);
-  const ftDist = S.pxPerFt ? (pxDist/S.pxPerFt).toFixed(1) : null;
+  /* TRUE GROUND DISTANCE, the same way conduit lengths are already measured.
+     Dividing pixels by a scale factor is only as good as that factor and
+     drifts with zoom/projection; Google's spherical geometry measures the
+     real distance between the two ground points, so the reading is correct
+     at any zoom and matches Google Maps' own measure tool. Falls back to the
+     pixel/scale method when there is no map (blank-canvas projects). */
+  let ftDist = null, g1 = null, g2 = null;
+  try{
+    if(typeof _liveMapState==='function' && typeof _pxToLatLng==='function'
+       && window.google && google.maps && google.maps.geometry){
+      const ms=_liveMapState();
+      const sz=(typeof _getCanvasSize==='function')?_getCanvasSize():null;
+      if(ms && sz){
+        g1=_pxToLatLng(x1,y1,ms,sz.w,sz.h);
+        g2=_pxToLatLng(x2,y2,ms,sz.w,sz.h);
+        if(g1 && g2){
+          const meters=google.maps.geometry.spherical.computeDistanceBetween(
+            new google.maps.LatLng(g1.lat,g1.lng),
+            new google.maps.LatLng(g2.lat,g2.lng));
+          ftDist=(meters*3.28084).toFixed(1);
+        }
+      }
+    }
+  }catch(e){}
+  if(ftDist===null) ftDist = S.pxPerFt ? (pxDist/S.pxPerFt).toFixed(1) : null;
   const label  = ftDist ? ftDist+' ft' : Math.round(pxDist)+'px';
-  const angle  = Math.atan2(y2-y1, x2-x1) * 180/Math.PI;
   const midX   = (x1+x2)/2;
   const midY   = (y1+y2)/2;
 
@@ -37103,6 +37141,15 @@ function _placeDimension(x1,y1,x2,y2) {
     label, rot:0,
     pxDist, ftDist
   });
+  /* Anchor both endpoints to the ground immediately at creation, from the
+     same lat/lng just measured -- no waiting on a later stamping pass. */
+  try{
+    if(g1 && g2){
+      el._geoD1={lat:g1.lat,lng:g1.lng};
+      el._geoD2={lat:g2.lat,lng:g2.lng};
+      el._geoAnchor={lat:g1.lat,lng:g1.lng};
+    }
+  }catch(e){}
   renderDimension(el);
   updateRightPanel();
 }
@@ -37261,7 +37308,25 @@ function _dimDragMove(e){
      custom label (custom text stays put; only the auto-generated default
      tracks length changes) */
   var d=Math.hypot(el.x2-el.x1,el.y2-el.y1);
-  el.pxDist=d; el.ftDist=S.pxPerFt?(d/S.pxPerFt).toFixed(1):null;
+  el.pxDist=d;
+  /* Re-measure on the ground while dragging, matching placement + preview. */
+  var _ftD=null;
+  try{
+    var ms=(typeof _liveMapState==='function')?_liveMapState():null;
+    var sz=(typeof _getCanvasSize==='function')?_getCanvasSize():null;
+    if(ms && sz && window.google && google.maps && google.maps.geometry && typeof _pxToLatLng==='function'){
+      var a=_pxToLatLng(el.x1,el.y1,ms,sz.w,sz.h), b=_pxToLatLng(el.x2,el.y2,ms,sz.w,sz.h);
+      if(a && b){
+        var mm=google.maps.geometry.spherical.computeDistanceBetween(
+          new google.maps.LatLng(a.lat,a.lng), new google.maps.LatLng(b.lat,b.lng));
+        _ftD=(mm*3.28084).toFixed(1);
+        /* the dragged position is the new ground truth */
+        el._geoD1={lat:a.lat,lng:a.lng}; el._geoD2={lat:b.lat,lng:b.lng};
+        el._geoAnchor={lat:a.lat,lng:a.lng};
+      }
+    }
+  }catch(e){}
+  el.ftDist = (_ftD!==null) ? _ftD : (S.pxPerFt?(d/S.pxPerFt).toFixed(1):null);
   if(!el._customLabel){ el.label = el.ftDist ? el.ftDist+' ft' : Math.round(d)+'px'; }
   renderDimension(el);
 }
