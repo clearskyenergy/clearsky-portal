@@ -520,9 +520,15 @@ var LAYERS = {
     url:"https://hydro.nationalmap.gov/arcgis/rest/services/nhd/MapServer/6",
     label:function(a){return a.GNIS_NAME||a.gnis_name||"Waterway";},
     meta:function(a){return (a.FTYPE||a.ftype||"stream/river");}
+  },
+  gas: {
+    name:"Gas Pipelines (EIA)", color:"#E08A4A", on:false, geom:"line", role:"site",
+    url:"https://geo.dot.gov/server/rest/services/Hosted/Natural_Gas_Pipelines_US_EIA/FeatureServer/0",
+    label:function(a){return a.Operator||a.operator||"Gas pipeline";},
+    meta:function(a){return (a.TYPEPIPE||a.typepipe||"transmission")+" gas";}
   }
 };
-var ORDER=["substations","transmission","plants","datacenters","ev","bess","osm_lines","osm_subs","osm_plants","eia_plants","fiber","fiber_cls","backbone","fiber_ca","subsea","ll_backbone","fiber_verified","fiber_estimated","fiber_licensed","ixp","colo","fcc_fiber","zayo","utility_terr","iso_rto","ba_area","flood","water"];
+var ORDER=["substations","transmission","plants","datacenters","ev","bess","osm_lines","osm_subs","osm_plants","eia_plants","fiber","fiber_cls","backbone","fiber_ca","subsea","ll_backbone","fiber_verified","fiber_estimated","fiber_licensed","ixp","colo","fcc_fiber","zayo","utility_terr","iso_rto","ba_area","flood","water","gas"];
 
 /* ---------- EIA technology taxonomy (matches EIA energy_source_code / technology) ---------- */
 var EIA_TECH={
@@ -1246,6 +1252,43 @@ function analyze(ll){
   h+=dcFactor("Market liquidity", pMarket, containingFeature(ll,cache.iso_rto)?"in organized ISO/RTO":"bilateral market");
   h+='<div class="hint" style="margin:4px 0 0;color:var(--muted)">Weights: power 42%, fiber 24%, water 14%, flood 12%, market 8%. Enable Site Suitability + Fiber + Market layers for a full read. Screening only — confirm utility capacity, water rights & Phase I before acquisition.</div>';
 
+  // ── Available Power Estimate — the DC-critical question ──
+  // Public data cannot give true feeder headroom, but it bounds the likely capacity
+  // and routes to the utility's authoritative hosting-capacity / interconnection portal.
+  var subV=sub?(+(sub.f.props.MAX_VOLT||sub.f.props.VOLTAGE||sub.f.props.max_volt||sub.f.props.MAX_VOLTAG||0)):0;
+  var lineV=Math.max(txV2,subV);
+  // rough deliverable-capacity band by highest nearby voltage class (screening only)
+  var mwBand = lineV>=500?"1,000+ MW":lineV>=345?"500–1,000 MW":lineV>=230?"200–600 MW":
+               lineV>=115?"50–200 MW":lineV>=69?"10–60 MW":lineV>0?"<10 MW (distribution)":"unknown";
+  var subCount=within(ll,cache.substations,40)+within(ll,cache.osm_subs,40);
+  var plantMW=0,plantN=0;
+  (cache.eia_plants||[]).forEach(function(f){ if(f.geom&&f.geom.type==="Point"){
+    var c=f.geom.coordinates; if(haversine(ll.lat,ll.lng,c[1],c[0])<=40){ plantN++; plantMW+=(f.bubbleMw||0);} }});
+  var gasNear=nearestLine(ll,cache.gas);
+
+  h+='<div class="sec">⚡ Available Power Estimate</div>';
+  h+='<div class="score" style="margin-top:2px"><span class="n" style="font-size:22px;color:var(--amp)">'+esc(mwBand)+'</span></div>';
+  h+='<div class="hint" style="margin:3px 0 8px;color:var(--muted)">Screening band from highest nearby voltage ('+(lineV||"?")+' kV). NOT confirmed capacity.</div>';
+  h+=infoRow(LAYERS.substations.color,"Highest voltage nearby",sub?(subV?subV+" kV substation":"voltage not published"):"no substation",lineV?lineV+" kV":"—");
+  h+=infoRow(LAYERS.substations.color,"Substations within 40 km","interconnect options",String(subCount));
+  h+=infoRow(LAYERS.eia_plants.color,"Generation within 40 km",plantN?(Math.round(plantMW).toLocaleString()+" MW nameplate"):"enable EIA Plants",plantN?String(plantN):"—");
+  h+=infoRow(LAYERS.gas.color,"Gas pipeline (microgrid)",gasNear?"for on-site generation":(LAYERS.gas.on?"none in view":"enable Gas Pipelines"),gasNear?fmtKm(gasNear.km):"—");
+
+  // Serving utility → authoritative hosting-capacity / interconnection portal
+  var uName=terr?LAYERS.utility_terr.label(terr.props):"";
+  var portal=utilityPortal(uName, ll);
+  h+='<div class="hint" style="margin:8px 0 2px"><b style="color:var(--ink)">The real MW number comes from the utility.</b> '+
+     'No public API returns feeder headroom — it comes from the serving utility\'s hosting-capacity map or an interconnection study.</div>';
+  if(uName){
+    h+='<div class="hint" style="margin:2px 0">Serving utility: <b style="color:var(--ink)">'+esc(uName)+'</b></div>';
+  } else {
+    h+='<div class="hint" style="margin:2px 0;color:var(--muted)">Enable Utility Territory to resolve the serving utility at this point.</div>';
+  }
+  if(portal){
+    h+='<div style="margin:6px 0 2px"><a href="'+esc(portal.url)+'" target="_blank" rel="noopener" '+
+       'style="color:var(--amp);font-size:12px;text-decoration:none;border:1px solid var(--amp);border-radius:6px;padding:6px 10px;display:inline-block">↳ '+esc(portal.label)+'</a></div>';
+  }
+
   h+='<div class="sec">Notes</div>';
   h+='<div class="hint">Interconnect score weights substation distance (42%), transmission distance (33%), and voltage class (25%). '+
      'Coverage depends on active layers and map extent — enable a layer and it feeds the score automatically. '+
@@ -1304,6 +1347,34 @@ function infoRow(color,nm,meta,dist){
     '<div class="main"><div class="nm">'+esc(nm)+'</div><div class="meta">'+esc(meta)+'</div></div>'+
     '<div class="dist">'+esc(dist)+'</div></div>';
 }
+function utilityPortal(name, ll){
+  var n=(name||"").toLowerCase();
+  var P=[
+    [/comed|commonwealth edison/, "ComEd hosting capacity map", "https://www.comed.com/smart-energy/innovation/hosting-capacity-map"],
+    [/eversource/, "Eversource system data portal", "https://www.eversource.com/content/residential/save-money-energy/interconnections/system-data-portal"],
+    [/national grid/, "National Grid capacity map", "https://www.nationalgrid.com/us/hosting-capacity-maps"],
+    [/pg&e|pacific gas/, "PG&E interconnection portal", "https://www.pge.com/en_US/for-our-business-partners/interconnection-renewables/distribution-resource-planning-data-portal.page"],
+    [/southern california edison|sce\b/, "SCE ICA map", "https://www.sce.com/regulatory/hosting-capacity-online-map"],
+    [/san diego gas|sdg&e/, "SDG&E capacity map", "https://www.sdge.com/more-information/customer-generation/interconnection"],
+    [/duke energy/, "Duke hosting capacity", "https://www.duke-energy.com/business/products/renewables/generation-capacity-map"],
+    [/dominion/, "Dominion hosting capacity", "https://www.dominionenergy.com/projects-and-facilities/electric-projects/hosting-capacity"],
+    [/xcel/, "Xcel hosting capacity", "https://www.xcelenergy.com/working_with_us/hosting_capacity_maps"],
+    [/pacific power|pacificorp/, "PacifiCorp interconnection", "https://www.pacificorp.com/energy/interconnections.html"],
+    [/georgia power/, "Georgia Power interconnection", "https://www.georgiapower.com/business/save-money-and-energy/generating-your-own-power.html"],
+    [/ameren/, "Ameren hosting capacity", "https://www.ameren.com/company/environment-and-sustainability/hosting-capacity"],
+    [/pseg|public service/, "PSE&G interconnection", "https://nj.pseg.com/saveenergyandmoney/gogreen/solarandrenewableenergy"],
+    [/con ?ed|consolidated edison/, "Con Edison hosting capacity", "https://www.coned.com/en/business-partners/hosting-capacity"],
+    [/midamerican/, "MidAmerican interconnection", "https://www.midamericanenergy.com/generation-interconnection"],
+    [/alliant/, "Alliant Energy interconnection", "https://www.alliantenergy.com/accountandbilling/generatingyourownenergy"]
+  ];
+  for(var i=0;i<P.length;i++){ if(P[i][0].test(n)) return {label:P[i][1], url:P[i][2]}; }
+  if(name){
+    return {label:"Find "+name+" hosting-capacity map",
+            url:"https://www.google.com/search?q="+encodeURIComponent(name+" hosting capacity map interconnection queue")};
+  }
+  return null;
+}
+
 function dcFactor(name,score,detail){
   score=Math.max(0,Math.min(100,Math.round(score)));
   var c=score>=70?"var(--ok)":score>=45?"var(--warn)":"var(--bad)";
