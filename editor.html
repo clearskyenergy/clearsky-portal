@@ -27922,7 +27922,7 @@ document.addEventListener('mousedown', function(e){
 /* Class definitions. `color` is the real colour that class draws on the
    map, so the legend rule and the geometry cannot disagree. */
 var O2_CLASSES = [
-  { key:'solar',  label:'Solar',      color:'#2563EB' },
+  { key:'solar',  label:'Power Gen',  color:'#2563EB' },
   { key:'trench', label:'Trench / Conduit', color:'#D97706' },
   { key:'bess',   label:'BESS',       color:'#4ADE80' },
   { key:'ev',     label:'EV',         color:'#22D3EE' },
@@ -36975,6 +36975,7 @@ ${notes ? `<h2>Project Notes</h2><div class="notes-box">${notes}</div>` : ''}
 let _dimState = null; // {x1,y1} or null
 
 function _cancelDimension() {
+  try{ if(_dimState) console.info('[dim] CANCELLED - pending start point discarded (mode change)'); }catch(e){}
   _dimState = null;
   document.getElementById('csvg').style.cursor = '';
   // Remove preview line
@@ -36993,8 +36994,15 @@ const _origCanvasClick = window._canvasClickHandler || null;
 /* Shared placement step, driven from whichever surface received the click.
    Takes a point already converted to MODEL space. */
 function _dimClickAt(x, y){
+  /* TRACING: this path has now failed several times for reasons that were
+     not visible by reading the code, so each step reports to the console.
+     Filter the console on [dim] to see exactly how far a click gets. */
+  try{ console.info('[dim] click at', Math.round(x), Math.round(y),
+       '| mode=', (typeof S!=='undefined'?S.mode:'?'),
+       '| pending start=', !!_dimState); }catch(e){}
   if(!_dimState) {
     _dimState = {x1:x, y1:y};
+    try{ console.info('[dim] START point set - click again to finish'); }catch(e){}
     showBanner('wiz', '  Click END point of dimension line');
     const svg = document.getElementById('csvg');
     document.getElementById('dim-start-dot')?.remove();
@@ -37006,7 +37014,16 @@ function _dimClickAt(x, y){
     svg.appendChild(dot);
   } else {
     const {x1,y1} = _dimState;
-    _placeDimension(x1,y1,x,y);
+    try{ console.info('[dim] END point - placing from', Math.round(x1), Math.round(y1), 'to', Math.round(x), Math.round(y)); }catch(e){}
+    var _before=(typeof S!=='undefined'&&S.elements)?S.elements.length:-1;
+    try{
+      _placeDimension(x1,y1,x,y);
+      var _after=(typeof S!=='undefined'&&S.elements)?S.elements.length:-1;
+      console.info('[dim] placed OK - elements '+_before+' -> '+_after);
+      if(_after===_before) console.warn('[dim] element count did NOT increase - addEl did not take');
+    }catch(err){
+      console.error('[dim] _placeDimension THREW:', err && (err.stack||err.message||err));
+    }
     document.getElementById('dim-start-dot')?.remove();
     document.getElementById('dim-preview')?.remove();
     _dimState = null;
@@ -37023,6 +37040,7 @@ function _dimClickAt(x, y){
   var _origDimClick = shapeCovClick;
   window.shapeCovClick = function(e){
     if(typeof S!=='undefined' && S.mode==='dimension'){
+      try{ console.info('[dim] dispatch reached shapeCovClick wrapper'); }catch(err){}
       e.stopPropagation();
       var p=(typeof _scPt==='function') ? _scPt(e) : {x:e.clientX, y:e.clientY};
       _dimClickAt(p.x, p.y);
