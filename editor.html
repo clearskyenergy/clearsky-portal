@@ -1877,7 +1877,7 @@ window.onerror = function(msg, src, line, col, err) {
     <div class="rpanel">
       <div class="rpanel-body">
         <div class="rbtn-wrap">
-          <button class="rbtn" onclick="derSetSolar('ground')" title="Ground-mount solar"><span class="rb-ico">☀</span><span class="rb-lbl">Solar ▾</span></button>
+          <button class="rbtn" onclick="derSetSolar('ground')" title="Power generation — solar, wind, gensets and fuel cells"><span class="rb-ico">☀</span><span class="rb-lbl">Power Gen ▾</span></button>
           <span class="rbtn-caret" onclick="rbFly(event,'fly-der')">▼</span>
           <div class="rb-flyout" id="fly-der">
             <div class="rb-fly-head">Solar</div>
@@ -1891,6 +1891,10 @@ window.onerror = function(msg, src, line, col, err) {
             <button class="rb-fly-item" onclick="rbFlyDo('fly-der',function(){derSetWind('wind_100')})"><span class="fi-ico">✲</span> Wind Turbine <span class="fi-sub">100 kW</span></button>
             <button class="rb-fly-item" onclick="rbFlyDo('fly-der',function(){derSetAlt('gen_ng')})"><span class="fi-ico">⊙</span> NG Genset <span class="fi-sub">750 kW</span></button>
             <button class="rb-fly-item" onclick="rbFlyDo('fly-der',function(){derSetAlt('fuelcell')})"><span class="fi-ico">◉</span> Fuel Cell <span class="fi-sub">400 kW</span></button>
+            <div class="menu-sep"></div>
+            <button class="rb-fly-item" onclick="rbFlyDo('fly-der',function(){derCustomKw('wind')})" title="Place a wind turbine at a kW rating you specify"><span class="fi-ico">✎</span> Wind — Custom kW…</button>
+            <button class="rb-fly-item" onclick="rbFlyDo('fly-der',function(){derCustomKw('fuelcell')})" title="Place a fuel cell at a kW rating you specify"><span class="fi-ico">✎</span> Fuel Cell — Custom kW…</button>
+            <button class="rb-fly-item" onclick="rbFlyDo('fly-der',function(){derCustomKw('genset')})" title="Place a genset at a kW rating you specify"><span class="fi-ico">✎</span> Genset — Custom kW…</button>
           </div>
         </div>
       </div>
@@ -44662,6 +44666,74 @@ function derSetSolar(mount){ _derSolarMount = (mount==='roof'||mount==='adjacent
   _derBanner('Solar ('+_derSolarMount+'): click and drag a rectangle over the '+_where); }
 function _derBanner(msg){ if(typeof showBanner==='function') showBanner('shape',' '+msg); }
 
+/* ---- CUSTOM kW ------------------------------------------------------
+   Wind turbines, fuel cells and gensets were locked to the fixed catalog
+   ratings (100 / 400 / 750 kW). Real projects size these to the site, so
+   allow any rating: pick a custom kW, then place as normal. The footprint
+   scales off the nearest catalog entry so a 2 MW turbine doesn't draw the
+   same size as a 10 kW one. */
+var _derCustomKw = { wind:null, fuelcell:null, genset:null };
+function derCustomKw(kind){
+  var cur = _derCustomKw[kind];
+  var deflt = cur || (kind==='wind'?100:(kind==='fuelcell'?400:750));
+  var nameMap={wind:'Wind Turbine', fuelcell:'Fuel Cell', genset:'Genset'};
+  var v = window.prompt('Nameplate rating for this '+nameMap[kind]+' (kW):', String(deflt));
+  if(v===null) return;                       /* cancelled */
+  var kw = parseFloat(String(v).replace(/[^0-9.]/g,''));
+  if(!isFinite(kw) || kw<=0){ _derBanner('Enter a kW rating greater than zero.'); return; }
+  _derCustomKw[kind]=kw;
+  if(kind==='wind'){
+    /* footprint + rotor scale with the square root of power (swept area
+       is what actually grows with rating, and area ~ diameter^2) */
+    var f=Math.sqrt(kw/100);
+    _derCustomSpec.wind = { label:'Wind Turbine '+kw+' kW', model:'Wind Turbine '+kw+' kW',
+                            kw:kw, lf:+(14*f).toFixed(1), wf:+(14*f).toFixed(1),
+                            rotorFt:+(70*f).toFixed(1) };
+    _derWindId='__custom';
+    if(typeof rbMode==='function') rbMode('windpad');
+    _derBanner('Click to place Wind Turbine \u2014 '+kw+' kW');
+  } else {
+    var base = (kind==='fuelcell') ? DERC_ALT.fuelcell : DERC_ALT.gen_ng;
+    var g=Math.sqrt(kw/base.kw);
+    _derCustomSpec.alt = { label:(kind==='fuelcell'?'Fuel Cell ':'Genset ')+kw+' kW',
+                           kw:kw, lf:+(base.lf*g).toFixed(1), wf:+(base.wf*g).toFixed(1),
+                           abbr:base.abbr, fuel:base.fuel };
+    _derAltId='__custom';
+    if(typeof rbMode==='function') rbMode('altgen');
+    _derBanner('Click to place '+_derCustomSpec.alt.label);
+  }
+}
+var _derCustomSpec = { wind:null, alt:null };
+
+/* Edit the kW of an ALREADY PLACED wind / fuel cell / genset. */
+function derEditKw(id){
+  var sh=null; for(var i=0;i<S.shapes.length;i++){ if(S.shapes[i].id===id){ sh=S.shapes[i]; break; } }
+  if(!sh || (sh.kind!=='derwind' && sh.kind!=='deralt')) return;
+  var v=window.prompt('Nameplate rating for '+(sh.model||'this unit')+' (kW):', String(sh.kw||0));
+  if(v===null) return;
+  var kw=parseFloat(String(v).replace(/[^0-9.]/g,''));
+  if(!isFinite(kw) || kw<=0){ _derBanner('Enter a kW rating greater than zero.'); return; }
+  var oldKw=sh.kw||kw;
+  sh.kw=kw;
+  /* keep the drawn footprint honest about the new rating */
+  var f=Math.sqrt(kw/oldKw);
+  if(isFinite(f) && f>0){
+    sh.lf=+((sh.lf||10)*f).toFixed(1);
+    sh.wf=+((sh.wf||6)*f).toFixed(1);
+    if(sh.rotorFt) sh.rotorFt=+(sh.rotorFt*f).toFixed(1);
+  }
+  /* the model name carries the rating, so keep them in step */
+  if(sh.model) sh.model=String(sh.model).replace(/\d[\d,.]*\s*kW/i, kw+' kW');
+  if(!/kW/i.test(sh.model||'')) sh.model=(sh.model||'Unit')+' '+kw+' kW';
+  renderShape(sh);
+  if(typeof updShapeCount==='function') updShapeCount();
+  if(typeof pushHist==='function') pushHist();
+  if(typeof updateSummaryPanel==='function') try{ updateSummaryPanel(); }catch(e){}
+  if(typeof omegaSetStale==='function') try{ omegaSetStale(true); }catch(e){}
+  _derBanner((sh.model||'Unit')+' set to '+kw+' kW \u2014 press Run to recompute.');
+}
+window.derCustomKw=derCustomKw; window.derEditKw=derEditKw;
+
 /* ---- PLACEMENT ------------------------------------------------------ */
 function _derScale(){ return (typeof S!=='undefined' && S.pxPerFt && S.pxPerFt>0) ? S.pxPerFt : 6; }
 function _derScaled(){ return !!(typeof S!=='undefined' && S.pxPerFt && S.pxPerFt>0); }
@@ -44680,7 +44752,8 @@ function _derPlaceDcPad(p){
 
 /* Wind turbine pad: single click, place several for an array. */
 function _derPlaceWindPad(p){
-  var spec=_derWindSpec(_derWindId); if(!spec) return;
+  var spec=(_derWindId==='__custom' && _derCustomSpec.wind) ? _derCustomSpec.wind : _derWindSpec(_derWindId);
+  if(!spec) return;
   p=_derSnapPt(p);   /* consistent snapping across all DER placements */
   var sh={ id:uid(), kind:'derwind', windId:_derWindId, pts:[{x:p.x,y:p.y}],
            style:(typeof S!=='undefined'?S.shapeStyle:''), lf:spec.lf, wf:spec.wf,
@@ -44692,7 +44765,8 @@ function _derPlaceWindPad(p){
 
 /* Alt-energy / generator: single symbol (like CT cabinet). */
 function _derPlaceAlt(p){
-  var def=DERC_ALT[_derAltId]; if(!def) return;
+  var def=(_derAltId==='__custom' && _derCustomSpec.alt) ? _derCustomSpec.alt : DERC_ALT[_derAltId];
+  if(!def) return;
   p=_derSnapPt(p);   /* consistent snapping across all DER placements */
   var sh={ id:uid(), kind:'deralt', altId:_derAltId, pts:[{x:p.x,y:p.y}],
            style:(typeof S!=='undefined'?S.shapeStyle:''), lf:def.lf, wf:def.wf,
@@ -52286,6 +52360,20 @@ function _nnZoneWrap(){
       var lw=Math.max(24,(cs.text||'').length*11*0.60)+12, lh=19;
       if(x>=an.x-4 && x<=an.x+lw+4 && y>=an.y-lh/2-4 && y<=an.y+lh/2+4){
         if(typeof _calloutEditText==='function') _calloutEditText(cs.id);
+        e.stopPropagation(); return;
+      }
+    }
+    /* wind / fuel cell / genset: double-click the symbol to edit its kW */
+    for(var gi=S.shapes.length-1;gi>=0;gi--){
+      var gs=S.shapes[gi];
+      if(gs.kind!=='derwind' && gs.kind!=='deralt') continue;
+      if(!gs.pts || !gs.pts[0]) continue;
+      var gppf=(typeof S!=='undefined' && S.pxPerFt && S.pxPerFt>0) ? S.pxPerFt : 6;
+      var gw=Math.max(18,(gs.lf||10)*gppf), gh=Math.max(18,(gs.wf||6)*gppf);
+      var gx=gs.pts[0].x, gy=gs.pts[0].y;
+      if(x>=gx-gw/2 && x<=gx+gw/2 && y>=gy-gh/2 && y<=gy+gh/2){
+        if(typeof selectShape==='function') selectShape(gs.id);
+        if(typeof derEditKw==='function') derEditKw(gs.id);
         e.stopPropagation(); return;
       }
     }
