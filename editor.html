@@ -8011,7 +8011,16 @@ function renderEl(el){
         + (el.spec?'<div class="nd-spec">'+el.spec+'</div>':'')
         + '</div>' : '');
   } else if(el.type==='text'){
-    inner=`<div class="elbody txt-el" style="min-width:${el.w||140}px;transform:rotate(${el.rot||0}deg);touch-action:none;cursor:grab">${el.label||'Double-click to edit'}</div>`;
+    /* Scale the note with the drawing so it grows and shrinks with the map
+       instead of staying a fixed screen size at every zoom (which is why it
+       read as "doesn't scale"). Clamped so it stays legible when zoomed far
+       out and doesn't become enormous when zoomed far in. The inline
+       font-size/padding override the fixed values in the .txt-el rule. */
+    var _tppf=(typeof S!=='undefined' && S.pxPerFt && S.pxPerFt>0) ? S.pxPerFt : 6;
+    var _tfs=Math.max(10, Math.min(22, _tppf*1.1));
+    var _tpadY=Math.round(_tfs*0.5), _tpadX=Math.round(_tfs*0.85);
+    var _tmin=Math.round((el.w||140) * (_tfs/12));
+    inner=`<div class="elbody txt-el" style="min-width:${_tmin}px;font-size:${_tfs}px;padding:${_tpadY}px ${_tpadX}px;transform:rotate(${el.rot||0}deg);touch-action:none;cursor:grab">${el.label||'Double-click to edit'}</div>`;
   } else if(el.type==='callout'){
     inner=`<div class="elbody callout-el" style="min-width:${el.w||120}px;transform:rotate(${el.rot||0}deg);touch-action:none;cursor:grab">  ${el.label||'Click to edit'}</div>`;
   } else if(el.type==='logo'){
@@ -10363,6 +10372,11 @@ function _drawShapeHandles(sh){
   dt.setAttribute('x',dx); dt.setAttribute('y',dy+3);
   dt.setAttribute('text-anchor','middle'); dt.setAttribute('font-size','9'); dt.setAttribute('fill','#fff');
   dt.setAttribute('font-family','monospace'); dt.setAttribute('pointer-events','none');
+  /* Exempt from the Labels toggle. This glyph is a <text> node, so full
+     Labels-off mode's blanket text-hide rule swallowed it and left a bare
+     red dot with nothing in it -- the same defect already fixed on the
+     callout and dimension delete buttons, missed here. */
+  dt.setAttribute('class','omega-annotate');
   dt.textContent='x';
   del.appendChild(dt);
   del.addEventListener('mousedown',function(ev){ ev.stopPropagation(); ev.preventDefault(); deleteSelectedShape(); });
@@ -17617,7 +17631,7 @@ function setMode(m){
   var _bc=document.getElementById('btn-cond'); if(_bc) _bc.className=`btn btn-ghost${m==='conduit'?' btn-cond':''}`;
   // Sync the new grouped menu bar + status chip
   if(typeof mbSyncMode==='function') mbSyncMode(m);
-  var _covOn = (m==='conduit') || (typeof SHAPE_MODES!=='undefined' && !!SHAPE_MODES[m])
+  var _covOn = (m==='conduit') || (m==='dimension') || (typeof SHAPE_MODES!=='undefined' && !!SHAPE_MODES[m])
     || m==='clusterplace' || m==='dcclusterplace' || m==='emsplace' || m==='sourceplace' || m==='topoinsert' || m==='chargerplace' || m==='derbuildplace' || m==='wizplace' || m==='dcfcplace' || m==='bgbplace';
   document.getElementById('cov').classList.toggle('on',_covOn);
   if(m==='conduit')showBanner('cond',' Click START point -- or click directly on an element to snap');
@@ -36955,20 +36969,22 @@ function _cancelDimension() {
   if(prev) prev.remove();
 }
 
-// Hook into the canvas click handler for dimension mode
+// Hook into the canvas click handler for dimension mode.
+// NOTE: this listener is on #sc, which is pointer-events:none whenever a
+// live map is the input surface -- so on a satellite project the clicks
+// never arrived here and the tool appeared to do nothing. The authoritative
+// path is now the #cov capture layer (see the covClick hook below); this
+// listener is kept only for the no-map/blank-canvas case, where #cov is
+// still the one that fires, so in practice the hook below does the work.
 const _origCanvasClick = window._canvasClickHandler || null;
-document.getElementById('sc')?.addEventListener('click', function(e) {
-  if(S.mode !== 'dimension') return;
-  const scr = document.getElementById('sc').getBoundingClientRect();
-  const x = e.clientX - scr.left;
-  const y = e.clientY - scr.top;
-
+/* Shared placement step, driven from whichever surface received the click.
+   Takes a point already converted to MODEL space. */
+function _dimClickAt(x, y){
   if(!_dimState) {
-    // First click -- set start point
     _dimState = {x1:x, y1:y};
     showBanner('wiz', '  Click END point of dimension line');
-    // Show start dot
     const svg = document.getElementById('csvg');
+    document.getElementById('dim-start-dot')?.remove();
     let dot = document.createElementNS('http://www.w3.org/2000/svg','circle');
     dot.id = 'dim-start-dot';
     dot.setAttribute('cx',x); dot.setAttribute('cy',y);
@@ -36976,25 +36992,71 @@ document.getElementById('sc')?.addEventListener('click', function(e) {
     dot.setAttribute('stroke','white'); dot.setAttribute('stroke-width','1.5');
     svg.appendChild(dot);
   } else {
-    // Second click -- place dimension
     const {x1,y1} = _dimState;
-    const x2=x, y2=y;
-    _placeDimension(x1,y1,x2,y2);
-    // Clean up
+    _placeDimension(x1,y1,x,y);
     document.getElementById('dim-start-dot')?.remove();
     document.getElementById('dim-preview')?.remove();
     _dimState = null;
     setMode('select');
     showBanner('wiz','OK Dimension placed -- click to select and edit the label');
   }
+}
+/* Route dimension clicks through the same #cov capture layer + coordinate
+   conversion that every other placement tool uses. Without the conversion
+   the dimension was authored in raw screen pixels while its geo-anchor was
+   computed as if they were model coordinates. */
+(function(){
+  if(typeof shapeCovClick !== 'function') return;
+  var _origDimClick = shapeCovClick;
+  window.shapeCovClick = function(e){
+    if(typeof S!=='undefined' && S.mode==='dimension'){
+      e.stopPropagation();
+      var p=(typeof _scPt==='function') ? _scPt(e) : {x:e.clientX, y:e.clientY};
+      _dimClickAt(p.x, p.y);
+      return;
+    }
+    return _origDimClick(e);
+  };
+})();
+/* Route dimension clicks off the #cov capture layer directly.
+   Two earlier attempts failed for reasons worth recording:
+     1. Listening on #sc -- that layer is pointer-events:none whenever a live
+        map is the input surface, so clicks never arrived on a map project.
+     2. Wrapping shapeCovClick -- #cov only forwards to that dispatcher for
+        modes registered in SHAPE_MODES, and 'dimension' is not one, so the
+        wrapper was never invoked either.
+   #cov itself does receive the click (setMode adds .on for dimension mode,
+   which flips its pointer-events to auto), so bind here and convert the
+   point to model space the same way every other tool does. */
+(function(){
+  var cov=document.getElementById('cov'); if(!cov) return;
+  cov.addEventListener('click', function(e){
+    if(typeof S==='undefined' || S.mode!=='dimension') return;
+    e.stopPropagation(); if(e.cancelable) e.preventDefault();
+    var p=(typeof _scPt==='function') ? _scPt(e) : {x:e.clientX, y:e.clientY};
+    _dimClickAt(p.x, p.y);
+  }, true);
+  cov.addEventListener('mousemove', function(e){
+    if(typeof S==='undefined' || S.mode!=='dimension' || !_dimState) return;
+    var p=(typeof _scPt==='function') ? _scPt(e) : {x:e.clientX, y:e.clientY};
+    _dimPreviewTo(p.x, p.y);
+  }, true);
+})();
+document.getElementById('sc')?.addEventListener('click', function(e) {
+  if(S.mode !== 'dimension') return;
+  if(document.getElementById('cov')?.classList.contains('on')) return; /* #cov owns it */
+  const p = (typeof _scPt==='function') ? _scPt(e) : (function(){
+    const scr = document.getElementById('sc').getBoundingClientRect();
+    return { x:e.clientX - scr.left, y:e.clientY - scr.top };
+  })();
+  _dimClickAt(p.x, p.y);
 });
 
-// Live preview line while in dimension mode
-document.getElementById('sc')?.addEventListener('mousemove', function(e) {
-  if(S.mode !== 'dimension' || !_dimState) return;
-  const scr = document.getElementById('sc').getBoundingClientRect();
-  const x2 = e.clientX - scr.left;
-  const y2 = e.clientY - scr.top;
+// Live preview line while in dimension mode. Body extracted so the #cov
+// capture layer can drive it too (see the #cov binding above) -- #sc alone
+// never receives the move events on a live-map project.
+function _dimPreviewTo(x2, y2){
+  if(!_dimState) return;
   const {x1,y1} = _dimState;
   const svg = document.getElementById('csvg');
   let prev = document.getElementById('dim-preview');
@@ -37008,6 +37070,15 @@ document.getElementById('sc')?.addEventListener('mousemove', function(e) {
   prev.innerHTML = `
     <line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="#00D4FF" stroke-width="1.5" stroke-dasharray="6 3" opacity=".7"/>
     <text x="${(x1+x2)/2}" y="${(y1+y2)/2-6}" text-anchor="middle" fill="#00D4FF" font-size="11" font-family="monospace" font-weight="700">${ft}</text>`;
+}
+document.getElementById('sc')?.addEventListener('mousemove', function(e) {
+  if(S.mode !== 'dimension' || !_dimState) return;
+  if(document.getElementById('cov')?.classList.contains('on')) return; /* #cov owns it */
+  const _pp = (typeof _scPt==='function') ? _scPt(e) : (function(){
+    const scr = document.getElementById('sc').getBoundingClientRect();
+    return { x:e.clientX - scr.left, y:e.clientY - scr.top };
+  })();
+  _dimPreviewTo(_pp.x, _pp.y);
 });
 
 function _placeDimension(x1,y1,x2,y2) {
@@ -52914,9 +52985,6 @@ function _renderEstimate(host){
     + '<div style="padding:12px 20px;border-top:1px solid rgba(255,255,255,.08);background:rgba(0,0,0,.2);border-radius:0 0 12px 12px;display:flex;gap:8px">'
     +   '<button onclick="window._elecExportCSV()" style="flex:1;padding:10px;background:linear-gradient(135deg,#1DB95A,#00D4FF);color:#0A1628;font-weight:700;font-size:12px;border:none;border-radius:7px;cursor:pointer;font-family:inherit">⬇ Export Estimate CSV</button>'
     +   '<button onclick="window._elecPrint()" style="padding:10px 16px;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.15);color:#E8F0FE;font-weight:600;font-size:12px;border-radius:7px;cursor:pointer;font-family:inherit">🖨 Bid Sheet</button>'
-    +   (window._elecWorkbookHost()
-          ? '<button onclick="window._elecOpenWorkbook()" title="Build the utility program form and the customer proposal from this estimate" style="padding:10px 16px;background:rgba(197,165,90,.16);border:1px solid rgba(197,165,90,.42);color:#C5A55A;font-weight:700;font-size:12px;border-radius:7px;cursor:pointer;font-family:inherit">EV Cost Workbook</button>'
-          : '')
     + '</div>'
     + '<div style="padding:0 20px 14px;font-size:8.5px;color:#6B8299;line-height:1.5">Labor units are NECA-style crew-hours (normal conditions); material prices are indicative and trued up at order time in the marketplace portal (Rexel / City Electric Supply). Edit any knob to reprice live. Estimates are indicative only — verify field conditions and utility requirements.</div>'
     + '</div>';
@@ -53185,81 +53253,6 @@ window._elecPrint=function(){
     +'</body></html>');
   w.document.close();
   setTimeout(function(){ try{ w.print(); }catch(e){} }, 350);
-};
-
-/* ----------------------------------------------------------------------
-   HANDOFF -> EV MAKE-READY COST WORKBOOK
-   Packs the priced estimate (material $ + labor $ per line, already carrying
-   any estimator overrides) into localStorage and opens the workbook tool,
-   which maps the lines into the utility application and customer proposal.
-   ---------------------------------------------------------------------- */
-/* The editor is served to every tenant through the shared rewrite, but the
-   cost workbook lives only on the internal OMEGA portal. Show the button
-   there and nowhere else, so a tenant never sees a control that leads to a
-   locked page. */
-var _EV_WB_HOSTS  = ['alpha.clearskyomega.com','localhost','127.0.0.1'];
-/* The workbook lives on the shared tools host with everything else, and the
-   console has no rewrite for it — so this is an absolute URL. */
-var _EV_WB_ORIGIN = 'https://tools.csebuilders.com';
-var _EV_WB_URL    = _EV_WB_ORIGIN + '/ev-cost-workbook.html';
-window._elecWorkbookHost = function(){
-  var h = String(location.hostname||'').toLowerCase(), i;
-  for(i=0;i<_EV_WB_HOSTS.length;i++){ if(h===_EV_WB_HOSTS[i]) return true; }
-  return false;
-};
-
-window._elecOpenWorkbook = function(){
-  if(!window._elecWorkbookHost()){
-    alert('The EV Cost Workbook runs on the internal OMEGA portal only.');
-    return;
-  }
-  var e = _EST; if(!e){ alert('Build the estimate first.'); return; }
-  var lines = [], i, l;
-  for(i=0; i<e.lines.length; i++){
-    l = e.lines[i];
-    lines.push({ category:l.category, description:l.description, size:l.size,
-                 qty:l.qty, unit:l.unit,
-                 mat:Math.round(l.mat*100)/100,
-                 lab:Math.round(l.hrs*ELEC_BID.crewRate*100)/100 });
-  }
-  var payload = {
-    lines: lines,
-    crewRate: ELEC_BID.crewRate,
-    trenchFt: (e.bom && e.bom.trenchFt) || 0,
-    site: {
-      applicant: (document.getElementById('pname')||{}).value || '',
-      address:   (document.getElementById('addr-in')||{}).value || ''
-    }
-  };
-
-  /* The console and the workbook sit on different origins, so localStorage
-     cannot carry this between them. postMessage is the only route, and it
-     needs the workbook to be listening first: it pings us when ready and we
-     reply once, to its origin only. */
-  var w = window.open(_EV_WB_URL, '_blank');
-  if(!w){ alert('Allow pop-ups to open the cost workbook.'); return; }
-
-  var sent = false;
-  function onReady(ev){
-    if(sent) return;
-    if(!ev.data || ev.data.type !== 'OMEGA_EV_COST_READY') return;
-    if(ev.origin !== _EV_WB_ORIGIN) return;
-    try{
-      w.postMessage({ type:'OMEGA_EV_COST', payload:payload }, _EV_WB_ORIGIN);
-      sent = true;
-    }catch(err){}
-    window.removeEventListener('message', onReady, false);
-  }
-  window.addEventListener('message', onReady, false);
-
-  setTimeout(function(){
-    window.removeEventListener('message', onReady, false);
-    if(!sent && typeof showBanner==='function'){
-      showBanner('warn','The workbook did not answer. Use Export Estimate CSV and paste it in.');
-    }
-  }, 15000);
-
-  if(typeof showBanner==='function') showBanner('cal','Sending the estimate to the EV Cost Workbook…');
 };
 
 /* ---- expose entry point ---- */
@@ -59982,6 +59975,17 @@ window._crmToastModal=_crmToastModal;
       if(nodes[i].parentNode) nodes[i].parentNode.removeChild(nodes[i]);
     }
     var n=nodes[0];
+    /* A text note's box is sized from the drawing scale, so when the scale
+       changes (any zoom) it must be RE-RENDERED, not just repositioned --
+       moving the node alone left it at the size it was authored at, which
+       is why it never scaled with the map. */
+    if(o.type==='text'){
+      var _ppfNow=(typeof S!=='undefined' && S.pxPerFt && S.pxPerFt>0) ? S.pxPerFt : 6;
+      if(o.__txtPpf!==_ppfNow){
+        o.__txtPpf=_ppfNow;
+        if(typeof renderEl==='function'){ try{ renderEl(o); return; }catch(e){} }
+      }
+    }
     n.style.left=o.x+'px';
     n.style.top =o.y+'px';
   }
