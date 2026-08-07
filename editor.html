@@ -37018,30 +37018,36 @@ function _dimClickAt(x, y){
     return _origDimClick(e);
   };
 })();
-/* Route dimension clicks off the #cov capture layer directly.
-   Two earlier attempts failed for reasons worth recording:
-     1. Listening on #sc -- that layer is pointer-events:none whenever a live
-        map is the input surface, so clicks never arrived on a map project.
-     2. Wrapping shapeCovClick -- #cov only forwards to that dispatcher for
-        modes registered in SHAPE_MODES, and 'dimension' is not one, so the
-        wrapper was never invoked either.
-   #cov itself does receive the click (setMode adds .on for dimension mode,
-   which flips its pointer-events to auto), so bind here and convert the
-   point to model space the same way every other tool does. */
+/* Matching move wrapper so the live preview line follows the cursor through
+   the same pipeline (the #sc mousemove listener is dead on a map project
+   for the same pointer-events reason as the click). */
 (function(){
-  var cov=document.getElementById('cov'); if(!cov) return;
-  cov.addEventListener('click', function(e){
-    if(typeof S==='undefined' || S.mode!=='dimension') return;
-    e.stopPropagation(); if(e.cancelable) e.preventDefault();
-    var p=(typeof _scPt==='function') ? _scPt(e) : {x:e.clientX, y:e.clientY};
-    _dimClickAt(p.x, p.y);
-  }, true);
-  cov.addEventListener('mousemove', function(e){
-    if(typeof S==='undefined' || S.mode!=='dimension' || !_dimState) return;
-    var p=(typeof _scPt==='function') ? _scPt(e) : {x:e.clientX, y:e.clientY};
-    _dimPreviewTo(p.x, p.y);
-  }, true);
+  if(typeof shapeCovMove !== 'function') return;
+  var _origDimMove = shapeCovMove;
+  window.shapeCovMove = function(e){
+    if(typeof S!=='undefined' && S.mode==='dimension'){
+      if(_dimState){
+        var p=(typeof _scPt==='function') ? _scPt(e) : {x:e.clientX, y:e.clientY};
+        _dimPreviewTo(p.x, p.y);
+      }
+      return;
+    }
+    return _origDimMove(e);
+  };
 })();
+/* Dimension placement rides the SAME pipeline as Callout / Zone Box /
+   Substation rather than binding its own listeners.
+
+   Previous attempts and why they failed:
+     1. Listening on #sc -- pointer-events:none once a live map is the input
+        surface, so clicks never arrived.
+     2. Binding directly to #cov with capture -- #cov sits above the map, and
+        capturing there blocked the map's own gestures, which is what made
+        the crosshair appear frozen.
+   Registering 'dimension' as a shape mode routes it through covClick ->
+   shapeCovClick, the path already proven by the other Annotate tools, with
+   no extra listeners competing with the map. */
+try{ if(typeof SHAPE_MODES!=='undefined') SHAPE_MODES.dimension = 1; }catch(e){}
 document.getElementById('sc')?.addEventListener('click', function(e) {
   if(S.mode !== 'dimension') return;
   if(document.getElementById('cov')?.classList.contains('on')) return; /* #cov owns it */
