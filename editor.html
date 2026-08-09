@@ -8751,7 +8751,12 @@ function globalMM(e){
     const el=S.elements.find(x=>x.id===S.rotating);
     const dom=document.querySelector(`[data-elid="${S.rotating}"]`);
     if(!el||!dom)return;
-    el.rot=Math.round(S.rotInit+(angle-S.rotStart));
+    /* Free rotation to the exact degree is almost never what you want on a
+       site plan — equipment sits square to a building or a drive aisle. Hold
+       SHIFT for 15-degree detents; plain drag stays free. */
+    var _rawR=S.rotInit+(angle-S.rotStart);
+    el.rot=_rotSnap(_rawR, e && e.shiftKey);
+    _rotReadout(el.rot, e && e.shiftKey);
     const bd=dom.querySelector('.elbody');
     if(bd){bd.style.transform=`rotate(${el.rot}deg)`;bd.style.transformOrigin='center center';}
     const eqBody=dom.querySelector('.eq-body');
@@ -10982,12 +10987,93 @@ function _shapeInteractMove(e){
     var sh3=S.shapes.find(function(s){return s.id===S.shapeRotate;}); if(!sh3) return true;
     var xy3=_evtXY(e);
     var ang=Math.atan2(xy3.y-S.shRotCy, xy3.x-S.shRotCx)*(180/Math.PI);
-    sh3.rot=Math.round(S.shStartRot + (ang-S.shStartAng));
+    var _rawS=S.shStartRot + (ang-S.shStartAng);
+    sh3.rot=_rotSnap(_rawS, e && e.shiftKey);
+    _rotReadout(sh3.rot, e && e.shiftKey);
     _refreshShape(sh3);
     return true;
   }
   return false;
 }
+/* 15-degree detents while SHIFT is down; normalised to 0-359 either way so a
+   long drag does not wind the value up past 360 and read as gibberish. */
+function _rotSnap(deg, shift){
+  var d = shift ? Math.round(deg/15)*15 : Math.round(deg);
+  d %= 360; if(d<0) d+=360;
+  return d;
+}
+window._rotSnap=_rotSnap;
+
+/* Live angle while dragging. Rotating blind and checking a side panel after
+   the fact is the slow part; the number belongs next to the cursor. */
+function _rotReadout(deg, shift){
+  var el=document.getElementById('rot-readout');
+  if(!el){
+    el=document.createElement('div');
+    el.id='rot-readout';
+    el.style.cssText='position:fixed;z-index:100050;pointer-events:none;'
+      +'background:rgba(8,14,26,.94);border:1px solid var(--accent,#22D3EE);'
+      +'color:#E2EEF9;border-radius:4px;padding:3px 7px;'
+      +"font:700 11px/1.2 'IBM Plex Mono',monospace;letter-spacing:.5px";
+    document.body.appendChild(el);
+  }
+  el.textContent = deg+'\u00b0' + (shift?'  \u00b7 15\u00b0 snap':'');
+  el.style.display='block';
+  var m=window._lastMouse||{x:innerWidth/2,y:innerHeight/2};
+  el.style.left=(m.x+16)+'px'; el.style.top=(m.y-28)+'px';
+  clearTimeout(window._rotReadoutT);
+  window._rotReadoutT=setTimeout(function(){ el.style.display='none'; }, 900);
+}
+document.addEventListener('mousemove', function(e){
+  window._lastMouse={x:e.clientX,y:e.clientY};
+}, true);
+
+/* Keyboard rotation for whatever is selected: R / Shift+R steps 15 deg,
+   Alt+R steps 1 deg for fine work, and 0 returns to square. Far quicker
+   than grabbing a small handle and dragging. */
+function rotateSelection(step){
+  var did=false;
+  try{
+    var el=(S.sel && S.elements) ? S.elements.find(function(x){return x.id===S.sel;}) : null;
+    if(el){
+      el.rot=_rotSnap((+el.rot||0)+step, false);
+      if(typeof _reRenderEl==='function') _reRenderEl(el.id);
+      var pr=document.getElementById('p-rot'); if(pr) pr.value=el.rot;
+      _rotReadout(el.rot,false); did=true;
+    }
+    var shId=S.shapeSel||S.selShape;
+    var sh=(shId && S.shapes) ? S.shapes.find(function(x){return x.id===shId;}) : null;
+    if(sh){
+      sh.rot=_rotSnap((+sh.rot||0)+step, false);
+      if(typeof _refreshShape==='function') _refreshShape(sh);
+      _rotReadout(sh.rot,false); did=true;
+    }
+  }catch(e){}
+  if(did && typeof pushHist==='function') pushHist();
+  return did;
+}
+window.rotateSelection=rotateSelection;
+
+document.addEventListener('keydown', function(e){
+  if(['INPUT','TEXTAREA','SELECT'].indexOf(e.target.tagName)>=0) return;
+  if(e.target.isContentEditable) return;
+  if(e.metaKey||e.ctrlKey) return;
+  var k=(e.key||'').toLowerCase();
+  if(k==='r'){
+    var step = e.altKey ? 1 : 15;
+    if(e.shiftKey) step = -step;
+    if(rotateSelection(step)) e.preventDefault();
+  } else if(k==='0' && !e.shiftKey && !e.altKey){
+    try{
+      var el2=(S.sel&&S.elements)?S.elements.find(function(x){return x.id===S.sel;}):null;
+      if(el2){ el2.rot=0; if(typeof _reRenderEl==='function') _reRenderEl(el2.id); e.preventDefault(); }
+      var sid=S.shapeSel||S.selShape;
+      var sh2=(sid&&S.shapes)?S.shapes.find(function(x){return x.id===sid;}):null;
+      if(sh2){ sh2.rot=0; if(typeof _refreshShape==='function') _refreshShape(sh2); e.preventDefault(); }
+    }catch(err){}
+  }
+});
+
 function _shapeInteractEnd(){
   if(S.shapeDrag||S.shapeResize||S.shapeRotate){
     /* Patch 8: capture which shape moved BEFORE the ids are cleared, then
