@@ -1611,7 +1611,7 @@ window.onerror = function(msg, src, line, col, err) {
   <div id="app-menu">
     <button class="menu-item" onclick="rbRun(newProject)"><span class="mi-ico">＋</span> New Project</button>
     <button class="menu-item" onclick="rbRun(openBessGuidedBuild)"><span class="mi-ico">🔋</span> BESS Guided Build</button>
-    <button class="menu-item" onclick="rbRun(openDcfcBuild)"><span class="mi-ico">🚗</span> EV Charging Build</button>
+    <button class="menu-item" onclick="rbRun(openDcfcBuild)"><span class="mi-ico">🚗</span> DCFC Build</button>
     <button class="menu-item" onclick="rbRun(openProjectsModal)"><span class="mi-ico">▤</span> Open Projects…</button>
     <button class="menu-item" onclick="rbRun(saveProject)"><span class="mi-ico">▽</span> Save<span class="mi-key">⌘S</span></button>
     <div class="menu-sep"></div>
@@ -1646,11 +1646,12 @@ window.onerror = function(msg, src, line, col, err) {
     <!-- Build flows, ordered by project type. One button per destination. -->
     <div class="rpanel">
       <div class="rpanel-body">
-        <button class="rbtn" onclick="_guidedPick('der')" title="DER Build &mdash; PV / wind / gas clusters sized by MW, auto-collected to a POI"><span class="rb-ico" style="color:#22C55E">&#9788;</span><span class="rb-lbl">DER<br>Build</span></button>
-        <button class="rbtn" onclick="openAutoLayout()" title="Auto-Layout Ground Mount &mdash; fill a drawn boundary with racking rows, respecting setbacks and exclusion zones. Reports tables, kW-DC and inverter blocks. Flat-ground takeoff estimator."><span class="rb-ico" style="color:#FBBF24">&#9640;</span><span class="rb-lbl">Auto<br>Layout</span></button>
-        <button class="rbtn" onclick="_guidedPick('standard')" title="BESS Build &mdash; draw trench runs and snap BESS &rarr; xfmr &rarr; switchgear &rarr; meter &rarr; POI (BTM/FOM)"><span class="rb-ico">&#128267;</span><span class="rb-lbl">BESS<br>Build</span></button>
-        <button class="rbtn" onclick="_guidedPick('deluxe')" title="Full Topology &mdash; source &rarr; BESS &rarr; EMS &rarr; XFMR &rarr; utility. Auto-trenched."><span class="rb-ico" style="color:#4ADE80">&#9889;</span><span class="rb-lbl">Full<br>Topology</span></button>
-        <button class="rbtn" onclick="_guidedPick('ev')" title="EV Charging &mdash; DCFC bank + AC distribution + BESS demand management"><span class="rb-ico" style="color:#F5A623">&#128663;</span><span class="rb-lbl">EV<br>Charging</span></button>
+        <button class="rbtn" onclick="_guidedPick('der')" title="DER Build &mdash; PV / wind / gas clusters sized by MW, auto-collected to a POI"><span class="rb-ico" style="color:#22C55E;display:inline-flex;align-items:center;justify-content:center"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2.8 14.2 L7.6 8.6 L12.4 8.6 L7.6 14.2 Z"/><line x1="5.4" y1="14.2" x2="9.6" y2="8.6"/><line x1="7.9" y1="14.2" x2="11.4" y2="8.6"/><line x1="7.4" y1="14.2" x2="7.4" y2="19.4"/><line x1="17.6" y1="19.4" x2="17.6" y2="10.6"/><line x1="17.6" y1="9.6" x2="17.6" y2="4.4"/><line x1="17.6" y1="9.6" x2="21.8" y2="12"/><line x1="17.6" y1="9.6" x2="13.4" y2="12"/><circle cx="17.6" cy="9.6" r="1.1" fill="currentColor" stroke="none"/><line x1="2" y1="19.4" x2="22" y2="19.4"/></svg></span><span class="rb-lbl">DER<br>Build</span></button>
+        <button class="rbtn" onclick="openAutoLayout()" title="Auto-Layout Ground Mount &mdash; fill a drawn boundary with racking rows, respecting setbacks and exclusion zones. Reports tables, kW-DC and inverter blocks. Flat-ground takeoff estimator."><span class="rb-ico" style="color:#FBBF24;display:inline-flex;align-items:center;justify-content:center"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2.6" y="4.4" width="18.8" height="15.2" rx="1.5" stroke-dasharray="2.6 2"/><line x1="5.6" y1="8.4" x2="18.4" y2="8.4" stroke-width="2.4"/><line x1="5.6" y1="12" x2="18.4" y2="12" stroke-width="2.4"/><line x1="5.6" y1="15.6" x2="13.6" y2="15.6" stroke-width="2.4"/></svg></span><span class="rb-lbl">Auto<br>Layout</span></button>
+        <button class="rbtn" onclick="_guidedPick('standard')" title="BESS Build &mdash; draw trench runs and snap BESS &rarr; xfmr &rarr; switchgear &rarr; meter &rarr; POI (BTM/FOM)"><span class="rb-ico" style="color:#4ADE80;display:inline-flex;align-items:center;justify-content:center"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2.2" y="6.8" width="17" height="10.4" rx="1.6"/><line x1="10.7" y1="6.8" x2="10.7" y2="17.2"/><line x1="4.8" y1="10" x2="8.6" y2="10"/><line x1="4.8" y1="12" x2="8.6" y2="12"/><line x1="4.8" y1="14" x2="8.6" y2="14"/><line x1="12.8" y1="10" x2="16.6" y2="10"/><line x1="12.8" y1="12" x2="16.6" y2="12"/><line x1="12.8" y1="14" x2="16.6" y2="14"/><rect x="19.2" y="10.4" width="2.6" height="3.4" rx=".7" fill="currentColor" stroke="none"/></svg></span><span class="rb-lbl">BESS<br>Build</span></button>
+        <button class="rbtn" onclick="_guidedPick('deluxe')" title="Full Topology &mdash; source &rarr; BESS &rarr; EMS &rarr; XFMR &rarr; utility. Auto-trenched."><span class="rb-ico" style="color:#4ADE80;display:inline-flex;align-items:center;justify-content:center"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="3.6" r="2.1" fill="currentColor" stroke="none"/><line x1="12" y1="5.7" x2="12" y2="9"/><line x1="4.5" y1="9" x2="19.5" y2="9"/><line x1="4.5" y1="9" x2="4.5" y2="12"/><line x1="12" y1="9" x2="12" y2="12"/><line x1="19.5" y1="9" x2="19.5" y2="12"/><rect x="2.4" y="12" width="4.2" height="4.2" rx="1"/><rect x="9.9" y="12" width="4.2" height="4.2" rx="1"/><rect x="17.4" y="12" width="4.2" height="4.2" rx="1"/><line x1="12" y1="16.2" x2="12" y2="20.4"/><line x1="8.5" y1="20.4" x2="15.5" y2="20.4"/></svg></span><span class="rb-lbl">Full<br>Topology</span></button>
+        <button class="rbtn" onclick="_guidedPick('l2')" title="Level 2 &mdash; 240V 1&Oslash; off an existing service. Meter bank &rarr; outdoor panel &rarr; trench &rarr; EVSE."><span class="rb-ico" style="color:#22D3EE;display:inline-flex;align-items:center;justify-content:center"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4.5" y="3" width="10" height="17" rx="2"/><rect x="6.8" y="6" width="5.4" height="4" rx="1" fill="currentColor" stroke="none" opacity=".45"/><line x1="7" y1="13" x2="12" y2="13"/><line x1="7" y1="15.5" x2="10" y2="15.5"/><path d="M14.5 11.5c3 0 4.5 1.5 4.5 4v1.5"/><circle cx="19" cy="19" r="2" fill="currentColor" stroke="none"/></svg></span><span class="rb-lbl">Level<br>2</span></button>
+        <button class="rbtn" onclick="_guidedPick('ev')" title="DCFC &mdash; DC fast charging bank + AC distribution + BESS demand management"><span class="rb-ico" style="color:#F5A623;display:inline-flex;align-items:center;justify-content:center"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="7.4" y="2.6" width="9.2" height="15.6" rx="2"/><rect x="9.3" y="5" width="5.4" height="4.6" rx="1" fill="currentColor" stroke="none" opacity=".45"/><line x1="9.6" y1="12" x2="14.4" y2="12"/><line x1="9.6" y1="14.4" x2="12.6" y2="14.4"/><path d="M7.4 11.2c-3 0-4.4 1.6-4.4 4v1.4"/><circle cx="3" cy="18.6" r="1.8" fill="currentColor" stroke="none"/><path d="M16.6 11.2c3 0 4.4 1.6 4.4 4v1.4"/><circle cx="21" cy="18.6" r="1.8" fill="currentColor" stroke="none"/><line x1="6" y1="20.8" x2="18" y2="20.8"/></svg></span><span class="rb-lbl">DCFC<br>Build</span></button>
       </div>
       <div class="rpanel-cap">2 &middot; Build</div>
     </div>
@@ -1659,7 +1660,7 @@ window.onerror = function(msg, src, line, col, err) {
       <div class="rpanel-body">
         <button class="rbtn" onclick="openBessModal(null)" title="BESS Config &mdash; size the battery, set chemistry, run the value stack"><span class="rb-ico" style="color:#00D4FF">&#9881;</span><span class="rb-lbl">BESS<br>Config</span></button>
         <button class="rbtn" onclick="openSolarBessSizer()" title="Solar &rarr; BESS Sizer &mdash; size storage from the solar drawn on the sitemap"><span class="rb-ico" style="color:#FBBF24">&#9788;</span><span class="rb-lbl">Solar &rarr;<br>BESS</span></button>
-        <button class="rbtn" onclick="homeStartWizard('BTM')" title="Behind-the-meter guided flow &mdash; coming soon" style="position:relative;opacity:.72"><span class="rb-ico">&#9644;</span><span class="rb-lbl">BESS<br>BTM</span><span style="position:absolute;top:2px;right:3px;font-size:6.5px;font-weight:800;letter-spacing:.3px;background:rgba(245,158,11,.9);color:#1A1206;padding:1px 3px;border-radius:3px;line-height:1.2">SOON</span></button>
+        <button class="rbtn" onclick="homeStartWizard('BTM')" title="Behind-the-meter guided flow &mdash; coming soon" style="display:none;position:relative;opacity:.72"><span class="rb-ico">&#9644;</span><span class="rb-lbl">BESS<br>BTM</span><span style="position:absolute;top:2px;right:3px;font-size:6.5px;font-weight:800;letter-spacing:.3px;background:rgba(245,158,11,.9);color:#1A1206;padding:1px 3px;border-radius:3px;line-height:1.2">SOON</span></button>
         <button class="rbtn" onclick="homeStartWizard('FOM')" title="Solar + Storage single-pass flow — utility-first: POI to PV, branching at the 480V bus" style="position:relative;opacity:1"><span class="rb-ico" style="color:#FBBF24">&#9638;</span><span class="rb-lbl">Solar +<br>Storage</span><span style="position:absolute;top:2px;right:3px;font-size:6.5px;font-weight:800;letter-spacing:.3px;background:rgba(245,158,11,.9);color:#1A1206;padding:1px 3px;border-radius:3px;line-height:1.2">SOON</span></button>
       </div>
       <div class="rpanel-cap">3 &middot; Size &amp; Configure</div>
@@ -2874,7 +2875,7 @@ if(document.readyState==='loading'){
     </div>
     <div style="padding:0 10px 10px;display:flex;flex-direction:column;gap:6px">
       <button onclick="openBessGuidedBuild()" style="width:100%;padding:9px;background:rgba(34,197,94,.12);border:1px solid #22C55E;color:#22C55E;border-radius:7px;font-size:11px;font-weight:800;cursor:pointer;font-family:inherit;display:flex;align-items:center;gap:6px;justify-content:center">🔋 BESS Guided Build</button>
-      <button onclick="openDcfcBuild()" style="width:100%;padding:9px;background:rgba(245,166,35,.12);border:1px solid #F5A623;color:#F5A623;border-radius:7px;font-size:11px;font-weight:800;cursor:pointer;font-family:inherit;display:flex;align-items:center;gap:6px;justify-content:center">🚗 EV Charging Build</button>
+      <button onclick="openDcfcBuild()" style="width:100%;padding:9px;background:rgba(245,166,35,.12);border:1px solid #F5A623;color:#F5A623;border-radius:7px;font-size:11px;font-weight:800;cursor:pointer;font-family:inherit;display:flex;align-items:center;gap:6px;justify-content:center">🚗 DCFC Build</button>
       <div style="font-size:9px;color:var(--sub);line-height:1.5;padding-top:2px">Draw trench runs point-by-point, snap equipment onto the line, and conduit + trenching + BOM update automatically.</div>
     </div>
     <!-- Hidden legacy stubs: keep these IDs present so older wizard code no-ops
@@ -5905,6 +5906,9 @@ const CTYPES=[
   {id:'EV-FEEDER', label:'Feeder (xfmr\u2192panel)',    color:'#FFFF00', dash:'',    sw:4,   size:'3" PVC UG (KCMIL AL)'},
   {id:'EV-BRANCH', label:'Branch (panel\u2192charger)', color:'#00FFFF', dash:'',    sw:3.5, size:'3" PVC UG (Cu THHN)'},
   {id:'EV-SPARE',  label:'Future / spare',           color:'#00FF00', dash:'6 5', sw:3.5, size:'capped, no conductors'},
+  // -- Level 2 EVSE legend (240V 1-phase -- ClearSky site-map convention) --
+  {id:'L2-INT',    label:'Interior conduit (240V 1\u00D8)', color:'#FFD60A', dash:'',    sw:3,   size:'3/4" EMT'},
+  {id:'L2-TRENCH', label:'Trench (panel\u2192EVSE)',        color:'#22D3EE', dash:'',    sw:4,   size:'2" PVC Sch 40'},
   {id:'custom',  label:'Custom',            color:'#10B981', dash:'8 3 2 3',sw:2.5},
 ];
 /* Medium-voltage cable options for the utility trench (adjustable by system size). */
@@ -6678,6 +6682,7 @@ function renderCtypes(){
 // Set S.condRoute -> route + trenchIn fields on a conduit object.
 function _applyRouteToConduit(c, mode){
   if(mode==='trench-ground'){ c.route='trench'; c.trenchIn='ground'; }
+  else if(mode==='trench-asphalt'){ c.route='trench'; c.trenchIn='asphalt'; }
   else if(mode==='trench-concrete'){ c.route='trench'; c.trenchIn='concrete'; }
   else { c.route='surface'; delete c.trenchIn; }
 }
@@ -6701,8 +6706,15 @@ function applyRouteToAll(scope){
 // Cycle a single conduit's routing method (surface -> ground -> concrete).
 function cycleConduitRoute(id){
   var c=S.conduits.find(function(x){return x.id===id;}); if(!c) return;
-  var cur = c.route==='trench' ? (c.trenchIn==='concrete'?'trench-concrete':'trench-ground') : 'surface';
-  var next = cur==='surface' ? 'trench-ground' : cur==='trench-ground' ? 'trench-concrete' : 'surface';
+  var cur = c.route==='trench'
+              ? (c.trenchIn==='concrete' ? 'trench-concrete'
+               : c.trenchIn==='asphalt'  ? 'trench-asphalt'
+               : 'trench-ground')
+              : 'surface';
+  var next = cur==='surface'        ? 'trench-ground'
+           : cur==='trench-ground'  ? 'trench-asphalt'
+           : cur==='trench-asphalt' ? 'trench-concrete'
+           : 'surface';
   _applyRouteToConduit(c, next);
   var g=document.querySelector('[data-cid="'+c.id+'"]'); if(g&&g.parentNode) g.parentNode.removeChild(g);
   renderConduit(c);
@@ -9169,26 +9181,71 @@ function _renderUtility(g, sh){
   t.setAttribute('font-weight','700'); t.setAttribute('fill',_shapeInk(sh));
   t.setAttribute('class','omega-utillabel');
   t.textContent=def.abbr; g.appendChild(t);
-  /* label under the box: a simple dark chip with the component name. Draw
-     components are auto-labeled -- no callout controls (drag / close) here;
-     a deliberate callout comes from the Annotate tab instead. */
+  /* Label under the box. This used to be a bespoke amber chip with no
+     controls, which read as a solid black slab on the drawing and could not
+     be dismissed. It now matches the .nd-lbl callouts the guided builds put
+     under equipment: same fill, same radius, white text, and a hover X that
+     hides it. A Draw component and a guided-build component should not label
+     themselves differently on the same sheet. */
+  /* Off by default. The abbreviation glyph identifies the box on the
+     drawing and the full name is carried in the legend, so a chip under
+     every component was duplicating information and covering the plan.
+     toggleShapeLabel() turns one back on when a sheet needs it called out. */
+  if(!sh.showLabel) return;
   var lfs=Math.max(10, Math.min(15, w*0.14));
   var txt=(sh.label||def.label||'UTILITY');
-  var lw=txt.length*lfs*0.58+12, lx=sh.cx-lw/2, ly=y+h+4, lh=lfs+8;
+  var lw=Math.max(28, txt.length*lfs*0.56+16), lx=sh.cx-lw/2, ly=y+h+5, lh=lfs+8;
   var chip=_mkNS('rect');
   chip.setAttribute('x',lx); chip.setAttribute('y',ly);
   chip.setAttribute('width',lw); chip.setAttribute('height',lh);
-  chip.setAttribute('rx',4); chip.setAttribute('fill','rgba(10,12,22,0.88)');
-  chip.setAttribute('stroke','rgba(245,158,11,0.35)'); chip.setAttribute('stroke-width','1');
+  chip.setAttribute('rx',5); chip.setAttribute('fill','rgba(10,12,22,0.88)');
+  chip.setAttribute('stroke','rgba(255,255,255,0.10)'); chip.setAttribute('stroke-width','1');
   chip.setAttribute('class','omega-utillabel'); chip.setAttribute('pointer-events','none');
   g.appendChild(chip);
   var lb=_mkNS('text');
   lb.setAttribute('x',sh.cx); lb.setAttribute('y',ly+lfs+1);
   lb.setAttribute('text-anchor','middle'); lb.setAttribute('font-size',lfs);
-  lb.setAttribute('font-weight','700'); lb.setAttribute('fill','#F5C871');
+  lb.setAttribute('font-weight','700'); lb.setAttribute('fill','#FFFFFF');
   lb.setAttribute('class','omega-utillabel'); lb.setAttribute('pointer-events','none');
   lb.textContent=txt; g.appendChild(lb);
+
+  /* Hover X, mirroring .lbl-hide-btn on the HTML callouts. Hidden until the
+     shape group is hovered so it never prints or clutters a clean view. */
+  var bx=lx+lw, by=ly, br=Math.max(6, lfs*0.55);
+  var kill=_mkNS('g');
+  kill.setAttribute('class','omega-utillabel omega-lblkill');
+  kill.setAttribute('style','cursor:pointer;opacity:0;transition:opacity .12s');
+  var kc=_mkNS('circle');
+  kc.setAttribute('cx',bx); kc.setAttribute('cy',by); kc.setAttribute('r',br);
+  kc.setAttribute('fill','#0A0C16'); kc.setAttribute('stroke','rgba(255,255,255,0.35)');
+  kc.setAttribute('stroke-width','1');
+  kill.appendChild(kc);
+  var kx=_mkNS('text');
+  kx.setAttribute('x',bx); kx.setAttribute('y',by+br*0.62);
+  kx.setAttribute('text-anchor','middle'); kx.setAttribute('font-size',br*1.5);
+  kx.setAttribute('font-weight','700'); kx.setAttribute('fill','#E2EEF9');
+  kx.setAttribute('pointer-events','none');
+  kx.textContent='\u00d7';
+  kill.appendChild(kx);
+  kill.addEventListener('mousedown', function(ev){ ev.stopPropagation(); });
+  kill.addEventListener('click', function(ev){
+    ev.stopPropagation(); ev.preventDefault(); toggleShapeLabel(sh.id);
+  });
+  g.appendChild(kill);
+  g.addEventListener('mouseenter', function(){ kill.style.opacity='1'; });
+  g.addEventListener('mouseleave', function(){ kill.style.opacity='0'; });
 }
+
+/* Hide / show a drawn component's label. Same idea as toggleElLabel for
+   HTML-rendered equipment, but shapes live in the SVG layer. */
+function toggleShapeLabel(id){
+  var sh=(S.shapes||[]).filter(function(x){return x.id===id;})[0];
+  if(!sh) return;
+  sh.showLabel=!sh.showLabel;
+  renderShape(sh);
+  if(typeof pushHist==='function') pushHist();
+}
+window.toggleShapeLabel=toggleShapeLabel;
 function _placeBesPad(p){
   /* If the user has pre-set a quantity/model via Config (quick mode), auto-place
      immediately at the clicked point using those settings -- this preserves the
@@ -11039,7 +11096,8 @@ function renderEngLegend(){
     var c=list[i];
     var ct=(typeof CTYPES!=='undefined')?(CTYPES.filter(function(x){return x.id===c.condType;})[0]||CTYPES[0]):{label:'',size:''};
     var route=(c.route==='trench')
-      ? (c.trenchIn==='concrete'?'TRENCH, SAWCUT CONC.':'TRENCH, IN-GROUND')
+      ? (c.trenchIn==='concrete'?'TRENCH, SAWCUT CONC.':
+         c.trenchIn==='asphalt' ?'TRENCH, SAWCUT ASPHALT':'TRENCH, IN-GROUND')
       : (c.route==='surface'?'SURFACE MTD.':'\u2014');
     var key=c.condType+'|'+route;
     if(!groups[key]){
@@ -13922,7 +13980,8 @@ function renderConduit(c){
     const band=document.createElementNS('http://www.w3.org/2000/svg','polyline');
     band.setAttribute('points',c.pts.map(p=>`${p.x},${p.y}`).join(' '));
     band.setAttribute('stroke', _eng ? 'rgba(0,0,0,.16)'
-      : (c.trenchIn==='concrete' ? 'rgba(160,160,160,.45)' : 'rgba(120,72,32,.45)'));
+      : (c.trenchIn==='concrete' ? 'rgba(160,160,160,.45)' :
+         c.trenchIn==='asphalt'  ? 'rgba(60,60,60,.55)'    : 'rgba(120,72,32,.45)'));
     band.setAttribute('stroke-width', (_eng?_lt.sw:(+ct.sw))+7);
     band.setAttribute('fill','none');
     band.setAttribute('stroke-linecap','round');band.setAttribute('stroke-linejoin','round');
@@ -13962,7 +14021,8 @@ function renderConduit(c){
   const distTxt = S.pxPerFt ? fmtLen(c.ftLen) : Math.round(c.pxLen) + 'px';
   const condSize = ct.size ? ' [' + ct.size + ']' : '';
   const routeTag = c.route === 'trench'
-      ? (c.trenchIn === 'concrete' ? ' . TRENCH (SAWCUT CONCRETE)' : ' . TRENCH (IN-GROUND)')
+      ? (c.trenchIn === 'concrete' ? ' . TRENCH (SAWCUT CONCRETE)' :
+         c.trenchIn === 'asphalt'  ? ' . TRENCH (SAWCUT ASPHALT)'  : ' . TRENCH (IN-GROUND)')
       : (c.route === 'surface' ? ' . SURFACE MOUNT' : '');
   const _fullLbl = (c.label || ct.label) + condSize + ' . ' + distTxt + routeTag;
   // ENG mode: the drawing carries a short keyed tag (C1, C2...) and the
@@ -14625,6 +14685,43 @@ function renderLegend(){
   if(eqRows){
     h+='<div style="font-size:8px;font-weight:800;letter-spacing:.8px;opacity:.6;margin:2px 0 4px">EQUIPMENT</div>'+eqRows;
   }
+
+  /* ---- UTILITY / BOP ---------------------------------------------
+     Drawn utility components (kind:'utility') were rendered on the plan
+     but never counted anywhere: the shape loop above returns early for
+     any non-EV kind, and buildBOM does not read S.shapes. With the label
+     chip off by default the legend is now the only place the full name
+     appears, so it has to carry them. Grouped by type with the footprint,
+     which is what a reviewer checks against a cut sheet. */
+  try{
+    var uGroups={}, uOrder=[], uTotal=0;
+    (S.shapes||[]).forEach(function(sh){
+      if(!sh || sh.kind!=='utility') return;
+      var cat=(typeof UTILITY_CATALOG!=='undefined')?(UTILITY_CATALOG[sh.utype]||{}):{};
+      var name=sh.label||cat.label||(sh.utype||'UTILITY').toUpperCase();
+      var key=sh.utype||name;
+      if(!uGroups[key]){
+        uGroups[key]={ name:name, abbr:cat.abbr||'', qty:0,
+                       lf:(sh.lf||cat.lf||0), wf:(sh.wf||cat.wf||0) };
+        uOrder.push(key);
+      }
+      uGroups[key].qty++; uTotal++;
+    });
+    if(uOrder.length){
+      h+='<div style="font-size:8px;font-weight:800;letter-spacing:.8px;opacity:.6;margin:8px 0 4px">UTILITY / BOP</div>';
+      uOrder.forEach(function(k){
+        var G=uGroups[k];
+        var fp=(G.lf&&G.wf)?(G.lf+"' \u00d7 "+G.wf+"'"):'';
+        h+='<div class="li"><div class="li-ico" style="font-size:8px;font-weight:800">'+(G.abbr||'\u25a3')+'</div>'
+          +'<span class="li-txt">'+G.name+(G.qty>1?(' \u00d7'+G.qty):'')
+          +(fp?('<br><span style="font-size:8px;opacity:.65">'+fp+' footprint</span>'):'')
+          +'</span></div>';
+      });
+      try{ window._utilLegendTotals={ units:uTotal, types:uOrder.length }; }catch(e){}
+    } else {
+      try{ window._utilLegendTotals={ units:0, types:0 }; }catch(e){}
+    }
+  }catch(e){}
 
   /* ---- CONDUIT (inline, so the legend stands alone) --------------- */
   try{
@@ -18819,6 +18916,63 @@ const WIZ_STEPS_FOM = [
 // AC Distribution is the central hub feeding both DCFC chargers and BESS
 // EMS / CSMS manages charging sessions and BESS dispatch
 // Based on reference EVSE+BESS diagram
+/* ── Level 2 EVSE, 240V single-phase ────────────────────────────────
+   Distinct from WIZ_STEPS_EVSE, which is the DCFC/BESS microgrid flow
+   (480V 3-phase, storage, PCS, EMS, CSMS). A Level 2 job on an existing
+   multifamily service has none of that: it taps an existing meter bank,
+   lands an outdoor panel, and trenches a branch to the stall. */
+const WIZ_STEPS_L2 = [
+  {
+    id:'l2_service', icon:'\u25A0',
+    title:'Place Existing Service / Meter Bank',
+    desc:'Mark where the utility already lands. On a multifamily building this is the existing meter bank -- note the meter count, since it decides whether the EVSE goes behind a house meter or gets its own. Nothing new is installed at this point; it is the origin of the run.',
+    action:'click-place',
+    eqId:'meter', label:'Existing Meter Bank', spec:'240/120V 1\u00D8 3-wire -- existing, verify available capacity',
+    btnLabel:'  Click to Place Existing Meter Bank',
+    editableSpec: true,
+  },
+  {
+    id:'l2_panel', icon:'\u25A0',
+    title:'Place Outdoor Panel / Disconnect',
+    desc:'The new EVSE subpanel or fused disconnect, typically surface-mounted on the exterior wall. The run from the service to here is usually interior conduit through the basement, so set its height above grade on the element -- a basement tap and a panel at 3 ft AGL is real vertical conduit the takeoff must carry.',
+    action:'click-place',
+    eqId:'panel', label:'Outdoor Panel / Disconnect', spec:'240V 1\u00D8 -- NEMA 3R -- sized per EVSE continuous load',
+    btnLabel:'  Click to Place Outdoor Panel',
+    wireFrom:'l2_service', wireType:'L2-INT', wireLabel:'Interior feed, service\u2192panel (EMT)',
+    editableSpec: true,
+  },
+  {
+    id:'l2_evse', icon:'\u26A1',
+    title:'Place Level 2 Charger',
+    desc:'Set the EVSE at the stall it serves. The branch from the outdoor panel is the trenched run -- after drawing it, set its routing to asphalt or in-ground, because a parking-lot saw cut and a lawn trench are not the same money.',
+    action:'click-place',
+    eqId:'charger', label:'Level 2 EVSE', spec:'240V 1\u00D8 -- 48A nameplate / 60A circuit -- verify nameplate',
+    btnLabel:'  Click to Place Level 2 Charger',
+    wireFrom:'l2_panel', wireType:'L2-TRENCH', wireLabel:'Branch, panel\u2192EVSE (2" PVC trench)',
+    editableSpec: true,
+  },
+  {
+    id:'l2_evse2', icon:'\u26A1',
+    title:'Place Additional Chargers (optional)',
+    desc:'Each additional port adds a branch from the same outdoor panel. Add the ports first, then check the panel and the existing service against total continuous load before this reaches an estimate.',
+    action:'click-place',
+    eqId:'charger', label:'Level 2 EVSE', spec:'240V 1\u00D8 -- matches primary EVSE unless noted',
+    btnLabel:'  Click to Place Additional Charger',
+    wireFrom:'l2_panel', wireType:'L2-TRENCH', wireLabel:'Branch, panel\u2192EVSE (2" PVC trench)',
+    editableSpec: true,
+    optional: true,
+  },
+  {
+    id:'l2_bollard', icon:'\u25A0',
+    title:'Place Bollards (optional)',
+    desc:'Impact protection at the stall. Often required by the property owner or the AHJ where a charger faces oncoming traffic, and it is cheap to include now and expensive to add after the pour.',
+    action:'click-place',
+    eqId:'bollard', label:'Protective Bollard', spec:'4" \u00D8 concrete-filled steel, painted',
+    btnLabel:'  Click to Place Bollard',
+    optional: true,
+  },
+];
+
 const WIZ_STEPS_EVSE = [
   {
     id:'bess', icon:' ',
@@ -19097,6 +19251,11 @@ function getWizSteps() {
   var discoInt    = _bessIntegrates('disco');
   var xfmrInt     = _bessIntegrates('xfmr');
 
+  // Level 2 mode: 240V 1-phase branch off an existing service. No storage.
+  if (_wizMode === 'L2') {
+    return _withConstructionStep(WIZ_STEPS_L2.slice());
+  }
+
   // EVSE+BESS mode: Autel topology — AC Distribution hub, DCFC, EMS, CSMS
   if (_wizMode === 'EVSE') {
     return _withConstructionStep(WIZ_STEPS_EVSE.slice());
@@ -19335,6 +19494,8 @@ function setWizMode(mode) {
   _wizOfftakerConfirmed = false;
   // EVSE mode implies an EV-charging offtaker by default.
   if(mode==='EVSE' && !_wizOfftaker){ setWizOfftaker('evcharging'); }
+  // Level 2 is likewise an EV-charging offtaker.
+  if(mode==='L2' && !_wizOfftaker){ setWizOfftaker('evcharging'); }
   renderWizardStep();
   renderStepIndicator();
   // Also sync the BTM/FOM radio button in BESS modal if it exists
@@ -19376,9 +19537,9 @@ function renderWizardStep() {
     document.getElementById('wiz-skip-btn').style.display = 'none';
     const extra = document.getElementById('wiz-step-extra');
     extra.innerHTML =
-      '<div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:8px">'      // BTM card
+      '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;margin-bottom:8px">'      // BTM card
       +'<div data-mode="BTM" onclick="setWizMode(this.dataset.mode)" style="cursor:pointer;border:2px solid '        +(_wizMode==='BTM'?'#60A5FA':'rgba(255,255,255,.1)')        +';border-radius:8px;padding:9px;background:'        +(_wizMode==='BTM'?'rgba(96,165,250,.1)':'rgba(0,0,0,.2)')+'">'        +'<div style="font-size:10px;font-weight:800;color:#60A5FA;margin-bottom:3px">⚡ BTM</div>'        +'<div style="font-size:9px;font-weight:700;color:var(--text);margin-bottom:3px">Behind the Meter</div>'        +'<div style="font-size:8px;color:var(--sub);line-height:1.4">Peak shaving + demand charge reduction. BESS → PCS → AC Disconnect → Transformer → EMS/SCADA → Switchgear → Building + Meter → Utility. Non-export. ComEd BESH eligible.</div>'      +'</div>'      // FOM card
-      +'<div data-mode="FOM" onclick="setWizMode(this.dataset.mode)" style="cursor:pointer;border:2px solid '        +(_wizMode==='FOM'?'#F59E0B':'rgba(255,255,255,.1)')        +';border-radius:8px;padding:9px;background:'        +(_wizMode==='FOM'?'rgba(245,158,11,.1)':'rgba(0,0,0,.2)')+'">'        +'<div style="font-size:10px;font-weight:800;color:#F59E0B;margin-bottom:3px">🔌 FOM</div>'        +'<div style="font-size:9px;font-weight:700;color:var(--text);margin-bottom:3px">Front of Meter</div>'        +'<div style="font-size:8px;color:var(--sub);line-height:1.4">PJM frequency regulation. BESS → Grid-Following Inverter → Transformer → Main Distribution Panel → Revenue Meter → Utility Grid. AC-coupled.</div>'      +'</div>'      +'</div>'      +'<div style="font-size:8px;color:var(--sub);padding:6px 8px;background:rgba(0,0,0,.2);border-radius:5px;line-height:1.5;margin-bottom:6px">'        +(_wizMode==='FOM'          ? '🔌 FOM: BESS → Grid-Following Inverter → Transformer → Main Distribution Panel → Revenue Meter → Utility. AC-coupled grid services.'          : '⚡ BTM: BESS → PCS → AC Disconnect → Utility Transformer → EMS/SCADA Controller → Main Switchgear → (Customer/Building Load) → Revenue Meter → Utility. EMS enforces non-export.')
+      +'<div data-mode="FOM" onclick="setWizMode(this.dataset.mode)" style="cursor:pointer;border:2px solid '        +(_wizMode==='FOM'?'#F59E0B':'rgba(255,255,255,.1)')        +';border-radius:8px;padding:9px;background:'        +(_wizMode==='FOM'?'rgba(245,158,11,.1)':'rgba(0,0,0,.2)')+'">'        +'<div style="font-size:10px;font-weight:800;color:#F59E0B;margin-bottom:3px">🔌 FOM</div>'        +'<div style="font-size:9px;font-weight:700;color:var(--text);margin-bottom:3px">Front of Meter</div>'        +'<div style="font-size:8px;color:var(--sub);line-height:1.4">PJM frequency regulation. BESS → Grid-Following Inverter → Transformer → Main Distribution Panel → Revenue Meter → Utility Grid. AC-coupled.</div>'      +'</div>'      +'<div data-mode="L2" onclick="setWizMode(this.dataset.mode)" style="cursor:pointer;border:2px solid '        +(_wizMode==='L2'?'#22D3EE':'rgba(255,255,255,.1)')        +';border-radius:8px;padding:9px;background:'        +(_wizMode==='L2'?'rgba(34,211,238,.1)':'rgba(0,0,0,.2)')+'">'        +'<div style="font-size:10px;font-weight:800;color:#22D3EE;margin-bottom:3px">\u26A1 LEVEL 2</div>'        +'<div style="font-size:9px;font-weight:700;color:var(--text);margin-bottom:3px">Level 2 EV Charging</div>'        +'<div style="font-size:8px;color:var(--sub);line-height:1.4">240V 1\u00D8 off an existing service. Meter bank \u2192 Outdoor Panel \u2192 Trench \u2192 EVSE. No storage, no transformer.</div>'      +'</div>'      +'</div>'      +'<div style="font-size:8px;color:var(--sub);padding:6px 8px;background:rgba(0,0,0,.2);border-radius:5px;line-height:1.5;margin-bottom:6px">'        +(_wizMode==='L2'           ? '⚡ Level 2: Existing Meter Bank → Outdoor Panel (interior feed) → Trenched branch → Level 2 EVSE. 240V single-phase, no storage.'          : _wizMode==='FOM'          ? '🔌 FOM: BESS → Grid-Following Inverter → Transformer → Main Distribution Panel → Revenue Meter → Utility. AC-coupled grid services.'          : '⚡ BTM: BESS → PCS → AC Disconnect → Utility Transformer → EMS/SCADA Controller → Main Switchgear → (Customer/Building Load) → Revenue Meter → Utility. EMS enforces non-export.')
       +'</div>';
     const btn = document.getElementById('wiz-action-btn');
     btn.textContent = ' Next: Choose Offtaker ▸';
@@ -19876,7 +20037,9 @@ function _deviceElecNote(eqId, wizMode){
            'Utility-provided on utility interconnections',
       color:'#A855F7' };
     case 'panel': return {
-      label:(wizMode==='EVSE'?'AC DISTRIBUTION -- ELEC NOTE':'MAIN SWITCHBOARD -- ELEC NOTE'),
+      label:(wizMode==='EVSE'?'AC DISTRIBUTION -- ELEC NOTE':
+             wizMode==='L2'  ?'OUTDOOR PANEL -- ELEC NOTE':
+                              'MAIN SWITCHBOARD -- ELEC NOTE'),
       spec:'480Y/277V 3\u00d8 4W . '+_stdOCPD(fla*2)+'A bus\n'+
            'Main lug / main breaker . SCCR per study\n'+
            'BESS backfeed breaker '+ocpd+'A @ opposite end\n'+
@@ -20999,7 +21162,8 @@ async function _loadProject(id){
     if(d.offtaker){ S.offtaker = (typeof d.offtaker==='string') ? {name:d.offtaker} : d.offtaker; }
     if(d.wizMode && typeof _wizMode !== 'undefined') {
       _wizMode = d.wizMode;
-      _wizModeConfirmed = d.wizMode === 'BTM' || d.wizMode === 'FOM' || d.wizMode === 'EVSE';
+      _wizModeConfirmed = d.wizMode === 'BTM' || d.wizMode === 'FOM' ||
+                          d.wizMode === 'EVSE' || d.wizMode === 'L2';
       // Sync the mode selector radio buttons if visible
       var btmRad = document.getElementById('bm-mode-btm');
       var fomRad = document.getElementById('bm-mode-fom');
@@ -47476,10 +47640,11 @@ function openGuidedChooser(){
       +'</div>'
     +'</div>'
     +'<div style="padding:4px 20px 4px;font-size:10px;font-weight:700;letter-spacing:.6px;text-transform:uppercase;color:#F5A623">EV Charging</div>'
-    +'<div style="padding:6px 20px 18px;display:grid;grid-template-columns:1fr;gap:12px">'
+    +'<div style="padding:6px 20px 18px;display:grid;grid-template-columns:1fr 1fr;gap:12px">'
+      +'<div onclick="_guidedPick(\'l2\')" style="border:1px solid #22D3EE;border-radius:10px;padding:16px;cursor:pointer;background:rgba(34,211,238,.05)" onmouseover="this.style.borderColor=\'#67E8F9\'" onmouseout="this.style.borderColor=\'#22D3EE\'">'+'<div style="font-size:22px">\u26a1</div>'+'<div style="font-size:14px;font-weight:800;color:#E2EEF9;margin-top:6px">Level 2 Build</div>'+'<div style="font-size:11px;color:#94A3B8;margin-top:4px">240V single-phase off an existing service. Meter bank \u2192 outdoor panel \u2192 trench \u2192 EVSE. No storage.</div>'+'</div>'      
       +'<div onclick="_guidedPick(\'ev\')" style="border:1px solid #F5A623;border-radius:10px;padding:16px;cursor:pointer;background:rgba(245,166,35,.05)" onmouseover="this.style.borderColor=\'#FBBF24\'" onmouseout="this.style.borderColor=\'#F5A623\'">'
         +'<div style="font-size:22px">\ud83d\ude97</div>'
-        +'<div style="font-size:14px;font-weight:800;color:#E2EEF9;margin-top:6px">EV Charging Build</div>'
+        +'<div style="font-size:14px;font-weight:800;color:#E2EEF9;margin-top:6px">DCFC Build</div>'
         +'<div style="font-size:11px;color:#94A3B8;margin-top:4px">Standalone DCFC site. Pick charger model, count, ports, site type. Service \u2192 transformer \u2192 switchgear \u2192 chargers, trenched & color-coded. Independent of BESS.</div>'
       +'</div>'
     +'</div>'
@@ -47491,6 +47656,8 @@ function _guidedPick(which){
   if(which==='deluxe'){ openTopoWizard(); }
   else if(which==='der'){ if(typeof openGuidedDerBuild==='function') openGuidedDerBuild(); else if(typeof openDerBuild==='function') openDerBuild(); }
   else if(which==='ev'){ if(typeof openDcfcBuild==='function') openDcfcBuild(); else if(typeof _startEvBuild==='function') _startEvBuild(); }
+  else if(which==='l2'){ if(typeof openLevel2Build==='function') openLevel2Build();
+                         else if(typeof _startLevel2Build==='function') _startLevel2Build(); }
   else {
     // Standard BESS guided build — now its own floating modal + guide HUD
     // (polyline-trench, snap-to-run) instead of the old Controls-panel wizard.
@@ -47554,6 +47721,31 @@ function _startEvBuild(){
   start();
 }
 window._startEvBuild = _startEvBuild;
+
+/* Level 2 guided build — 240V single-phase off an existing service. Separate
+ * from _startEvBuild, which is the DCFC/BESS microgrid flow. Skips the
+ * project-type card (L2 is its own market) and lands on the offtaker
+ * selector, same as the other builds. */
+function _startLevel2Build(){
+  if(typeof openLpPanel==='function') openLpPanel();
+  var start = function(){
+    if(!document.getElementById('wiz-step-card')){ setTimeout(start, 100); return; }
+    wizStep = 0;
+    wizDone = new Set();
+    _wizMode = 'L2';
+    _wizModeConfirmed = true;
+    _wizOfftakerConfirmed = false;
+    _wizOfftaker = _wizOfftaker || null;
+    renderWizardStep();
+    renderStepIndicator();
+    var body = document.getElementById('wiz-panel-body');
+    if(body && body.style.display === 'none'){ toggleWizPanel(); }
+    var card = document.getElementById('wiz-step-card');
+    if(card && card.scrollIntoView){ card.scrollIntoView({behavior:'smooth', block:'center'}); }
+  };
+  start();
+}
+window._startLevel2Build = _startLevel2Build;
 window.openGuidedChooser=openGuidedChooser;
 window.openMvCableDialog=openMvCableDialog;
 window.setMvCable=setMvCable;
@@ -48712,6 +48904,10 @@ var EV_FOOTPRINT = {
 try{ window.EV_FOOTPRINT = EV_FOOTPRINT; }catch(e){}
 
 var DCFC = {
+  /* level2:true reuses this whole engine (trench spine, snap, stencils,
+     flip/rotate, auto-routed conduit) for a 240V single-phase job. The only
+     differences are the node sequence, the labels and the conduit types. */
+  level2:false, l2amps:48, l2volts:240, l2ModelId:null,
   siteType:'public', model:null, modelId:'autel_dh480',
   chargers:2, ports:2, spare:1,
   seq:['service','xfmr','panel'],  // node placement order
@@ -48739,6 +48935,8 @@ function _dcfcModels(){
 /* Entry point — opens the standalone DCFC dialog. */
 function openDcfcBuild(){
   DCFC.active=true; DCFC.stepIx=0; DCFC.placed={}; DCFC.chargerEls=[];
+  /* Never inherit a stale Level 2 session — these are separate builds. */
+  DCFC.level2=false; DCFC.seq=['service','xfmr','panel'];
   var models=_dcfcModels();
   if(!DCFC.modelId || !models.some(function(m){return m.id===DCFC.modelId;})) DCFC.modelId=models[0]?models[0].id:'autel_dh480';
   var mOpts=models.map(function(m){ return '<option value="'+m.id+'"'+(m.id===DCFC.modelId?' selected':'')+'>'+m.label+' \u2014 '+m.kw+'kW / '+m.ports+' ports</option>'; }).join('');
@@ -48749,7 +48947,7 @@ function openDcfcBuild(){
     +'<div id="dcfc-modal" style="position:fixed;inset:0;background:rgba(6,12,22,.82);z-index:100002;display:flex;align-items:center;justify-content:center;padding:20px" onclick="if(event.target===this)this.remove()">'
     +'<div style="background:#0F1D30;border:1px solid #F5A623;border-radius:14px;max-width:560px;width:100%;max-height:90vh;overflow:auto">'
     +'<div style="padding:16px 20px;border-bottom:1px solid #26364d;display:flex;align-items:center;justify-content:space-between">'
-      +'<div style="font-size:16px;font-weight:800;color:#F5A623">\ud83d\ude97 EV Charging Site \u2014 Guided Build</div>'
+      +'<div style="font-size:16px;font-weight:800;color:#F5A623">\ud83d\ude97 DCFC Site \u2014 Guided Build</div>'
       +'<button onclick="document.getElementById(\'dcfc-modal\').remove();DCFC.active=false" style="background:none;border:none;color:#64748B;font-size:22px;cursor:pointer">\u00d7</button>'
     +'</div>'
     +'<div style="padding:16px 20px">'
@@ -48783,6 +48981,10 @@ function _dcfcPickSite(id){ DCFC.siteType=id;
     el.style.borderColor=on?'#F5A623':'#26364d'; el.style.background=on?'rgba(245,166,35,.1)':'rgba(0,0,0,.15)'; el.classList.toggle('sel',on); });
 }
 function _dcfcSyncPorts(){
+  /* Level 2 owns its own picker (_l2Sync). Falling through here after the L2
+     modal closes would reset chargers to the DCFC default of 2 and swap the
+     model back to a 480kW dispenser. */
+  if(DCFC.level2){ if(typeof _l2Sync==='function') _l2Sync(); return; }
   var models=_dcfcModels();
   DCFC.modelId=(document.getElementById('dcfc-model')||{}).value||DCFC.modelId;
   DCFC.model=models.filter(function(m){return m.id===DCFC.modelId;})[0]||models[0];
@@ -48840,9 +49042,9 @@ function _dcfcGuideRender(){
   var phase=DCFC.phase||'poi';
   // Build the step list: POI, Trench, then components.
   var lines=[];
-  lines.push({ label:'Utility Service (POI)', color:'#F59E0B', state: DCFC.placed.service?'done':(phase==='poi'?'active':'todo') });
+  lines.push({ label:(DCFC.level2?'Existing Meter Bank':'Utility Service (POI)'), color:'#F59E0B', state: DCFC.placed.service?'done':(phase==='poi'?'active':'todo') });
   lines.push({ label:'Main trench run', color:'#F5A623', state: DCFC.trenchConfirmed?'done':(phase==='trench'?'active':(DCFC.placed.service?'todo':'todo')) });
-  var nodeLabels={ xfmr:'Transformer', panel:'Switchgear / Panel' };
+  var nodeLabels={ xfmr:'Transformer', panel:_dcfcNodeLabel('panel') };
   var nodeColors={ xfmr:'#F59E0B', panel:'#EF4444' };
   var placeSeq=DCFC.seq.filter(function(k){return k!=='service';}); // xfmr, panel
   for(var i=0;i<placeSeq.length;i++){
@@ -48883,7 +49085,7 @@ function _dcfcGuideRender(){
 
   el.innerHTML=''
     +'<div id="dcfc-guide-drag" title="Drag to move" style="padding:11px 14px;border-bottom:1px solid #26364d;display:flex;align-items:center;justify-content:space-between;background:rgba(245,166,35,.08);cursor:move;user-select:none">'
-      +'<div style="font-size:12px;font-weight:800;color:#F5A623;pointer-events:none"><span style="color:#8FA3B8;margin-right:4px">\u283f</span>\ud83d\ude97 EV Build</div>'
+      +'<div style="font-size:12px;font-weight:800;color:'+(DCFC.level2?'#22D3EE':'#F5A623')+';pointer-events:none"><span style="color:#8FA3B8;margin-right:4px">\u283f</span>'+(DCFC.level2?'\u26a1 Level 2 Build':'\ud83d\ude97 DCFC Build')+'</div>'
       +'<div style="display:flex;align-items:center;gap:2px">'
         +'<button onclick="_dcfcGuideToggleMin(event)" id="dcfc-guide-min" title="Minimize / expand" style="background:none;border:none;color:#8FA3B8;font-size:15px;cursor:pointer;line-height:1;padding:4px 8px;min-width:32px;min-height:32px">\u2013</button>'
         +'<button onclick="_dcfcCancel()" title="Cancel" style="background:none;border:none;color:#64748B;font-size:16px;cursor:pointer;line-height:1;padding:4px 8px;min-width:32px;min-height:32px">\u00d7</button>'
@@ -49018,16 +49220,16 @@ var DCFC_NODES={
   panel:  { evKind:'panel',   label:'Switchgear / Panel',    color:'#EF4444' }
 };
 /* Footprint px from ft (falls back to fixed px if map not calibrated). */
-function _evPx(kind){
-  var f=EV_FOOTPRINT[kind]||{lf:5,wf:4};
+function _evPx(kind, fp){
+  var f=fp||EV_FOOTPRINT[kind]||{lf:5,wf:4};
   if(S.pxPerFt&&S.pxPerFt>0){ return { w:Math.max(28,Math.round(f.lf*S.pxPerFt)), h:Math.max(20,Math.round(f.wf*S.pxPerFt)) }; }
   var base={ xfmr:{w:70,h:50}, panel:{w:80,h:40}, service:{w:44,h:44}, charger:{w:40,h:52} };
   return base[kind]||{w:56,h:44};
 }
 /* Add a realistic EV equipment element. `img` (optional) is a real photo
    (data URI) used for chargers that ship one; the vector render is the fallback. */
-function _evAdd(kind, cx, cy, label, spec, img){
-  var d=_evPx(kind);
+function _evAdd(kind, cx, cy, label, spec, img, fp){
+  var d=_evPx(kind, fp);
   var el=addEl({ type:'evgear', evKind:kind, label:label, spec:spec,
     x:Math.round(cx-d.w/2), y:Math.round(cy-d.h/2), w:d.w, h:d.h,
     aspect:(d.h/d.w), rot:0, flip:false, evImg:img||null });
@@ -49035,7 +49237,7 @@ function _evAdd(kind, cx, cy, label, spec, img){
 }
 
 function _dcfcPrompt(){
-  if(DCFC.phase==='poi'){ _evBanner('\u2b1c Click the map to place the Utility Service (POI).'); }
+  if(DCFC.phase==='poi'){ _evBanner('\u2b1c Click the map to place the '+(DCFC.level2?'Existing Meter Bank':'Utility Service (POI)')+'.'); }
   else if(DCFC.phase==='trench'){ _evBanner('\u2b1c Suggested trench shown \u2014 drag the end handle to adjust, then click \u201cConfirm Trench\u201d.'); }
   else if(DCFC.phase==='place'){
     if(DCFC.stepIx < DCFC.seq.length){ var n=DCFC_NODES[DCFC.seq[DCFC.stepIx]]; _evBanner('\u2b1c Click along the trench to place '+n.label+'. It snaps to the trench \u2014 use F to flip side, R to rotate.'); }
@@ -49064,7 +49266,10 @@ function placeDcfcAt(p){
   // PHASE 1 — place the POI, then auto-suggest a trench from it.
   if(DCFC.phase==='poi'){
     var d=_evPx('service');
-    var poi=_evAdd('service', p.x, p.y, 'Utility Service (POI)', 'Existing service / point of interconnection');
+    var poi=_evAdd('service', p.x, p.y,
+      DCFC.level2 ? 'Existing Meter Bank' : 'Utility Service (POI)',
+      DCFC.level2 ? '240/120V 1\u00D8 3-wire \u2014 existing, verify available capacity'
+                  : 'Existing service / point of interconnection');
     DCFC.placed.service=poi;
     // Auto-suggest a trench running from the POI toward open canvas (rightward,
     // or toward center). User can drag the far end before confirming.
@@ -49095,13 +49300,19 @@ function placeDcfcAt(p){
     var key=DCFC.seq[DCFC.stepIx]; var n=DCFC_NODES[key];
     var spec='';
     if(key==='xfmr' && DCFC.model){ var kva=DCFC.kva||_dcfcRoundKva(DCFC.model.kw*DCFC.chargers/0.95*1.9); spec=kva+' kVA pad-mount \u00b7 MV\u2192480V'; }
-    if(key==='panel' && DCFC.model){ var svcA=DCFC.svcA||_dcfcRoundService(DCFC.model.kw*DCFC.chargers*1000/(480*1.732)/0.95*1.25); spec=svcA+'A 480V CT/distribution'; }
+    if(DCFC.level2 && key==='panel'){ spec=_l2Circuit()+'A 240V 1\u00D8 \u00b7 NEMA 3R \u00b7 '+DCFC.chargers+' \u00d7 EVSE branch'; }
+    else if(key==='panel' && DCFC.model){ var svcA=DCFC.svcA||_dcfcRoundService(DCFC.model.kw*DCFC.chargers*1000/(480*1.732)/0.95*1.25); spec=svcA+'A 480V CT/distribution'; }
     var el=_evAdd(key, cx, cy, n.label, spec);
     el.flip=(snap.side<0);
     DCFC.placed[key]=el;
     DCFC.lastEl=el;
     if(key==='xfmr' && DCFC.placed.service){ _dcfcRun(DCFC.placed.service, el, 'EV-MAIN', 'Main \u2014 service\u2192xfmr'); }
     if(key==='panel' && DCFC.placed.xfmr){ _dcfcRun(DCFC.placed.xfmr, el, 'EV-FEEDER', 'Feeder \u2014 xfmr\u2192panel'); }
+    /* Level 2 has no transformer: the panel feeds straight off the existing
+       service, normally through interior conduit in the basement. */
+    if(DCFC.level2 && key==='panel' && DCFC.placed.service){
+      _dcfcRun(DCFC.placed.service, el, 'L2-INT', 'Interior feed \u2014 service\u2192panel');
+    }
     try{ if(window.OMEGA_GUIDED_BOLLARDS===true) _dcfcBollards(el); }catch(e){}
     if(typeof _reRenderEl==='function') _reRenderEl(el.id);
     DCFC.stepIx++;
@@ -49113,10 +49324,17 @@ function placeDcfcAt(p){
   if(DCFC.chargersLeft > 0){
     var idx=DCFC.chargers - DCFC.chargersLeft + 1;
     var m=DCFC.model||{kw:0,ports:2,label:'DCFC',connectors:'CCS'};
-    var cel=_evAdd('charger', cx, cy, 'DCFC '+idx+' \u00b7 '+m.kw+'kW', m.kw+'kW \u00b7 '+(m.ports||2)+' ports \u00b7 '+(m.connectors||'CCS'), m.img||null);
+    var cel = DCFC.level2
+      ? _evAdd('charger', cx, cy, 'EVSE '+idx+' \u00b7 Level 2',
+          DCFC.l2amps+'A nameplate \u00b7 '+_l2Circuit()+'A circuit \u00b7 '+DCFC.l2volts+'V 1\u00D8')
+      : _evAdd('charger', cx, cy, 'DCFC '+idx+' \u00b7 '+m.kw+'kW', m.kw+'kW \u00b7 '+(m.ports||2)+' ports \u00b7 '+(m.connectors||'CCS'), m.img||null);
     cel.flip=(snap.side<0);
     DCFC.chargerEls.push(cel); DCFC.lastEl=cel;
-    if(DCFC.placed.panel){ _dcfcRun(DCFC.placed.panel, cel, 'EV-BRANCH', 'Branch \u2014 panel\u2192DCFC '+idx); }
+    if(DCFC.placed.panel){
+      _dcfcRun(DCFC.placed.panel, cel,
+        DCFC.level2 ? 'L2-TRENCH' : 'EV-BRANCH',
+        DCFC.level2 ? 'Branch \u2014 panel\u2192EVSE '+idx : 'Branch \u2014 panel\u2192DCFC '+idx);
+    }
     try{ if(window.OMEGA_GUIDED_BOLLARDS===true) _dcfcBollards(cel); }catch(e){}
     if(typeof _reRenderEl==='function') _reRenderEl(cel.id);
     DCFC.chargersLeft--;
@@ -49180,6 +49398,142 @@ function _dcfcFinish(){
   if(typeof updateSummaryPanel==='function') updateSummaryPanel();
   if(typeof updateRightPanel==='function') updateRightPanel();
 }
+
+/* ═══════════════════════════════════════════════════════════════════════
+   LEVEL 2 GUIDED BUILD — 240V single-phase off an existing service.
+
+   This is not a separate engine. It sets DCFC.level2 and a two-node
+   sequence, then hands off to _dcfcStartPlacing(), so it inherits the
+   floating guide HUD, the trench spine with snap-to-run placement, the
+   equipment stencils, flip/rotate, and auto-routed conduit — exactly the
+   same behaviour as the DCFC and BESS builds. No Controls panel.
+   ═══════════════════════════════════════════════════════════════════════ */
+var L2_BREAKERS=[15,20,25,30,35,40,45,50,60,70,80,90,100,110,125,150,175,200];
+/* Continuous load: nameplate / 0.8 per NEC 210.19(A)(1), then next standard breaker. */
+function _l2Circuit(){
+  var cont=(DCFC.l2amps||48)/0.8;
+  for(var i=0;i<L2_BREAKERS.length;i++){ if(L2_BREAKERS[i]>=cont) return L2_BREAKERS[i]; }
+  return Math.ceil(cont/5)*5;
+}
+window._l2Circuit=_l2Circuit;
+
+/* Level 2 units come straight from the draw catalog (EVC_L2) — same models,
+   photos and footprints the Insert/Draw palette offers, so a guided build and a
+   hand-placed unit are the same object. */
+function _l2Models(){
+  var out=[];
+  try{ for(var k in EVC_L2){ if(!EVC_L2.hasOwnProperty(k)) continue; var m=EVC_L2[k];
+    out.push({ id:k, label:m.label, mfr:m.mfr, model:m.model, kw:m.kw, amps:m.amps,
+               ports:m.ports||1, connectors:m.connectors||'J1772', spec:m.spec||'',
+               lf:m.lf, wf:m.wf, img:m.img||null }); } }catch(e){}
+  return out;
+}
+window._l2Models=_l2Models;
+function _l2Model(){
+  var all=_l2Models();
+  return all.filter(function(m){return m.id===DCFC.l2ModelId;})[0] || all[0] || null;
+}
+window._l2Model=_l2Model;
+/* Highest number in the catalog's amps string ('40-50A' -> 50) is the nameplate. */
+function _l2AmpsFor(m){
+  if(!m||!m.amps) return 48;
+  var nums=(''+m.amps).match(/\d+/g); if(!nums) return 48;
+  return Math.max.apply(null, nums.map(Number));
+}
+
+function _l2Sync(){
+  var sel=document.getElementById('l2-model');
+  if(sel && sel.value) DCFC.l2ModelId=sel.value;
+  var lm=_l2Model();
+  var ampSel=document.getElementById('l2-amps');
+  DCFC.l2amps = ampSel ? Math.max(1,parseInt(ampSel.value||'48',10)) : (DCFC.l2amps||_l2AmpsFor(lm));
+  var n=Math.max(1,parseInt((document.getElementById('dcfc-count')||{}).value||'1',10));
+  var sp=Math.max(0,parseInt((document.getElementById('dcfc-spare')||{}).value||'0',10));
+  DCFC.chargers=n; DCFC.spare=sp; DCFC.ports=(lm&&lm.ports)||1;
+  var el=document.getElementById('l2-summary');
+  if(el){
+    el.innerHTML='<strong style="color:#E2EEF9">'+n+' \u00d7 '+(lm?lm.label:'Level 2')+' @ '+DCFC.l2amps+'A</strong> \u00b7 '
+      +'<strong style="color:#22D3EE">'+_l2Circuit()+'A circuit</strong> each \u00b7 '
+      +((DCFC.l2amps*240*n)/1000).toFixed(1)+' kW connected<br>'
+      +'Panel and existing service must both carry '+(_l2Circuit()*n)+'A of new branch load \u2014 verify before this reaches an estimate.'
+      +(sp>0?('<br>'+sp+' spare conduit'+(sp===1?'':'s')+' pulled in the same trench.'):'');
+  }
+}
+window._l2Sync=_l2Sync;
+
+function openLevel2Build(){
+  DCFC.active=true; DCFC.stepIx=0; DCFC.placed={}; DCFC.chargerEls=[];
+  DCFC.level2=true; DCFC.siteType='multifamily';
+  var l2models=_l2Models();
+  if(!DCFC.l2ModelId || !l2models.some(function(m){return m.id===DCFC.l2ModelId;})){
+    DCFC.l2ModelId = (typeof _evL2Id!=='undefined' && _evL2Id) ? _evL2Id : (l2models[0]?l2models[0].id:null);
+  }
+  var lmOpts=l2models.map(function(m){
+    return '<option value="'+m.id+'"'+(m.id===DCFC.l2ModelId?' selected':'')
+      +'>'+m.label+' \u2014 '+m.kw+'kW / '+m.amps+' / '+m.ports+(m.ports===1?' port':' ports')+'</option>'; }).join('');
+  if(!DCFC.l2amps) DCFC.l2amps=_l2AmpsFor(_l2Model());
+  var ampOpts=[16,24,32,40,48,50,64,80].map(function(a){
+    return '<option value="'+a+'"'+(a===DCFC.l2amps?' selected':'')+'>'+a+'A nameplate</option>'; }).join('');
+  var html=''
+    +'<div id="l2-modal" style="position:fixed;inset:0;background:rgba(6,12,22,.82);z-index:100002;display:flex;align-items:center;justify-content:center;padding:20px">'
+    +'<div style="background:#0F1D30;border:1px solid #22D3EE;border-radius:14px;max-width:520px;width:100%;max-height:90vh;overflow:auto">'
+    +'<div style="padding:16px 20px;border-bottom:1px solid #26364d;display:flex;align-items:center;justify-content:space-between">'
+      +'<div style="font-size:16px;font-weight:800;color:#22D3EE">\u26a1 Level 2 EV Charging \u2014 Guided Build</div>'
+      +'<button onclick="document.getElementById(\'l2-modal\').remove();DCFC.active=false;DCFC.level2=false" style="background:none;border:none;color:#64748B;font-size:22px;cursor:pointer">\u00d7</button>'
+    +'</div>'
+    +'<div style="padding:16px 20px">'
+      +'<div style="font-size:10px;font-weight:700;letter-spacing:.6px;text-transform:uppercase;color:#8FA3B8;margin-bottom:6px">Charger Model</div>'
+      +'<select id="l2-model" onchange="_l2ModelChanged()" style="width:100%;background:#0A1628;border:1px solid #22D3EE;color:#E2EEF9;padding:9px;border-radius:7px;font-size:12px;margin-bottom:12px">'+lmOpts+'</select>'
+      +'<div style="display:grid;grid-template-columns:1.4fr 1fr 1fr;gap:10px;margin-bottom:14px">'
+        +'<div><div style="font-size:9px;color:#8FA3B8;margin-bottom:3px">Nameplate</div>'
+          +'<select id="l2-amps" onchange="_l2Sync()" style="width:100%;background:#0A1628;border:1px solid #22D3EE;color:#E2EEF9;padding:8px;border-radius:7px;font-size:12px">'+ampOpts+'</select></div>'
+        +'<div><div style="font-size:9px;color:#8FA3B8;margin-bottom:3px">How many</div>'
+          +'<input id="dcfc-count" type="number" min="1" value="1" oninput="_l2Sync()" style="width:100%;background:#0A1628;border:1px solid #26364d;color:#E2EEF9;padding:8px;border-radius:7px;font-size:12px"></div>'
+        +'<div><div style="font-size:9px;color:#8FA3B8;margin-bottom:3px">Spare conduit</div>'
+          +'<input id="dcfc-spare" type="number" min="0" value="0" oninput="_l2Sync()" style="width:100%;background:#0A1628;border:1px solid #26364d;color:#E2EEF9;padding:8px;border-radius:7px;font-size:12px"></div>'
+      +'</div>'
+      +'<input type="hidden" id="dcfc-ports" value="1">'
+      +'<div style="font-size:10px;font-weight:700;letter-spacing:.6px;text-transform:uppercase;color:#8FA3B8;margin-bottom:6px">Load Check</div>'
+      +'<div id="l2-summary" style="font-size:10px;color:#8FA3B8;background:rgba(34,211,238,.06);border:1px solid rgba(34,211,238,.22);border-radius:7px;padding:9px 11px;line-height:1.6;margin-bottom:14px"></div>'
+      +'<div style="font-size:9px;color:#8FA3B8;background:rgba(0,0,0,.2);border-radius:6px;padding:8px 10px;line-height:1.5;margin-bottom:14px">'
+        +'<span style="color:#22D3EE;font-weight:700">You\u2019ll place:</span> '
+        +'<span style="color:#F59E0B">\u2b24 Existing Meter Bank</span> \u2192 draw the trench \u2192 '
+        +'<span style="color:#EF4444">\u2b24 Outdoor Panel</span> \u2192 '
+        +'<span style="color:#22D3EE">\u2b24 EVSE</span>'
+        +'<br>Conduit auto-routes: interior feed in yellow, trenched branch in cyan. Set the trench to asphalt after it draws if it crosses pavement.</div>'
+      +'<button onclick="_l2StartPlacing()" style="width:100%;padding:12px;background:#22D3EE !important;color:#0A1628 !important;font-weight:800;font-size:13px;border:none;border-radius:9px;cursor:pointer">\u26a1 Start Placing \u25b8</button>'
+    +'</div>'
+    +'</div></div>';
+  var d=document.createElement('div'); d.innerHTML=html; document.body.appendChild(d.firstChild);
+  _l2Sync();
+}
+window.openLevel2Build=openLevel2Build;
+
+/* Picking a different unit re-defaults the nameplate to that unit's rating. */
+function _l2ModelChanged(){
+  var sel=document.getElementById('l2-model');
+  if(sel) DCFC.l2ModelId=sel.value;
+  var lm=_l2Model();
+  DCFC.l2amps=_l2AmpsFor(lm);
+  var ampSel=document.getElementById('l2-amps');
+  if(ampSel){
+    var want=String(DCFC.l2amps), found=false;
+    for(var i=0;i<ampSel.options.length;i++){ if(ampSel.options[i].value===want){ ampSel.selectedIndex=i; found=true; break; } }
+    if(!found){ var o=document.createElement('option'); o.value=want; o.textContent=want+'A nameplate'; ampSel.appendChild(o); ampSel.value=want; }
+  }
+  _l2Sync();
+}
+window._l2ModelChanged=_l2ModelChanged;
+
+function _l2StartPlacing(){
+  _l2Sync();
+  DCFC.level2=true;
+  DCFC.seq=['service','panel'];      /* no transformer on a Level 2 job */
+  var m=document.getElementById('l2-modal'); if(m) m.remove();
+  _dcfcStartPlacing();               /* HUD, trench spine, stencils, conduit */
+}
+window._l2StartPlacing=_l2StartPlacing;
+
 window.openDcfcBuild=openDcfcBuild;
 window.placeDcfcAt=placeDcfcAt;
 window._dcfcPickSite=_dcfcPickSite;
@@ -49205,8 +49559,30 @@ window._dcfcStartPlacing=_dcfcStartPlacing;
 if(typeof S!=='undefined' && !S._trenches) S._trenches=[];
 
 var _DCFC_LEG_COND = { xfmr:'EV-MAIN', panel:'EV-FEEDER', charger:'EV-BRANCH' };
+/* Level 2 runs its own legend: interior feed to the panel, trenched branch to
+   the EVSE. Without this the leg map silently relabels them as 480V DCFC
+   feeders and the conduit schedule prints 3" PVC on a 240V job. */
+var _L2_LEG_COND = { panel:'L2-INT', charger:'L2-TRENCH' };
+var _L2_LEG_NAME = { panel:'Interior feed (service\u2192panel)', charger:'Branch trench (panel\u2192EVSE)' };
+/* Level 2 lands a NEMA 3R subpanel or fused disconnect on an exterior wall,
+   not the switchgear lineup EV_FOOTPRINT.panel assumes (8.0 x 3.0 ft). At
+   multifamily and office sites the building is tight to the lot, so a
+   full-size lineup crowds the wall it is supposed to hang on. Half size. */
+var L2_FOOTPRINT = { panel:{ lf:4.0, wf:1.5 } };
+function _l2Fp(kind){ return (DCFC.level2 && L2_FOOTPRINT[kind]) || null; }
+function _legCond(kind){ return (DCFC.level2 && _L2_LEG_COND[kind]) || _DCFC_LEG_COND[kind]; }
+function _legName(kind){ return (DCFC.level2 && _L2_LEG_NAME[kind]) || _DCFC_LEG_NAME[kind]; }
 var _DCFC_LEG_NAME = { xfmr:'Main trench (service\u2192xfmr)', panel:'Feeder trench (xfmr\u2192panel)', charger:'Branch trench (panel\u2192charger)' };
 
+/* Node captions differ on a Level 2 job: there is no switchgear lineup. */
+function _dcfcNodeLabel(kind){
+  if(DCFC.level2){
+    if(kind==='panel')   return 'Outdoor Panel / Disconnect';
+    if(kind==='service') return 'Existing Meter Bank';
+  }
+  var n=DCFC_NODES[kind];
+  return (n&&n.label)||kind;
+}
 function _dcfcCurKind(){
   // seq is ['service','xfmr','panel']; POI ('service') is placed outside the
   // run loop, so map stepIx onto the non-service nodes, then charger.
@@ -49355,7 +49731,10 @@ window._dcfcStartPlacing=_dcfcStartPlacing;
 placeDcfcAt=function(p){
   if(!DCFC.active){ S.mode='select'; return; }
   if(DCFC.phase==='poi'){
-    var poi=_evAdd('service', p.x, p.y, 'Utility Service (POI)', 'Existing service / point of interconnection');
+    var poi=_evAdd('service', p.x, p.y,
+      DCFC.level2 ? 'Existing Meter Bank' : 'Utility Service (POI)',
+      DCFC.level2 ? '240/120V 1\u00D8 3-wire \u2014 existing, verify available capacity'
+                  : 'Existing service / point of interconnection');
     DCFC.placed.service=poi;
     DCFC.phase='drawtrench';
     _dcfcDraw={ pts:[{x:p.x,y:p.y}], preview:null, leg:_dcfcLegOf(_dcfcCurKind()) };
@@ -49371,10 +49750,11 @@ placeDcfcAt=function(p){
     if(kind!=='charger'){
       var n=DCFC_NODES[kind]; var spec='';
       if(kind==='xfmr' && DCFC.model){ var kva=DCFC.kva||_dcfcRoundKva(DCFC.model.kw*DCFC.chargers/0.95*1.9); spec=kva+' kVA pad-mount \u00b7 MV\u2192480V'; }
-      if(kind==='panel' && DCFC.model){ var svcA=DCFC.svcA||_dcfcRoundService(DCFC.model.kw*DCFC.chargers*1000/(480*1.732)/0.95*1.25); spec=svcA+'A 480V CT/distribution'; }
-      var el=_evAdd(kind, snap.x, snap.y, n.label, spec);
+      if(DCFC.level2 && kind==='panel'){ spec=_l2Circuit()+'A 240V 1\u00D8 \u00b7 NEMA 3R \u00b7 '+DCFC.chargers+' \u00d7 EVSE branch'; }
+      else if(kind==='panel' && DCFC.model){ var svcA=DCFC.svcA||_dcfcRoundService(DCFC.model.kw*DCFC.chargers*1000/(480*1.732)/0.95*1.25); spec=svcA+'A 480V CT/distribution'; }
+      var el=_evAdd(kind, snap.x, snap.y, _dcfcNodeLabel(kind), spec, null, _l2Fp(kind));
       DCFC.placed[kind]=el; DCFC.lastEl=el;
-      _dcfcConduitAlongRun(el, run, snap, _DCFC_LEG_COND[kind], _DCFC_LEG_NAME[kind]);
+      _dcfcConduitAlongRun(el, run, snap, _legCond(kind), _legName(kind));
       try{ if(window.OMEGA_GUIDED_BOLLARDS===true) _dcfcBollards(el); }catch(e){}
       if(typeof _reRenderEl==='function') _reRenderEl(el.id);
       DCFC.stepIx++;
@@ -49388,13 +49768,22 @@ placeDcfcAt=function(p){
     }
     if(DCFC.chargersLeft>0){
       var idx=DCFC.chargers - DCFC.chargersLeft + 1;
-      var mm=DCFC.model||{kw:0,ports:2,label:'DCFC',connectors:'CCS'};
-      var cel=_evAdd('charger', snap.x, snap.y, 'DCFC '+idx+' \u00b7 '+mm.kw+'kW', mm.kw+'kW \u00b7 '+(mm.ports||2)+' ports \u00b7 '+(mm.connectors||'CCS'), mm.img||null);
+      var mm = DCFC.level2
+        ? (_l2Model()||{kw:0,ports:1,label:'Level 2',connectors:'J1772'})
+        : (DCFC.model||{kw:0,ports:2,label:'DCFC',connectors:'CCS'});
+      var cel = DCFC.level2
+        ? _evAdd('charger', snap.x, snap.y,
+            'EVSE '+idx+' \u00b7 '+mm.label,
+            (mm.amps||(DCFC.l2amps+'A'))+' \u00b7 '+_l2Circuit()+'A circuit \u00b7 '+(mm.connectors||'J1772'),
+            mm.img||null, { lf:mm.lf||1.1, wf:mm.wf||0.8 })
+        : _evAdd('charger', snap.x, snap.y, 'DCFC '+idx+' \u00b7 '+mm.kw+'kW', mm.kw+'kW \u00b7 '+(mm.ports||2)+' ports \u00b7 '+(mm.connectors||'CCS'), mm.img||null);
       // Tag the element with model metadata so it flows into cost / BOM / summary.
-      cel.evId=mm.id||null; cel.evModel=mm.label||mm.model||'DCFC'; cel.kw=mm.kw||0;
-      cel.mfr=mm.mfr||''; cel.ports=mm.ports||2; cel.connectors=mm.connectors||'CCS';
+      cel.evId=mm.id||null; cel.evModel=mm.label||mm.model||(DCFC.level2?'Level 2':'DCFC'); cel.kw=mm.kw||0;
+      cel.mfr=mm.mfr||''; cel.ports=mm.ports||(DCFC.level2?1:2); cel.connectors=mm.connectors||(DCFC.level2?'J1772':'CCS');
+      if(DCFC.level2){ cel.evLevel='L2'; cel.amps=DCFC.l2amps; cel.circuitA=_l2Circuit(); cel.volts=DCFC.l2volts; }
       DCFC.chargerEls.push(cel); DCFC.lastEl=cel;
-      _dcfcConduitAlongRun(cel, run, snap, 'EV-BRANCH', 'Branch \u2014 panel\u2192DCFC '+idx);
+      _dcfcConduitAlongRun(cel, run, snap, _legCond('charger'),
+        DCFC.level2 ? 'Branch \u2014 panel\u2192EVSE '+idx : 'Branch \u2014 panel\u2192DCFC '+idx);
       try{ if(window.OMEGA_GUIDED_BOLLARDS===true) _dcfcBollards(cel); }catch(e){}
       if(typeof _reRenderEl==='function') _reRenderEl(cel.id);
       DCFC.chargersLeft--;
@@ -49437,10 +49826,10 @@ _dcfcGuideRender=function(){
   function legColor(k){ return k==='xfmr'?'#FF0000':k==='panel'?'#FFFF00':'#00FFFF'; }
   var kind=_dcfcCurKind();
   var placedCh=DCFC.chargerEls?DCFC.chargerEls.length:0;
-  var nodeLabels={ xfmr:'Transformer', panel:'Switchgear / Panel' };
+  var nodeLabels={ xfmr:'Transformer', panel:_dcfcNodeLabel('panel') };
 
   var lines=[];
-  lines.push({ label:'Utility Service (POI)', color:'#F59E0B', state: DCFC.placed.service?'done':(phase==='poi'?'active':'todo') });
+  lines.push({ label:(DCFC.level2?'Existing Meter Bank':'Utility Service (POI)'), color:'#F59E0B', state: DCFC.placed.service?'done':(phase==='poi'?'active':'todo') });
   var placeSeq=DCFC.seq.filter(function(k){return k!=='service';});
   for(var i=0;i<placeSeq.length;i++){
     var k=placeSeq[i]; var placed=!!DCFC.placed[k];
@@ -49489,7 +49878,7 @@ _dcfcGuideRender=function(){
 
   el.innerHTML=''
     +'<div id="dcfc-guide-drag" title="Drag to move" style="padding:11px 14px;border-bottom:1px solid #26364d;display:flex;align-items:center;justify-content:space-between;background:rgba(245,166,35,.08);cursor:move;user-select:none">'
-      +'<div style="font-size:12px;font-weight:800;color:#F5A623;pointer-events:none"><span style="color:#8FA3B8;margin-right:4px">\u283f</span>\ud83d\ude97 EV Build</div>'
+      +'<div style="font-size:12px;font-weight:800;color:'+(DCFC.level2?'#22D3EE':'#F5A623')+';pointer-events:none"><span style="color:#8FA3B8;margin-right:4px">\u283f</span>'+(DCFC.level2?'\u26a1 Level 2 Build':'\ud83d\ude97 DCFC Build')+'</div>'
       +'<div style="display:flex;align-items:center;gap:2px">'
         +'<button onclick="_dcfcGuideToggleMin(event)" id="dcfc-guide-min" title="Minimize / expand" style="background:none;border:none;color:#8FA3B8;font-size:15px;cursor:pointer;line-height:1;padding:4px 8px;min-width:32px;min-height:32px">\u2013</button>'
         +'<button onclick="_dcfcCancel()" title="Cancel" style="background:none;border:none;color:#64748B;font-size:16px;cursor:pointer;line-height:1;padding:4px 8px;min-width:32px;min-height:32px">\u00d7</button>'
@@ -49508,7 +49897,7 @@ _dcfcGuideRender=function(){
 window._dcfcGuideRender=_dcfcGuideRender;
 
 _dcfcPrompt=function(){
-  if(DCFC.phase==='poi'){ _evBanner('\u2b1c Click the map to place the Utility Service (POI).'); }
+  if(DCFC.phase==='poi'){ _evBanner('\u2b1c Click the map to place the '+(DCFC.level2?'Existing Meter Bank':'Utility Service (POI)')+'.'); }
   else if(DCFC.phase==='drawtrench'){ var k=_dcfcCurKind(); var nm=(k==='xfmr'?'MAIN':k==='panel'?'FEEDER':'BRANCH'); _evBanner('\u270f\ufe0f Draw the '+nm+' trench: click points to route it, then Enter. Backspace undoes a point.'); }
   else if(DCFC.phase==='placeon'){ var k2=_dcfcCurKind();
     if(k2==='charger'){ _evBanner('\u2b1c Click on the branch trench to drop each charger ('+DCFC.chargersLeft+' left). Enter finishes.'); }
@@ -51320,7 +51709,7 @@ function _cdCableLf(c){
 /* ---- TABULATION ------------------------------------------------------- */
 function conduitEstimate(){
   var rows={}, order=[];
-  var totals={ estLf:0, cableLf:0, trenchGround:0, trenchConc:0, surface:0, fpLf:0, runs:0 };
+  var totals={ estLf:0, cableLf:0, trenchGround:0, trenchAsph:0, trenchConc:0, surface:0, fpLf:0, runs:0 };
   if(typeof S==='undefined' || !S.conduits) return { rows:[], totals:totals };
   for(var i=0;i<S.conduits.length;i++){
     var c=S.conduits[i];
@@ -51328,15 +51717,25 @@ function conduitEstimate(){
     var id=c.condType||'custom';
     if(!rows[id]){ rows[id]={ id:id, label:_ctLabel(id), size:_ctSize(id), runs:0,
                               drawnLf:0, estLf:0, cableLf:0, condCount:0,
-                              trenchGround:0, trenchConc:0, surface:0, klass:_cdKlass(id) };
+                              trenchGround:0, trenchAsph:0, trenchConc:0, surface:0, klass:_cdKlass(id) };
                    order.push(id); }
     var est=_cdEstLf(c), cbl=_cdCableLf(c);
     rows[id].runs++; rows[id].drawnLf+=(c.ftLen||0); rows[id].estLf+=est; rows[id].cableLf+=cbl;
     rows[id].condCount+=(c.condCount||1);
-    if(c.route==='trench'){ if(c.trenchIn==='concrete') rows[id].trenchConc+=est; else rows[id].trenchGround+=est; }
+    /* Asphalt is not in-ground trench: it carries saw cut, spoil, base and
+       patch. Bucketing it with lawn trench under-bids every parking lot. */
+    if(c.route==='trench'){
+      if(c.trenchIn==='concrete')     rows[id].trenchConc+=est;
+      else if(c.trenchIn==='asphalt') rows[id].trenchAsph+=est;
+      else                            rows[id].trenchGround+=est;
+    }
     else rows[id].surface+=est;
     totals.estLf+=est; totals.cableLf+=cbl; totals.runs++;
-    if(c.route==='trench'){ if(c.trenchIn==='concrete') totals.trenchConc+=est; else totals.trenchGround+=est; }
+    if(c.route==='trench'){
+      if(c.trenchIn==='concrete')     totals.trenchConc+=est;
+      else if(c.trenchIn==='asphalt') totals.trenchAsph+=est;
+      else                            totals.trenchGround+=est;
+    }
     else totals.surface+=est;
     if(rows[id].klass==='fp') totals.fpLf+=est;
   }
