@@ -2760,7 +2760,7 @@ if(document.readyState==='loading'){
         <p id="map-hint">Drop or click to upload aerial photo</p>
       </div>
       <input id="fbg" type="file" accept="image/*" onchange="loadBg(event)" style="display:none">
-      <button id="stencil-btn" onclick="toggleMapStencil()" title="Optional: AI redraw of the satellite into a clean B&W engineering stencil (needs an AI token — Settings → AI Keys). The clean satellite works fine as-is." style="width:100%;margin-top:5px;background:var(--surface);border:1px solid var(--border);color:var(--text);padding:5px;border-radius:4px;cursor:pointer;font-size:10px;font-weight:700;display:none">◈ AI B&amp;W Stencil (optional)</button>
+      <button id="stencil-btn" onclick="exportBlueprint()" title="Blueprint export &mdash; snapshots the sitemap, converts it to linework, overlays your elements and conduit, and downloads PNG + PDF. No map lock, no AI key." style="width:100%;margin-top:5px;background:var(--surface);border:1px solid var(--border);color:var(--text);padding:5px;border-radius:4px;cursor:pointer;font-size:10px;font-weight:700;display:none">◈ AI B&amp;W Stencil (optional)</button>
       <button id="btn-calibrate-hint" onclick="startCal()" title="Set the real-world scale so equipment drops at the correct size" style="width:100%;margin-top:5px;background:rgba(197,165,90,.15);border:1px solid rgba(197,165,90,.5);color:#E0B84D;padding:6px;border-radius:4px;cursor:pointer;font-size:10.5px;font-weight:700;display:none">📏 Calibrate scale (required for correct sizing)</button>
       <div class="map-tools" style="margin-top:5px">
         <button onclick="zoomBg(0.15)">+</button>
@@ -7564,6 +7564,250 @@ function toggleMapStencil(){
     if(status) status.textContent='  Satellite restored.';
   }
 }
+
+/* ═══════════════════════════════════════════════════════════════════════
+   BLUEPRINT EXPORT — snapshot the sitemap, stencil it, overlay the design.
+
+   The old Stencil (B&W) button had two hard dependencies the field does not
+   want: the map had to be LOCKED first (Static Maps fetch) and the redraw
+   went out to an AI service (Nano Banana / Gemini) that needs a key. Miss
+   either and you got an error instead of a sheet.
+
+   This does the whole thing locally:
+     1. get a raster of the sitemap, acquiring one silently if needed
+     2. run the offline edge filter -> linework
+     3. tint to blueprint (white linework on drafting navy)
+     4. rasterize ONLY the design layers (elements, conduit, labels) with the
+        imagery hidden, so the overlay has a transparent background
+     5. composite and hand back a PNG / PDF
+
+   Cross-origin note: a LIVE Google Maps iframe cannot be read into a canvas
+   by any browser — that restriction is not ours to remove. So when there is
+   no raster to work from we fetch one static tile behind the scenes rather
+   than making the user press Lock. No key and no uploaded photo means we
+   draw the design on a plain blueprint field instead of failing.
+   ═══════════════════════════════════════════════════════════════════════ */
+var BLUEPRINT = { ink:'#DCE9F7', paper:'#0B2545', grid:'rgba(220,233,247,0.10)' };
+
+/* Any raster of the site we are allowed to touch, in order of fidelity. */
+async function _bpSourceImage(){
+  if(window._frozenMapImg) return window._frozenMapImg;
+  var bd=document.getElementById('backdrop');
+  var mi=document.getElementById('map-img');
+  var cand=(bd&&bd.getAttribute('src'))||(mi&&mi.getAttribute('src'))||'';
+  if(cand.indexOf('data:')===0) return cand;
+
+  /* Nothing local — pull one static tile silently. This is what "Lock the
+     map" used to make the user do by hand. */
+  try{
+    var key=(typeof _CFG!=='undefined' && _CFG.googleMapsKey) ? _CFG.googleMapsKey : null;
+    if(!key || !window._gmap) return null;
+    var c=window._gmap.getCenter(); if(!c) return null;
+    var sc=document.getElementById('sc');
+    var w=Math.min(640, Math.max(320, sc?sc.offsetWidth:640));
+    var h=Math.min(640, Math.max(240, sc?sc.offsetHeight:480));
+    var z=Math.max(1, Math.min(21, window._gmap.getZoom()||19));
+    var url='https://maps.googleapis.com/maps/api/staticmap?center='+c.lat()+','+c.lng()
+           +'&zoom='+z+'&size='+Math.round(w)+'x'+Math.round(h)
+           +'&scale=2&maptype=satellite&key='+key;
+    var r=await fetch(url); if(!r.ok) return null;
+    var b=await r.blob(); if(b.size<1200) return null;
+    var durl=await new Promise(function(res,rej){
+      var rd=new FileReader(); rd.onload=function(){res(rd.result);}; rd.onerror=rej; rd.readAsDataURL(b);
+    });
+    window._frozenMapImg=durl;      /* reuse next time, still no Lock step */
+    return durl;
+  }catch(e){ return null; }
+}
+
+/* Stencil -> blueprint. The offline filter yields dark linework on white;
+   a blueprint is the inverse on navy, so we invert luminance and tint. */
+function _bpTint(stencilDataUrl, w, h){
+  return new Promise(function(resolve){
+    var img=new Image();
+    img.onload=function(){
+      var cv=document.createElement('canvas');
+      cv.width=w||img.naturalWidth; cv.height=h||img.naturalHeight;
+      var ctx=cv.getContext('2d');
+      ctx.fillStyle=BLUEPRINT.paper; ctx.fillRect(0,0,cv.width,cv.height);
+      var tmp=document.createElement('canvas');
+      tmp.width=cv.width; tmp.height=cv.height;
+      var tctx=tmp.getContext('2d');
+      tctx.drawImage(img,0,0,cv.width,cv.height);
+      var d;
+      try{ d=tctx.getImageData(0,0,cv.width,cv.height); }
+      catch(e){ resolve(cv.toDataURL('image/png')); return; }
+      var px=d.data, ink=BLUEPRINT.ink;
+      var ir=parseInt(ink.substr(1,2),16), ig=parseInt(ink.substr(3,2),16), ib=parseInt(ink.substr(5,2),16);
+      var pr=parseInt(BLUEPRINT.paper.substr(1,2),16),
+          pg=parseInt(BLUEPRINT.paper.substr(3,2),16),
+          pb=parseInt(BLUEPRINT.paper.substr(5,2),16);
+      for(var i=0;i<px.length;i+=4){
+        /* line strength = how dark the stencil pixel is */
+        var lum=(0.299*px[i]+0.587*px[i+1]+0.114*px[i+2])/255;
+        var t=1-lum;
+        px[i]  = Math.round(pr + (ir-pr)*t);
+        px[i+1]= Math.round(pg + (ig-pg)*t);
+        px[i+2]= Math.round(pb + (ib-pb)*t);
+        px[i+3]= 255;
+      }
+      tctx.putImageData(d,0,0);
+      ctx.drawImage(tmp,0,0);
+      resolve(cv.toDataURL('image/png'));
+    };
+    img.onerror=function(){ resolve(null); };
+    img.src=stencilDataUrl;
+  });
+}
+
+/* Rasterize the design layers only. Imagery is hidden for the capture so the
+   result is transparent everywhere the drawing is empty. */
+async function _bpOverlayLayers(){
+  if(typeof html2canvas!=='function') return null;
+  var sc=document.getElementById('sc'); if(!sc) return null;
+  var hideIds=['backdrop','frozen-map-img','gmap-frame','map-img'];
+  var saved=[];
+  hideIds.forEach(function(id){
+    var n=document.getElementById(id);
+    if(n){ saved.push([n, n.style.display]); n.style.display='none'; }
+  });
+  var cv=null;
+  try{
+    cv=await html2canvas(sc, { backgroundColor:null, useCORS:true, logging:false,
+                               scale:Math.min(2, window.devicePixelRatio||1) });
+  }catch(e){ cv=null; }
+  saved.forEach(function(pair){ pair[0].style.display=pair[1]; });
+  return cv;
+}
+
+/* Main entry. Returns a data URL and, unless silent, downloads PNG + PDF. */
+/* Public entry. Any throw inside used to vanish into an unhandled rejection
+   with no visible result — the click just did nothing. Everything is reported
+   now, on the panel and in the console. */
+async function exportBlueprint(opts){
+  try{
+    return await _exportBlueprintRun(opts);
+  }catch(err){
+    var m=(err && err.message) || String(err);
+    if(window.console) console.error('[blueprint] failed:', err);
+    var st=document.getElementById('gmap-status');
+    if(st) st.textContent='  Blueprint failed: '+m;
+    if(typeof showBanner==='function') showBanner('cal','Blueprint failed: '+m);
+    else alert('Blueprint failed: '+m);
+    return null;
+  }
+}
+
+async function _exportBlueprintRun(opts){
+  opts=opts||{};
+  var status=document.getElementById('gmap-status');
+  var say=function(m){ if(status) status.textContent='  '+m;
+                       if(!status && typeof showBanner==='function') showBanner('cal', m); };
+  say('Building blueprint\u2026');
+
+  var sc=document.getElementById('sc');
+  var W=(sc?sc.offsetWidth:1200), H=(sc?sc.offsetHeight:800);
+  var S2=Math.min(2, window.devicePixelRatio||1);
+  var out=document.createElement('canvas');
+  out.width=Math.round(W*S2); out.height=Math.round(H*S2);
+  var ctx=out.getContext('2d');
+
+  /* 1-3: basemap -> linework -> blueprint field */
+  var base=await _bpSourceImage();
+  var laid=false;
+  if(base && typeof _makeStencil==='function'){
+    try{
+      var st=await _makeStencil(base, { threshold: (opts.threshold!=null?opts.threshold:60) });
+      var tinted=await _bpTint(st, out.width, out.height);
+      if(tinted){
+        await new Promise(function(res){
+          var im=new Image();
+          im.onload=function(){ ctx.drawImage(im,0,0,out.width,out.height); laid=true; res(); };
+          im.onerror=res; im.src=tinted;
+        });
+      }
+    }catch(e){ say('Stencil skipped ('+(e&&e.message||'error')+') \u2014 drawing on a plain field.'); }
+  }
+  if(!laid){
+    ctx.fillStyle=BLUEPRINT.paper; ctx.fillRect(0,0,out.width,out.height);
+  }
+
+  /* drafting grid, so an imageless sheet still reads as a blueprint */
+  ctx.strokeStyle=BLUEPRINT.grid; ctx.lineWidth=1;
+  var step=Math.round(40*S2);
+  for(var x=step;x<out.width;x+=step){ ctx.beginPath(); ctx.moveTo(x,0); ctx.lineTo(x,out.height); ctx.stroke(); }
+  for(var y=step;y<out.height;y+=step){ ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(out.width,y); ctx.stroke(); }
+
+  /* 4-5: design layers over the top */
+  var ov=await _bpOverlayLayers();
+  if(ov) ctx.drawImage(ov,0,0,out.width,out.height);
+
+  var url=out.toDataURL('image/png');
+  if(opts.silent) { say('Blueprint ready.'); return url; }
+
+  var name=((typeof _projName==='function'&&_projName())
+            || (document.getElementById('pn-title')&&document.getElementById('pn-title').textContent)
+            || 'site').replace(/[^\w]+/g,'-').toLowerCase() || 'site';
+
+  /* Safari will not reliably download a multi-megabyte data: URL, and on a
+     file:// origin it fails silently — no error, no file. A blob URL on an
+     anchor that is actually IN the document works everywhere. */
+  await new Promise(function(res){
+    try{
+      out.toBlob(function(blob){
+        try{
+          if(!blob){ throw new Error('canvas produced no blob'); }
+          var burl=URL.createObjectURL(blob);
+          var a=document.createElement('a');
+          a.href=burl; a.download=name+'-blueprint.png';
+          a.style.display='none';
+          document.body.appendChild(a);
+          a.click();
+          setTimeout(function(){
+            try{ document.body.removeChild(a); URL.revokeObjectURL(burl); }catch(e){}
+          }, 4000);
+        }catch(e){
+          /* last resort: open it so the user can save manually */
+          try{ window.open(url,'_blank'); }catch(e2){}
+        }
+        res();
+      }, 'image/png');
+    }catch(e){ try{ window.open(url,'_blank'); }catch(e2){} res(); }
+  });
+
+  var didPdf=false;
+  try{
+    var J=(window.jspdf&&window.jspdf.jsPDF)||window.jsPDF;
+    if(J){
+      var land=out.width>=out.height;
+      var pdf=new J({ orientation: land?'landscape':'portrait', unit:'pt', format:'letter' });
+      var pw=pdf.internal.pageSize.getWidth(), ph=pdf.internal.pageSize.getHeight();
+      var m=24, aw=pw-m*2, ah=ph-m*2;
+      var r=Math.min(aw/out.width, ah/out.height);
+      var dw=out.width*r, dh=out.height*r;
+      pdf.setFillColor(BLUEPRINT.paper); pdf.rect(0,0,pw,ph,'F');
+      pdf.addImage(url,'PNG',(pw-dw)/2,(ph-dh)/2,dw,dh);
+      pdf.save(name+'-blueprint.pdf');
+      didPdf=true;
+    }
+  }catch(e){ if(window.console) console.warn('[blueprint] PDF step failed:', e && e.message); }
+
+  say('Blueprint exported \u2014 PNG' + (didPdf?' + PDF':' (PDF library unavailable)') + '.');
+  return url;
+}
+window.exportBlueprint=exportBlueprint;
+/* It no longer needs a frozen map, so it must not stay hidden waiting for one. */
+(function(){
+  var show=function(){
+    var b=document.getElementById('stencil-btn');
+    if(b){ b.style.display='block'; b.textContent='\u25a4 Export Blueprint'; }
+  };
+  if(document.readyState==='loading') document.addEventListener('DOMContentLoaded', show);
+  else show();
+})();
+window._bpSourceImage=_bpSourceImage;
+window._bpOverlayLayers=_bpOverlayLayers;
+
 /* Put an image (stencil or original) onto the frozen-map layer AND the #backdrop
    so both the on-screen canvas and the permit export (_ppMapLayer) show it. */
 function _applyStencilImage(dataUrl){
