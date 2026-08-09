@@ -11045,8 +11045,10 @@ function rotateSelection(step){
     var sh=(shId && S.shapes) ? S.shapes.find(function(x){return x.id===shId;}) : null;
     if(sh){
       sh.rot=_rotSnap((+sh.rot||0)+step, false);
+      var _shown=sh.rot;
       if(typeof _refreshShape==='function') _refreshShape(sh);
-      _rotReadout(sh.rot,false); did=true;
+      _bakeShapeRotation(sh);          /* persist it, same as a drag */
+      _rotReadout(_shown,false); did=true;
     }
   }catch(e){}
   if(did && typeof pushHist==='function') pushHist();
@@ -11074,6 +11076,58 @@ document.addEventListener('keydown', function(e){
   }
 });
 
+/* BAKE ROTATION INTO THE GEOMETRY.
+
+   sh.rot was a render-time transform: renderShape applied rotate() to the
+   <g>, while the ground anchor (_geoPts / _geoBoundary / _geoTables) was
+   stamped from the UNROTATED point list. So the angle lived only in the SVG
+   and the lat/lng carried the original square. The moment the map reprojected
+   — any pan, zoom or re-render — the points came back from those unrotated
+   anchors and the shape squared up again.
+
+   For a geo-anchored site plan the ground truth has to be the lat/lng of the
+   rotated corners, not an angle applied at paint time. So on rotate-end we
+   rotate the actual points about the shape centre, clear sh.rot, and restamp.
+   Nothing downstream can then undo it. */
+function _bakeShapeRotation(sh){
+  if(!sh) return false;
+  var rot=+sh.rot||0;
+  if(!rot) return false;
+  var c=(typeof _shapeCenter==='function') ? _shapeCenter(sh) : null;
+  if(!c) return false;
+  var rad=rot*Math.PI/180, cos=Math.cos(rad), sin=Math.sin(rad);
+  function spin(p){
+    if(!p || typeof p.x!=='number') return;
+    var dx=p.x-c.x, dy=p.y-c.y;
+    p.x = c.x + dx*cos - dy*sin;
+    p.y = c.y + dx*sin + dy*cos;
+  }
+  if(sh.pts)      sh.pts.forEach(spin);
+  if(sh.boundary) sh.boundary.forEach(spin);
+  if(sh.exclusions) sh.exclusions.forEach(function(ring){ if(ring) ring.forEach(spin); });
+  if(sh.tables){
+    sh.tables.forEach(function(T){
+      if(!T) return;
+      /* Tables are boxes: spin the CENTRE and carry the angle on the table
+         itself, so module rows stay rectangular instead of shearing. */
+      var mid={ x:(T.x||0)+(T.w||0)/2, y:(T.y||0)+(T.h||0)/2 };
+      spin(mid);
+      T.x=mid.x-(T.w||0)/2; T.y=mid.y-(T.h||0)/2;
+      T.a=((+T.a||0)+rot)%360;
+    });
+  }
+  if(typeof sh.cx==='number'){ var cc={x:sh.cx,y:sh.cy}; spin(cc); sh.cx=cc.x; sh.cy=cc.y; }
+  /* Angle now lives in the geometry, so the transform must not add it again. */
+  sh.rot=0;
+  /* Re-stamp from the rotated pixels, dropping the stale square anchors. */
+  delete sh._geoPts; delete sh._geoBoundary; delete sh._geoTables;
+  delete sh._geoExcl; delete sh._geoC;
+  try{ if(typeof _geoRestampOne==='function') _geoRestampOne(sh); }catch(e){}
+  try{ if(typeof renderShape==='function') renderShape(sh); }catch(e){}
+  return true;
+}
+window._bakeShapeRotation=_bakeShapeRotation;
+
 function _shapeInteractEnd(){
   if(S.shapeDrag||S.shapeResize||S.shapeRotate){
     /* Patch 8: capture which shape moved BEFORE the ids are cleared, then
@@ -11082,9 +11136,12 @@ function _shapeInteractEnd(){
     S.shapeDrag=null; S.shapeResize=null; S.shapeRotate=null; S.groupDrag=null;
     S.shTwoCorner=false;   /* clear the two-corner resize flag */
     try{
-      if(_movedId && typeof _geoRestampOne==='function'){
-        var _sh=(S.shapes||[]).filter(function(x){ return x.id===_movedId; })[0];
-        if(_sh) _geoRestampOne(_sh);
+      var _sh=(S.shapes||[]).filter(function(x){ return x.id===_movedId; })[0];
+      if(_sh){
+        /* Rotation first: it rewrites the points, and the restamp has to
+           record where they ended up, not where they started. */
+        var _baked=_bakeShapeRotation(_sh);
+        if(!_baked && typeof _geoRestampOne==='function') _geoRestampOne(_sh);
       }
     }catch(e){}
     pushHist();
@@ -14394,6 +14451,146 @@ function analyze8760(text){
   };
 }
 
+
+/* ══════════════════════════════════════════════════════════════════════
+   CONDUIT VERTEX EDITING
+
+   A guided build routes conduit automatically, and the route is right most
+   of the time — but not around the one obstruction the aerial does not
+   show. There was no way to nudge a single point: the whole run had to be
+   deleted and re-drawn.
+
+   Click a run to raise its vertices, drag one to move it. On drop the point
+   is re-stamped to the ground (_geoPts[i]) so it holds through pan and zoom
+   like every other anchored point, and the length is recomputed. Alt-click
+   a segment inserts a vertex; Alt-click a vertex removes it.
+   ══════════════════════════════════════════════════════════════════════ */
+var _cvSel = null, _cvDrag = null;
+
+function _cvClear(){
+  var lay=document.getElementById('cond-verts');
+  if(lay && lay.parentNode) lay.parentNode.removeChild(lay);
+  _cvSel=null;
+}
+window._cvClear=_cvClear;
+
+function _cvShow(cid){
+  _cvClear();
+  var c=(S.conduits||[]).filter(function(x){return x.id===cid;})[0];
+  if(!c || !c.pts || !c.pts.length) return;
+  _cvSel=cid;
+  var svg=document.getElementById('csvg'); if(!svg) return;
+  var lay=_mkNS('g'); lay.setAttribute('id','cond-verts');
+  lay.setAttribute('data-for',cid);
+
+  c.pts.forEach(function(pt,i){
+    var h=_mkNS('circle');
+    h.setAttribute('cx',pt.x); h.setAttribute('cy',pt.y);
+    h.setAttribute('r', (i===0||i===c.pts.length-1) ? 6 : 5);
+    /* Endpoints read differently: they are usually welded to equipment, and
+       dragging one detaches it from whatever it feeds. */
+    h.setAttribute('fill', (i===0||i===c.pts.length-1) ? '#FBBF24' : '#22D3EE');
+    h.setAttribute('stroke','#08111F'); h.setAttribute('stroke-width','1.5');
+    h.setAttribute('style','cursor:grab;pointer-events:all');
+    h.setAttribute('data-cv', i);
+    h.addEventListener('mousedown', function(ev){
+      ev.stopPropagation(); ev.preventDefault();
+      if(ev.altKey){ _cvRemove(cid, i); return; }
+      _cvDrag={ cid:cid, i:i };
+      h.setAttribute('style','cursor:grabbing;pointer-events:all');
+    });
+    lay.appendChild(h);
+  });
+  svg.appendChild(lay);
+}
+window._cvShow=_cvShow;
+
+function _cvMove(x,y){
+  if(!_cvDrag) return false;
+  var c=(S.conduits||[]).filter(function(z){return z.id===_cvDrag.cid;})[0];
+  if(!c || !c.pts[_cvDrag.i]) return false;
+  c.pts[_cvDrag.i].x=x; c.pts[_cvDrag.i].y=y;
+  /* A dragged point is no longer welded to an element. */
+  if(c.pts[_cvDrag.i].elId) delete c.pts[_cvDrag.i].elId;
+  if(_cvDrag.i===0) c.fromId=null;
+  if(_cvDrag.i===c.pts.length-1) c.toId=null;
+  if(typeof renderConduit==='function') renderConduit(c);
+  _cvShow(_cvDrag.cid);
+  return true;
+}
+
+function _cvEnd(){
+  if(!_cvDrag) return false;
+  var c=(S.conduits||[]).filter(function(z){return z.id===_cvDrag.cid;})[0];
+  _cvDrag=null;
+  if(!c) return false;
+  _cvRestamp(c);
+  if(typeof pushHist==='function') pushHist();
+  return true;
+}
+
+/* Re-anchor every point to the ground and recompute the length, so an edited
+   run survives zoom exactly like a freshly drawn one. */
+function _cvRestamp(c){
+  try{
+    var ms=_liveMapState(), sz=_getCanvasSize();
+    if(ms){
+      c._geoPts=c.pts.map(function(p){
+        var g=_pxToLatLng(p.x,p.y,ms,sz.w,sz.h);
+        return g?{lat:g.lat,lng:g.lng}:null;
+      });
+    }
+  }catch(e){}
+  try{
+    if(typeof _polyLen==='function'){
+      c.pxLen=_polyLen(c.pts);
+      if(S.pxPerFt>0) c.ftLen=+(c.pxLen/S.pxPerFt).toFixed(1);
+    }
+    if(typeof _cdStamp==='function') _cdStamp(c);
+    if(typeof renderConduit==='function') renderConduit(c);
+    if(typeof renderLegend==='function') renderLegend();
+    if(typeof updateSummaryPanel==='function') updateSummaryPanel();
+  }catch(e){}
+}
+window._cvRestamp=_cvRestamp;
+
+/* Alt-click a segment to add a vertex where the route needs a dogleg. */
+function _cvInsert(cid, x, y){
+  var c=(S.conduits||[]).filter(function(z){return z.id===cid;})[0];
+  if(!c || !c.pts || c.pts.length<2) return;
+  var best=1, bd=Infinity;
+  for(var i=0;i<c.pts.length-1;i++){
+    var a=c.pts[i], b=c.pts[i+1];
+    var mx=(a.x+b.x)/2, my=(a.y+b.y)/2;
+    var d=Math.hypot(x-mx, y-my);
+    if(d<bd){ bd=d; best=i+1; }
+  }
+  c.pts.splice(best, 0, {x:x, y:y});
+  _cvRestamp(c); _cvShow(cid);
+  if(typeof pushHist==='function') pushHist();
+}
+window._cvInsert=_cvInsert;
+
+function _cvRemove(cid, i){
+  var c=(S.conduits||[]).filter(function(z){return z.id===cid;})[0];
+  if(!c || !c.pts || c.pts.length<=2) return;      /* a run needs two ends */
+  c.pts.splice(i,1);
+  _cvRestamp(c); _cvShow(cid);
+  if(typeof pushHist==='function') pushHist();
+}
+window._cvRemove=_cvRemove;
+
+/* Hook into the existing pointer stream rather than adding a second one. */
+document.addEventListener('mousemove', function(e){
+  if(!_cvDrag) return;
+  var xy=(typeof _evtXY==='function') ? _evtXY(e) : null;
+  if(xy){ e.preventDefault(); _cvMove(xy.x, xy.y); }
+}, true);
+document.addEventListener('mouseup', function(){ _cvEnd(); }, true);
+document.addEventListener('keydown', function(e){
+  if(e.key==='Escape' && _cvSel) _cvClear();
+});
+
 function renderConduit(c){
   const svg=document.getElementById('csvg');
   /* Keep the keyed schedule in step with the drawing. Debounced so a bulk
@@ -14477,6 +14674,15 @@ function renderConduit(c){
     if(c.cluster || c.spine || c.tap || c.mv || c.chainFromEms) return;
     e.stopPropagation();
     insertConduitVertex(c, e);
+  });
+  hit.addEventListener('click', function(e){
+    if(e.shiftKey) return;               /* shift-click still selects for delete */
+    e.stopPropagation();
+    var xy=(typeof _evtXY==='function') ? _evtXY(e) : null;
+    if(e.altKey && xy){ _cvInsert(c.id, xy.x, xy.y); return; }
+    _cvShow(c.id);
+    if(typeof showBanner==='function')
+      showBanner('cond','Drag a point to re-route \u00b7 Alt-click a segment to add one \u00b7 Alt-click a point to remove \u00b7 Esc to finish');
   });
   hit.addEventListener('contextmenu', function(e){
     e.preventDefault(); e.stopPropagation();
@@ -69491,9 +69697,24 @@ window._crmToastModal=_crmToastModal;
     return !!x && (x.kind === 'assembly' || x.type === 'bess-asm'
       || x.kind === 'dersolar' || x.kind === 'derwind' || x.kind === 'deralt');
   }
+  /* Anything a guided build placed belongs to the cluster.
+
+     This matched four ids — ems, der_poi, xfmr — so a DER build's ten PCS
+     inverters, its switchgear, meters and disconnects were all left behind
+     when the cluster was rotated or nudged: the containers moved and the
+     electrical equipment stayed put. The guided builds stamp bgbRole /
+     evRole / dcfcRole on everything they place, so use that as the primary
+     test and keep the id list as a fallback for hand-placed gear. */
+  var CLUSTER_EQ = { ems:1, der_poi:1, xfmr:1, pcs:1, inverter:1, solar:1,
+                     panel:1, disco:1, meter:1, service:1, jbox:1, bess:1,
+                     acblock:1, utilxfmr:1, mainswgr:1, pvinv:1, pv:1, loads:1 };
   function isClusterEl(x) {
-    return !!x && (x.eqId === 'ems' || x.type === 'ems'
-      || x.eqId === 'der_poi' || x.eqId === 'xfmr');
+    if (!x) return false;
+    if (x.bgbRole || x.evRole || x.dcfcRole) return true;   /* guided-build member */
+    if (x.type === 'ems' || x.type === 'bess-asm') return true;
+    if (x.eqId && CLUSTER_EQ[x.eqId]) return true;
+    if (x.type === 'evgear' && x.evKind && CLUSTER_EQ[x.evKind]) return true;
+    return false;
   }
   function members() {
     var s = S_(); if (!s) return null;
@@ -69977,7 +70198,7 @@ window._crmToastModal=_crmToastModal;
     var s = S_(); if (!s) return { pads: 0, ems: 0, runs: 0 };
     return {
       pads: (s.shapes || []).filter(function (x) { return x && (x.kind === 'assembly' || x.type === 'bess-asm' || x.kind === 'dersolar' || x.kind === 'derwind' || x.kind === 'deralt'); }).length,
-      ems: (s.elements || []).filter(function (x) { return x && (x.eqId === 'ems' || x.type === 'ems' || x.eqId === 'der_poi' || x.eqId === 'xfmr'); }).length,
+      ems: (s.elements || []).filter(isClusterEl).length,
       runs: (s.conduits || []).filter(function (c) { return c && (c.cluster || c.derCollector); }).length
     };
   }
