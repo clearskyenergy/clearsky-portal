@@ -3694,6 +3694,7 @@ if(document.readyState==='loading'){
   <!-- SLD Toolbar -->
   <div id="sld-toolbar" style="background:#1B2A3B;border-bottom:2px solid #C5A55A;padding:6px 10px;display:flex;align-items:center;gap:6px;flex-wrap:wrap;flex-shrink:0">
     <span style="color:#C5A55A;font-size:10px;font-weight:800;letter-spacing:.06em;margin-right:4px">ONE-LINE</span>
+    <button onclick="sldFromSite()" title="Read the site map and build the one-line from it — arrays grouped per roof, each branch to the utility POI" style="background:#B45309;color:#fff;border:none;border-radius:4px;padding:4px 9px;font-size:11px;font-weight:700;cursor:pointer;margin-right:8px">↻ Generate from site map</button>
     <button onclick="sldAddNode('bess')" style="background:#1B4F8A;color:#fff;border:none;border-radius:4px;padding:4px 9px;font-size:10px;font-weight:700;cursor:pointer">+ BESS</button>
     <button onclick="sldAddNode('inv')" style="background:#0A6B3A;color:#fff;border:none;border-radius:4px;padding:4px 9px;font-size:10px;font-weight:700;cursor:pointer">+ Inverter/PCS</button>
     <button onclick="sldAddNode('xfmr')" style="background:#4A1070;color:#fff;border:none;border-radius:4px;padding:4px 9px;font-size:10px;font-weight:700;cursor:pointer">+ Transformer</button>
@@ -8313,6 +8314,16 @@ async function exportSpecsForCADTool() {
 
 function renderEl(el){
   const container=document.getElementById('els');
+  /* SELF-CLEANING. This appended a new .cel and never removed the existing
+     one — only _reRenderEl() did that, and half the call sites do not go
+     through it. So re-rendering an element stacked a duplicate at the new
+     position while the original stayed at the old one: rotating the cluster
+     appeared to move only the shapes, because every element was still drawn
+     where it started, with its moved copy underneath. */
+  try{
+    const _prev=container ? container.querySelector('[data-elid="'+el.id+'"]') : null;
+    if(_prev && _prev.parentNode) _prev.parentNode.removeChild(_prev);
+  }catch(e){}
   const wrap=document.createElement('div');
   wrap.className='cel';wrap.dataset.elid=el.id;
   wrap.style.cssText=`left:${el.x}px;top:${el.y}px;`;
@@ -11185,7 +11196,31 @@ function _refreshShape(sh){
   /* If cluster conduits are anchored to this BESS, re-route their start so the
      point of connection follows the unit. */
   if(typeof _rerouteShapeConduits==='function') _rerouteShapeConduits(sh);
+  /* Trenches and runs that START or END on this pad have to follow it, or
+     the conduit stays behind and the drawing shows a run to nowhere. */
+  if(typeof _shapeDragRuns==='function') _shapeDragRuns(sh);
 }
+
+/* Move any conduit endpoint welded to this shape, then re-anchor the run so
+   the edit survives the next reprojection. */
+function _shapeDragRuns(sh){
+  if(!sh || !S.conduits) return;
+  var c0=(typeof _shapeCenter==='function') ? _shapeCenter(sh) : null;
+  if(!c0) return;
+  (S.conduits||[]).forEach(function(c){
+    if(!c || !c.pts || c.pts.length<2) return;
+    var touched=false;
+    if(c.fromShapeId===sh.id){ c.pts[0].x=c0.x; c.pts[0].y=c0.y; touched=true; }
+    if(c.toShapeId===sh.id){
+      c.pts[c.pts.length-1].x=c0.x; c.pts[c.pts.length-1].y=c0.y; touched=true;
+    }
+    if(touched){
+      if(typeof _cvRestamp==='function') _cvRestamp(c);
+      else if(typeof renderConduit==='function') renderConduit(c);
+    }
+  });
+}
+window._shapeDragRuns=_shapeDragRuns;
 /* Re-route the AC/DC/BMS cluster conduits anchored to a moved BESS shape. */
 function _rerouteShapeConduits(sh){
   if(!sh || !S.conduits) return;
@@ -14617,6 +14652,45 @@ document.addEventListener('keydown', function(e){
   if(e.key==='Escape' && _cvSel) _cvClear();
 });
 
+/* Hide a callout because the USER said so.
+
+   The auto-declutter pass owns any label it hid itself (_autoHid) and will
+   un-hide the lead of each trench group on the next redraw. Setting
+   labelHidden alone was not enough: if that run had been auto-hidden at some
+   earlier point, _autoHid was still set, declutter still counted it as its
+   own, and the box came back the next time the map moved. Renouncing auto
+   ownership and recording intent makes the dismissal stick. */
+function _cdShowLabel(c){
+  if(!c) return;
+  c.labelHidden = false;
+  delete c._userHid; delete c._autoHid;
+  try{
+    if(typeof renderConduit==='function') renderConduit(c);
+    if(typeof pushHist==='function') pushHist();
+  }catch(e){}
+}
+window._cdShowLabel=_cdShowLabel;
+
+/* Restore every callout the user dismissed on this drawing. */
+function showAllConduitLabels(){
+  var n=0;
+  (S.conduits||[]).forEach(function(c){
+    if(c && (c._userHid || c.labelHidden)){ _cdShowLabel(c); n++; }
+  });
+  if(typeof showBanner==='function') showBanner('cond', n+' callout'+(n===1?'':'s')+' restored.');
+  return n;
+}
+window.showAllConduitLabels=showAllConduitLabels;
+
+function _cdHideLabel(c){
+  if(!c) return;
+  c.labelHidden = true;
+  c._userHid = true;
+  delete c._autoHid;
+  try{ if(typeof pushHist==='function') pushHist(); }catch(e){}
+}
+window._cdHideLabel=_cdHideLabel;
+
 function renderConduit(c){
   const svg=document.getElementById('csvg');
   /* Keep the keyed schedule in step with the drawing. Debounced so a bulk
@@ -14627,6 +14701,19 @@ function renderConduit(c){
       if(typeof renderEngLegend==='function'){ try{ renderEngLegend(); }catch(e){} }
     },40);
   }
+  /* SELF-CLEANING. This drew a new line group AND a separate label group
+     (data-clbl-id) but removed neither — every caller had to remember to
+     delete [data-cid] first, and none of them ever deleted the label. So a
+     repeated re-render stacked leaders and boxes on top of each other: the
+     mirrored duplicates seen while dragging a conduit point. Remove both
+     here, once, instead of trusting six call sites to do it. */
+  try{
+    var _oldLine=svg.querySelector('[data-cid="'+c.id+'"]');
+    if(_oldLine && _oldLine.parentNode) _oldLine.parentNode.removeChild(_oldLine);
+    var _oldLbls=svg.querySelectorAll('[data-clbl-id="'+c.id+'"]');
+    for(var _q=0;_q<_oldLbls.length;_q++)
+      if(_oldLbls[_q].parentNode) _oldLbls[_q].parentNode.removeChild(_oldLbls[_q]);
+  }catch(e){}
   const ct=CTYPES.find(x=>x.id===c.condType)||CTYPES[0];
   const g=document.createElementNS('http://www.w3.org/2000/svg','g');
   g.dataset.cid=c.id;
@@ -14688,7 +14775,9 @@ function renderConduit(c){
   hit.setAttribute('points',_drawPts.map(p=>`${p.x},${p.y}`).join(' '));
   hit.setAttribute('stroke','transparent');hit.setAttribute('stroke-width','14');hit.setAttribute('fill','none');
   hit.style.cursor='pointer'; hit.style.pointerEvents='all';
-  hit.addEventListener('dblclick',function(ev){ ev.stopPropagation(); c.labelHidden=true; var gg=document.querySelector('[data-cid="'+c.id+'"]'); if(gg&&gg.parentNode)gg.parentNode.removeChild(gg); renderConduit(c); });
+  hit.addEventListener('dblclick',function(ev){ ev.stopPropagation();
+    if(ev.shiftKey){ _cdShowLabel(c); return; }
+    _cdHideLabel(c); var gg=document.querySelector('[data-cid="'+c.id+'"]'); if(gg&&gg.parentNode)gg.parentNode.removeChild(gg); renderConduit(c); });
   // Single click on conduit (in select mode) = insert a vertex at click point.
   // Shift+click = SELECT this conduit for deletion. Right-click = context menu.
   hit.addEventListener('click', function(e) {
@@ -14755,8 +14844,8 @@ function renderConduit(c){
   lg.style.pointerEvents = 'all';
   // Double-click or right-click the label to hide just this label; delete the
   // whole conduit via double-click on the line itself.
-  lg.addEventListener('dblclick', function(ev){ ev.stopPropagation(); c.labelHidden=true; var g0=document.querySelector('[data-cid="'+c.id+'"]'); if(g0&&g0.parentNode)g0.parentNode.removeChild(g0); renderConduit(c); });
-  lg.addEventListener('contextmenu', function(ev){ ev.preventDefault(); ev.stopPropagation(); c.labelHidden=true; var g1=document.querySelector('[data-cid="'+c.id+'"]'); if(g1&&g1.parentNode)g1.parentNode.removeChild(g1); renderConduit(c); });
+  lg.addEventListener('dblclick', function(ev){ ev.stopPropagation(); _cdHideLabel(c); var g0=document.querySelector('[data-cid="'+c.id+'"]'); if(g0&&g0.parentNode)g0.parentNode.removeChild(g0); renderConduit(c); });
+  lg.addEventListener('contextmenu', function(ev){ ev.preventDefault(); ev.stopPropagation(); _cdHideLabel(c); var g1=document.querySelector('[data-cid="'+c.id+'"]'); if(g1&&g1.parentNode)g1.parentNode.removeChild(g1); renderConduit(c); });
   // Shift+click the label cycles its routing method (surface -> in-ground
   // trench -> sawcut-concrete trench). Plain click still starts a drag.
   lg.addEventListener('click', function(ev){ if(ev.shiftKey){ ev.stopPropagation(); ev.preventDefault(); cycleConduitRoute(c.id); } });
@@ -14765,7 +14854,15 @@ function renderConduit(c){
   // every run is already documented there, so the per-run callouts are
   // redundant and just stack on top of each other on a dense pad. The
   // user can hide them all at once via toggleConduitLabels().
-  if (c.labelHidden || window._hideConduitLabels) { svg.appendChild(g); return; }
+  /* _userHid is checked FIRST and on its own.
+
+     labelHidden is written by several owners — the guided routers, the
+     auto-declutter pass, the trench rebuild — and chasing each one down was
+     losing the user's dismissal somewhere in the chain. A hand-dismissed
+     callout is a decision, not a style, so it is enforced here at the only
+     place a box is actually drawn. Whatever else resets labelHidden, the box
+     stays gone until the user asks for it back. */
+  if (c._userHid || c.labelHidden || window._hideConduitLabels) { svg.appendChild(g); return; }
 
   //   Dot at line midpoint
   const dot = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
@@ -18962,6 +19059,152 @@ function sldClear() {
   _sld.nodes = []; _sld.wires = []; _sld.sel = null; _sld.wireFrom = null;
   sldRender();
 }
+
+
+/* ══════════════════════════════════════════════════════════════════════
+   ONE-LINE FROM THE SITE MAP
+
+   The one-line was manual: every node added by button, every wire drawn by
+   hand. So a DER build that put 11 PV pads, their inverters and their
+   transformers on the map produced an empty diagram, and the two documents
+   described different projects.
+
+   This reads the drawing and builds the one-line from it. The structure
+   that matters on a multi-roof site is GROUPING: each array feeds its own
+   inverter, inverters group onto a transformer, transformers land on a
+   collector bus, and the bus goes to the utility POI. Separate roofs stay
+   separate branches that converge at the POI rather than being flattened
+   into one stack — that flattening is what makes a generated one-line
+   useless for an interconnection application.
+   ══════════════════════════════════════════════════════════════════════ */
+function _sldNew(type, label, x, y, extra){
+  var cfg=(typeof SLD_TYPES!=='undefined' && SLD_TYPES[type]) ? SLD_TYPES[type] : {w:120,h:56,label:type};
+  var n={ id:_sld.nextId++, type:type, x:x, y:y, w:cfg.w, h:cfg.h,
+          label:label||cfg.label };
+  if(extra) for(var k in extra) if(extra.hasOwnProperty(k)) n[k]=extra[k];
+  _sld.nodes.push(n);
+  return n;
+}
+function _sldWire(a, b, label, style){
+  if(!a || !b) return null;
+  var w={ id:_sld.nextId++, fromId:a.id, toId:b.id, label:label||'', style:style||'ac' };
+  _sld.wires.push(w);
+  return w;
+}
+
+/* Cluster arrays into branches. Two arrays belong to the same branch when
+   they sit within ~150 ft of each other — which on a real site means the
+   same roof or the same field, i.e. the same inverter group. */
+function _sldGroupArrays(arrays, ppf){
+  var reach=(ppf>0? ppf:1)*150;
+  var groups=[];
+  arrays.forEach(function(a){
+    for(var i=0;i<groups.length;i++){
+      var g=groups[i];
+      if(Math.hypot(a.x-g.x, a.y-g.y) <= reach){
+        g.items.push(a);
+        g.x=(g.x*(g.items.length-1)+a.x)/g.items.length;
+        g.y=(g.y*(g.items.length-1)+a.y)/g.items.length;
+        return;
+      }
+    }
+    groups.push({ x:a.x, y:a.y, items:[a] });
+  });
+  return groups;
+}
+
+function sldFromSite(opts){
+  opts=opts||{};
+  if(typeof S==='undefined'){ sldSetHint('No drawing to read.'); return; }
+  if(_sld.nodes.length && !opts.replace &&
+     !confirm('Replace the current one-line with one generated from the site map?')) return;
+
+  _sld.nodes=[]; _sld.wires=[]; _sld.sel=null; _sld.wireFrom=null;
+
+  var ppf=(S.pxPerFt>0)?S.pxPerFt:0;
+
+  /* ---- what is on the drawing ---- */
+  var arrays=[], bess=[], loads=[];
+  (S.shapes||[]).forEach(function(sh){
+    if(!sh) return;
+    if(sh.kind==='dersolar' || sh.kind==='solar'){
+      var c=(typeof _shapeCenter==='function')?_shapeCenter(sh):{x:sh.cx||0,y:sh.cy||0};
+      arrays.push({ x:c.x, y:c.y, kw:+sh.kw||0, label:sh.label||null });
+    }
+  });
+  (S.elements||[]).forEach(function(el){
+    if(!el) return;
+    var kind=el.evKind||el.eqId||el.bgbRole||'';
+    var cx=(el.x||0)+((el.w||60)/2), cy=(el.y||0)+((el.h||el.w||60)/2);
+    if(kind==='bess'||kind==='acblock'||el.bgbRole==='bess')
+      bess.push({ x:cx, y:cy, kw:+el.bessKw||+el.bgbKw||0, kwh:+el.bessKwh||+el.bgbKwh||0,
+                  label:el.bessModel||el.label||'BESS' });
+    else if(kind==='loads') loads.push({ x:cx, y:cy, kw:+el.kw||0, label:el.label||'Building load' });
+  });
+
+  if(!arrays.length && !bess.length){
+    sldSetHint('Nothing generating on the site map yet \u2014 draw solar or place a BESS first.');
+    return;
+  }
+
+  /* ---- utility POI at the top; everything lands here ---- */
+  var poi=_sldNew('utility','Utility POI', 520, 40);
+  var meter=_sldNew('meter','Revenue meter', 520, 150);
+  _sldWire(poi, meter, 'Service', 'ac');
+  var bus=_sldNew('panel','Collector bus / Main switchgear', 500, 260);
+  _sldWire(meter, bus, '', 'ac');
+
+  var groups=_sldGroupArrays(arrays, ppf);
+  var totalKw=0; arrays.forEach(function(a){ totalKw+=a.kw; });
+
+  /* ---- one branch per roof / field ---- */
+  var colW=260, x0=60;
+  groups.forEach(function(g, gi){
+    var gx=x0+gi*colW;
+    var gKw=0; g.items.forEach(function(a){ gKw+=a.kw; });
+
+    var xf=_sldNew('xfmr','XFMR '+(gi+1)+(gKw?(' \u00b7 '+Math.round(gKw/0.95)+' kVA'):''), gx, 380);
+    _sldWire(xf, bus, Math.round(gKw).toLocaleString()+' kW', 'ac');
+
+    /* Inverters: one per array keeps the diagram honest about how many
+       pieces are actually out there. */
+    g.items.forEach(function(a, ai){
+      var ix=gx+(ai-(g.items.length-1)/2)*140;
+      var inv=_sldNew('inv','INV '+(gi+1)+'.'+(ai+1)+(a.kw?(' \u00b7 '+Math.round(a.kw)+' kW'):''),
+                      ix, 500);
+      _sldWire(inv, xf, '', 'ac');
+      var pv=_sldNew('panel', (a.label||('PV '+(gi+1)+'.'+(ai+1)))
+                     +(a.kw?(' \u00b7 '+Math.round(a.kw)+' kW-DC'):''), ix, 620,
+                     { pv:true });
+      _sldWire(pv, inv, 'DC', 'dc');
+    });
+  });
+
+  /* ---- storage taps the same bus ---- */
+  bess.forEach(function(b, bi){
+    var bx=x0+(groups.length+bi)*colW;
+    var pcs=_sldNew('pcs','PCS '+(bi+1)+(b.kw?(' \u00b7 '+Math.round(b.kw)+' kW'):''), bx, 380);
+    _sldWire(pcs, bus, '', 'ac');
+    var bn=_sldNew('bess', b.label+(b.kwh?(' \u00b7 '+Math.round(b.kwh).toLocaleString()+' kWh'):''),
+                   bx, 500);
+    _sldWire(bn, pcs, 'DC', 'dc');
+  });
+
+  /* ---- building load, when one is on the drawing ---- */
+  loads.forEach(function(L, li){
+    var lx=x0+(groups.length+bess.length+li)*colW;
+    var ln=_sldNew('panel', L.label+(L.kw?(' \u00b7 '+Math.round(L.kw)+' kW'):''), lx, 380);
+    _sldWire(bus, ln, 'Load', 'ac');
+  });
+
+  sldRender();
+  sldSetHint('Generated from the site map \u2014 '+groups.length+' array branch'
+    +(groups.length===1?'':'es')+', '+arrays.length+' array'+(arrays.length===1?'':'s')
+    +(totalKw?(' \u00b7 '+Math.round(totalKw).toLocaleString()+' kW-DC'):'')
+    +(bess.length?(' \u00b7 '+bess.length+' storage block'+(bess.length===1?'':'s')):'')
+    +'. Drag to fine-tune.');
+}
+window.sldFromSite=sldFromSite;
 
 function sldAutoLayout() {
   // Arrange nodes in a vertical stack (typical one-line flow: utility -> meter -> disco -> xfmr -> inv -> bess)
@@ -68237,10 +68480,21 @@ window._crmToastModal=_crmToastModal;
     return { x: cx + dx * c - dy * s, y: cy + dx * s + dy * c };
   }
 
+  /* THIRD copy of the membership question, and the narrowest: it matched
+     only cluster conduits, 'assembly' shapes and the EMS — so rotating the
+     cluster turned the BESS and left every inverter, transformer, meter and
+     switchgear behind. Defer to the shared test that the cluster panel
+     publishes, and keep a broadened local rule as the fallback. */
   function isCluster(o) {
     if (!o) return false;
-    if (o.cluster) return true;                        /* cluster conduit */
-    if (o.kind === 'assembly') return true;
+    if (o.cluster || o.derCollector) return true;      /* cluster conduit */
+    try {
+      if (typeof window._isClusterEl === 'function' && window._isClusterEl(o)) return true;
+    } catch (e) {}
+    if (o.kind === 'assembly' || o.type === 'bess-asm') return true;
+    if (o.kind === 'dersolar' || o.kind === 'solar'
+      || o.kind === 'derwind' || o.kind === 'deralt' || o.kind === 'derdc') return true;
+    if (o.bgbRole || o.evRole || o.dcfcRole) return true;
     if (o.eqId === 'ems' || o.type === 'ems') return true;
     return false;
   }
@@ -70977,7 +71231,10 @@ window._crmToastModal=_crmToastModal;
     order.forEach(function (k) {
       var g = groups[k];
       /* Anything the user dismissed by hand stays dismissed. */
-      var candidates = g.filter(function (c) { return !(c.labelHidden && !c._autoHid); });
+      var candidates = g.filter(function (c) {
+        if (c._userHid) return false;                 /* dismissed by hand — never restore */
+        return !(c.labelHidden && !c._autoHid);
+      });
       if (!candidates.length) return;
 
       /* Prefer the widest service as the one that speaks for the trench. */
@@ -71066,7 +71323,7 @@ window._crmToastModal=_crmToastModal;
       var s = S_(); if (!s) return 0;
       var n2 = 0;
       (s.conduits || []).forEach(function (c) {
-        if (c && c._autoHid) { c.labelHidden = false; delete c._autoHid; c.runLabel = null; n2++; }
+        if (c && c._autoHid && !c._userHid) { c.labelHidden = false; delete c._autoHid; c.runLabel = null; n2++; }
       });
       try {
         (s.conduits || []).forEach(function (c) {
