@@ -1400,7 +1400,14 @@ function loadPayload(pay){
   if(pay.contractor) applyContractor(pay.contractor);
   if(applyDetectedClass()) setClass(DATA['class']);
   autofillFeet(); autofillPlugs();
-  msg('srcMsg','Loaded '+LINES.length+' cost lines from the electrical estimate. Check the mapping before exporting.','ok');
+  /* The sitemap gives conduit, trench and equipment. Everything else on a
+     utility sheet — design, permitting, activation, freight, networking,
+     bollards, pedestals, restoration — follows from the port count and the
+     footage, so it is priced here rather than left for retyping. */
+  var _std={added:0,filled:0};
+  try{ _std=addStandardRows(); }catch(e){}
+  msg('srcMsg','Loaded '+LINES.length+' cost lines \u2014 '+_std.added+' standard items added and '
+      +_std.filled+' priced from the rate card. Review before exporting.','ok');
   try{ localStorage.removeItem('OMEGA_EV_COST_HANDOFF'); }catch(e){}
   renderSiteForm(); render();
 }
@@ -1485,17 +1492,105 @@ var STANDARD=[
   ['EVSE Networking/Software','ne','network'], ['EVSE Warranty','ne','warranty'],
   ['Signage','ne','signage'], ['Striping','ne','striping']
 ];
-function addStandardRows(){
-  var i, j, have;
+/* Price the standard rows instead of inserting them at zero.
+
+   These lines were being added empty, so a sitemap that already knew the
+   port count, the pedestal count and the trench footage still handed back a
+   sheet where permitting, design, activation, freight, networking and
+   warranty all read $0 — and somebody had to retype numbers we already have
+   rates for. Every value below comes from the five closed jobs.
+
+   Anything already priced is left alone; this only fills blanks. */
+function standardRate(row, bucket){
+  var B=L2_BASELINE, ST=STANDARD_ITEMS.l2;
+  var ports=Math.max(1, num(DATA.plugs)||1);
+  var peds =Math.max(1, Math.ceil(ports/2));       /* dual-port pedestals */
+  var ftT  =num(DATA.ftTrench), ftC=num(DATA.ftConduit), ftW=num(DATA.ftCable);
+  var MA   =String(DATA.city||DATA.state||'').toUpperCase().indexOf('MA')>=0;
+
+  switch(row){
+    /* Design lands on $1,000/port in all four reference jobs. */
+    case 'design':     return { qty:ports, unit:'port', mat:0, lab:1000*ports,
+                                note:ports+' ports \u00d7 $1,000/port' };
+    /* Permitting runs ~3% of project cost; exact on 75 Avon. */
+    case 'permit':     return { qty:1, unit:'LS', mat:0, lab:permitFromSubtotal(subtotalExcluding('permit')),
+                                note:'3% of project cost' };
+    case 'activation': return { qty:ports, unit:'EA', mat:395*ports, lab:0, note:'$395/port' };
+    case 'shipping':   return { qty:ports, unit:'EA', mat:0, lab:ST.freight.lab*ports,
+                                note:'freight, $162.50/port' };
+    case 'network':    return { qty:ports, unit:'EA', mat:ST.networking.mat*ports, lab:0,
+                                note:'$480/port \u2014 public L2 / MUD only' };
+    case 'warranty':   return { qty:ports, unit:'EA', mat:0, lab:0,
+                                note:'quote from the OEM \u2014 not carried on the reference jobs' };
+    case 'striping':   return { qty:ports, unit:'EA', mat:0, lab:0, note:'' };
+    case 'bollard':    return { qty:peds, unit:'EA', mat:ST.bollard.mat*peds, lab:ST.bollard.lab*peds,
+                                note:peds+' \u00d7 1 per pedestal' };
+    case 'pedestal':   return { qty:peds, unit:'EA', mat:ST.pedestal.mat*peds, lab:ST.pedestal.lab*peds,
+                                note:peds+' dual-port pedestals' };
+    case 'meter':      return { qty:1, unit:'LS', mat:ST.metering.mat, lab:ST.metering.lab, note:'' };
+    /* Mounting hardware is per PORT, not per pedestal, and it was the single
+       biggest thing missing when this was reconciled against 11 Marble:
+       4 wall-mount kits at $225 + $500 labor is $2,900 on a $56k job. */
+    case 'mount':      return { qty:ports, unit:'EA', mat:ST.wallMount.mat*ports,
+                                lab:ST.wallMount.lab*ports, note:ports+' \u00d7 wall-mount kits' };
+    case 'housePanel': return { qty:1, unit:'LS', mat:0, lab:ST.housePanel.lab, note:'' };
+    case 'xfmrpad':    return { qty:1, unit:'EA', mat:ST.xfmrPad.mat, lab:ST.xfmrPad.lab,
+                                note:'opt-in \u2014 absent on 2 of 5 reference jobs' };
+    case 'restore':    return ftT>0 ? { qty:ftT, unit:'LF', mat:B.perFoot.restoration.mat*ftT,
+                                        lab:B.perFoot.restoration.lab*ftT, note:ftT+' LF' } : null;
+    case 'concrete':   return { qty:peds, unit:'EA', mat:800*peds, lab:400*peds, note:'EVSE bases' };
+    default: return null;
+  }
+}
+
+/* Sum everything except one row, so the 3% permitting rate has a base. */
+function subtotalExcluding(skipRow){
+  var t=0, i;
+  for(i=0;i<LINES.length;i++){
+    if(LINES[i].row===skipRow) continue;
+    t+=num(LINES[i].mat)+num(LINES[i].lab);
+  }
+  return t;
+}
+
+function addStandardRows(opts){
+  opts=opts||{};
+  var i, j, have, existing, rate, filled=0, added=0;
   for(i=0;i<STANDARD.length;i++){
-    if(!rowExists(STANDARD[i][1], STANDARD[i][2])) continue;   /* form may not have that row */
-    have=false;
-    for(j=0;j<LINES.length;j++){ if(LINES[j].bucket===STANDARD[i][1] && LINES[j].row===STANDARD[i][2]) have=true; }
-    if(!have) LINES.push({ id:_nid++, desc:STANDARD[i][0], size:'', cat:'', qty:'', unit:'',
-                           mat:0, lab:0, bucket:STANDARD[i][1], row:STANDARD[i][2], fp:0, src:'manual' });
+    var bucket=STANDARD[i][1], row=STANDARD[i][2];
+    if(!rowExists(bucket,row)) continue;          /* form may not have that row */
+    have=false; existing=null;
+    for(j=0;j<LINES.length;j++){
+      if(LINES[j].bucket===bucket && LINES[j].row===row){ have=true; existing=LINES[j]; }
+    }
+    rate=standardRate(row, bucket);
+    if(!have){
+      LINES.push({ id:_nid++, desc:STANDARD[i][0], size:'', cat:'',
+                   qty:rate?rate.qty:'', unit:rate?rate.unit:'',
+                   mat:rate?r2(rate.mat):0, lab:rate?r2(rate.lab):0,
+                   note:rate?rate.note:'', bucket:bucket, row:row, fp:0, src:'standard' });
+      added++;
+    } else if(rate && !num(existing.mat) && !num(existing.lab) && opts.fillBlank!==false){
+      /* Row is on the sheet but empty — fill it rather than leaving a zero. */
+      existing.mat=r2(rate.mat); existing.lab=r2(rate.lab);
+      if(!existing.qty)  existing.qty=rate.qty;
+      if(!existing.unit) existing.unit=rate.unit;
+      if(!existing.note) existing.note=rate.note;
+      filled++;
+    }
+  }
+  /* Permitting is a share of everything else, so it has to settle last. */
+  for(j=0;j<LINES.length;j++){
+    if(LINES[j].row==='permit' && !num(LINES[j].mat)){
+      LINES[j].lab=permitFromSubtotal(subtotalExcluding('permit'));
+    }
   }
   render();
+  var st=document.getElementById('mapCount');
+  if(st && (added||filled)) st.textContent=LINES.length+' lines \u00b7 '+added+' added, '+filled+' priced';
+  return { added:added, filled:filled };
 }
+window.addStandardRows=addStandardRows;
 function reclassifyAll(){
   var i, c;
   for(i=0;i<LINES.length;i++){
