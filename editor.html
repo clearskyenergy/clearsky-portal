@@ -14976,7 +14976,22 @@ function renderConduit(c){
       const nShelfX = nx < mid.x ? nbx : nbx + tw;
       leader.setAttribute('points', `${mid.x},${mid.y} ${nElbowX},${nElbowY} ${nx},${ny} ${nShelfX},${ny}`);
       bg.setAttribute('x', nbx); bg.setAttribute('y', nby);
-      tx.setAttribute('x', nx); tx.setAttribute('y', ny);
+      /* `tx` only exists on the single-line branch. A run stamped with a
+         FROM -> TO pair draws two text nodes (tx1/tx2) and never declares
+         tx, so dragging one of those callouts threw
+         "ReferenceError: tx is not defined" on every mousemove — the label
+         stopped following the cursor and the console filled up. Move
+         whichever text nodes this callout actually has. */
+      /* tx1/tx2 are const inside the two-line branch, so they are not in
+         scope here at all. Ask the group for whatever text it holds instead
+         of naming variables that may not exist. */
+      var _texts = lg.getElementsByTagName('text');
+      if (_texts.length === 1) {
+        _texts[0].setAttribute('x', nx); _texts[0].setAttribute('y', ny);
+      } else if (_texts.length > 1) {
+        _texts[0].setAttribute('x', nx); _texts[0].setAttribute('y', ny - 6);
+        _texts[1].setAttribute('x', nx); _texts[1].setAttribute('y', ny + 8);
+      }
     };
     const onUp = () => {
       lg.style.cursor = 'grab';
@@ -68184,12 +68199,54 @@ window._crmToastModal=_crmToastModal;
   function clearClusterRuns() {
     var s = S_(); if (!s || !s.conduits) return 0;
     var doomed = s.conduits.filter(function (c) { return c && c.cluster; });
+    /* REMEMBER WHAT THE USER DID TO THESE RUNS.
+
+       This is the writer that kept resurrecting dismissed callouts: the
+       runs are not edited on a re-lay, they are DELETED and rebuilt from
+       scratch. Any per-run choice — a hidden callout, a dragged label
+       position — died with the object, so a pad nudge silently undid it.
+
+       Keyed on the pair the run connects plus its type, which survives a
+       re-lay because the geometry changes but the endpoints do not. */
+    try {
+      window._cdUserPrefs = window._cdUserPrefs || {};
+      doomed.forEach(function (c) {
+        var k = (c.fromId || c.fromShapeId || '?') + '>' +
+                (c.toId || c.toShapeId || '?') + ':' + (c.condType || '');
+        if (c._userHid || c.labelDx !== undefined || c.labelDy !== undefined) {
+          window._cdUserPrefs[k] = {
+            userHid: !!c._userHid,
+            labelDx: c.labelDx, labelDy: c.labelDy
+          };
+        }
+      });
+    } catch (e) {}
     doomed.forEach(function (c) {
       var g = document.querySelector('[data-cid="' + c.id + '"]');
       if (g && g.parentNode) g.parentNode.removeChild(g);
+      var l = document.querySelectorAll('[data-clbl-id="' + c.id + '"]');
+      for (var i = 0; i < l.length; i++) if (l[i].parentNode) l[i].parentNode.removeChild(l[i]);
     });
     s.conduits = s.conduits.filter(function (c) { return !(c && c.cluster); });
     return doomed.length;
+  }
+
+  /* Re-apply what was remembered to the freshly built runs. */
+  function restoreUserPrefs() {
+    var s = S_(); if (!s || !window._cdUserPrefs) return 0;
+    var n = 0;
+    (s.conduits || []).forEach(function (c) {
+      if (!c || !c.cluster) return;
+      var k = (c.fromId || c.fromShapeId || '?') + '>' +
+              (c.toId || c.toShapeId || '?') + ':' + (c.condType || '');
+      var p = window._cdUserPrefs[k];
+      if (!p) return;
+      if (p.userHid) { c._userHid = true; c.labelHidden = true; }
+      if (p.labelDx !== undefined) c.labelDx = p.labelDx;
+      if (p.labelDy !== undefined) c.labelDy = p.labelDy;
+      n++;
+    });
+    return n;
   }
 
   function rebuild(quiet) {
@@ -68220,6 +68277,10 @@ window._crmToastModal=_crmToastModal;
       return null;
     }
 
+    /* Before the repaint, so restored callouts draw in their right state. */
+    var restored = 0;
+    try { restored = restoreUserPrefs(); } catch (e) {}
+
     try { if (typeof _refreshConduitStyle === 'function') _refreshConduitStyle(); } catch (e) {}
     try { if (typeof pushHist === 'function') pushHist(); } catch (e) {}
 
@@ -68227,7 +68288,8 @@ window._crmToastModal=_crmToastModal;
     if (!quiet) {
       console.info(TAG + ' re-laid ' + units.length + ' container(s) at '
         + Math.round(rad * 180 / Math.PI) + '\u00b0: removed ' + removed
-        + ' stale run(s), created ' + added + '.');
+        + ' stale run(s), created ' + added
+        + (restored ? (', kept ' + restored + ' label choice(s)') : '') + '.');
     }
     return { units: units.length, headingDeg: Math.round(rad * 180 / Math.PI), removed: removed, created: added };
   }
