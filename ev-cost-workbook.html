@@ -380,24 +380,157 @@ function proposalName(){
    restoration onto its own row, so the ES writer separates them using
    ES_SPLIT.restorationPct rather than double-counting.
    ══════════════════════════════════════════════════════════════════════ */
+/* ══════════════════════════════════════════════════════════════════════
+   DCFC RATE CARD — lifted from the master formula template (50 Fitch St,
+   2 x 320 kW ports). These are not L2 rates scaled up; DCFC is a different
+   job. Hardware alone is $120,000 a unit against $2,200-2,495 for Level 2,
+   and the switchgear is 1200A rather than a 100A subpanel.
+
+   Two structural rules live here that L2 does not have:
+     - trench, conduit and restoration labor follow a STEPPED curve, not a
+       flat per-foot rate: a mobilisation-heavy first 50 ft, then cheaper
+       marginal feet
+     - only HALF of eligible EVSE cost counts toward the rebate, and the
+       whole rebate is capped at $250,000
+   ══════════════════════════════════════════════════════════════════════ */
+var DCFC_BASELINE = {
+  source:'Master formula template — 50 Fitch St, New Haven CT, 2 x 320kW',
+  taxRate:6.35,
+  rebateCap:250000,
+  evseEligibleShare:0.5,          /* =SUM(I39:I41,I43)/2 in their sheet */
+
+  perSite:{ design:{lab:11200}, permit:{lab:7500}, survey:{lab:8934},
+            panel1200A:{mat:39050, lab:14000},
+            xfmrVault:{mat:11000, lab:0} },
+  perUnit:{ charger320:{mat:120000, lab:0},
+            shipping:{mat:5000, lab:0},
+            install:{mat:0, lab:15000},
+            powerPack:{mat:2500, lab:0},
+            concretePad:{mat:4500, lab:6750},
+            bollard:{mat:450, lab:0},
+            activation:{mat:4000, lab:0} },
+  perFoot:{ trenchPaved:{mat:60, labPerFt:80},        /* =E19*80, flat */
+            trenchTurf:{mat:40, stepped:'trench'},
+            conduitUG:{mat:32, stepped:'trench'},
+            conduitAG:{mat:22, stepped:'trench'},
+            restoration:{mat:17.5, stepped:'trench'},
+            fpPrimary:{mat:35, stepped:'fp'} },
+  agStandardFt:30,                /* their sheet standardises AG run at 30 */
+  fpSlackFt:7                     /* stub slack into in-ground junction */
+};
+
+/* Their stepped labor curve, exactly as written:
+   IFS(x<=50, base, x<=100, base+(x-50)*8, x>100, 2400+(x-100)*6)
+   Flat rates under-price short runs (mobilisation) and over-price long
+   ones, which is why they moved off a per-foot number. */
+function dcfcSteppedLabor(ft, kind){
+  ft=num(ft); if(ft<=0) return 0;
+  var base=(kind==='fp')?1000:2000;
+  if(ft<=50)  return base;
+  if(ft<=100) return base+(ft-50)*8;
+  return 2400+(ft-100)*6;
+}
+window.dcfcSteppedLabor=dcfcSteppedLabor;
+
+/* Restoration labor on future proofing uses its own curve. */
+function dcfcRestorationLabor(ft){
+  ft=num(ft); if(ft<=0) return 0;
+  if(ft<=25) return ft*35*1.3;
+  return 25*35*1.3 + (ft-25)*1.25;
+}
+window.dcfcRestorationLabor=dcfcRestorationLabor;
+
+/* Rebate maths from the master sheet:
+     Eligible rebate = MIN(make-ready + half of EVSE, 250k)
+     Invoice total   = make-ready + all EVSE + ineligible          */
+function dcfcRebate(makeReady, evseEligible, ineligible){
+  var half=r2(num(evseEligible)*DCFC_BASELINE.evseEligibleShare);
+  return { evseHalf:half,
+           rebate:Math.min(r2(num(makeReady)+half), DCFC_BASELINE.rebateCap),
+           capped:(num(makeReady)+half)>DCFC_BASELINE.rebateCap,
+           invoice:r2(num(makeReady)+half*2+num(ineligible)) };
+}
+window.dcfcRebate=dcfcRebate;
+
+/* Permitting runs ~3% of project cost on the Massachusetts jobs. On 75 Avon
+   it is exact: (176,554.85 - 5,142.37) x 3% = 5,142.37. Self-referential in
+   their sheet, so it is applied to the subtotal before permitting here. */
+var PERMIT_PCT = 0.03;
+function permitFromSubtotal(subtotalExPermit){ return r2(num(subtotalExPermit)*PERMIT_PCT); }
+window.permitFromSubtotal=permitFromSubtotal;
+
+/* Standard line items that appear on every job and should never need
+   retyping. Prices are editable; the point is that they auto-populate. */
+var STANDARD_ITEMS = {
+  l2:{ networking:{mat:480, lab:0, per:'port', label:'EVSE networking / software'},
+       freight:{mat:0, lab:162.50, per:'port', label:'EVSE freight / shipping'},
+       wallMount:{mat:225, lab:500, per:'port', label:'Wall-mount kits'},
+       pedestal:{mat:1250, lab:500, per:'pedestal', label:'Pedestals & mounting'},
+       bollard:{mat:250, lab:300, per:'pedestal', label:'Protective bollards'},
+       metering:{mat:210, lab:2000, per:'site', label:'Metering equipment'},
+       housePanel:{mat:0, lab:1250, per:'site', label:'House panel upgrade'},
+       xfmrPad:{mat:1200, lab:1300, per:'site', label:'Utility transformer pad'} },
+  dcfc:{ activation:{mat:4000, lab:0, per:'unit', label:'Activation fee'},
+         powerPack:{mat:2500, lab:0, per:'unit', label:'Power packs / commissioning'},
+         shipping:{mat:5000, lab:0, per:'unit', label:'Shipping & handling / freight'},
+         bollard:{mat:450, lab:0, per:'unit', label:'Protective bollards'},
+         survey:{mat:0, lab:8934, per:'site', label:'A2 survey & other'} }
+};
+window.STANDARD_ITEMS=STANDARD_ITEMS;
+
 var L2_BASELINE = {
-  source:'UI CT L2 — Stratford Center LLC, 2 plugs / 46 lf trench / 337 lf conduit / 243 lf cable',
+  /* Calibrated against four closed Lionheart / Three Phase jobs rather than
+     one, so the rates hold across site sizes instead of fitting a single bid:
+
+       1040 Barnum Ave   UI CT      2 ports     $46,350
+       27 Oak Street     ES CT      4 ports     $58,327
+       17 Calhoun St     ES MA      4 ports     $56,949
+       75 Avon Place     ES MA     10 ports    $176,555
+
+     Design & engineering lands on $1,000/port in ALL FOUR — $2,000 at two
+     ports, $4,000 at four (twice), $10,000 at ten. That is a rate, not a
+     coincidence, and it is the strongest scaling signal in the data.
+     Bollards ($250 + $300), pedestals ($1,250), EVSE install ($1,250/port)
+     and networking ($480/port) are identical across all four as well.
+
+     Where the jobs disagree it is by STATE, not by chance: CT trench
+     material runs $15/lf, MA $25/lf. So state-dependent rates are split
+     rather than averaged into a number that is wrong everywhere. */
+  source:'4 closed jobs, 2–10 ports, CT + MA, 2026',
   taxRate:6.35,
 
-  perPort:   { charger:{mat:2495.00, lab:0},      /* Autel MaxiCharger AC   */
-               install:{mat:0,       lab:1250.00} },
-  perSite:   { pedestal:{mat:1250.00, lab:0},
-               activation:{mat:395.00, lab:0},
-               permit:{mat:0, lab:1032.00},
-               design:{mat:0, lab:2000.00},
-               panel:{mat:2747.00, lab:4000.00},
-               bollard:{mat:250.00, lab:300.00} },
-  perFoot:   { trench:{mat:0,     lab:157.90},    /* paved, incl. restoration */
-               trenchTurf:{mat:0, lab:96.00},
-               conduit:{mat:6.36, lab:8.84},
-               wire:{mat:11.30,   lab:15.74} },
-  futureProof:{ trench:{mat:0, lab:27.83}, conduit:{mat:4.73, lab:6.79} }
+  perPort:  { charger:{mat:2495.00, lab:0},        /* CT; MA runs 2200      */
+              chargerMA:{mat:2200.00, lab:0},
+              install:{mat:0, lab:1250.00},        /* identical all 4 jobs  */
+              design:{mat:0, lab:1000.00},         /* $1,000/port, all 4    */
+              networking:{mat:480.00, lab:0} },    /* public L2 / MUD only  */
+  perUnit:  { pedestal:{mat:1250.00, lab:500.00},  /* one per 2 ports       */
+              bollard:{mat:250.00, lab:300.00},
+              concreteBase:{mat:800.00, lab:400.00},
+              xfmrPad:{mat:1200.00, lab:1300.00} },/* NOT default — see below */
+  perSite:  { permit:{mat:0, lab:1032.00},
+              panel:{mat:2747.00, lab:4000.00},
+              housePanel:{mat:1500.00, lab:2500.00},
+              metering:{mat:1050.00, lab:2000.00} },
+  perFoot:  { trenchCT:{mat:15.00, lab:80.00},
+              trenchMA:{mat:25.00, lab:120.00},
+              trenchTurf:{mat:10.00, lab:55.00},
+              conduitUG:{mat:2.75, lab:13.87},
+              conduitAG:{mat:4.25, lab:21.26},
+              cableUG:{mat:2.50, lab:3.47},
+              cableAG:{mat:2.50, lab:21.00},
+              restoration:{mat:43.00, lab:20.00} },
+  futureProof:{ trench:{mat:0, lab:27.83}, conduit:{mat:4.73, lab:6.79} },
+
+  /* A utility transformer pad appeared on two of the four jobs and was left
+     blank on the other two — 27 Oak and 1040 Barnum both tap an existing
+     service and need no pad at all. At $2,500 installed it moves a small
+     job several percent, so it is opt-in. Defaulting it on quietly inflates
+     every estimate for a site that does not need one. */
+  optional:{ transformerPad:false, metering:false, housePanel:false,
+             networking:false, concreteBase:true }
 };
+
 /* Of a blended paved trench dollar, how much Eversource wants shown as
    restoration rather than trench & backfill. */
 var ES_SPLIT = { restorationPct:0.27 };
@@ -407,32 +540,62 @@ var ES_SPLIT = { restorationPct:0.27 };
    over quantities but no pricing, so a sheet is never blank. */
 function applyBaselineFromSite(opts){
   opts=opts||{};
-  var B=L2_BASELINE;
+  var B=L2_BASELINE, OPT=B.optional;
   var ports=Math.max(1, num(DATA.plugs)||1);
+  var state=String(DATA.state||DATA.city||'CT').toUpperCase().indexOf('MA')>=0 ? 'MA' : 'CT';
   var ft={ trench:num(DATA.ftTrench), conduit:num(DATA.ftConduit), cable:num(DATA.ftCable) };
-  var paved=(String(DATA.trenchSurface||'paved').toLowerCase().indexOf('turf')>=0) ? 'trenchTurf' : 'trench';
+  var turf=String(DATA.trenchSurface||'paved').toLowerCase().indexOf('turf')>=0;
   var add=[];
-  function L(cat,desc,qty,unit,size,mat,lab,bucket,row){
+  function L(cat,desc,qty,unit,mat,lab,bucket,row){
     if(!mat && !lab) return;
-    add.push({ id:'bl'+(_nid++), cat:cat, desc:desc, qty:qty, unit:unit, size:size||'',
+    add.push({ id:'bl'+(_nid++), cat:cat, desc:desc, qty:qty, unit:unit, size:'',
                mat:r2(mat), lab:r2(lab), bucket:bucket, row:row, fp:0, baseline:true });
   }
-  L('EVSE','Charger hardware — '+(DATA.evModel||'Level 2 EVSE'), ports,'EA', DATA.evSize||'',
-    B.perPort.charger.mat*ports, 0, 'evse','charger');
-  L('EVSE','Pedestal mount', 1,'EA','', B.perSite.pedestal.mat, 0, 'evse','pedestal');
-  L('EVSE','Activation', 1,'EA','', B.perSite.activation.mat, 0, 'evse','activation');
-  L('EVSE','Install station labor', ports,'EA','', 0, B.perPort.install.lab*ports, 'mr','other');
-  L('Electrical','Electrical panel / disconnect', 1,'EA', DATA.panelSize||'',
+  var chg = (state==='MA') ? B.perPort.chargerMA : B.perPort.charger;
+  var trn = turf ? B.perFoot.trenchTurf : (state==='MA' ? B.perFoot.trenchMA : B.perFoot.trenchCT);
+  var peds = Math.max(1, Math.ceil(ports/2));   /* dual-port pedestals */
+
+  L('EVSE','EVSE hardware \u2014 '+(DATA.evModel||'Level 2'), ports,'EA',
+    chg.mat*ports, 0, 'evse','charger');
+  L('EVSE','Pedestals & mounting', peds,'EA',
+    B.perUnit.pedestal.mat*peds, B.perUnit.pedestal.lab*peds, 'evse','pedestal');
+  L('EVSE','EVSE installation', ports,'EA', 0, B.perPort.install.lab*ports, 'mr','other');
+  L('Soft cost','Design & engineering', ports,'EA', 0, B.perPort.design.lab*ports, 'mr','design');
+  L('Soft cost','Permitting & inspections', 1,'LS', 0, B.perSite.permit.lab, 'mr','permit');
+  L('Electrical','Distribution equipment / panel', 1,'LS',
     B.perSite.panel.mat, B.perSite.panel.lab, 'mr','panel');
-  L('Civil','Trenching & restoration — '+(paved==='trench'?'continuously paved':'turf / ground cover'),
-    ft.trench,'LF','', B.perFoot[paved].mat*ft.trench, B.perFoot[paved].lab*ft.trench, 'mr','trench');
-  L('Conduit','Conduit & conductors', ft.conduit,'LF','',
-    B.perFoot.conduit.mat*ft.conduit, B.perFoot.conduit.lab*ft.conduit, 'mr','conduit');
-  L('Wire','Wiring', ft.cable,'LF','',
-    B.perFoot.wire.mat*ft.cable, B.perFoot.wire.lab*ft.cable, 'mr','wire');
-  L('Soft cost','Permitting', 1,'LS','', 0, B.perSite.permit.lab, 'mr','permit');
-  L('Soft cost','Design & engineering', 1,'LS','', 0, B.perSite.design.lab, 'mr','design');
-  L('Site','Bollards for EVSE', 1,'LS','', B.perSite.bollard.mat, B.perSite.bollard.lab, 'ne','bollard');
+  L('Civil','Trenching & backfill \u2014 '+(turf?'non-continuously paved':'continuously paved'),
+    ft.trench,'LF', trn.mat*ft.trench, trn.lab*ft.trench, 'mr','trench');
+  L('Civil','Restoration and/or remediation', ft.trench,'LF',
+    B.perFoot.restoration.mat*ft.trench, B.perFoot.restoration.lab*ft.trench, 'mr','restore');
+  L('Conduit','Conduit & cable \u2014 underground', ft.conduit,'LF',
+    (B.perFoot.conduitUG.mat+B.perFoot.cableUG.mat)*ft.conduit,
+    (B.perFoot.conduitUG.lab+B.perFoot.cableUG.lab)*ft.conduit, 'mr','conduit');
+  L('Wire','Conduit & cable \u2014 above ground / indoor', ft.cable,'LF',
+    (B.perFoot.conduitAG.mat+B.perFoot.cableAG.mat)*ft.cable,
+    (B.perFoot.conduitAG.lab+B.perFoot.cableAG.lab)*ft.cable, 'mr','wire');
+  L('Site','Protective bollards', ports,'EA',
+    B.perUnit.bollard.mat*ports, B.perUnit.bollard.lab*ports, 'ne','bollard');
+  if(OPT.concreteBase)
+    L('Civil','Concrete EVSE bases', peds,'EA',
+      B.perUnit.concreteBase.mat*peds, B.perUnit.concreteBase.lab*peds, 'mr','concrete');
+
+  /* Opt-in only. Two of the four reference jobs had no transformer pad,
+     no separate metering and no house-panel upgrade; adding them by
+     default overstates a simple existing-service tap by thousands. */
+  if(OPT.transformerPad)
+    L('Utility','Utility transformer pad', 1,'EA',
+      B.perUnit.xfmrPad.mat, B.perUnit.xfmrPad.lab, 'mr','xfmrpad');
+  if(OPT.metering)
+    L('Utility','Metering equipment', 1,'LS',
+      B.perSite.metering.mat, B.perSite.metering.lab, 'mr','meter');
+  if(OPT.housePanel)
+    L('Electrical','House panel upgrade', 1,'LS',
+      B.perSite.housePanel.mat, B.perSite.housePanel.lab, 'mr','boards');
+  if(OPT.networking)
+    L('EVSE','EVSE networking / software', ports,'EA',
+      B.perPort.networking.mat*ports, 0, 'ne','network');
+
   if(opts.replace) LINES=[];
   LINES=LINES.concat(add);
   if(typeof render==='function') render();
