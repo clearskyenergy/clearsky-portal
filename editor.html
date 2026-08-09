@@ -31457,9 +31457,61 @@ function _geoStampShape(sh, toGeo, force){
 }
 
 /* Rebuild a shape's pixels from its stamped lat/lng at the current view. */
+/* Stamp any geometry array that never got a ground anchor.
+
+   A rectangle array is stamped at creation, but a boundary drawn as a custom
+   polyline could reach here with pts/boundary in PIXELS and no lat/lng. With
+   nothing to reproject from, only the centre anchor tracked the map and the
+   outline drifted on every zoom — badly at low zoom, where a few pixels is a
+   lot of ground. Stamp from the CURRENT projection the first time we see it,
+   then it reprojects like everything else. */
+function _geoStampShapeIfNeeded(sh){
+  if(!sh) return;
+  var ms, sz;
+  try{
+    ms=_liveMapState(); if(!ms) return;
+    sz=_getCanvasSize();
+  }catch(e){ return; }
+  var toGeo=function(x,y){
+    try{ return _pxToLatLng(x,y,ms,sz.w,sz.h); }catch(e){ return null; }
+  };
+  function stamp(pxArr){
+    if(!pxArr || !pxArr.length) return null;
+    var out=[], ok=false;
+    for(var i=0;i<pxArr.length;i++){
+      var g=toGeo(pxArr[i].x, pxArr[i].y);
+      out.push(g?{lat:g.lat,lng:g.lng}:null);
+      if(g) ok=true;
+    }
+    return ok?out:null;
+  }
+  if(sh.pts && sh.pts.length && (!sh._geoPts || sh._geoPts.length!==sh.pts.length))
+    sh._geoPts = stamp(sh.pts) || sh._geoPts;
+  if(sh.boundary && sh.boundary.length && (!sh._geoBoundary || sh._geoBoundary.length!==sh.boundary.length))
+    sh._geoBoundary = stamp(sh.boundary) || sh._geoBoundary;
+  if(sh.tables && sh.tables.length && (!sh._geoTables || sh._geoTables.length!==sh.tables.length)){
+    var gt=[], any=false;
+    for(var t=0;t<sh.tables.length;t++){
+      var T=sh.tables[t];
+      var g2=toGeo((T.x||0)+(T.w||0)/2, (T.y||0)+(T.h||0)/2);
+      gt.push(g2?{lat:g2.lat,lng:g2.lng,a:T.a}:null);
+      if(g2) any=true;
+    }
+    if(any) sh._geoTables=gt;
+  }
+  if(typeof sh.cx==='number' && !sh._geoC){
+    var gc=toGeo(sh.cx, sh.cy);
+    if(gc) sh._geoC={lat:gc.lat,lng:gc.lng};
+  }
+}
+window._geoStampShapeIfNeeded=_geoStampShapeIfNeeded;
+
 function _geoApplyShape(sh, toPx, ppf){
   if(!sh) return;
   try{
+    /* Anything unstamped is pinned to the ground before it is moved, so the
+       first zoom after drawing does not throw the outline off. */
+    _geoStampShapeIfNeeded(sh);
     if(sh._geoPts && sh.pts){
       for(var i=0;i<sh.pts.length && i<sh._geoPts.length;i++){
         var g=sh._geoPts[i]; if(!g) continue;
@@ -45849,7 +45901,10 @@ function derTotals(){
   if(typeof S==='undefined' || !S.shapes) return t;
   for(var i=0;i<S.shapes.length;i++){
     var s=S.shapes[i];
-    if(s.kind==='dersolar'){ t.solarKwDc+=(s.kw||0); t.solarSqft+=(s.sqft||0); t.solarUnits++; }
+    /* omegaDer() counts 'dersolar' AND 'solar'; this counted only the first,
+       so an array drawn as a custom polyline showed up in the Results rail
+       and was missing from the legend — two different totals for one site. */
+    if(s.kind==='dersolar' || s.kind==='solar'){ t.solarKwDc+=(s.kw||0); t.solarSqft+=(s.sqft||0); t.solarUnits++; }
     else if(s.kind==='derwind'){ t.windKw+=(s.kw||0); t.windUnits++; }
     else if(s.kind==='deralt'){ t.altKw+=(s.kw||0); t.altUnits++; }
     else if(s.kind==='derdc'){ t.dcLoadKw+=(s.kw||0); t.dcUnits++; }
