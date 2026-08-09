@@ -1707,9 +1707,11 @@ function renderOutputs(){
     tabs+='<button class="pvtab'+(_pv===f.id?' on':'')+'" onclick="pvTab(\''+f.id+'\')">'+esc(f.utility)+'</button>';
   }
   document.getElementById('pvTabs').innerHTML=tabs;
+  var _pf=(_pv==='proposal') ? null : formById(_pv);
   document.getElementById('pvHost').innerHTML =
-    (_pv==='proposal') ? previewProposal(buildModel(proposalForm()))
-                       : previewForm(buildModel(formById(_pv)), formById(_pv));
+    (_pv==='proposal')            ? previewProposal(buildModel(proposalForm()))
+  : (_pf && _pf.writer==='eversource') ? previewFormES(buildModel(_pf), _pf)
+                                  : previewForm(buildModel(_pf), _pf);
 
   document.getElementById('xlWarn').innerHTML = window._XLFAIL
     ? '<div class="warn">The Excel writer didn\'t load. Check the connection and reload — export needs it.</div>' : '';
@@ -1787,6 +1789,324 @@ function previewForm(m, form){
   }
   h+=r(td(form.totalLabel,'pv-gold')+td('','pv-gold')+td(acct(m.mat),'pv-gold num')+td(acct(m.lab),'pv-gold num')+td(acct(m.total),'pv-gold num'));
   return h+'</table>';
+}
+
+
+
+/* ══════════════════════════════════════════════════════════════════════
+   EVERSOURCE — FILL THE REAL TEMPLATE
+
+   Rebuilding Eversource's sheet from scratch was the wrong call. Their
+   workbook is not just a layout: 'Version 4.0' carries live formulas
+   (=E19*F19 on every item, =SUM(G:H) per row, and a summary block that
+   chains =SUM(I14:I17,I19:I27,I42)), plus the Version 3.0, User Cheat
+   Sheet, Additional Items and FORMAT tabs a reviewer expects to receive.
+   A reconstruction loses all of it and a reviewer can tell.
+
+   So we load THEIR file and write only the input cells. Excel does the
+   arithmetic with its own formulas, which also means the totals can never
+   disagree with the sheet the utility audits.
+   ══════════════════════════════════════════════════════════════════════ */
+var ES_TPL_KEY   = 'OMEGA_ES_TEMPLATE_V4';
+var ES_TPL_SHEET = 'Version 4.0';
+
+/* Header cells. */
+var ES_TPL_HEAD = {
+  date:'J1',
+  esProjNo:'C3', segment:'C4', address:'C5', city:'C6',
+  plugs:'C7', stations:'C8', esWO:'C9', siteDesc:'C10', notable:'C11',
+  company:'E3', contact:'E4', phone:'E5', billTo:'E6', billAddr:'E7',
+  email:'E8', vendorInv:'E9',
+  applicant:'I3', custPhone:'I4', custEmail:'I5'
+};
+
+/* Item rows. `cells` says which inputs that row accepts — the rest are
+   formulas and must not be overwritten:
+     q = material quantity (E)   p = material unit price (F)
+     m = material total  (G, literal-only rows)
+     l = labor total     (H)     n = note (C)   s = subcontracted (J) */
+var ES_TPL_ROWS = [
+  { r:15, sec:'dp',   k:'design',    cells:'qplns' },
+  { r:17, sec:'dp',   k:'permit',    cells:'qplns' },
+  { r:19, sec:'gen',  k:'trench',    cells:'qpls'  },
+  { r:20, sec:'gen',  k:'trenchTurf',cells:'qpls'  },
+  { r:21, sec:'gen',  k:'conduit',   cells:'qplns' },
+  { r:22, sec:'gen',  k:'wire',      cells:'qplns' },
+  { r:23, sec:'gen',  k:'restore',   cells:'qplns' },
+  { r:24, sec:'gen',  k:'handhole',  cells:'pls'   },
+  { r:25, sec:'gen',  k:'concrete',  cells:'qpls'  },
+  { r:26, sec:'gen',  k:'panel',     cells:'mls'   },
+  { r:27, sec:'gen',  k:'boards',    cells:'mlns'  },
+  { r:29, sec:'util', k:'xfmrpad',   cells:'pls'   },
+  { r:30, sec:'util', k:'meter',     cells:'pls'   },
+  { r:32, sec:'fp',   k:'trench',    cells:'qpls'  },
+  { r:33, sec:'fp',   k:'trenchTurf',cells:'qpls'  },
+  { r:34, sec:'fp',   k:'conduit',   cells:'qpls'  },
+  { r:35, sec:'fp',   k:'wire',      cells:'qplns' },
+  { r:36, sec:'fp',   k:'panel',     cells:'qpls'  },   /* G36 is =E36*F36 — never write G */
+  { r:37, sec:'fp',   k:'xfmr',      cells:'mlns'  },
+  { r:39, sec:'evse', k:'charger',   cells:'qplns' },
+  { r:40, sec:'evse', k:'charger2',  cells:'qplns' },
+  { r:41, sec:'evse', k:'shipping',  cells:'pls'   },
+  { r:42, sec:'evse', k:'other',     cells:'qpls'  },   /* EVSE Installation */
+  { r:43, sec:'evse', k:'pedestal',  cells:'qplns' },
+  { r:45, sec:'inel', k:'bollard',   cells:'qpls'  },
+  { r:46, sec:'inel', k:'warranty',  cells:'mls'   },
+  { r:47, sec:'inel', k:'activation',cells:'pls'   },
+  { r:49, sec:'inel', k:'other',     cells:'plns'  }
+];
+
+function esTplStore(b64){
+  try{ localStorage.setItem(ES_TPL_KEY, b64); return true; }catch(e){ return false; }
+}
+function esTplGet(){
+  try{ return localStorage.getItem(ES_TPL_KEY)||null; }catch(e){ return null; }
+}
+function esTplClear(){ try{ localStorage.removeItem(ES_TPL_KEY); }catch(e){} esTplStatus(); }
+window.esTplClear=esTplClear;
+
+function esTplStatus(){
+  var el=document.getElementById('esTplState'); if(!el) return;
+  el.innerHTML = esTplGet()
+    ? '<span style="color:#1a7f37">Eversource template loaded \u2014 export fills it directly.</span> '
+      + '<a href="#" onclick="esTplClear();return false">replace</a>'
+    : '<span style="color:#9a6700">No Eversource template yet. Load the Cost Estimate Matrix .xlsx once and it is remembered.</span>';
+}
+window.esTplStatus=esTplStatus;
+
+/* Load once; it is remembered per browser. */
+function esTplLoad(file){
+  return new Promise(function(res, rej){
+    var rd=new FileReader();
+    rd.onload=function(){
+      var b64=String(rd.result).split(',')[1]||'';
+      if(!esTplStore(b64)){ rej(new Error('template too large for local storage')); return; }
+      esTplStatus(); res(b64);
+    };
+    rd.onerror=function(){ rej(new Error('could not read the file')); };
+    rd.readAsDataURL(file);
+  });
+}
+window.esTplLoad=esTplLoad;
+
+function _b64ToBuf(b64){
+  var bin=atob(b64), n=bin.length, a=new Uint8Array(n);
+  for(var i=0;i<n;i++) a[i]=bin.charCodeAt(i);
+  return a.buffer;
+}
+
+/* Write our numbers into their sheet, leaving every formula alone. */
+function esFillTemplate(){
+  var b64=esTplGet();
+  if(!b64) return Promise.reject(new Error('no-template'));
+  var form=formById('es-ct-l2');
+  var X=esMatrix(buildModel(form), form);
+
+  /* index the model by section+row key */
+  var byKey={};
+  for(var si=0; si<X.sections.length; si++){
+    var S2=X.sections[si];
+    for(var ri=0; ri<S2.rows.length; ri++){
+      var w=S2.rows[ri];
+      byKey[S2.id+'|'+(w.key||w.k||'')]=w;
+    }
+  }
+
+  var wb=new ExcelJS.Workbook();
+  return wb.xlsx.load(_b64ToBuf(b64)).then(function(){
+    var ws=wb.getWorksheet(ES_TPL_SHEET);
+    if(!ws) throw new Error('sheet "'+ES_TPL_SHEET+'" not found in the template');
+
+    /* header */
+    var H=ES_TPL_HEAD, k;
+    for(k in H){
+      if(!H.hasOwnProperty(k)) continue;
+      if(k==='date'){ ws.getCell(H[k]).value=new Date().toLocaleDateString('en-US'); continue; }
+      var v=d(k);
+      if(k==='stations' && !v) v=d('plugs');
+      if(v!=='' && v!=null) ws.getCell(H[k]).value=(k==='plugs'||k==='stations')?num(v):v;
+    }
+
+    /* items — only the input cells for that row */
+    for(var i=0;i<ES_TPL_ROWS.length;i++){
+      var R=ES_TPL_ROWS[i], w2=byKey[R.sec+'|'+R.k];
+      if(!w2) continue;
+      var has=function(ch){ return R.cells.indexOf(ch)>=0; };
+      if(has('q') && w2.qty!=null)        ws.getCell('E'+R.r).value=num(w2.qty);
+      if(has('p') && w2.unitPrice!=null)  ws.getCell('F'+R.r).value=r2(w2.unitPrice);
+      if(has('m') && w2.mat)              ws.getCell('G'+R.r).value=r2(w2.mat);
+      if(has('l') && w2.lab)              ws.getCell('H'+R.r).value=r2(w2.lab);
+      if(has('n') && w2.note)             ws.getCell('C'+R.r).value=w2.note;
+      if(has('s') && (w2.mat||w2.lab))    ws.getCell('J'+R.r).value='Yes';
+    }
+    return wb.xlsx.writeBuffer();
+  }).then(function(buf){
+    var blob=new Blob([buf],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
+    var nm='Eversource_Cost_Estimate_Matrix_'
+          +String(d('address')||d('applicant')||'Site').replace(/[^A-Za-z0-9]+/g,'_').slice(0,40)
+          +'_'+new Date().toISOString().slice(0,10)+'.xlsx';
+    var url=URL.createObjectURL(blob), a=document.createElement('a');
+    a.href=url; a.download=nm; a.style.display='none';
+    document.body.appendChild(a); a.click();
+    setTimeout(function(){ try{ document.body.removeChild(a); URL.revokeObjectURL(url); }catch(e){} }, 4000);
+    return nm;
+  });
+}
+window.esFillTemplate=esFillTemplate;
+
+function exportEversource(){
+  return esFillTemplate().catch(function(err){
+    if(err && err.message==='no-template'){
+      var inp=document.getElementById('esTplFile');
+      if(inp){ inp.click(); return; }
+    }
+    alert('Eversource export failed: '+((err&&err.message)||err));
+  });
+}
+window.exportEversource=exportEversource;
+
+/* ── Eversource matrix model ──────────────────────────────────────────
+   ONE derivation of the Eversource layout, consumed by both the .xlsx
+   writer and the on-screen preview. They drifted once already: the
+   exporter knew the nine-column matrix and the preview was still drawing
+   United Illuminating's five, so the tab looked wrong even though the
+   file was right. Anything layout-shaped belongs in here, not in either
+   consumer. */
+function esMatrix(m, form){
+  var bySec={}, si;
+  for(si=0; si<ES_SECTIONS.length; si++) bySec[ES_SECTIONS[si].id]=[];
+
+  for(var bi=0; bi<m.blocks.length; bi++){
+    var b=m.blocks[bi], def=null;
+    for(var d2=0; d2<form.blocks.length; d2++){ if(form.blocks[d2].id===b.id) def=form.blocks[d2]; }
+    for(var ri=0; ri<b.rows.length; ri++){
+      var rw=b.rows[ri], meta=null;
+      if(def){ for(var q=0;q<def.rows.length;q++){ if(def.rows[q].k===rw.k) meta=def.rows[q].es; } }
+      var sec=(meta&&meta.sec) || (b.id==='fp'?'fp':(b.id==='ne'?'inel':(b.id==='evse'?'evse':'gen')));
+      if(!bySec[sec]) bySec[sec]=[];
+      bySec[sec].push({ k:rw.k, label:rw.label, note:rw.note||'',
+                        mat:r2(rw.mat), lab:r2(rw.lab), meta:meta||{} });
+    }
+  }
+
+  /* Eversource itemises restoration separately; our paved trench rate is
+     blended, so move a share across rather than counting it twice. */
+  var gen=bySec.gen||[], gi2, restoreRow=null, trenchRow=null;
+  for(gi2=0; gi2<gen.length; gi2++){
+    if(gen[gi2].k==='restore') restoreRow=gen[gi2];
+    if(gen[gi2].meta && gen[gi2].meta.split==='restoration') trenchRow=gen[gi2];
+  }
+  if(trenchRow && restoreRow && trenchRow.lab>0){
+    var moved=r2(trenchRow.lab*ES_SPLIT.restorationPct);
+    trenchRow.lab=r2(trenchRow.lab-moved);
+    restoreRow.lab=r2(restoreRow.lab+moved);
+    if(!restoreRow.note) restoreRow.note='Specify: restoration along trench ('+(num(DATA.ftTrench)||0)+' lf)';
+  }
+
+  function qtyFor(meta){
+    if(!meta || !meta.qty) return null;
+    if(meta.qty==='one') return 1;
+    var v=num(DATA[meta.qty]);
+    return v>0 ? v : null;
+  }
+
+  var sections=[], totals={};
+  for(si=0; si<ES_SECTIONS.length; si++){
+    var S2=ES_SECTIONS[si], list=bySec[S2.id]||[], out=[], sm=0, sl=0;
+    for(var li=0; li<list.length; li++){
+      var it=list[li];
+      var qty=qtyFor(it.meta);
+      var up=(qty && it.mat) ? r2(it.mat/qty) : (it.mat?null:0);
+      out.push({ key:it.k, label:it.label, note:it.note, unit:(it.meta.unit||'Total'),
+                 qty:qty, unitPrice:up, mat:it.mat, lab:it.lab,
+                 tot:r2(it.mat+it.lab), sub:(it.mat||it.lab)?'Yes':'' });
+      sm+=it.mat; sl+=it.lab;
+    }
+    totals[S2.id]={ mat:r2(sm), lab:r2(sl), tot:r2(sm+sl) };
+    sections.push({ id:S2.id, title:S2.title, rows:out, totals:totals[S2.id] });
+  }
+
+  var mrUtil=totals.util.tot;
+  var mrCust=r2(totals.dp.tot + totals.gen.tot);
+  var mrTot=r2(mrUtil + mrCust);
+  var rebate=r2(mrTot + totals.fp.tot + totals.evse.tot);
+  var summary=[
+    ['Make-Ready Total',         mrTot],
+    ['Make-Ready Utility Cost',  mrUtil],
+    ['Make-Ready Customer Cost', mrCust],
+    ['Future Proofing',          totals.fp.tot],
+    ['Eligible EVSE Costs',      totals.evse.tot],
+    ['Total Eligible Rebate',    rebate],
+    ['Ineligible EVSE Costs',    totals.inel.tot],
+    [form.totalLabel,            r2(rebate + totals.inel.tot)]
+  ];
+  return { sections:sections, totals:totals, summary:summary };
+}
+
+var ES_NOTES=[
+  '(1)  Customer-Side Make-Ready Total should match the amount in the Customer-Side Make Ready Infrastructure Cost field in the EV application submitted.',
+  '(2)  Utility-Side Make-Ready Total should match the amount in the Utility-Side Make Ready Infrastructure Cost field in the EV application submitted.',
+  '(3)  EVSE Total should match the amount in the EVSE Cost field in the EV application submitted.',
+  '(4)  Networking Total should match the amount in the Networking Cost field in the EV application submitted.'
+];
+
+/* Eversource preview — the same nine columns and header trio the .xlsx gets. */
+function previewFormES(m, form){
+  var X=esMatrix(m, form);
+  var h='<table class="pv">';
+  function r(c){ return '<tr>'+c+'</tr>'; }
+  function td(v,cls,span){ return '<td'+(cls?' class="'+cls+'"':'')+(span?' colspan="'+span+'"':'')+'>'+(v===''||v==null?'&nbsp;':esc(v))+'</td>'; }
+
+  /* header trio, three label/value pairs across */
+  var G=[form.left[0],form.left[1],form.left[2]];
+  h+=r(td('Project Details','pv-band',3)+td('Contractor Details','pv-band',3)+td('Customer Details','pv-band',3));
+  var rows=Math.max(G[0]?G[0].fields.length:0, G[1]?G[1].fields.length:0, G[2]?G[2].fields.length:0);
+  for(var i=0;i<rows;i++){
+    var c='';
+    for(var g=0; g<3; g++){
+      var f=(G[g]&&G[g].fields[i])||null;
+      c += f ? (td(f.label)+td(fieldOut(f),null,2)) : (td('')+td('',null,2));
+    }
+    h+=r(c);
+  }
+
+  h+=r(td(form.banners.costs,'pv-band',9));
+  h+=r(td('Cost Item','pv-hdr')+td('Detail/Notes','pv-hdr o')+td('Unit Type','pv-hdr')
+      +td('Material Quantity','pv-hdr')+td('Material Unit Price','pv-hdr')+td('Material Total','pv-hdr')
+      +td('Labor Total','pv-hdr')+td('Total Cost','pv-hdr')+td('Subcontracted Y/N','pv-hdr'));
+
+  for(var s2=0; s2<X.sections.length; s2++){
+    var S=X.sections[s2];
+    h+=r(td(S.title,'pv-grey',9));
+    for(var ri=0; ri<S.rows.length; ri++){
+      var w=S.rows[ri];
+      h+=r(td(String(w.label).replace(/\n/g,' '))+td(w.note)+td(w.unit)
+          +td(w.qty!=null?w.qty:'','num')+td(w.unitPrice!=null?acct(w.unitPrice):'','num')
+          +td(acct(w.mat),'num')+td(acct(w.lab),'num')+td(acct(w.tot),'num')+td(w.sub));
+    }
+  }
+  for(var q2=0; q2<X.summary.length; q2++){
+    var last=(q2===X.summary.length-1);
+    h+=r(td('',null,5)+td(X.summary[q2][0], last?'pv-gold':null, 2)
+        +td(acct(X.summary[q2][1]), (last?'pv-gold ':'')+'num', 2));
+  }
+  for(var n2=0; n2<ES_NOTES.length; n2++) h+=r(td(ES_NOTES[n2],null,9));
+  h+='</table>';
+  /* The preview above is a readable rendering. The deliverable is Eversource's
+     own workbook with our numbers written into it — formulas, cheat sheet and
+     all — so the control for that lives right here. */
+  h+='<div style="margin-top:12px;padding:10px 12px;border:1px solid #d8dee4;border-radius:6px;background:#fbfcfd">'
+    +'<div style="font-weight:600;margin-bottom:4px">Export into Eversource\u2019s workbook</div>'
+    +'<div id="esTplState" style="font-size:12px;margin-bottom:8px"></div>'
+    +'<input type="file" id="esTplFile" accept=".xlsx" style="display:none" '
+    +  'onchange="if(this.files[0])esTplLoad(this.files[0]).then(function(){exportEversource();}).catch(function(e){alert(e.message);})">'
+    +'<button onclick="document.getElementById(\'esTplFile\').click()">Load template\u2026</button> '
+    +'<button onclick="exportEversource()"><strong>Fill &amp; download</strong></button>'
+    +'<div style="font-size:11px;color:#57606a;margin-top:6px">Writes quantities, unit prices, labor and notes into '
+    +'Version 4.0 and leaves every formula intact. Other tabs are untouched.</div>'
+    +'</div>';
+  setTimeout(function(){ try{ esTplStatus(); }catch(e){} }, 0);
+  return h;
 }
 
 function previewProposal(m){
@@ -2013,156 +2333,82 @@ function sheetForm(wb, m, form, site){
    customer-side. Reads the same model buildModel() produces for every
    other form, so nothing upstream is Eversource-specific. */
 function sheetFormES(wb, m, form, site){
+  var X=esMatrix(m, form);                       /* same model the preview draws */
   var title=safeSheetName((form.sheet||'ES Matrix ({site})').replace('{site}', site));
   var ws=wb.addWorksheet(title, { views:[{showGridLines:false}] });
-  var W=[2,34,44,12,11,13,13,13,13,12];
-  for(var i=0;i<W.length;i++) ws.getColumn(i+1).width=W[i];
+  var W=[2,34,44,12,11,13,13,13,13,12], i;
+  for(i=0;i<W.length;i++) ws.getColumn(i+1).width=W[i];
 
-  var HEAD={ fill:'FF1F3864', bold:true, color:'FFFFFFFF' };
-  var SECT={ fill:'FFBFBFBF', bold:true };
+  var HEAD={ fill:'FF00B050', bold:true, color:'FFFFFFFF', align:'center' };
+  var SECT={ fill:'FF00B050', bold:true, color:'FFFFFFFF' };
+  var HDR ={ fill:'FFFFFFFF', bold:true, align:'center', wrap:true, color:'FF1F3864' };
   var SUMH={ fill:'FFFFC000', bold:true };
 
   cell(ws,'G1','Rev. 04/10/25',{align:'right',size:9});
-  cell(ws,'I1','Date:',{bold:true});
-  cell(ws,'J1', new Date().toLocaleDateString('en-US'), {align:'right'});
+  cell(ws,'I1','Date:',{fill:'FF00B050',bold:true,color:'FFFFFFFF'});
+  cell(ws,'J1', new Date().toLocaleDateString('en-US'), {align:'center'});
 
   merge(ws,'B2:C2'); cell(ws,'B2','Project Details',HEAD);
   merge(ws,'D2:F2'); cell(ws,'D2','Contractor Details',HEAD);
   merge(ws,'H2:J2'); cell(ws,'H2','Customer Details',HEAD);
 
-  /* Three header groups side by side, exactly as the utility lays it out. */
   var groups=[ {g:form.left[0], lab:'B', val:'C'},
                {g:form.left[1], lab:'D', val:'E'},
                {g:form.left[2], lab:'H', val:'I'} ];
-  var maxR=3;
-  for(var gi=0; gi<groups.length; gi++){
+  var maxR=3, gi, fi, f;
+  for(gi=0; gi<groups.length; gi++){
     var G=groups[gi]; if(!G.g) continue;
-    var R=3;
-    for(var fi=0; fi<G.g.fields.length; fi++){
-      var f=G.g.fields[fi];
-      cell(ws,G.lab+R, f.label, {bold:true,size:9,wrap:true});
-      cell(ws,G.val+R, fieldOut(f), {size:9,wrap:true});
-      R++;
+    var R2=3;
+    for(fi=0; fi<G.g.fields.length; fi++){
+      f=G.g.fields[fi];
+      cell(ws,G.lab+R2, f.label, {bold:true,size:9,wrap:true});
+      cell(ws,G.val+R2, fieldOut(f), {size:9,wrap:true});
+      R2++;
     }
-    if(R>maxR) maxR=R;
+    if(R2>maxR) maxR=R2;
   }
 
   var R=maxR+1;
-  var HDR={ fill:'FF1F3864', bold:true, color:'FFFFFFFF', align:'center', wrap:true };
-  cell(ws,'B'+R,'Cost Item',HDR);
-  cell(ws,'C'+R,'Detail/Notes',HDR);
-  cell(ws,'D'+R,'Unit Type',HDR);
-  cell(ws,'E'+R,'Material Quantity',HDR);
-  cell(ws,'F'+R,'Material Unit Price',HDR);
-  cell(ws,'G'+R,'Material Total',HDR);
-  cell(ws,'H'+R,'Labor Total',HDR);
-  cell(ws,'I'+R,'Total Cost',HDR);
-  cell(ws,'J'+R,'Subcontracted Y/N',HDR);
+  var COLS=['Cost Item','Detail/Notes','Unit Type','Material Quantity','Material Unit Price',
+            'Material Total','Labor Total','Total Cost','Subcontracted Y/N'];
+  var LET=['B','C','D','E','F','G','H','I','J'];
+  for(i=0;i<COLS.length;i++) cell(ws,LET[i]+R,COLS[i],HDR);
   ws.getRow(R).height=30;
   R++;
 
-  /* Flatten the model into (section -> rows), preserving block order. */
-  var bySec={}, si;
-  for(si=0; si<ES_SECTIONS.length; si++) bySec[ES_SECTIONS[si].id]=[];
-  for(var bi=0; bi<m.blocks.length; bi++){
-    var b=m.blocks[bi];
-    var def=null;
-    for(var d2=0; d2<form.blocks.length; d2++){ if(form.blocks[d2].id===b.id) def=form.blocks[d2]; }
-    for(var ri=0; ri<b.rows.length; ri++){
-      var rw=b.rows[ri], meta=null;
-      if(def){ for(var q=0;q<def.rows.length;q++){ if(def.rows[q].k===rw.k) meta=def.rows[q].es; } }
-      var sec=(meta&&meta.sec) || (b.id==='fp'?'fp':(b.id==='ne'?'inel':(b.id==='evse'?'evse':'gen')));
-      bySec[sec] = bySec[sec] || [];
-      bySec[sec].push({ row:rw, meta:meta||{}, blockId:b.id });
-    }
-  }
-
-  function qtyFor(meta){
-    if(!meta || !meta.qty) return null;
-    if(meta.qty==='one') return 1;
-    var v=num(DATA[meta.qty]);
-    return v>0 ? v : null;
-  }
-
-  var secTotals={}, grandMat=0, grandLab=0;
-  for(si=0; si<ES_SECTIONS.length; si++){
-    var S2=ES_SECTIONS[si], list=bySec[S2.id]||[];
-    var any=false;
-    for(var t=0;t<list.length;t++){ if(list[t].row.mat||list[t].row.lab){ any=true; break; } }
-    /* Utility keeps its section headers even when a section prices at zero —
-       a reviewer reads a blank row as "none", a missing row as an omission. */
+  for(var si=0; si<X.sections.length; si++){
+    var S2=X.sections[si];
     merge(ws,'B'+R+':J'+R);
     cell(ws,'B'+R, S2.title, SECT);
     R++;
-    var sm=0, sl=0;
-    for(var li=0; li<list.length; li++){
-      var it=list[li], rw2=it.row, meta2=it.meta;
-      var mat=r2(rw2.mat), lab=r2(rw2.lab);
-      /* Eversource wants restoration on its own row; the blended paved
-         trench rate carries both, so it is split rather than doubled. */
-      if(meta2.split==='restoration' && lab>0){
-        var moved=r2(lab*ES_SPLIT.restorationPct);
-        lab=r2(lab-moved);
-        for(var z=0; z<list.length; z++){
-          if(list[z].row.k==='restore'){ list[z].row.lab=r2(num(list[z].row.lab)+moved); break; }
-        }
-      }
-      var qty=qtyFor(meta2);
-      var unitPrice=(qty && mat) ? r2(mat/qty) : (mat?null:0);
-      cell(ws,'B'+R, String(rw2.label||'').replace(/\\n/g,'\n'), {wrap:true,size:9});
-      cell(ws,'C'+R, rw2.note||'', {wrap:true,size:9});
-      cell(ws,'D'+R, meta2.unit||'Total', {size:9,align:'center'});
-      cell(ws,'E'+R, qty!=null?qty:'', {align:'right',fmt:'#,##0.##'});
-      cell(ws,'F'+R, unitPrice!=null?unitPrice:'', {align:'right',fmt:FMT_ACCT});
-      cell(ws,'G'+R, mat, {align:'right',fmt:FMT_ACCT});
-      cell(ws,'H'+R, lab, {align:'right',fmt:FMT_ACCT});
-      cell(ws,'I'+R, r2(mat+lab), {align:'right',fmt:FMT_ACCT});
-      cell(ws,'J'+R, (mat||lab)?'Yes':'', {align:'center',size:9});
-      sm+=mat; sl+=lab; R++;
+    for(var ri=0; ri<S2.rows.length; ri++){
+      var w=S2.rows[ri];
+      cell(ws,'B'+R, String(w.label), {wrap:true,size:9});
+      cell(ws,'C'+R, w.note, {wrap:true,size:9});
+      cell(ws,'D'+R, w.unit, {size:9,align:'center'});
+      cell(ws,'E'+R, w.qty!=null?w.qty:'', {align:'right',fmt:'#,##0.##'});
+      cell(ws,'F'+R, w.unitPrice!=null?w.unitPrice:'', {align:'right',fmt:FMT_ACCT});
+      cell(ws,'G'+R, w.mat, {align:'right',fmt:FMT_ACCT});
+      cell(ws,'H'+R, w.lab, {align:'right',fmt:FMT_ACCT});
+      cell(ws,'I'+R, w.tot, {align:'right',fmt:FMT_ACCT});
+      cell(ws,'J'+R, w.sub, {align:'center',size:9});
+      R++;
     }
-    secTotals[S2.id]={ mat:r2(sm), lab:r2(sl), tot:r2(sm+sl) };
-    grandMat+=sm; grandLab+=sl;
   }
 
-  /* ── Summary. Utility-side is the 'util' section only; everything else
-     eligible on the make-ready side is the customer's. ───────────────── */
   R++;
-  var mrUtil = secTotals.util.tot;
-  var mrCust = r2(secTotals.dp.tot + secTotals.gen.tot);
-  var mrTot  = r2(mrUtil + mrCust);
-  var fpTot  = secTotals.fp.tot;
-  var evseTot= secTotals.evse.tot;
-  var inelTot= secTotals.inel.tot;
-  var rebate = r2(mrTot + fpTot + evseTot);
-
-  var SUM=[
-    ['Make-Ready Total',            mrTot],
-    ['Make-Ready Utility Cost',     mrUtil],
-    ['Make-Ready Customer Cost',    mrCust],
-    ['Future Proofing',             fpTot],
-    ['Eligible EVSE Costs',         evseTot],
-    ['Total Eligible Rebate',       rebate],
-    ['Ineligible EVSE Costs',       inelTot],
-    [form.totalLabel,               r2(rebate + inelTot)]
-  ];
-  for(var s2=0; s2<SUM.length; s2++){
-    var last=(s2===SUM.length-1);
-    cell(ws,'G'+R, SUM[s2][0], last?SUMH:{bold:true,align:'right'});
-    cell(ws,'I'+R, SUM[s2][1], last?{fill:'FFFFC000',bold:true,align:'right',fmt:FMT_ACCT}
-                                  :{bold:true,align:'right',fmt:FMT_ACCT});
+  for(var q=0; q<X.summary.length; q++){
+    var last=(q===X.summary.length-1);
+    cell(ws,'G'+R, X.summary[q][0], last?SUMH:{bold:true,align:'right'});
+    cell(ws,'I'+R, X.summary[q][1], last?{fill:'FFFFC000',bold:true,align:'right',fmt:FMT_ACCT}
+                                       :{bold:true,align:'right',fmt:FMT_ACCT});
     R++;
   }
 
   R++;
-  var NOTES=[
-    '(1)  Customer-Side Make-Ready Total should match the amount in the Customer-Side Make Ready Infrastructure Cost field in the EV application submitted.',
-    '(2)  Utility-Side Make-Ready Total should match the amount in the Utility-Side Make Ready Infrastructure Cost field in the EV application submitted.',
-    '(3)  EVSE Total should match the amount in the EVSE Cost field in the EV application submitted.',
-    '(4)  Networking Total should match the amount in the Networking Cost field in the EV application submitted.'
-  ];
-  for(var n2=0; n2<NOTES.length; n2++){
+  for(var n2=0; n2<ES_NOTES.length; n2++){
     merge(ws,'B'+R+':J'+R);
-    cell(ws,'B'+R, NOTES[n2], {size:8,border:false});
+    cell(ws,'B'+R, ES_NOTES[n2], {size:8,border:false});
     R++;
   }
 
