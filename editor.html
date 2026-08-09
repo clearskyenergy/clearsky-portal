@@ -2073,7 +2073,7 @@ window.onerror = function(msg, src, line, col, err) {
      anchoring entirely. Restore by re-instating this button:
      <button class="rbtn" id="rb-clearplot" onclick="clearPlot()" title="Clear the committed plot and return to the live interactive map"><span class="rb-ico">✕</span><span class="rb-lbl">Clear<br>Plot</span></button> -->
         <button class="rbtn" id="rb-recenter" onclick="recenterOnEquipment()" title="Recenter the view on your placed equipment — brings any off-screen equipment back into the window"><span class="rb-ico" style="color:#34A853">⊕</span><span class="rb-lbl">Recenter</span></button>
-        <button class="rbtn" id="btn-3d" onclick="toggle3D()" title="3D site view &mdash; tilt and orbit to inspect the site. Editing pauses while tilted; press 2D or Esc to return." style="position:relative"><span class="rb-ico" style="display:inline-flex;align-items:center;justify-content:center"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 2.8 21 7.6 12 12.4 3 7.6z"/><path d="M3 7.6v8.8L12 21.2V12.4"/><path d="M21 7.6v8.8L12 21.2"/></svg></span><span class="rb-lbl">3D<br>View</span></button>
+        <button class="rbtn" id="btn-3d" onclick="omega3dSoon()" title="3D site view &mdash; tilt and orbit to inspect the site. Editing pauses while tilted; press 2D or Esc to return." style="position:relative"><span class="rb-ico" style="display:inline-flex;align-items:center;justify-content:center"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 2.8 21 7.6 12 12.4 3 7.6z"/><path d="M3 7.6v8.8L12 21.2V12.4"/><path d="M21 7.6v8.8L12 21.2"/></svg></span><span class="rb-lbl">3D<br>View</span><span id="btn-3d-soon" style="position:absolute;top:2px;right:2px;background:#F59E0B;color:#0A1628;font-size:7px;font-weight:800;letter-spacing:.4px;line-height:1;padding:2px 3px;border-radius:2px;pointer-events:none">SOON</span></button>
         <button class="rbtn" id="rb-crosshair" onclick="nnToggleCrosshair()" title="Toggle the AutoCAD-style crosshair cursor in draw/placement modes"><span class="rb-ico">✛</span><span class="rb-lbl">Crosshair</span></button>
       </div>
       <div class="rpanel-cap">Canvas</div>
@@ -4203,6 +4203,29 @@ try{
   var _m = localStorage.getItem('omegaMapsMapId');
   if (_m && _m.trim()) _CFG.googleMapsMapId = _m.trim();
 }catch(e){}
+
+/* --- MAP OPTIONS HELPER ----------------------------------------------
+   mapId is a CONSTRUCTION-TIME-ONLY option in the Maps JS API. A map built
+   without one is a RASTER map, and setTilt() / setHeading() are silently
+   ignored on raster maps -- which is exactly what set3D() calls. So a Map ID
+   saved in Settings does nothing unless it is passed at construction.
+
+   EVERY google.maps.Map in this file is built through this helper. If you
+   add another map later, wrap its options the same way or 3D will quietly
+   stop working for it:
+
+       new google.maps.Map(el, _mapOpts({ center:..., zoom:... }))
+   -------------------------------------------------------------------- */
+function _mapOpts(o){
+  o = o || {};
+  try{
+    var id = (typeof _CFG!=='undefined' && _CFG.googleMapsMapId)
+               ? String(_CFG.googleMapsMapId).trim() : '';
+    if(id && !o.mapId) o.mapId = id;
+  }catch(e){}
+  return o;
+}
+window._mapOpts = _mapOpts;
 
 // -- FIREBASE INIT ---------------------------------------------
 var _app, _db, _auth, _storage = null, _currentUser = null, _projectId = null, _loadReady = true;
@@ -22513,12 +22536,12 @@ async function _loadProject(id){
           var _freshMap=false;
           if(!window._gmap){
             _freshMap=true;
-            _gmap = window._gmap = new google.maps.Map(md,{
+            _gmap = window._gmap = new google.maps.Map(md,_mapOpts({
               center:{lat:ms.lat,lng:ms.lng}, zoom:_z,
               mapTypeId:'satellite', tilt:0, streetViewControl:false, fullscreenControl:false,
               isFractionalZoomEnabled:false,
               gestureHandling:'greedy'    // interactive; user can pan/zoom & then Lock
-            });
+            }));
           } else {
             try{
               _gmap.setOptions({ gestureHandling:'greedy', zoomControl:true, scrollwheel:true, draggable:true });
@@ -22744,10 +22767,10 @@ async function _loadProject(id){
             const md = document.getElementById('gmap-wrap');
             if (!md) return;
             if (!window._gmap) {
-              _gmap = window._gmap = new google.maps.Map(md, {
+              _gmap = window._gmap = new google.maps.Map(md, _mapOpts({
                 center:{lat:ms.lat, lng:ms.lng}, zoom:ms.zoom||18,
                 mapTypeId:'satellite', tilt:0, streetViewControl:false, fullscreenControl:false, isFractionalZoomEnabled:false
-              });
+              }));
               google.maps.event.addListener(_gmap,'zoom_changed',()=>_gmapAutoScale());
               google.maps.event.addListener(_gmap,'center_changed',()=>_gmapAutoScale());
             }
@@ -22765,10 +22788,10 @@ async function _loadProject(id){
           const md=document.getElementById('gmap-wrap');
           if(!md){doRender(null);return;}
           if(!window._gmap){
-            _gmap = window._gmap = new google.maps.Map(md,{
+            _gmap = window._gmap = new google.maps.Map(md,_mapOpts({
               center:{lat:ms.lat,lng:ms.lng},zoom:ms.zoom||18,
               mapTypeId:'satellite',tilt:0,streetViewControl:false,fullscreenControl:false,isFractionalZoomEnabled:false
-            });
+            }));
             google.maps.event.addListener(_gmap,'zoom_changed',()=>_gmapAutoScale());
             google.maps.event.addListener(_gmap,'center_changed',()=>_gmapAutoScale());
           } else {
@@ -23559,8 +23582,8 @@ function _initGMap(address){
     const loc=results[0].geometry.location;
     const zoom=parseInt(document.getElementById('map-zoom').value)||18;
     if(!_gmap){
-      _gmap=new google.maps.Map(md,{center:loc,zoom,mapTypeId:'satellite',tilt:0,streetViewControl:false,fullscreenControl:false,isFractionalZoomEnabled:false,
-        gestureHandling:'greedy'   /* interactive; user pans/zooms, then Lock */});
+      _gmap=new google.maps.Map(md,_mapOpts({center:loc,zoom,mapTypeId:'satellite',tilt:0,streetViewControl:false,fullscreenControl:false,isFractionalZoomEnabled:false,
+        gestureHandling:'greedy'   /* interactive; user pans/zooms, then Lock */}));
       /* Publish it so every consumer sees the same map, whichever
          binding they happen to read. */
       window._gmap=_gmap;
@@ -33110,7 +33133,47 @@ window._geoRepairAndReport=_geoRepairAndReport;
    Without one the Maps API ignores setTilt, so we say so rather than leave
    a button that appears to do nothing.
    ══════════════════════════════════════════════════════════════════════ */
-var OMEGA3D = { on:false, tilt:0, heading:0, prevMode:null };
+/* enabled:false ships the feature dark. The plumbing below is complete and
+   the Map ID now reaches the map (see _mapOpts), so turning 3D on is a
+   one-line change -- set enabled:true here, or call Omega3D.enable() from
+   the console to trial it without editing the file. */
+var OMEGA3D = { on:false, tilt:0, heading:0, prevMode:null, enabled:false };
+
+/* The "coming soon" notice shown by the ribbon button and the 3 key. */
+function omega3dSoon(){
+  if(typeof showBanner==='function')
+    showBanner('cal','3D site view \u2014 coming soon.');
+  return false;
+}
+window.omega3dSoon = omega3dSoon;
+
+/* Flip the feature on/off at runtime. Omega3D.enable() also repaints the
+   ribbon button so the SOON badge disappears without a reload. */
+window.Omega3D = {
+  enable:function(){
+    OMEGA3D.enabled = true;
+    var b=document.getElementById('btn-3d');
+    if(b){ b.setAttribute('onclick','toggle3D()'); b.style.opacity=''; }
+    var s=document.getElementById('btn-3d-soon'); if(s) s.style.display='none';
+    if(typeof showBanner==='function') showBanner('cal','3D view enabled \u2014 press 3 or the 3D button.');
+    return true;
+  },
+  disable:function(){
+    try{ if(OMEGA3D.on) set3D(0); }catch(e){}
+    OMEGA3D.enabled = false;
+    var b=document.getElementById('btn-3d');
+    if(b){ b.setAttribute('onclick','omega3dSoon()'); b.style.opacity='.55'; }
+    var s=document.getElementById('btn-3d-soon'); if(s) s.style.display='';
+    return true;
+  },
+  status:function(){
+    var m=null; try{ m=_g3map(); }catch(e){}
+    var cap=null; try{ cap=(m&&m.getMapCapabilities)?m.getMapCapabilities():null; }catch(e){}
+    return { enabled:OMEGA3D.enabled, on:OMEGA3D.on,
+             mapIdSet:!!(typeof _CFG!=='undefined' && _CFG.googleMapsMapId),
+             vectorMap: cap ? cap.isWebGLOverlayViewAvailable !== false : null };
+  }
+};
 
 function _g3map(){
   try{ if(typeof _gmap!=='undefined' && _gmap && _gmap.setTilt) return _gmap; }catch(e){}
@@ -33129,6 +33192,9 @@ function _g3Layers(on){
 }
 
 function set3D(tilt, heading){
+  /* Feature gate. Returning to 0 tilt is always allowed so nothing can get
+     stuck tilted if 3D is switched off mid-session. */
+  if(!OMEGA3D.enabled && (+tilt||0)>0) return omega3dSoon();
   var m=_g3map();
   if(!m){ if(typeof showBanner==='function') showBanner('cal','Map is still loading.'); return false; }
   if(!_g3HasVectorId() && (+tilt||0)>0){
@@ -33165,6 +33231,8 @@ function pitch3D(d){ return set3D(OMEGA3D.tilt+d, OMEGA3D.heading); }
 window.set3D=set3D; window.toggle3D=toggle3D; window.orbit3D=orbit3D; window.pitch3D=pitch3D;
 
 function _g3Sync(){
+  var _b3=document.getElementById('btn-3d');
+  if(_b3 && !OMEGA3D.enabled) _b3.style.opacity='.55';
   var hud=document.getElementById('omega3d-hud');
   if(hud) hud.style.display = OMEGA3D.on ? 'flex' : 'none';
   var r=document.getElementById('omega3d-read');
@@ -33208,13 +33276,19 @@ function _g3Sync(){
       +'<button onclick="set3D(0)" title="Back to plan view to edit" style="'+btn+';color:#FBBF24;font-weight:800">2D</button>';
     host.appendChild(d);
   }
-  if(document.readyState==='loading') document.addEventListener('DOMContentLoaded', mk); else mk();
+  function boot(){
+    mk();
+    /* Show the button as unavailable from first paint, not just after a click. */
+    var b=document.getElementById('btn-3d');
+    if(b && !OMEGA3D.enabled) b.style.opacity='.55';
+  }
+  if(document.readyState==='loading') document.addEventListener('DOMContentLoaded', boot); else boot();
 })();
 
 document.addEventListener('keydown', function(e){
   if(['INPUT','TEXTAREA','SELECT'].indexOf(e.target.tagName)>=0) return;
   if(e.metaKey||e.ctrlKey||e.altKey) return;
-  if((e.key||'')==='3'){ toggle3D(); e.preventDefault(); }
+  if((e.key||'')==='3'){ if(OMEGA3D.enabled){ toggle3D(); } else { omega3dSoon(); } e.preventDefault(); }
   if(e.key==='Escape' && OMEGA3D.on) set3D(0);
 });
 
@@ -60062,11 +60136,11 @@ window._crmToastModal=_crmToastModal;
     var fr=document.getElementById('gmap-frame'); if(fr) fr.style.display='none';
     md.style.display='block';
     try{
-      var m=new google.maps.Map(md,{
+      var m=new google.maps.Map(md,_mapOpts({
         center:{lat:loc.lat,lng:loc.lng}, zoom:loc.zoom||19,
         mapTypeId:'satellite', tilt:0, streetViewControl:false,
         fullscreenControl:false, isFractionalZoomEnabled:false
-      });
+      }));
       publish(m);
       google.maps.event.addListener(m,'zoom_changed',function(){ try{_gmapAutoScale();}catch(e){} remember(); });
       google.maps.event.addListener(m,'center_changed',function(){ try{_gmapAutoScale();}catch(e){} });
@@ -77582,9 +77656,11 @@ window._crmToastModal=_crmToastModal;
    * built without one is a RASTER map, and setTilt() / setHeading() are
    * silently ignored on raster maps -- which is exactly what set3D() calls.
    *
-   * In editor.html, window._gmap (the site map) is constructed in five
-   * places -- lines 22516, 22747, 22768, 23562 and 60065 -- and NONE of
-   * them passes mapId. Only the GPS Placement map (line 23090) does.
+   * All five site-map constructors now build their options through the
+   * _mapOpts() helper defined next to _CFG, so the Map ID reaches the map
+   * at construction. The wrapper below stays as a safety net: any NEW
+   * google.maps.Map added later that forgets _mapOpts still inherits the
+   * ID rather than silently breaking 3D again.
    *
    * So setting _CFG.googleMapsMapId alone does not enable 3D. Worse,
    * _g3HasVectorId() (line 33120) only checks that the string is non-empty,
