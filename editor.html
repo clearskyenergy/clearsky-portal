@@ -949,6 +949,43 @@ table.e3-tbl tr.e3-arch td{ opacity:.45 }
   #ribbon-hamburger{ display:flex !important; }
   #ribbon-tabs{ display:none !important; }
 }
+
+/* ── BLUEPRINT VIEW ────────────────────────────────────────────────────
+   A CSS filter over the imagery layers only. Google's Styled Maps cannot
+   restyle satellite tiles (it only reaches the roadmap layer), and a live
+   map iframe cannot be read into a canvas, so filtering the live view is
+   the only approach that works on the imagery we actually draw on.
+   #els and #csvg are deliberately NOT filtered: elements, conduit and
+   labels stay full-colour on top of the linework. */
+#sc.bp-blueprint #gmap-wrap,
+#sc.bp-blueprint #backdrop,
+#sc.bp-blueprint #frozen-map-img,
+#sc.bp-blueprint #map-img{
+  filter:grayscale(1) invert(1) contrast(1.28) brightness(.92)
+         sepia(1) hue-rotate(178deg) saturate(4.2);
+}
+#sc.bp-mono #gmap-wrap,
+#sc.bp-mono #backdrop,
+#sc.bp-mono #frozen-map-img,
+#sc.bp-mono #map-img{
+  filter:grayscale(1) contrast(1.95) brightness(1.12);
+}
+#sc.bp-negative #gmap-wrap,
+#sc.bp-negative #backdrop,
+#sc.bp-negative #frozen-map-img,
+#sc.bp-negative #map-img{
+  filter:grayscale(1) invert(1) contrast(1.15);
+}
+@media print{
+  #sc.bp-blueprint #gmap-wrap,#sc.bp-blueprint #backdrop,
+  #sc.bp-blueprint #frozen-map-img,#sc.bp-blueprint #map-img,
+  #sc.bp-mono #gmap-wrap,#sc.bp-mono #backdrop,
+  #sc.bp-mono #frozen-map-img,#sc.bp-mono #map-img,
+  #sc.bp-negative #gmap-wrap,#sc.bp-negative #backdrop,
+  #sc.bp-negative #frozen-map-img,#sc.bp-negative #map-img{
+    -webkit-print-color-adjust:exact; print-color-adjust:exact;
+  }
+}
 /* Guided-build panels (EV Build, BESS Build) must not swallow a small screen
    while telling the user to draw on the map. 900px matches the platform's
    existing mobile breakpoint used by the estimate/#rp bottom sheet. */
@@ -2760,7 +2797,7 @@ if(document.readyState==='loading'){
         <p id="map-hint">Drop or click to upload aerial photo</p>
       </div>
       <input id="fbg" type="file" accept="image/*" onchange="loadBg(event)" style="display:none">
-      <button id="stencil-btn" onclick="exportBlueprint()" title="Blueprint export &mdash; snapshots the sitemap, converts it to linework, overlays your elements and conduit, and downloads PNG + PDF. No map lock, no AI key." style="width:100%;margin-top:5px;background:var(--surface);border:1px solid var(--border);color:var(--text);padding:5px;border-radius:4px;cursor:pointer;font-size:10px;font-weight:700;display:none">◈ AI B&amp;W Stencil (optional)</button>
+      <button id="stencil-btn" onclick="cycleBlueprintView()" title="Blueprint view &mdash; cycles the aerial through blueprint, B&amp;W and negative. Live map, no lock, no AI. Elements and conduit stay in colour on top. Print or export to get the sheet." style="width:100%;margin-top:5px;background:var(--surface);border:1px solid var(--border);color:var(--text);padding:5px;border-radius:4px;cursor:pointer;font-size:10px;font-weight:700;display:none">◈ AI B&amp;W Stencil (optional)</button>
       <button id="btn-calibrate-hint" onclick="startCal()" title="Set the real-world scale so equipment drops at the correct size" style="width:100%;margin-top:5px;background:rgba(197,165,90,.15);border:1px solid rgba(197,165,90,.5);color:#E0B84D;padding:6px;border-radius:4px;cursor:pointer;font-size:10.5px;font-weight:700;display:none">📏 Calibrate scale (required for correct sizing)</button>
       <div class="map-tools" style="margin-top:5px">
         <button onclick="zoomBg(0.15)">+</button>
@@ -7564,6 +7601,59 @@ function toggleMapStencil(){
     if(status) status.textContent='  Satellite restored.';
   }
 }
+
+
+/* ── BLUEPRINT VIEW ────────────────────────────────────────────────────
+   Cycles the imagery through blueprint / mono / negative / off. This is a
+   VIEW, not a conversion: nothing is rasterized, nothing is uploaded, and
+   the live map keeps panning and zooming underneath. Your placed elements
+   and conduit are not filtered, so they read in colour over the linework. */
+var BP_VIEWS = [
+  { id:'off',       cls:'',             label:'\u25a4 Blueprint View',  note:'Satellite view.' },
+  { id:'blueprint', cls:'bp-blueprint', label:'\u25a4 View: Blueprint', note:'Blueprint view \u2014 white linework on navy. Elements and conduit stay in colour.' },
+  { id:'mono',      cls:'bp-mono',      label:'\u25a4 View: B&W',       note:'High-contrast black & white. Good for a photocopy-safe sheet.' },
+  { id:'negative',  cls:'bp-negative',  label:'\u25a4 View: Negative',  note:'Straight inverted aerial \u2014 closest to a film negative.' }
+];
+var _bpViewIx = 0;
+
+function setBlueprintView(id){
+  var sc=document.getElementById('sc'); if(!sc) return;
+  BP_VIEWS.forEach(function(v){ if(v.cls) sc.classList.remove(v.cls); });
+  var ix=0;
+  for(var i=0;i<BP_VIEWS.length;i++){ if(BP_VIEWS[i].id===id){ ix=i; break; } }
+  var v=BP_VIEWS[ix];
+  if(v.cls) sc.classList.add(v.cls);
+  _bpViewIx=ix;
+  try{ if(typeof S!=='undefined') S.bpView=v.id; }catch(e){}
+  var btn=document.getElementById('stencil-btn');
+  if(btn){
+    btn.textContent=v.label;
+    btn.style.color = (v.id==='off') ? 'var(--sub)' : 'var(--accent)';
+    btn.style.borderColor = (v.id==='off') ? 'var(--border)' : 'var(--accent)';
+  }
+  var st=document.getElementById('gmap-status');
+  if(st) st.textContent='  '+v.note;
+  return v.id;
+}
+window.setBlueprintView=setBlueprintView;
+
+function cycleBlueprintView(){
+  return setBlueprintView(BP_VIEWS[(_bpViewIx+1)%BP_VIEWS.length].id);
+}
+window.cycleBlueprintView=cycleBlueprintView;
+
+/* Restore with the project, and make sure the control is visible — it used
+   to stay hidden until a map had been frozen, which no longer applies. */
+(function(){
+  var init=function(){
+    var b=document.getElementById('stencil-btn');
+    if(b){ b.style.display='block'; b.onclick=cycleBlueprintView; }
+    try{ if(typeof S!=='undefined' && S.bpView) setBlueprintView(S.bpView);
+         else setBlueprintView('off'); }catch(e){}
+  };
+  if(document.readyState==='loading') document.addEventListener('DOMContentLoaded', init);
+  else init();
+})();
 
 /* ═══════════════════════════════════════════════════════════════════════
    BLUEPRINT EXPORT — snapshot the sitemap, stencil it, overlay the design.
