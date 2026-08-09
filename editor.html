@@ -9907,6 +9907,19 @@ function _ppCollectFleet(){
       if(_r!=='bess' && el.bgbRole!=='bess') return;
       var gkw =+el.bgbKw ||+el.bessKw ||0;
       var gkwh=+el.bgbKwh||+el.bessKwh||0;
+      /* An element placed before the rating resolved (or by an older build)
+         has the role but no numbers. Recover it from the session's chosen
+         system and write it back, so this self-heals once rather than being
+         re-derived on every Run. */
+      if(gkw<=0 && gkwh<=0){
+        var _rr=(typeof _bessRating==='function') ? _bessRating(el) : null;
+        if(_rr && (_rr.kw>0 || _rr.kwh>0)){
+          gkw=_rr.kw; gkwh=_rr.kwh;
+          el.bessKw=gkw; el.bessKwh=gkwh; el.bgbKw=gkw; el.bgbKwh=gkwh;
+          if(!el.bessModel && (_rr.mfr||_rr.model))
+            el.bessModel=((_rr.mfr||'')+' '+(_rr.model||'')).trim();
+        }
+      }
       if(gkw<=0 && gkwh<=0) return;
       var _u=+el.bessUnits||1;
       gkw*=_u; gkwh*=_u;
@@ -49752,6 +49765,35 @@ var DCFC_NODES={
 /* Footprint from the rating, so a 200 kWh cabinet and a 5 MWh container do
    not draw the same. Rough C&I envelopes, deliberately conservative:
    they should read as a real pad, not a placeholder. */
+/* Where the battery rating actually lives, in order of authority.
+
+   Chasing this through three fixes: the Solar + Storage dialog writes
+   BGB.kw/kwh, ALSO writes S._sosChoice, ALSO writes S.bessList[0], and
+   _bgbLoadConfig/_bgbSync can each rewrite BGB from the list. Any one of
+   those links breaking leaves a placed block with no rating and a Results
+   rail full of dashes. So resolve from all of them rather than trusting
+   one, and let the roll-up use the same resolver so an already-placed
+   block recovers without being re-placed. */
+function _bessRating(el){
+  function ok(o){ return o && (+o.kwh>0 || +o.kw>0); }
+  var C=[];
+  if(el) C.push({ kwh:+el.bessKwh||+el.bgbKwh||0, kw:+el.bessKw||+el.bgbKw||0 });
+  if(typeof BGB!=='undefined') C.push({ kwh:+BGB.kwh||0, kw:+BGB.kw||0 });
+  if(typeof BGB!=='undefined' && BGB.cfg)
+    C.push({ kwh:+BGB.cfg.kwh||0, kw:+BGB.cfg.kw||0, model:BGB.cfg.model, mfr:BGB.cfg.mfr });
+  try{
+    if(S && S._sosChoice) C.push({ kwh:+S._sosChoice.kwh||0, kw:+S._sosChoice.kw||0,
+                                   model:S._sosChoice.model, mfr:S._sosChoice.mfr });
+    if(S && S.bessList && S.bessList[0]){
+      var b=S.bessList[0], q=+(b.qty||1)||1;
+      C.push({ kwh:(+b.kwh||0)*q, kw:(+b.kw||0)*q, model:b.model, mfr:b.mfr });
+    }
+  }catch(e){}
+  for(var i=0;i<C.length;i++){ if(ok(C[i])) return C[i]; }
+  return { kwh:0, kw:0 };
+}
+window._bessRating=_bessRating;
+
 function _bessFootprint(kwh, kw){
   var e = +kwh || 0;
   if(e <= 0) e = (+kw || 0) * 2;
@@ -51191,8 +51233,12 @@ function placeBgbAt(p){
         el.bessPlaceholder = !!_bc.placeholder;
       }
       /* Ratings come from the build, which is what the user actually sized. */
-      el.bessKw  = BGB.kw  || (_bc && _bc.kw)  || null;
-      el.bessKwh = BGB.kwh || (_bc && _bc.kwh) || null;
+      var _rt = _bessRating(null);
+      el.bessKw  = BGB.kw  || (_bc && _bc.kw)  || _rt.kw  || null;
+      el.bessKwh = BGB.kwh || (_bc && _bc.kwh) || _rt.kwh || null;
+      if(!el.bessKw && !el.bessKwh && typeof showBanner==='function'){
+        showBanner('cal','BESS placed without a rating \u2014 open BESS Sizer or Solar + Storage and pick a unit, then press Run.');
+      }
       /* Write both field names. The capacity roll-up accepts either, but the
          one-line, the spec sheet and the plot-plan schedule each read only
          one of them, so a single name leaves blanks somewhere downstream. */
