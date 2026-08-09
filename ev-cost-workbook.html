@@ -9,6 +9,7 @@
 <script src="/config.js" onerror="void 0"></script>
 <script src="/omega-tools.js" onerror="void 0"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.4.0/exceljs.min.js" onerror="window._XLFAIL=1"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js" onerror="window._ZIPFAIL=1"></script>
 <style>
 :root{
   --bg:#F4F1EC; --surface:#FFFFFF; --ink:#0B1E35; --gold:#C9A84C;
@@ -110,6 +111,13 @@ table.pv td.num{text-align:right;font-variant-numeric:tabular-nums}
 .pv-hdr.o{background:#FFC000}
 .pv-grey{background:#BFBFBF;font-weight:700}
 .pv-gold{background:#FFC000;font-weight:700}
+/* Eversource runs a different palette from UI and the preview has to show
+   the sheet the reviewer will actually receive. */
+.pv-es-band{background:#00B050;color:#fff;font-weight:700;text-align:center}
+.pv-es-sec{background:#00B050;color:#fff;font-weight:700}
+.pv-es-hdr{background:#fff;color:#1F3864;font-weight:700;text-align:center;border:1.5px solid #1F3864!important}
+.pv-es-lbl{font-weight:700}
+.pv-es-sum{font-weight:700;text-align:right}
 .pvtabs{display:flex;padding:0 14px;border-bottom:1px solid var(--line2);overflow-x:auto}
 .pvtab{padding:9px 14px;font-size:11px;font-weight:600;background:none;border:none;border-bottom:2px solid transparent;color:var(--sub);cursor:pointer;white-space:nowrap}
 .pvtab.on{color:var(--ink);border-bottom-color:var(--gold)}
@@ -1896,6 +1904,149 @@ function _b64ToBuf(b64){
 }
 
 /* Write our numbers into their sheet, leaving every formula alone. */
+
+/* ── Surgical template fill ───────────────────────────────────────────
+   ExcelJS can read and rewrite the file, but a load/save round-trip is
+   lossy: it rebuilds the package and can drop embedded images, comment
+   VML and styling it does not model. This template carries three images
+   and comment drawings, so that round-trip is not acceptable when the
+   requirement is that format and colour come back identical.
+
+   Instead we open the .xlsx as the ZIP it is, edit the cell values inside
+   ONE worksheet XML part, and leave all 37 parts otherwise byte-identical.
+   Styles, fills, fonts, borders, column widths, merges, images, comments,
+   the hidden Version 3.0 and FORMAT tabs — none of it is touched, because
+   none of it is rewritten. The workbook already carries fullCalcOnLoad,
+   so Excel recomputes the formulas on open. */
+function _esColOf(ref){ return String(ref).replace(/[0-9]/g,''); }
+function _esRowOf(ref){ return parseInt(String(ref).replace(/[^0-9]/g,''),10); }
+function _esColNum(col){
+  var n=0; col=String(col).toUpperCase();
+  for(var i=0;i<col.length;i++) n=n*26+(col.charCodeAt(i)-64);
+  return n;
+}
+function _esXmlEsc(v){
+  return String(v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+/* Set one cell's value in a sheet XML string, preserving its style index. */
+function _esSetCell(xml, ref, value, isText){
+  var col=_esColOf(ref), rowNum=_esRowOf(ref);
+  var rowRe=new RegExp('<row[^>]*\\\\br="'+rowNum+'"[^>]*>([\\\\s\\\\S]*?)</row>');
+  var rowM=xml.match(rowRe);
+  if(!rowM) return xml;                       /* row absent: template shape changed */
+  var rowXml=rowM[0], inner=rowM[1];
+
+  var cellRe=new RegExp('<c[^>]*\\\\br="'+ref+'"[^>]*(?:/>|>[\\\\s\\\\S]*?</c>)');
+  var cellM=rowXml.match(cellRe);
+  var styleAttr='';
+  if(cellM){
+    var sM=cellM[0].match(/\\ss="(\\d+)"/);
+    if(sM) styleAttr=' s="'+sM[1]+'"';
+  }
+
+  var newCell = isText
+    ? '<c r="'+ref+'"'+styleAttr+' t="inlineStr"><is><t xml:space="preserve">'+_esXmlEsc(value)+'</t></is></c>'
+    : '<c r="'+ref+'"'+styleAttr+'><v>'+Number(value)+'</v></c>';
+
+  var newRow;
+  if(cellM){
+    newRow = rowXml.replace(cellRe, newCell);
+  } else {
+    /* insert in column order so Excel does not complain about the row */
+    var target=_esColNum(col), placed=false, out='', re=/<c[^>]*\br="([A-Z]+\d+)"[^>]*(?:\/>|>[\s\S]*?<\/c>)/g, mm, last=0;
+    while((mm=re.exec(inner))!==null){
+      if(!placed && _esColNum(_esColOf(mm[1]))>target){
+        out+=inner.slice(last, mm.index)+newCell; last=mm.index; placed=true;
+      }
+    }
+    out+=inner.slice(last);
+    if(!placed) out=inner+newCell;
+    newRow=rowXml.replace(inner, out);
+  }
+  return xml.replace(rowXml, newRow);
+}
+
+/* Which ZIP part is 'Version 4.0'? Resolve properly rather than guessing
+   sheet2.xml — sheet order and file numbering are not the same thing. */
+function _esSheetPart(zip){
+  return zip.file('xl/workbook.xml').async('string').then(function(wbx){
+    var m=wbx.match(new RegExp('<sheet[^>]*name="'+ES_TPL_SHEET.replace('.','\\\\.')+'"[^>]*>'));
+    if(!m) throw new Error('sheet "'+ES_TPL_SHEET+'" not in the template');
+    var rid=(m[0].match(/r:id="(rId\d+)"/)||[])[1];
+    if(!rid) throw new Error('could not resolve the sheet relationship');
+    return zip.file('xl/_rels/workbook.xml.rels').async('string').then(function(rels){
+      var rm=rels.match(new RegExp('<Relationship[^>]*Id="'+rid+'"[^>]*>'));
+      var tgt=rm ? (rm[0].match(/Target="([^"]+)"/)||[])[1] : null;
+      if(!tgt) throw new Error('could not resolve the sheet target');
+      return 'xl/'+String(tgt).replace(/^\/?xl\//,'');
+    });
+  });
+}
+
+function esFillTemplateExact(){
+  var b64=esTplGet();
+  if(!b64) return Promise.reject(new Error('no-template'));
+  if(typeof JSZip==='undefined') return Promise.reject(new Error('the zip library did not load — check the connection and reload'));
+
+  var form=formById('es-ct-l2');
+  var X=esMatrix(buildModel(form), form);
+  var byKey={}, si, ri;
+  for(si=0; si<X.sections.length; si++){
+    for(ri=0; ri<X.sections[si].rows.length; ri++){
+      var w=X.sections[si].rows[ri];
+      byKey[X.sections[si].id+'|'+(w.key||'')]=w;
+    }
+  }
+
+  var zip=new JSZip();
+  return zip.loadAsync(_b64ToBuf(b64)).then(function(z){
+    return _esSheetPart(z).then(function(part){
+      return z.file(part).async('string').then(function(xml){
+
+        /* header block */
+        var H=ES_TPL_HEAD, k;
+        for(k in H){
+          if(!H.hasOwnProperty(k)) continue;
+          if(k==='date'){ xml=_esSetCell(xml,H[k],new Date().toLocaleDateString('en-US'),true); continue; }
+          var v=d(k);
+          if(k==='stations' && !v) v=d('plugs');
+          if(v==='' || v==null) continue;
+          var numeric=(k==='plugs'||k==='stations');
+          xml=_esSetCell(xml, H[k], numeric?num(v):v, !numeric);
+        }
+
+        /* item rows — only the declared input cells */
+        for(var i=0;i<ES_TPL_ROWS.length;i++){
+          var R=ES_TPL_ROWS[i], w2=byKey[R.sec+'|'+R.k];
+          if(!w2) continue;
+          var has=function(ch){ return R.cells.indexOf(ch)>=0; };
+          if(has('q') && w2.qty!=null)       xml=_esSetCell(xml,'E'+R.r, num(w2.qty), false);
+          if(has('p') && w2.unitPrice!=null) xml=_esSetCell(xml,'F'+R.r, r2(w2.unitPrice), false);
+          if(has('m') && w2.mat)             xml=_esSetCell(xml,'G'+R.r, r2(w2.mat), false);
+          if(has('l') && w2.lab)             xml=_esSetCell(xml,'H'+R.r, r2(w2.lab), false);
+          if(has('n') && w2.note)            xml=_esSetCell(xml,'C'+R.r, w2.note, true);
+          if(has('s') && (w2.mat||w2.lab))   xml=_esSetCell(xml,'J'+R.r, 'Yes', true);
+        }
+
+        z.file(part, xml);
+        return z.generateAsync({ type:'blob', compression:'DEFLATE',
+          mimeType:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+      });
+    });
+  }).then(function(blob){
+    var nm='Eversource_Cost_Estimate_Matrix_'
+          +String(d('address')||d('applicant')||'Site').replace(/[^A-Za-z0-9]+/g,'_').slice(0,40)
+          +'_'+new Date().toISOString().slice(0,10)+'.xlsx';
+    var url=URL.createObjectURL(blob), a=document.createElement('a');
+    a.href=url; a.download=nm; a.style.display='none';
+    document.body.appendChild(a); a.click();
+    setTimeout(function(){ try{ document.body.removeChild(a); URL.revokeObjectURL(url); }catch(e){} },4000);
+    return nm;
+  });
+}
+window.esFillTemplateExact=esFillTemplateExact;
+
 function esFillTemplate(){
   var b64=esTplGet();
   if(!b64) return Promise.reject(new Error('no-template'));
@@ -1955,7 +2106,7 @@ function esFillTemplate(){
 window.esFillTemplate=esFillTemplate;
 
 function exportEversource(){
-  return esFillTemplate().catch(function(err){
+  return esFillTemplateExact().catch(function(err){
     if(err && err.message==='no-template'){
       var inp=document.getElementById('esTplFile');
       if(inp){ inp.click(); return; }
@@ -2059,25 +2210,24 @@ function previewFormES(m, form){
 
   /* header trio, three label/value pairs across */
   var G=[form.left[0],form.left[1],form.left[2]];
-  h+=r(td('Project Details','pv-band',3)+td('Contractor Details','pv-band',3)+td('Customer Details','pv-band',3));
+  h+=r(td('Project Details','pv-es-band',3)+td('Contractor Details','pv-es-band',3)+td('Customer Details','pv-es-band',3));
   var rows=Math.max(G[0]?G[0].fields.length:0, G[1]?G[1].fields.length:0, G[2]?G[2].fields.length:0);
   for(var i=0;i<rows;i++){
     var c='';
     for(var g=0; g<3; g++){
       var f=(G[g]&&G[g].fields[i])||null;
-      c += f ? (td(f.label)+td(fieldOut(f),null,2)) : (td('')+td('',null,2));
+      c += f ? (td(f.label,'pv-es-lbl')+td(fieldOut(f),null,2)) : (td('')+td('',null,2));
     }
     h+=r(c);
   }
 
-  h+=r(td(form.banners.costs,'pv-band',9));
-  h+=r(td('Cost Item','pv-hdr')+td('Detail/Notes','pv-hdr o')+td('Unit Type','pv-hdr')
-      +td('Material Quantity','pv-hdr')+td('Material Unit Price','pv-hdr')+td('Material Total','pv-hdr')
-      +td('Labor Total','pv-hdr')+td('Total Cost','pv-hdr')+td('Subcontracted Y/N','pv-hdr'));
+  h+=r(td('Cost Item','pv-es-hdr')+td('Detail/Notes','pv-es-hdr')+td('Unit Type','pv-es-hdr')
+      +td('Material Quantity','pv-es-hdr')+td('Material United Price','pv-es-hdr')+td('Material Total','pv-es-hdr')
+      +td('Labor Total','pv-es-hdr')+td('Total Cost','pv-es-hdr')+td('Subcontracted Y/N','pv-es-hdr'));
 
   for(var s2=0; s2<X.sections.length; s2++){
     var S=X.sections[s2];
-    h+=r(td(S.title,'pv-grey',9));
+    h+=r(td(S.title,'pv-es-sec',9));
     for(var ri=0; ri<S.rows.length; ri++){
       var w=S.rows[ri];
       h+=r(td(String(w.label).replace(/\n/g,' '))+td(w.note)+td(w.unit)
@@ -2087,7 +2237,7 @@ function previewFormES(m, form){
   }
   for(var q2=0; q2<X.summary.length; q2++){
     var last=(q2===X.summary.length-1);
-    h+=r(td('',null,5)+td(X.summary[q2][0], last?'pv-gold':null, 2)
+    h+=r(td('',null,5)+td(X.summary[q2][0], last?'pv-gold':'pv-es-sum', 2)
         +td(acct(X.summary[q2][1]), (last?'pv-gold ':'')+'num', 2));
   }
   for(var n2=0; n2<ES_NOTES.length; n2++) h+=r(td(ES_NOTES[n2],null,9));
