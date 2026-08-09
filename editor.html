@@ -1695,10 +1695,11 @@ window.onerror = function(msg, src, line, col, err) {
     <!-- Sizing / configuration tools -->
     <div class="rpanel">
       <div class="rpanel-body">
-        <button class="rbtn" onclick="openBessModal(null)" title="BESS Config &mdash; size the battery, set chemistry, run the value stack"><span class="rb-ico" style="color:#00D4FF">&#9881;</span><span class="rb-lbl">BESS<br>Config</span></button>
-        <button class="rbtn" onclick="openSolarBessSizer()" title="Solar &rarr; BESS Sizer &mdash; size storage from the solar drawn on the sitemap"><span class="rb-ico" style="color:#FBBF24">&#9788;</span><span class="rb-lbl">Solar &rarr;<br>BESS</span></button>
+        <button class="rbtn" onclick="openBessModal(null)" title="BESS Config &mdash; size the battery, set chemistry, run the value stack. Being retired; the BESS Sizer replaces it." style="position:relative"><span class="rb-ico" style="color:#00D4FF">&#9881;</span><span class="rb-lbl">BESS<br>Config</span><span style="position:absolute;top:2px;right:3px;font-size:6.5px;font-weight:800;letter-spacing:.3px;background:rgba(239,68,68,.9);color:#FFF1F1;padding:1px 3px;border-radius:3px;line-height:1.2">LEAVING SOON</span></button>
+        <button class="rbtn" onclick="openBessSizer()" title="BESS Sizer &mdash; size, screen and qualify a site from the utility bill and site details. Analysis only, nothing is placed." style="position:relative"><span class="rb-ico" style="color:#00D4FF">&#9878;</span><span class="rb-lbl">BESS<br>Sizer</span></button>
+        <button class="rbtn" onclick="openSolarBessSizer()" title="Solar &rarr; BESS Sizer &mdash; size storage from the solar drawn on the sitemap"><span class="rb-ico" style="color:#FBBF24">&#9788;</span><span class="rb-lbl">Solar BESS<br>Sizer</span></button>
         <button class="rbtn" onclick="homeStartWizard('BTM')" title="Behind-the-meter guided flow &mdash; coming soon" style="display:none;position:relative;opacity:.72"><span class="rb-ico">&#9644;</span><span class="rb-lbl">BESS<br>BTM</span><span style="position:absolute;top:2px;right:3px;font-size:6.5px;font-weight:800;letter-spacing:.3px;background:rgba(245,158,11,.9);color:#1A1206;padding:1px 3px;border-radius:3px;line-height:1.2">SOON</span></button>
-        <button class="rbtn" onclick="homeStartWizard('FOM')" title="Solar + Storage single-pass flow — utility-first: POI to PV, branching at the 480V bus" style="position:relative;opacity:1"><span class="rb-ico" style="color:#FBBF24">&#9638;</span><span class="rb-lbl">Solar +<br>Storage</span><span style="position:absolute;top:2px;right:3px;font-size:6.5px;font-weight:800;letter-spacing:.3px;background:rgba(245,158,11,.9);color:#1A1206;padding:1px 3px;border-radius:3px;line-height:1.2">SOON</span></button>
+        <button class="rbtn" onclick="homeStartWizard('FOM')" title="Solar + Storage single-pass flow — utility-first: POI to PV, branching at the 480V bus" style="position:relative;opacity:1"><span class="rb-ico" style="color:#FBBF24">&#9638;</span><span class="rb-lbl">Solar +<br>Storage</span></button>
       </div>
       <div class="rpanel-cap">3 &middot; Size &amp; Configure</div>
     </div>
@@ -14504,6 +14505,26 @@ function renderConduit(c){
   tx.setAttribute('fill', _eng ? '#111111' : ct.color);
   tx.textContent = lbl;
   lg.appendChild(tx);
+  /* The box width was estimated as lbl.length * 5.8. That guess only holds
+     at one zoom: the monospace advance and the box are both in world units,
+     but glyph metrics do not scale perfectly linearly, so the number drifted
+     out of the white block as you zoomed. Measure the text that was actually
+     laid out and fit the box to it. */
+  try{
+    var _bb = tx.getBBox();
+    if(_bb && _bb.width){
+      var _pad = _eng ? 7 : 9;
+      var _w = _bb.width + _pad*2, _h = Math.max(th, _bb.height + 6);
+      bg.setAttribute('x', lx - _w/2);
+      bg.setAttribute('y', ly - _h/2);
+      bg.setAttribute('width',  _w);
+      bg.setAttribute('height', _h);
+      /* keep the leader shelf touching the edge it actually has now */
+      var _sx = (lx < mid.x) ? (lx - _w/2) : (lx + _w/2);
+      leader.setAttribute('points',
+        mid.x+','+mid.y+' '+elbowX+','+elbowY+' '+lx+','+ly+' '+_sx+','+ly);
+    }
+  }catch(e){}
   }
 
   // -- Drag handler --
@@ -15168,7 +15189,119 @@ function renderLegend(){
 }
 
 // == BESS CONFIG ==============================================
+
+/* ══════════════════════════════════════════════════════════════════════
+   BESS SIZER — analysis without placement
+
+   Deliberately NOT a second modal. Every analysis in BESS Config reads
+   the bm-* fields directly (bmRunPreQual, bmCompareAllModels,
+   bmExportAnalysis, bmSolarSizingCalc, runValueStackEstimate), so a
+   parallel dialog with its own ids would either duplicate all of it or
+   silently read empty inputs. The Sizer opens the SAME dialog in an
+   analysis-only mode: sizing, screening, qualification and reporting all
+   stay; 'Save & Place' comes off, because the point here is to answer
+   whether the site supports a battery and what it is worth — not to drop
+   equipment on the drawing.
+   ══════════════════════════════════════════════════════════════════════ */
+function openBessSizer(){
+  window._bmSizerMode = true;
+  if(typeof openBessModal !== 'function'){
+    alert('BESS configuration is not available in this build.');
+    window._bmSizerMode=false; return;
+  }
+  window._bmSizerOpening = true;
+  try{ openBessModal(null); } finally { window._bmSizerOpening = false; }
+  _bmApplySizerMode();
+  _bmPrefillFromBill();
+}
+window.openBessSizer = openBessSizer;
+
+function _bmApplySizerMode(){
+  var on = !!window._bmSizerMode;
+  var t = document.getElementById('bm-title');
+  if(t) t.textContent = on ? 'BESS Sizer \u2014 Site Analysis' : 'Configure BESS Unit';
+
+  /* Placement is the one thing the Sizer does not do. */
+  var save = document.getElementById('bm-save-btn');
+  if(save) save.style.display = on ? 'none' : '';
+
+  /* Give the analysis actions the primary weight instead. */
+  var host = document.getElementById('bess-modal');
+  if(host) host.classList[on?'add':'remove']('bm-sizer');
+
+  var note = document.getElementById('bm-sizer-note');
+  if(on && !note && host){
+    var anchor = document.getElementById('bm-pq-result');
+    if(anchor && anchor.parentNode){
+      note = document.createElement('div');
+      note.id = 'bm-sizer-note';
+      note.style.cssText = 'font-size:9px;line-height:1.5;color:var(--sub);'
+        + 'border-left:2px solid var(--accent);padding:6px 0 6px 9px;margin:0 0 8px';
+      note.innerHTML = 'Analysis only \u2014 nothing is placed on the drawing. '
+        + 'Sizing, interconnection screening, model comparison and the value stack '
+        + 'all run here; use <strong>BESS Build</strong> or <strong>Solar + Storage</strong> '
+        + 'when you want equipment on the map.';
+      anchor.parentNode.insertBefore(note, anchor);
+    }
+  }
+  if(note) note.style.display = on ? '' : 'none';
+}
+
+/* Carry in whatever the utility bill already told us. These are facts the
+   user has supplied once; asking again is how numbers drift apart. */
+function _bmPrefillFromBill(){
+  var B = (typeof S!=='undefined' && S.billImport) ? S.billImport : null;
+  var H = (typeof S!=='undefined' && S.billBessHint) ? S.billBessHint : null;
+  var bits = [];
+
+  function put(id, val){
+    var el=document.getElementById(id);
+    if(el && val!=null && val!=='' && !el.value){ el.value=val; return true; }
+    return false;
+  }
+  /* Bill-derived sizing: the shave analysis already recommends kW and kWh. */
+  if(H){
+    if(put('bm-kw',  H.suggestedKw))  bits.push(Math.round(H.suggestedKw)+' kW');
+    if(put('bm-kwh', H.suggestedKwh)) bits.push(Math.round(H.suggestedKwh)+' kWh');
+  }
+  if(B){
+    if(B.demandKw) bits.push('billed peak '+Math.round(B.demandKw)+' kW');
+    if(B.utility)  bits.push(B.utility);
+    if(B.rateSchedule) bits.push(B.rateSchedule);
+  }
+  /* Address drives the interconnection screen. */
+  var addr=document.getElementById('bm-pq-addr');
+  if(addr && !addr.value){
+    addr.value = (B && B.serviceAddress)
+      || (document.getElementById('addr-in')||{}).value || '';
+  }
+  var st=document.getElementById('bm-pq-status');
+  if(st){
+    st.textContent = bits.length
+      ? 'From the utility bill: ' + bits.join(' \u00b7 ')
+      : 'No utility bill imported yet \u2014 sizing will use the values you enter.';
+  }
+  /* If we have both an address and a size, screen the site straight away. */
+  if(addr && addr.value && bits.length && typeof bmRunPreQual==='function'){
+    try{ setTimeout(bmRunPreQual, 120); }catch(e){}
+  }
+}
+
+/* Reset the flag on close so the next BESS Config opens normally. */
+(function(){
+  var orig = window.closeBessModal;
+  window.closeBessModal = function(){
+    window._bmSizerMode = false;
+    try{ _bmApplySizerMode(); }catch(e){}
+    if(typeof orig === 'function') return orig.apply(this, arguments);
+  };
+})();
+
 function openBessModal(id){
+  /* Only openBessSizer() sets this. Anything else opening the dialog is the
+     full configurator, so clear it first — otherwise the Sizer's hidden
+     Save & Place button stays hidden for the rest of the session. */
+  if(!window._bmSizerOpening) window._bmSizerMode = false;
   S.editBessId=id;const b=id?S.bessList.find(x=>x.id===id):null;
   document.getElementById('bm-title').textContent=b?'Edit BESS Unit':'Configure BESS Unit';
   ['name','mfr','model','kwh','kw','dcv','acv','inv','ikva','xfmr','disco','racks','enc','wt','qty'].forEach(f=>{
@@ -49284,12 +49417,16 @@ var EVRENDER = {
 /* Footprint (ft) for realistic scaling. Falls back to sensible defaults. */
 try{ window.EVRENDER = EVRENDER; }catch(e){}
 var EV_FOOTPRINT = {
-  xfmr:   { lf:7.0, wf:5.0 },     // 750kVA pad-mount ~7'x5'
-  panel:  { lf:8.0, wf:3.0 },     // switchgear lineup
+  xfmr:   { lf:6.0, wf:4.0 },     // pad-mount; 750kVA is ~7x5, smaller units less
+  panel:  { lf:6.0, wf:2.5 },     // switchgear lineup (was 8x3, too heavy at C&I scale)
   disco:  { lf:2.0, wf:1.4 },     // NEMA 3R AC disconnect — compact, ~half the MDP
   service:{ lf:3.0, wf:2.5 },     // service pedestal
   charger:{ lf:2.9, wf:3.1 },     // DCFC dispenser (from catalog lf/wf)
-  bess:  { lf:30.0, wf:9.0 },    // BESS container (20-40ft, default ~30x9)
+  /* 30 x 9 is a 40 ft grid-scale container. Most guided builds are C&I
+     cabinets — a 760 kWh Gotion EDGE is roughly 8 x 5 — so a fixed container
+     footprint swamped the site. _bessFootprint() sizes from the actual
+     rating; this stays as the fallback for an unrated element. */
+  bess:  { lf:10.0, wf:5.0 },
   meter: { lf:2.5, wf:2.0 },     // revenue meter pedestal
   ems:   { lf:2.5, wf:2.2 }      // EMS / SCADA cabinet
 };
@@ -49612,6 +49749,22 @@ var DCFC_NODES={
   panel:  { evKind:'panel',   label:'Switchgear / Panel',    color:'#EF4444' }
 };
 /* Footprint px from ft (falls back to fixed px if map not calibrated). */
+/* Footprint from the rating, so a 200 kWh cabinet and a 5 MWh container do
+   not draw the same. Rough C&I envelopes, deliberately conservative:
+   they should read as a real pad, not a placeholder. */
+function _bessFootprint(kwh, kw){
+  var e = +kwh || 0;
+  if(e <= 0) e = (+kw || 0) * 2;
+  if(e <= 0)    return { lf:10.0, wf:5.0 };
+  if(e <= 250)  return { lf:5.0,  wf:3.0 };   // wall / small cabinet
+  if(e <= 600)  return { lf:8.0,  wf:4.0 };   // C&I cabinet
+  if(e <= 1200) return { lf:10.0, wf:5.0 };   // Gotion EDGE class
+  if(e <= 2500) return { lf:20.0, wf:8.0 };   // 20 ft container
+  if(e <= 5000) return { lf:30.0, wf:9.0 };   // 40 ft container
+  return { lf:40.0, wf:9.5 };
+}
+window._bessFootprint=_bessFootprint;
+
 function _evPx(kind, fp){
   var f=fp||EV_FOOTPRINT[kind]||{lf:5,wf:4};
   if(S.pxPerFt&&S.pxPerFt>0){ return { w:Math.max(28,Math.round(f.lf*S.pxPerFt)), h:Math.max(20,Math.round(f.wf*S.pxPerFt)) }; }
@@ -50541,6 +50694,15 @@ function _bgbGenericCfg(kw, kwh){
 window._bgbGenericCfg=_bgbGenericCfg;
 
 function _bgbLoadConfig(){
+  /* The Solar + Storage dialog is an explicit choice — the user picked a
+     battery and a unit count seconds ago. This function used to overwrite
+     BGB.kw/kwh from S.bessList[0], so whatever sat in BESS Config silently
+     replaced that selection and the placed element carried the wrong size
+     (or none, with an empty list). An explicit pick wins. */
+  if(BGB && BGB.sizeLocked){
+    if(!BGB.cfg) BGB.cfg=_bgbGenericCfg(BGB.kw, BGB.kwh);
+    return BGB.cfg;
+  }
   var b=(typeof S!=='undefined' && S.bessList && S.bessList[0]) ? S.bessList[0] : null;
   /* No unit configured -> use the sized placeholder rather than nothing, so
      the guided build always has a standard offering to place and print. */
@@ -50558,6 +50720,8 @@ window._bgbLoadConfig=_bgbLoadConfig;
 
 /* ---- MODAL (its own home) ---- */
 function openBessGuidedBuild(){
+  /* A previous Solar + Storage pick must not pin this build's size. */
+  if(typeof BGB!=='undefined' && !window.__omegaSolarEntry) BGB.sizeLocked=false;
   if(typeof engGuideBegin==='function') try{ engGuideBegin(); }catch(e){}
   /* Consume the flag: it is raised immediately before the call by
      Build > Solar + Storage and must not leak into the next opening from
@@ -51002,7 +51166,23 @@ function placeBgbAt(p){
        reads the ELEMENT rather than BGB — the plot-plan schedule, the
        one-line label, the spec sheet — therefore printed blanks.
        Same stamp, both paths. */
-    if(kind==='bess'){
+    /* Match on the ROLE, not the node key. Solar + Storage places the battery
+       as 'acblock' (BGB_NODES.acblock, evKind:'bess') rather than 'bess', so
+       a key-only test skipped the stamp entirely: the element landed with no
+       kW/kWh, Run reported no battery, and the Results rail showed blanks for
+       BESS power / energy / duration / C-rate even though the legend listed
+       the block. Any node whose evKind is 'bess' is the battery. */
+    var _isBessNode = (kind==='bess' || kind==='acblock'
+                       || (n && n.evKind==='bess') || el.evKind==='bess');
+    if(_isBessNode && typeof _bessFootprint==='function' && typeof _evPx==='function'){
+      /* Resize to the rating now that we know it. */
+      try{
+        var _fp=_bessFootprint(BGB.kwh, BGB.kw), _d=_evPx('bess', _fp);
+        if(_d && _d.w){ el.w=_d.w; el.h=_d.h; }
+      }catch(e){}
+    }
+    if(_isBessNode){
+      el.bgbRole='bess';           /* so the capacity roll-up counts it */
       var _bc = BGB.cfg || (typeof _bgbGenericCfg==='function'
                             ? _bgbGenericCfg(BGB.kw, BGB.kwh) : null);
       if(_bc){
@@ -51013,7 +51193,26 @@ function placeBgbAt(p){
       /* Ratings come from the build, which is what the user actually sized. */
       el.bessKw  = BGB.kw  || (_bc && _bc.kw)  || null;
       el.bessKwh = BGB.kwh || (_bc && _bc.kwh) || null;
-      if(BGB.units && BGB.units>1) el.bessUnits = BGB.units;
+      /* Write both field names. The capacity roll-up accepts either, but the
+         one-line, the spec sheet and the plot-plan schedule each read only
+         one of them, so a single name leaves blanks somewhere downstream. */
+      el.bgbKw  = el.bessKw;
+      el.bgbKwh = el.bessKwh;
+      /* BGB.kw/kwh are ALREADY multiplied by unit count at the dialog
+         (BGB.kwh = model.kwh * units). The capacity roll-up multiplies by
+         el.bessUnits again, so writing the count here would double a 2-unit
+         system. Keep the multiplier at 1 and record the count separately
+         for the schedule, which wants "2 x 760 kWh" rather than one lump. */
+      el.bessUnits = 1;
+      el.bessUnitCount = BGB.units || 1;
+      if(_bc && _bc.model) el.bessUnitModel = ((_bc.mfr||'')+' '+(_bc.model||'')).trim();
+      if(BGB.modelLabel && !el.bessModel) el.bessModel = BGB.modelLabel.trim();
+      el.bessUnitKwh = BGB.unitKwh || null;
+      el.bessUnitKw  = BGB.unitKw  || null;
+      /* Spec text on the element, so the map itself says what is installed. */
+      el.spec = (BGB.units>1 ? (BGB.units+' \u00d7 ') : '')
+              + (BGB.unitKwh ? (BGB.unitKwh+' kWh / '+BGB.unitKw+' kW') : '')
+              + (BGB.kwh ? ('  \u00b7  '+BGB.kwh+' kWh total / '+BGB.kw+' kW') : '');
     }
 
     /* Stamp the demand onto the element so the summary, one-line and exports
@@ -63317,6 +63516,10 @@ window._crmToastModal=_crmToastModal;
           else { BGB.loadItKw=null; BGB.loadPue=null; }
         }
         if(m){ BGB.kwh=num(m.kwh)*units; BGB.kw=num(m.kw)*units; }
+        /* Chosen here, so nothing downstream may re-derive it. */
+        BGB.sizeLocked = true;
+        BGB.modelLabel = ((m&&m.mfr)||'')+' '+((m&&m.model)||'');
+        BGB.unitKwh = num(m&&m.kwh); BGB.unitKw = num(m&&m.kw);
         /* Give the guided build a real config object for the generic unit, so
            the placed assembly carries a model string and the plot plan and
            exports have something to print. */
