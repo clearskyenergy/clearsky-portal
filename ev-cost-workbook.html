@@ -2220,84 +2220,167 @@ function sheetES30(wb, m, form, site){
       byKey[X.sections[si].id+'|'+(w.key||'')]=w;
     }
 
+  /* Their palette and rules, read off the sheet rather than guessed:
+     every border in the matrix is blue #0070C0 (medium at block edges,
+     thin between), body rows band F2F2F2 / white restarting after each
+     green section header, bands are Arial 12 bold white, the column
+     header row is white with Calibri 13 bold navy, and the summary block
+     sits on a solid blue field with thin BLACK borders. */
+  var BLU='FF0070C0', GRY='FFF2F2F2', WHT='FFFFFFFF',
+      GRN='FF00B050', NVY='FF002060', BLK='FF000000';
+  var MONEY='_($* #,##0.00_);_($* \\(#,##0.00\\);_($* \\-??_);_(@_)';
+
   var ws=wb.addWorksheet(safeSheetName('Eversource ('+site+')'), { views:[{showGridLines:false}] });
   for(i=0;i<ES30.widths.length;i++) ws.getColumn(i+1).width=ES30.widths[i];
 
-  var BAND={ fill:ES30.green, bold:true, color:ES30.white, align:'center' };
-  var SEC ={ fill:ES30.green, bold:true, color:ES30.white };
-  var HDR ={ bold:true, color:ES30.navy, align:'center', wrap:true };
-  var LBL ={ bold:true, size:9, wrap:true };
+  function bd(l,r,t,b2,c){
+    c=c||BLU;
+    function e(st){ return st ? { style:st, color:{argb:c} } : undefined; }
+    return { left:e(l), right:e(r), top:e(t), bottom:e(b2) };
+  }
+  function es(addr, value, o){
+    o=o||{};
+    var c=ws.getCell(addr);
+    c.value=(value===''||value==null)?null:value;
+    c.font={ name:o.fontName||'Calibri', size:o.size||11, bold:!!o.bold,
+             color:{argb:o.color||'FF000000'} };
+    if(o.fill) c.fill={ type:'pattern', pattern:'solid', fgColor:{argb:o.fill} };
+    c.alignment={ vertical:'middle', horizontal:o.align||'left', wrapText:!!o.wrap };
+    if(o.border) c.border=o.border;
+    if(o.fmt) c.numFmt=o.fmt;
+    return c;
+  }
+  var LET=['B','C','D','E','F','G','H','I','J'];
+  function bandRow(r, text){
+    ws.getRow(r).height=30;
+    merge(ws,'B'+r+':J'+r);
+    /* Local counter: this is called from inside the row loop, and reusing the
+       outer `i` rewinds that loop — an infinite loop, not a cosmetic bug. */
+    for(var bi=0; bi<LET.length; bi++){
+      es(LET[bi]+r, bi===0?text:null, { fill:GRN, bold:true, size:12, fontName:'Arial',
+        color:WHT, align:bi===0?'left':'center',
+        border:bd('medium','medium','medium','medium') });
+    }
+  }
 
-  /* logo + date */
+  /* ── row 1: mark + date ── */
   ws.getRow(1).height=31.5;
   try{
     var imgId=wb.addImage({ base64:ES_LOGO_B64, extension:'jpeg' });
     ws.addImage(imgId, { tl:{col:3.65,row:0.12}, ext:{width:178,height:22} });
   }catch(e){}
-  cell(ws,'I1','Date:',{fill:ES30.green,bold:true,color:ES30.white});
-  cell(ws,'J1', new Date().toLocaleDateString('en-US'), {align:'center'});
+  for(var t1=0; t1<6; t1++)                       /* B..G behind the mark */
+    es(LET[t1]+'1', null, { fill:GRY, border:bd(null,null,'medium','medium') });
+  es('I1','Date:', { fill:GRN, bold:true, size:12, fontName:'Arial', color:WHT,
+                     border:bd('medium',null,'medium','medium') });
+  es('J1', new Date(), { fill:GRY, align:'center', fmt:'m/d/yyyy',
+                         border:bd('medium','medium','medium','medium') });
 
-  /* three-up header */
+  /* ── row 2: the three block headers ── */
   ws.getRow(2).height=30;
-  merge(ws,'B2:C2'); cell(ws,'B2','Project Details',BAND);
-  merge(ws,'D2:G2'); cell(ws,'D2','Contractor Details',BAND);
-  merge(ws,'H2:J2'); cell(ws,'H2','Customer Details',BAND);
+  merge(ws,'B2:C2'); merge(ws,'D2:G2'); merge(ws,'H2:J2');
+  var BANDOPT={ fill:GRN, bold:true, size:12, fontName:'Arial', color:WHT, align:'center',
+                wrap:true, border:bd('medium','medium','medium','medium') };
+  for(i=0;i<LET.length;i++) es(LET[i]+'2', null, BANDOPT);
+  es('B2','Project Details',BANDOPT);
+  es('D2','Contractor Details',BANDOPT);
+  es('H2','Customer Details',BANDOPT);
 
+  /* ── rows 3-12: header fields ── */
   var HL=ES30.headLabels, k;
-  for(k in HL){ if(HL.hasOwnProperty(k)) cell(ws,k,HL[k],LBL); }
-  for(i=3;i<=10;i++){ merge(ws,'E'+i+':G'+i); }
+  for(i=3;i<=10;i++){ merge(ws,'E'+i+':G'+i); ws.getRow(i).height=30; }
   merge(ws,'I3:J3'); merge(ws,'I4:J4'); merge(ws,'I5:J5'); merge(ws,'H6:J10');
   merge(ws,'C11:J11'); merge(ws,'C12:J12');
+  ws.getRow(11).height=30; ws.getRow(12).height=30;
 
+  function hdrCell(addr, val, isLabel, top, rowNo){
+    var cl=addr.charAt(0), isB=(cl==='B'), isJ=(cl==='J');
+    var hf=(((rowNo||parseInt(addr.slice(1),10))-3)%2===0)?GRY:WHT;
+    /* C closes the Project Details block and G closes Contractor Details, so
+       both take a medium right edge — that is what draws the three columns. */
+    var medRight=isJ || cl==='C' || cl==='G';
+    var medLeft =isB || cl==='D' || cl==='H';
+    es(addr, val, { fill:hf, bold:!!isLabel, size:11, wrap:true, align:'left',
+      border:bd(medLeft?'medium':'thin', medRight?'medium':'thin', top?'medium':'thin','thin') });
+  }
+  for(i=3;i<=12;i++){
+    for(var q=0;q<LET.length;q++) hdrCell(LET[q]+i, null, false, i===3, i);
+  }
+  for(k in HL){ if(HL.hasOwnProperty(k)) hdrCell(k, HL[k], true, k.slice(1)==='3'); }
   var HD=ES30.head;
   for(i=0;i<HD.length;i++){
     var ref=HD[i][1]||HD[i][0], key=HD[i][2], v=d(key);
     if(key==='stations' && !v) v=d('plugs');
     if(v==='' || v==null) continue;
-    cell(ws, ref, (key==='plugs'||key==='stations')?num(v):v,
-         {size:9, wrap:true, align:(key==='plugs'||key==='stations')?'right':'left'});
+    var numeric=(key==='plugs'||key==='stations');
+    var rc=ref.charAt(0), medR=(rc==='J'||rc==='C'||rc==='G'), medL=(rc==='B'||rc==='D'||rc==='H');
+    var vf=((parseInt(ref.slice(1),10)-3)%2===0)?GRY:WHT;
+    es(ref, numeric?num(v):v, { fill:vf, size:11, wrap:true, align:numeric?'right':'left',
+      border:bd(medL?'medium':'thin', medR?'medium':'thin',
+                ref.slice(1)==='3'?'medium':'thin','thin') });
   }
 
-  /* column header */
+  /* ── row 13: column headers ── */
   ws.getRow(13).height=31.5;
   var COLH=['Cost Item','Detail/Notes','Unit Type','Material Quantity','Material United Price',
             'Material Total','Labor Total','Total Cost','Subcontracted Y/N'];
-  var LET=['B','C','D','E','F','G','H','I','J'];
-  for(i=0;i<COLH.length;i++) cell(ws,LET[i]+'13',COLH[i],HDR);
+  for(i=0;i<COLH.length;i++)
+    es(LET[i]+'13', COLH[i], { fill:WHT, bold:true, size:13, color:NVY, align:'center',
+      wrap:true, border:bd('medium','medium','medium','medium') });
 
-  /* body */
+  /* ── body ── */
+  var banded=0, afterBand=false;
   for(i=0;i<ES30.rows.length;i++){
     var R=ES30.rows[i];
-    if(R[0]==='sec'){
-      var sr=R[1];
-      ws.getRow(sr).height=30;
-      merge(ws,'B'+sr+':J'+sr);
-      cell(ws,'B'+sr,R[2],SEC);
-      continue;
-    }
+    if(R[0]==='sec'){ bandRow(R[1], R[2]); banded=0; afterBand=true; continue; }
     var r=R[0], label=R[1], unit=R[2], detail=R[3], sec=R[4], mk=R[5], gFormula=R[6];
     var w2=byKey[sec+'|'+mk] || null;
+    var fillC=(banded%2===0)?GRY:WHT;
+    var top=afterBand?'medium':'thin';
+    ws.getRow(r).height=30;
 
-    cell(ws,'B'+r,label,{size:9,wrap:true});
-    cell(ws,'C'+r,(w2&&w2.note)?w2.note:detail,{size:9,wrap:true});
-    cell(ws,'D'+r,unit,{size:9});
-    if(w2 && w2.qty!=null)       cell(ws,'E'+r, num(w2.qty),        {align:'right',fmt:'#,##0.##'});
-    if(w2 && w2.unitPrice!=null) cell(ws,'F'+r, r2(w2.unitPrice),   {align:'right',fmt:FMT_ACCT});
-    /* Their formula where they have one, our literal where they don't. */
-    if(gFormula) cell(ws,'G'+r, {formula:'E'+r+'*F'+r}, {align:'right',fmt:FMT_ACCT});
-    else         cell(ws,'G'+r, (w2?r2(w2.mat):0),      {align:'right',fmt:FMT_ACCT});
-    cell(ws,'H'+r, (w2?r2(w2.lab):0), {align:'right',fmt:FMT_ACCT});
-    cell(ws,'I'+r, {formula:'SUM(G'+r+':H'+r+')'}, {align:'right',fmt:FMT_ACCT});
-    if(w2 && (w2.mat||w2.lab)) cell(ws,'J'+r,'Yes',{align:'center',size:9});
+    function body(colL, val, o){
+      o=o||{};
+      es(colL+r, val, { fill:fillC, size:o.size||11, bold:!!o.bold, color:o.color,
+        align:o.align||'left', wrap:o.wrap!==false,
+        fmt:o.fmt, border:bd(colL==='B'?'medium':'thin', colL==='J'?'medium':'thin', top,'thin') });
+    }
+    body('B', label, { align:'left' });
+    body('C', (w2&&w2.note)?w2.note:detail, {});
+    body('D', unit, { align:'left' });
+    body('E', (w2&&w2.qty!=null)?num(w2.qty):null, { align:'center', fmt:'#,##0.##' });
+    body('F', (w2&&w2.unitPrice!=null)?r2(w2.unitPrice):null, { align:'center', fmt:MONEY });
+    body('G', gFormula?{formula:'E'+r+'*F'+r}:(w2?r2(w2.mat):0), { align:'left', fmt:MONEY });
+    body('H', (w2?r2(w2.lab):0), { align:'center', fmt:MONEY });
+    body('I', {formula:'SUM(G'+r+':H'+r+')'}, { align:'center', fmt:MONEY });
+    body('J', (w2 && (w2.mat||w2.lab))?'Yes':null, { align:'center' });
+    banded++; afterBand=false;
   }
 
-  /* summary — their chain, so the sheet foots the way the utility audits it */
+  /* ── row 52: the solid blue rule under the matrix ── */
+  ws.getRow(52).height=15.75;
+  for(i=0;i<LET.length;i++)
+    es(LET[i]+'52', null, { color:NVY, fill:BLU, align:'center', wrap:true,
+      border:bd(LET[i]==='B'?'medium':null,null,null,null) });
+
+  /* ── summary: blue field left, banded G/H with thin black borders ── */
   for(i=0;i<ES30.summary.length;i++){
-    var sr2=ES30.summary[i][0];
-    cell(ws,'G'+sr2, ES30.summary[i][1], {bold:true});
-    merge(ws,'H'+sr2+':J'+sr2);
-    cell(ws,'H'+sr2, {formula:ES30.summary[i][2].replace(/^=/,'')},
-         {align:'right',fmt:FMT_ACCT,bold:true});
+    var sr=ES30.summary[i][0];
+    ws.getRow(sr).height=30;
+    var sf=(i%2===0)?GRY:WHT;
+    for(var c2=0;c2<5;c2++)                      /* B..F stay blue */
+      es(LET[c2]+sr, null, { fill:BLU, color:NVY, align:'center', wrap:true,
+        border:bd(LET[c2]==='B'?'medium':null,null,null,null) });
+    es('G'+sr, ES30.summary[i][1], { fill:sf, wrap:true,
+      border:bd('thin','thin','thin','thin',BLK) });
+    merge(ws,'H'+sr+':J'+sr);
+    es('H'+sr, {formula:ES30.summary[i][2].replace(/^=/,'')},
+       { fill:sf, color:NVY, align:'left', fmt:MONEY,
+         border:{ left:{style:'thin',color:{argb:BLK}},
+                  right:{style:'medium',color:{argb:BLU}},
+                  top:{style:'thin',color:{argb:BLK}},
+                  bottom:{style:'thin',color:{argb:BLK}} } });
+    es('I'+sr, null, { fill:sf }); es('J'+sr, null, { fill:sf });
   }
 
   fitPage(ws, 'B1:J'+(ES30.summary[ES30.summary.length-1][0]+1));
