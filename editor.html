@@ -11089,10 +11089,36 @@ document.addEventListener('keydown', function(e){
    rotated corners, not an angle applied at paint time. So on rotate-end we
    rotate the actual points about the shape centre, clear sh.rot, and restamp.
    Nothing downstream can then undo it. */
+/* Which shapes may have rotation baked into their points.
+
+   Baking rewrites the point list, and _shapeCenter/_shapeBBox are
+   AXIS-ALIGNED: a rotated rectangle needs a bigger axis-aligned box, so
+   baking a rect grows its bbox, shifts its centre, and anything sized from
+   that box (wPx/hPx, callout anchors, zone labels) moves or resizes on its
+   own. That is the zone box distorting when it is rotated.
+
+   Only shapes the renderer draws from the actual point list can be baked —
+   solar/DER polygons and drawn boundaries. Everything bbox-driven keeps
+   rotation as sh.rot, which reprojection never touches, so it persists
+   without the geometry being rewritten underneath it. */
+var _BAKE_KINDS = { dersolar:1, solar:1, derwind:1, deralt:1, derdc:1,
+                    poly:1, polyline:1, polygon:1, area:1, boundary:1 };
+function _canBakeRotation(sh){
+  if(!sh) return false;
+  if(!_BAKE_KINDS[sh.kind]) return false;
+  /* Needs a real point list; a two-corner rect stored as pts is still a
+     rect as far as the renderer is concerned. */
+  var poly = (sh.boundary && sh.boundary.length>2)
+          || (sh.pts && sh.pts.length>2);
+  return !!poly;
+}
+window._canBakeRotation=_canBakeRotation;
+
 function _bakeShapeRotation(sh){
   if(!sh) return false;
   var rot=+sh.rot||0;
   if(!rot) return false;
+  if(!_canBakeRotation(sh)) return false;   /* leave bbox-driven shapes alone */
   var c=(typeof _shapeCenter==='function') ? _shapeCenter(sh) : null;
   if(!c) return false;
   var rad=rot*Math.PI/180, cos=Math.cos(rad), sin=Math.sin(rad);
@@ -69716,6 +69742,10 @@ window._crmToastModal=_crmToastModal;
     if (x.type === 'evgear' && x.evKind && CLUSTER_EQ[x.evKind]) return true;
     return false;
   }
+  /* The cluster panel lives in a SEPARATE IIFE and cannot see this closure.
+     Publishing it is what lets both use one definition instead of drifting
+     apart — which is exactly how the old four-id test got stranded here. */
+  try{ window._isClusterEl = isClusterEl; }catch(e){}
   function members() {
     var s = S_(); if (!s) return null;
     var shapes = (s.shapes || []).filter(isClusterShape);
@@ -70198,7 +70228,14 @@ window._crmToastModal=_crmToastModal;
     var s = S_(); if (!s) return { pads: 0, ems: 0, runs: 0 };
     return {
       pads: (s.shapes || []).filter(function (x) { return x && (x.kind === 'assembly' || x.type === 'bess-asm' || x.kind === 'dersolar' || x.kind === 'derwind' || x.kind === 'deralt'); }).length,
-      ems: (s.elements || []).filter(isClusterEl).length,
+      ems: (s.elements || []).filter(function (x) {
+        var f = window._isClusterEl;
+        if (typeof f === 'function') return f(x);
+        /* Fallback if the other block has not initialised yet. */
+        return !!x && (x.bgbRole || x.evRole || x.dcfcRole
+          || x.eqId === 'ems' || x.type === 'ems'
+          || x.eqId === 'der_poi' || x.eqId === 'xfmr');
+      }).length,
       runs: (s.conduits || []).filter(function (c) { return c && (c.cluster || c.derCollector); }).length
     };
   }
