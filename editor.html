@@ -2073,6 +2073,7 @@ window.onerror = function(msg, src, line, col, err) {
      anchoring entirely. Restore by re-instating this button:
      <button class="rbtn" id="rb-clearplot" onclick="clearPlot()" title="Clear the committed plot and return to the live interactive map"><span class="rb-ico">✕</span><span class="rb-lbl">Clear<br>Plot</span></button> -->
         <button class="rbtn" id="rb-recenter" onclick="recenterOnEquipment()" title="Recenter the view on your placed equipment — brings any off-screen equipment back into the window"><span class="rb-ico" style="color:#34A853">⊕</span><span class="rb-lbl">Recenter</span></button>
+        <button class="rbtn" id="btn-3d" onclick="toggle3D()" title="3D site view &mdash; tilt and orbit to inspect the site. Editing pauses while tilted; press 2D or Esc to return." style="position:relative"><span class="rb-ico" style="display:inline-flex;align-items:center;justify-content:center"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 2.8 21 7.6 12 12.4 3 7.6z"/><path d="M3 7.6v8.8L12 21.2V12.4"/><path d="M21 7.6v8.8L12 21.2"/></svg></span><span class="rb-lbl">3D<br>View</span></button>
         <button class="rbtn" id="rb-crosshair" onclick="nnToggleCrosshair()" title="Toggle the AutoCAD-style crosshair cursor in draw/placement modes"><span class="rb-ico">✛</span><span class="rb-lbl">Crosshair</span></button>
       </div>
       <div class="rpanel-cap">Canvas</div>
@@ -30898,6 +30899,229 @@ updateAttached = function(elId) {
   if(el && el.type==='eq') _updateLeaderLine(el, null);
 };
 
+
+/* ══════════════════════════════════════════════════════════════════════
+   CLIPBOARD — cut / copy / paste / duplicate
+
+   Works on whatever is selected: an element, a shape, or a conduit run.
+   Pasted geometry is re-stamped to the ground, otherwise a copy would sit
+   in pixels with no lat/lng and slide off the site on the next zoom — the
+   same failure the drawn arrays had.
+
+   Deliberately an in-app clipboard rather than the OS one: the browser
+   only hands a page the system clipboard on a real paste event, and losing
+   a copied BESS because the user clicked a different tab is worse than
+   not integrating with Cmd-V outside the app. Cross-tab copy happens
+   through localStorage instead, so a second site map can receive it.
+   ══════════════════════════════════════════════════════════════════════ */
+var OMEGA_CLIP = { items:[], cut:false };
+var CLIP_KEY = 'OMEGA_CLIPBOARD_V1';
+
+function _clipDeep(o){ try{ return JSON.parse(JSON.stringify(o)); }catch(e){ return null; } }
+
+/* What is selected right now, in priority order. */
+function clipSelection(){
+  var out=[];
+  try{
+    if(S.sel){
+      var el=(S.elements||[]).filter(function(x){return x.id===S.sel;})[0];
+      if(el) out.push({ kind:'element', data:_clipDeep(el) });
+    }
+    var sid=S.shapeSel||S.selShape;
+    if(sid){
+      var sh=(S.shapes||[]).filter(function(x){return x.id===sid;})[0];
+      if(sh) out.push({ kind:'shape', data:_clipDeep(sh) });
+    }
+    if(S.condSel){
+      var cd=(S.conduits||[]).filter(function(x){return x.id===S.condSel;})[0];
+      if(cd) out.push({ kind:'conduit', data:_clipDeep(cd) });
+    }
+  }catch(e){}
+  return out;
+}
+
+function clipCopy(silent){
+  var sel=clipSelection();
+  if(!sel.length){
+    if(!silent && typeof showBanner==='function') showBanner('cal','Nothing selected to copy.');
+    return 0;
+  }
+  OMEGA_CLIP.items=sel; OMEGA_CLIP.cut=false;
+  try{ localStorage.setItem(CLIP_KEY, JSON.stringify(sel)); }catch(e){}
+  if(!silent && typeof showBanner==='function')
+    showBanner('cal','Copied '+sel.length+' item'+(sel.length===1?'':'s')+'. \u2318V / Ctrl+V to paste.');
+  return sel.length;
+}
+
+function clipCut(){
+  var count=clipCopy(true);
+  if(!count) return 0;
+  OMEGA_CLIP.cut=true;
+  OMEGA_CLIP.items.forEach(function(it){
+    try{
+      if(it.kind==='element' && typeof removeEl==='function') removeEl(it.data.id);
+      else if(it.kind==='conduit' && typeof removeConduit==='function') removeConduit(it.data.id);
+      else if(it.kind==='shape'){
+        S.shapes=(S.shapes||[]).filter(function(x){return x.id!==it.data.id;});
+        var g=document.querySelector('#csvg [data-shid="'+it.data.id+'"]');
+        if(g&&g.parentNode) g.parentNode.removeChild(g);
+      }
+    }catch(e){}
+  });
+  if(typeof updShapeCount==='function') updShapeCount();
+  if(typeof renderLegend==='function') renderLegend();
+  try{ if(typeof omegaSetStale==='function') omegaSetStale(true); }catch(e){}
+  if(typeof pushHist==='function') pushHist();
+  if(typeof showBanner==='function') showBanner('cal','Cut '+count+' item'+(count===1?'':'s')+'.');
+  return count;
+}
+
+/* Paste at the cursor when we know where it is, otherwise offset from the
+   original so the copy is visible instead of hiding underneath. */
+function clipPaste(atX, atY){
+  var items=OMEGA_CLIP.items;
+  if(!items || !items.length){
+    try{ items=JSON.parse(localStorage.getItem(CLIP_KEY)||'[]'); }catch(e){ items=[]; }
+  }
+  if(!items || !items.length){
+    if(typeof showBanner==='function') showBanner('cal','Clipboard is empty.');
+    return 0;
+  }
+  var OFF=24, made=[], lastEl=null, lastSh=null;
+
+  /* Anchor the group on its own first item so relative spacing survives. */
+  var ax=null, ay=null;
+  items.forEach(function(it){
+    var d=it.data;
+    var x=(it.kind==='element') ? d.x : (d.cx!=null ? d.cx : (d.pts&&d.pts[0]?d.pts[0].x:null));
+    var y=(it.kind==='element') ? d.y : (d.cy!=null ? d.cy : (d.pts&&d.pts[0]?d.pts[0].y:null));
+    if(ax===null && x!=null){ ax=x; ay=y; }
+  });
+  var dx=(atX!=null && ax!=null) ? (atX-ax) : OFF;
+  var dy=(atY!=null && ay!=null) ? (atY-ay) : OFF;
+
+  items.forEach(function(it){
+    var d=_clipDeep(it.data); if(!d) return;
+    d.id = uid();
+    if(it.kind==='element'){
+      d.x=(d.x||0)+dx; d.y=(d.y||0)+dy;
+      /* A pasted element is not the original: drop links that pointed at it,
+         and drop the original's ground anchor. */
+      delete d._geo; delete d.attachedTo;
+      delete d._geoLat; delete d._geoLng;
+      S.elements.push(d);
+      /* Re-anchor at the NEW position. Without this the copy carries no
+         lat/lng and slides off the parcel on the next zoom — the element
+         equivalent of the drift the drawn arrays had. */
+      try{ if(typeof _geoStampElement==='function') _geoStampElement(d); }catch(e){}
+      if(typeof renderEl==='function') renderEl(d);
+      lastEl=d;
+    } else if(it.kind==='shape'){
+      if(d.pts) d.pts.forEach(function(p){ p.x+=dx; p.y+=dy; });
+      if(d.boundary) d.boundary.forEach(function(p){ p.x+=dx; p.y+=dy; });
+      if(d.tables) d.tables.forEach(function(t){ t.x+=dx; t.y+=dy; });
+      if(typeof d.cx==='number'){ d.cx+=dx; d.cy+=dy; }
+      /* Ground anchors belong to the original; restamp from the new pixels. */
+      delete d._geoPts; delete d._geoBoundary; delete d._geoTables;
+      delete d._geoExcl; delete d._geoC;
+      S.shapes.push(d);
+      try{ if(typeof _geoStampShapeIfNeeded==='function') _geoStampShapeIfNeeded(d); }catch(e){}
+      if(typeof renderShape==='function') renderShape(d);
+      lastSh=d;
+    } else if(it.kind==='conduit'){
+      if(d.pts) d.pts.forEach(function(p){ p.x+=dx; p.y+=dy; });
+      /* Endpoints were welded to specific equipment; a copy is free-standing. */
+      d.fromId=null; d.toId=null; d.fromShapeId=null; d.toShapeId=null;
+      delete d._geoPts;
+      S.conduits.push(d);
+      try{ if(typeof _cvRestamp==='function') _cvRestamp(d);
+           else if(typeof renderConduit==='function') renderConduit(d); }catch(e){}
+    }
+    made.push(d.id);
+  });
+
+  /* A cut-then-paste is a move, so the clipboard is spent. */
+  if(OMEGA_CLIP.cut){ OMEGA_CLIP.items=[]; OMEGA_CLIP.cut=false;
+    try{ localStorage.removeItem(CLIP_KEY); }catch(e){} }
+
+  if(lastEl && typeof selEl==='function') selEl(lastEl.id);
+  else if(lastSh) { S.shapeSel=lastSh.id; }
+  if(typeof updCount==='function') updCount();
+  if(typeof updShapeCount==='function') updShapeCount();
+  if(typeof renderLegend==='function') renderLegend();
+  /* The legend recounts immediately, but POWER / POWER FLOW / CIVIL come from
+     Run. Pasting a BESS or an array changes those numbers, so the results are
+     now stale and must say so rather than showing the pre-paste figures as if
+     they were current. */
+  try{ if(typeof omegaSetStale==='function') omegaSetStale(true); }catch(e){}
+  try{ if(typeof _updateConduitSchedule==='function') _updateConduitSchedule(); }catch(e){}
+  if(typeof pushHist==='function') pushHist();
+  if(typeof showBanner==='function')
+    showBanner('cal','Pasted '+made.length+' item'+(made.length===1?'':'s')
+      +' \u2014 legend updated, press Run to recompute results.');
+  return made.length;
+}
+
+/* Duplicate is copy+paste without touching the clipboard the user set. */
+function clipDuplicate(){
+  var keep=OMEGA_CLIP.items, keptCut=OMEGA_CLIP.cut;
+  var sel=clipSelection();
+  if(!sel.length){
+    if(typeof showBanner==='function') showBanner('cal','Nothing selected to duplicate.');
+    return 0;
+  }
+  OMEGA_CLIP.items=sel; OMEGA_CLIP.cut=false;
+  var n=clipPaste();
+  OMEGA_CLIP.items=keep; OMEGA_CLIP.cut=keptCut;
+  return n;
+}
+
+window.clipCopy=clipCopy; window.clipCut=clipCut;
+window.clipPaste=clipPaste; window.clipDuplicate=clipDuplicate;
+
+/* Keyboard. Skipped inside inputs so normal text editing is untouched. */
+document.addEventListener('keydown', function(e){
+  var t=e.target;
+  if(t && (['INPUT','TEXTAREA','SELECT'].indexOf(t.tagName)>=0 || t.isContentEditable)) return;
+  if(!(e.metaKey || e.ctrlKey)) return;
+  var k=(e.key||'').toLowerCase();
+  if(k==='c'){ if(clipCopy()) e.preventDefault(); }
+  else if(k==='x'){ if(clipCut()) e.preventDefault(); }
+  else if(k==='v'){
+    var m=window._lastCanvasXY;
+    clipPaste(m?m.x:null, m?m.y:null); e.preventDefault();
+  }
+  else if(k==='d'){ clipDuplicate(); e.preventDefault(); }
+});
+
+/* Remember the last canvas position so paste lands under the cursor. */
+document.addEventListener('mousemove', function(e){
+  try{
+    var sc=document.getElementById('sc'); if(!sc) return;
+    var r=sc.getBoundingClientRect();
+    if(e.clientX<r.left||e.clientX>r.right||e.clientY<r.top||e.clientY>r.bottom) return;
+    if(typeof _evtXY==='function') window._lastCanvasXY=_evtXY(e);
+  }catch(err){}
+}, true);
+
+/* Right-click on empty canvas: paste there. */
+(function(){
+  function mk(){
+    var sc=document.getElementById('sc'); if(!sc) return;
+    sc.addEventListener('contextmenu', function(e){
+      if(e.target.closest && e.target.closest('.cel')) return;   /* element menu wins */
+      if(!(OMEGA_CLIP.items||[]).length){
+        var stored=[]; try{ stored=JSON.parse(localStorage.getItem(CLIP_KEY)||'[]'); }catch(err){}
+        if(!stored.length) return;
+      }
+      e.preventDefault();
+      var xy=(typeof _evtXY==='function')?_evtXY(e):null;
+      clipPaste(xy?xy.x:null, xy?xy.y:null);
+    });
+  }
+  if(document.readyState==='loading') document.addEventListener('DOMContentLoaded', mk); else mk();
+})();
+
 // -- CONTEXT MENU ---------------------------------------------
 let _ctxElId = null;
 
@@ -32866,6 +33090,134 @@ function _geoRepairAndReport(){
   return r;
 }
 window._geoRepairAndReport=_geoRepairAndReport;
+
+/* ══════════════════════════════════════════════════════════════════════
+   3D SITE VIEW
+
+   Tilt and orbit to inspect a site obliquely — roof obstructions, building
+   height against a canopy, how a container reads from the street.
+
+   WHY THIS IS A VIEW AND NOT AN EDIT MODE
+   Everything anchored on this drawing is placed through _pxToLatLng, which
+   maps a pixel to exactly one ground point. That holds only looking straight
+   down: under perspective a pixel maps to a RAY, not a point, so the same
+   maths would scatter equipment across the site the moment the camera leans.
+   Rather than let that happen quietly, tilting suspends geo-reprojection,
+   fades the flat element and conduit layers, and returns to 0 tilt to
+   resume editing. Design flat, review in 3D.
+
+   Requires a VECTOR Map ID with tilt+rotation (_CFG.googleMapsMapId).
+   Without one the Maps API ignores setTilt, so we say so rather than leave
+   a button that appears to do nothing.
+   ══════════════════════════════════════════════════════════════════════ */
+var OMEGA3D = { on:false, tilt:0, heading:0, prevMode:null };
+
+function _g3map(){
+  try{ if(typeof _gmap!=='undefined' && _gmap && _gmap.setTilt) return _gmap; }catch(e){}
+  return (window._gmap && window._gmap.setTilt) ? window._gmap : null;
+}
+function _g3HasVectorId(){
+  try{ return !!(_CFG && _CFG.googleMapsMapId && String(_CFG.googleMapsMapId).trim()); }catch(e){ return false; }
+}
+function _g3Layers(on){
+  ['els','csvg'].forEach(function(id){
+    var nd=document.getElementById(id); if(!nd) return;
+    nd.style.transition='opacity .18s';
+    nd.style.opacity = on ? '0.18' : '';
+    nd.style.pointerEvents = on ? 'none' : '';
+  });
+}
+
+function set3D(tilt, heading){
+  var m=_g3map();
+  if(!m){ if(typeof showBanner==='function') showBanner('cal','Map is still loading.'); return false; }
+  if(!_g3HasVectorId() && (+tilt||0)>0){
+    if(typeof showBanner==='function')
+      showBanner('cal','3D needs a vector Map ID \u2014 Cloud Console \u2192 Map Management \u2192 create a Vector map ID with Tilt + Rotation, then set _CFG.googleMapsMapId.');
+    return false;
+  }
+  tilt=Math.max(0, Math.min(67.5, +tilt||0));
+  heading=((+heading||0)%360+360)%360;
+  var entering=(tilt>0 && !OMEGA3D.on), leaving=(tilt===0 && OMEGA3D.on);
+
+  if(entering){
+    OMEGA3D.prevMode=S.mode;
+    window._geoSuspend=true;
+    if(typeof setMode==='function') setMode('select');
+    _g3Layers(true);
+  }
+  try{ m.setTilt(tilt); m.setHeading(heading); }catch(e){}
+  OMEGA3D.tilt=tilt; OMEGA3D.heading=heading; OMEGA3D.on=(tilt>0);
+
+  if(leaving){
+    window._geoSuspend=false;
+    _g3Layers(false);
+    try{ if(typeof _geoReprojectAll==='function') _geoReprojectAll(); }catch(e){}
+    if(OMEGA3D.prevMode && typeof setMode==='function') setMode(OMEGA3D.prevMode);
+    OMEGA3D.prevMode=null;
+  }
+  _g3Sync();
+  return true;
+}
+function toggle3D(){ return set3D(OMEGA3D.on?0:45, OMEGA3D.heading); }
+function orbit3D(d){ return OMEGA3D.on ? set3D(OMEGA3D.tilt, OMEGA3D.heading+d) : set3D(45, OMEGA3D.heading+d); }
+function pitch3D(d){ return set3D(OMEGA3D.tilt+d, OMEGA3D.heading); }
+window.set3D=set3D; window.toggle3D=toggle3D; window.orbit3D=orbit3D; window.pitch3D=pitch3D;
+
+function _g3Sync(){
+  var hud=document.getElementById('omega3d-hud');
+  if(hud) hud.style.display = OMEGA3D.on ? 'flex' : 'none';
+  var r=document.getElementById('omega3d-read');
+  if(r){
+    var dirs=['N','NE','E','SE','S','SW','W','NW'];
+    r.textContent = Math.round(OMEGA3D.tilt)+'\u00b0 tilt \u00b7 '
+      + Math.round(OMEGA3D.heading)+'\u00b0 '+dirs[Math.round(OMEGA3D.heading/45)%8];
+  }
+  var b=document.getElementById('btn-3d');
+  if(b){ b.style.color=OMEGA3D.on?'#22D3EE':''; b.style.borderColor=OMEGA3D.on?'#22D3EE':''; }
+}
+
+/* The guard. Cheap, and it is the whole safety story. */
+(function(){
+  function wrap(name){
+    var orig=window[name];
+    if(typeof orig!=='function') return;
+    window[name]=function(){ if(window._geoSuspend) return; return orig.apply(this, arguments); };
+  }
+  setTimeout(function(){ wrap('_geoReprojectAll'); wrap('_gmapAutoScale'); }, 1500);
+})();
+
+(function(){
+  function mk(){
+    if(document.getElementById('omega3d-hud')) return;
+    var host=document.getElementById('sc'); if(!host) return;
+    var d=document.createElement('div');
+    d.id='omega3d-hud';
+    d.style.cssText='position:absolute;right:16px;bottom:74px;z-index:40;display:none;'
+      +'align-items:center;gap:5px;padding:7px 9px;border-radius:8px;'
+      +'background:rgba(8,14,26,.92);border:1px solid rgba(34,211,238,.45);'
+      +"font:600 11px/1 'IBM Plex Mono',monospace;color:#E2EEF9";
+    var btn='background:none;border:none;color:inherit;cursor:pointer;font:inherit;padding:3px 5px';
+    d.innerHTML='<button onclick="orbit3D(-45)" title="Orbit left" style="'+btn+'">\u21ba</button>'
+      +'<span id="omega3d-read" style="min-width:116px;text-align:center;letter-spacing:.4px"></span>'
+      +'<button onclick="orbit3D(45)" title="Orbit right" style="'+btn+'">\u21bb</button>'
+      +'<span style="opacity:.3">|</span>'
+      +'<button onclick="pitch3D(-15)" title="Lower camera" style="'+btn+'">\u2193</button>'
+      +'<button onclick="pitch3D(15)" title="Raise camera" style="'+btn+'">\u2191</button>'
+      +'<span style="opacity:.3">|</span>'
+      +'<button onclick="set3D(0)" title="Back to plan view to edit" style="'+btn+';color:#FBBF24;font-weight:800">2D</button>';
+    host.appendChild(d);
+  }
+  if(document.readyState==='loading') document.addEventListener('DOMContentLoaded', mk); else mk();
+})();
+
+document.addEventListener('keydown', function(e){
+  if(['INPUT','TEXTAREA','SELECT'].indexOf(e.target.tagName)>=0) return;
+  if(e.metaKey||e.ctrlKey||e.altKey) return;
+  if((e.key||'')==='3'){ toggle3D(); e.preventDefault(); }
+  if(e.key==='Escape' && OMEGA3D.on) set3D(0);
+});
+
 function _geoWireMapListeners(){
   try{
     if(window._geoListenersWired) return;
@@ -41770,6 +42122,18 @@ async function exportPermitPDF() {
 <!-- -- CONTEXT MENU --------------------------------------- -->
 <div id="ctx-menu" style="display:none;position:fixed;z-index:99999;background:var(--navy);border:1px solid var(--border);border-radius:8px;box-shadow:0 8px 32px rgba(0,0,0,.6);padding:4px;min-width:180px;font-family:inherit">
   <div id="ctx-title" style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:var(--sub);padding:5px 10px 3px;border-bottom:1px solid rgba(255,255,255,.06);margin-bottom:3px"></div>
+  <button class="ctx-btn" onclick="closeCtxMenu();clipCut()" style="width:100%;text-align:left;background:none;border:none;color:var(--text);padding:7px 10px;font-size:12px;cursor:pointer;border-radius:4px;display:flex;gap:8px;align-items:center">
+    <span>✂</span><span>Cut</span><span style="margin-left:auto;opacity:.45;font-size:10px">⌘X</span>
+  </button>
+  <button class="ctx-btn" onclick="closeCtxMenu();clipCopy()" style="width:100%;text-align:left;background:none;border:none;color:var(--text);padding:7px 10px;font-size:12px;cursor:pointer;border-radius:4px;display:flex;gap:8px;align-items:center">
+    <span>⧉</span><span>Copy</span><span style="margin-left:auto;opacity:.45;font-size:10px">⌘C</span>
+  </button>
+  <button class="ctx-btn" onclick="closeCtxMenu();clipDuplicate()" style="width:100%;text-align:left;background:none;border:none;color:var(--text);padding:7px 10px;font-size:12px;cursor:pointer;border-radius:4px;display:flex;gap:8px;align-items:center">
+    <span>⊕</span><span>Duplicate</span><span style="margin-left:auto;opacity:.45;font-size:10px">⌘D</span>
+  </button>
+  <button class="ctx-btn" onclick="closeCtxMenu();clipPaste()" style="width:100%;text-align:left;background:none;border:none;color:var(--text);padding:7px 10px;font-size:12px;cursor:pointer;border-radius:4px;display:flex;gap:8px;align-items:center;border-bottom:1px solid rgba(255,255,255,.06)">
+    <span>↵</span><span>Paste</span><span style="margin-left:auto;opacity:.45;font-size:10px">⌘V</span>
+  </button>
   <button class="ctx-btn" onclick="ctxToggleLabel()" id="ctx-lbl-btn" style="width:100%;text-align:left;background:none;border:none;color:var(--text);padding:7px 10px;font-size:12px;cursor:pointer;border-radius:4px;font-family:inherit;display:flex;align-items:center;gap:8px">
     <span>👁</span><span id="ctx-lbl-txt">Hide Label</span>
   </button>
