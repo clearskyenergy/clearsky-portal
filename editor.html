@@ -15025,7 +15025,7 @@ function renderLegend(){
 
   /* Placed equipment, grouped with counts (bollards etc. collapse). */
   try{
-    var counts={}, evMeta={};
+    var counts={}, evMeta={}, _lblSeen={}, _lblOrder=[];
     /* 'eq' is the Insert-palette equipment. Guided builds place 'evgear' via
        _evAdd — the meter bank, outdoor panel, switchgear and every charger.
        Filtering to 'eq' alone meant an entire guided build produced a legend
@@ -15048,6 +15048,9 @@ function renderLegend(){
       var dc=(typeof DC_CATALOG!=='undefined')?DC_CATALOG[id]:null;
       var ev=evMeta[id]||null;
       var label=(ev&&ev.label) ? ev.label : (eq?eq.label:(dc?(dc.model||dc.label||id):id));
+      /* The same physical item can arrive under two ids — a battery placed as
+         'acblock' in one build and 'bess' in another both read "BESS AC Block".
+         Merge on the printed label so the legend lists equipment, not ids. */
       var sub='';
       if(ev && !dc){
         var eparts=[];
@@ -15063,9 +15066,24 @@ function renderLegend(){
         if(dc.lf&&dc.wf) dparts.push(dc.lf+"' \u00d7 "+dc.wf+"'");
         if(dparts.length) sub='<br><span style="font-size:8px;opacity:.65">'+dparts.join(' \u00b7 ')+'</span>';
       }
-      eqRows+='<div class="li"><div class="li-ico">'+((ICONS[id]||ICONS.jbox)(16))+'</div>'
-        +'<span class="li-txt">'+label+(counts[id]>1?(' \u00d7'+counts[id]):'')+sub+'</span></div>';
-      eqCount+=counts[id];
+      /* Merge on the printed label rather than the id: the same physical item
+         can arrive as 'acblock' from one build and 'bess' from another, and
+         listing it twice makes a reviewer think there are two batteries.
+         Collected first, emitted after, so quantities actually add up. */
+      if(_lblSeen[label]){
+        _lblSeen[label].qty += (counts[id]||0);
+        if(!_lblSeen[label].sub && sub) _lblSeen[label].sub = sub;
+        return;
+      }
+      _lblSeen[label] = { id:id, label:label, qty:(counts[id]||0), sub:sub, order:_lblOrder.length };
+      _lblOrder.push(label);
+    });
+
+    _lblOrder.forEach(function(lb){
+      var G=_lblSeen[lb];
+      eqRows+='<div class="li"><div class="li-ico">'+((ICONS[G.id]||ICONS.jbox)(16))+'</div>'
+        +'<span class="li-txt">'+G.label+(G.qty>1?(' \u00d7'+G.qty):'')+(G.sub||'')+'</span></div>';
+      eqCount+=G.qty;
     });
   }catch(e){}
 
@@ -51305,8 +51323,41 @@ function placeBgbAt(p){
 }
 window.placeBgbAt=placeBgbAt;
 
+/* Tear the guided-build scratch layers down.
+
+   _bgbCancel removed #dcfc-trenches; _bgbFinish did not. So cancelling left
+   a clean drawing and FINISHING left the in-progress preview overlay painted
+   on top of the committed conduit — the ghost run floating away from the
+   layout. Same teardown for both exits, then one clean re-render of only the
+   committed trenches so the footage still totals. */
+function _bgbTidy(){
+  if(typeof _dcfcDraw!=='undefined') _dcfcDraw=null;
+  if(typeof BGB!=='undefined'){ BGB._activeRun=null; BGB._lastEnd=null; BGB._surface=null; }
+  if(typeof S!=='undefined') S._trench=null;          /* the run being drawn */
+
+  var old=document.getElementById('dcfc-trenches');
+  if(old&&old.parentNode) old.parentNode.removeChild(old);
+
+  /* Drop any zero-length or single-point trench left by an abandoned click. */
+  try{
+    if(S && S._trenches && S._trenches.length){
+      S._trenches = S._trenches.filter(function(t){
+        return t && t.pts && t.pts.length>1;
+      });
+      if(S._trenches.length && typeof _dcfcRenderTrenches==='function') _dcfcRenderTrenches();
+    }
+  }catch(e){}
+
+  /* Any stray preview nodes that outlived their layer. */
+  try{
+    var strays=document.querySelectorAll('#csvg [data-dcfc-preview],#csvg .dcfc-preview,#csvg .bgb-preview');
+    for(var i=0;i<strays.length;i++) strays[i].parentNode.removeChild(strays[i]);
+  }catch(e){}
+}
+window._bgbTidy=_bgbTidy;
+
 function _bgbFinish(){
-  if(typeof _dcfcDraw!=='undefined') _dcfcDraw=null; BGB._activeRun=null;
+  _bgbTidy();
   if(typeof setMode==='function') setMode('select'); else S.mode='select';
   BGB.active=false;
   if(typeof _dcfcGuideHide==='function') _dcfcGuideHide();
@@ -51319,10 +51370,9 @@ function _bgbFinish(){
 window._bgbFinish=_bgbFinish;
 
 function _bgbCancel(){
-  if(typeof _dcfcDraw!=='undefined') _dcfcDraw=null; BGB._activeRun=null; BGB.active=false;
+  _bgbTidy(); BGB.active=false;
   if(typeof setMode==='function') setMode('select'); else S.mode='select';
   if(typeof _dcfcGuideHide==='function') _dcfcGuideHide();
-  var oldT=document.getElementById('dcfc-trenches'); if(oldT&&oldT.parentNode) oldT.parentNode.removeChild(oldT);
   if(typeof showBanner==='function') showBanner('wiz','BESS build cancelled.');
 }
 window._bgbCancel=_bgbCancel;
