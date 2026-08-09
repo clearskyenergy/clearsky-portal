@@ -73910,10 +73910,22 @@ window._crmToastModal=_crmToastModal;
     var pv = null, bat = [], inv = null, bus = null, poi = null;
 
     if (sc.id === 'GT_MSP' || sc.id === 'GT_TAP') {
-      pv = add('dersolar', 'PV ARRAY', c.solarKw ? c.solarKw + ' kW-DC' : (c.solar + ' array(s)'));
-      var invs = repeat(Math.max(1, c.inverter), 'inv', 'INVERTER', 'grid-tied');
+      /* addPvNodes() has been here all along and nothing called it: every
+         scenario collapsed the whole site into one "PV ARRAY" box. A build
+         with 13 arrays, 10 inverters and 10 transformers came out as a
+         single string, which is not a document anyone can interconnect. */
+      var pvs = addPvNodes();
+      pv = pvs[0] || null;
+      var invs = repeat(Math.max(1, c.inverter || pvs.length || 1), 'inv', 'INVERTER', 'grid-tied');
       var disc = add('disco', 'AC DISCONNECT');
-      invs.forEach(function (i) { wire(pv, i, 'PV source'); wire(i, disc, 'inverter AC'); });
+      /* Pair each array with its own inverter where the counts line up;
+         otherwise every array feeds the shared inverter group. */
+      pvs.forEach(function (p, i) {
+        var tgt = (invs.length === pvs.length) ? invs[i] : null;
+        if (tgt) wire(p, tgt, 'PV source');
+        else invs.forEach(function (iv) { wire(p, iv, 'PV source'); });
+      });
+      invs.forEach(function (i) { wire(i, disc, 'inverter AC'); });
       if (c.prodMeter) { var pm = add('meter', 'PV PRODUCTION METER'); wire(disc, pm, ''); disc = pm; }
       if (sc.id === 'GT_MSP') {
         bus = add('panel', 'MAIN SERVICE PANEL', '120% bus rule applies');
@@ -73928,11 +73940,35 @@ window._crmToastModal=_crmToastModal;
     }
 
     else if (sc.id === 'SS_AC') {
-      pv = add('dersolar', 'PV ARRAY', c.solarKw ? c.solarKw + ' kW-DC' : (c.solar + ' array(s)'));
-      var mi = add('inv', c.combiner ? 'MICROINVERTERS' : 'PV INVERTER', 'AC output');
-      wire(pv, mi, 'PV source');
+      var pvsA = addPvNodes();
+      pv = pvsA[0] || null;
       var comb = add('evpanel', c.combiner ? 'AC COMBINER' : 'AC COLLECTION');
-      wire(mi, comb, 'trunk / branch');
+      /* One inverter per array when the site has them, so 13 arrays draw 13
+         inverters instead of a single symbol standing in for all of them. */
+      var invCount = Math.max(1, c.inverter || pvsA.length || 1);
+      var invsA = (invCount === pvsA.length && pvsA.length > 1)
+        ? pvsA.map(function (p, i) {
+            var iv = add('inv', 'PV INVERTER #' + (i + 1), 'AC output');
+            wire(p, iv, 'PV source');
+            return iv;
+          })
+        : (function () {
+            var one = repeat(invCount, 'inv', c.combiner ? 'MICROINVERTERS' : 'PV INVERTER', 'AC output');
+            pvsA.forEach(function (p) { one.forEach(function (iv) { wire(p, iv, 'PV source'); }); });
+            return one;
+          })();
+      /* Transformers between the inverter group and the collection bus. */
+      if (c.xfmr && c.xfmr > 0) {
+        var xf = repeat(c.xfmr, 'xfmr', 'TRANSFORMER', '');
+        if (xf.length === invsA.length) {
+          invsA.forEach(function (iv, i) { wire(iv, xf[i], 'inverter AC'); });
+        } else {
+          invsA.forEach(function (iv) { wire(iv, xf[0], 'inverter AC'); });
+        }
+        xf.forEach(function (t) { wire(t, comb, 'trunk / branch'); });
+      } else {
+        invsA.forEach(function (iv) { wire(iv, comb, 'trunk / branch'); });
+      }
       var ctl = add('pcs', c.ems ? 'SYSTEM CONTROLLER' : 'PCS', 'AC-coupled');
       wire(comb, ctl, '');
       bat = repeat(c.bess, 'bess', 'BATTERY', c.bessKwh ? (c.bessKwh / Math.max(1, c.bess)).toFixed(0) + ' kWh' : '');
@@ -73945,9 +73981,10 @@ window._crmToastModal=_crmToastModal;
     }
 
     else if (sc.id === 'SS_DC') {
-      pv = add('dersolar', 'PV ARRAY', c.solarKw ? c.solarKw + ' kW-DC' : (c.solar + ' array(s)'));
+      var pvsD = addPvNodes();
+      pv = pvsD[0] || null;
       var dcd = add('disco', 'DC DISCONNECT');
-      wire(pv, dcd, 'PV source');
+      pvsD.forEach(function (p) { wire(p, dcd, 'PV source'); });
       inv = add('inv', 'HYBRID INVERTER', 'DC-coupled');
       wire(dcd, inv, 'DC');
       bat = repeat(c.bess, 'bess', 'BATTERY BANK', c.bessKwh ? (c.bessKwh / Math.max(1, c.bess)).toFixed(0) + ' kWh' : '');
