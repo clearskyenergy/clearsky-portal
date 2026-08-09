@@ -2523,46 +2523,91 @@ function safeSheetName(s){
   return String(s).replace(/[\\\/\?\*\[\]:]/g,' ').replace(/\s+/g,' ').slice(0,31);
 }
 
+/* Each selected output is its own file. A single workbook with three tabs
+   is convenient for us and wrong for them: United Illuminating, Eversource
+   and the customer proposal go to three different recipients, and nobody
+   should have to delete two tabs before sending one. */
+function _dlWorkbook(wb, filename){
+  return wb.xlsx.writeBuffer().then(function(buf){
+    var blob=new Blob([buf],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
+    var url=URL.createObjectURL(blob), a=document.createElement('a');
+    a.href=url; a.download=filename; a.style.display='none';
+    document.body.appendChild(a); a.click();
+    setTimeout(function(){ try{ document.body.removeChild(a); URL.revokeObjectURL(url); }catch(e){} }, 4000);
+    return filename;
+  });
+}
+
+function _newBook(){
+  var wb=new ExcelJS.Workbook();
+  wb.creator = PREPARED_BY ? (platformName()+' \u2014 '+PREPARED_BY) : platformName();
+  wb.created = new Date();
+  return wb;
+}
+
+function _fileSlug(){
+  return String(d('applicant')||d('address')||'Site').replace(/[^A-Za-z0-9]+/g,'_').slice(0,34);
+}
+
 function exportWorkbook(){
   if(window._XLFAIL || typeof ExcelJS==='undefined'){
     alert('The Excel writer did not load. Check the connection and reload the page.');
     return;
   }
-  var any=PICK.proposal, i;
-  for(i=0;i<FORMS.length;i++){ if(PICK[FORMS[i].id]) any=true; }
-  if(!any){ alert('Pick at least one sheet to build.'); return; }
-  if(!LINES.length && !confirm('There are no cost lines. Export an empty workbook anyway?')) return;
-
-  var btn=document.getElementById('btnExport');
-  btn.disabled=true; btn.textContent='Building…';
-
-  var site=d('site')||'Site 1';
-  var wb=new ExcelJS.Workbook();
-  wb.creator = PREPARED_BY ? (platformName()+' — '+PREPARED_BY) : platformName();
-  wb.created=new Date();
-
-  /* Each form owns its cost blocks and tax rules, so the model is rebuilt
-     per form rather than shared. */
+  var jobs=[], i;
   for(i=0;i<FORMS.length;i++){
     if(!PICK[FORMS[i].id]) continue;
-    if(FORMS[i].writer==='eversource') sheetES30(wb, buildModel(FORMS[i]), FORMS[i], site);
-    else                               sheetForm(wb, buildModel(FORMS[i]), FORMS[i], site);
+    jobs.push({ kind:'form', form:FORMS[i] });
   }
-  if(PICK.proposal) sheetProposal(wb, buildModel(proposalForm()), site);
+  if(PICK.proposal) jobs.push({ kind:'proposal' });
+  if(!jobs.length){ alert('Pick at least one sheet to build.'); return; }
+  if(!LINES.length && !confirm('There are no cost lines. Export anyway?')) return;
 
-  wb.xlsx.writeBuffer().then(function(buf){
-    var blob=new Blob([buf],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
-    var name='EV_Costs_'+(d('applicant')||'Site').replace(/[^A-Za-z0-9]+/g,'_').slice(0,34)
-            +'_'+new Date().toISOString().slice(0,10)+'.xlsx';
-    var url=URL.createObjectURL(blob), a=document.createElement('a');
-    a.href=url; a.download=name;
-    document.body.appendChild(a); a.click(); document.body.removeChild(a);
-    setTimeout(function(){ URL.revokeObjectURL(url); },1500);
-    btn.disabled=false; btn.textContent='Export workbook';
-  })['catch'](function(err){
-    btn.disabled=false; btn.textContent='Export workbook';
-    alert('The workbook could not be written: '+(err && err.message ? err.message : err));
-  });
+  var btn=document.getElementById('btnExport');
+  btn.disabled=true; btn.textContent='Building\u2026';
+
+  var site=d('site')||'Site 1';
+  var slug=_fileSlug(), stamp=new Date().toISOString().slice(0,10);
+
+  /* Sequential, not Promise.all: browsers throttle or silently drop rapid
+     programmatic downloads, and Safari is the strictest about it. */
+  var made=[];
+  function step(ix){
+    if(ix>=jobs.length){
+      btn.disabled=false; btn.textContent='Export workbook';
+      var st=document.getElementById('xlWarn');
+      if(st) st.innerHTML='<div class="warn" style="background:#e8f5e9;border-color:#a5d6a7;color:#1b5e20">'
+        +made.length+' file'+(made.length===1?'':'s')+' exported: '+made.join(', ')+'</div>';
+      return;
+    }
+    var j=jobs[ix], wb=_newBook(), name;
+    try{
+      if(j.kind==='proposal'){
+        sheetProposal(wb, buildModel(proposalForm()), site);
+        name='Proposal_'+slug+'_'+stamp+'.xlsx';
+      } else if(j.form.writer==='eversource'){
+        sheetES30(wb, buildModel(j.form), j.form, site);
+        name='Eversource_Cost_Estimate_Matrix_'+slug+'_'+stamp+'.xlsx';
+      } else {
+        sheetForm(wb, buildModel(j.form), j.form, site);
+        name=String(j.form.utility||'Utility').replace(/[^A-Za-z0-9]+/g,'_')
+             +'_EV_Costs_'+slug+'_'+stamp+'.xlsx';
+      }
+    }catch(err){
+      btn.disabled=false; btn.textContent='Export workbook';
+      alert('Could not build '+(j.kind==='proposal'?'the proposal':j.form.utility)+': '
+            +(err&&err.message?err.message:err));
+      return;
+    }
+    _dlWorkbook(wb, name).then(function(fn){
+      made.push(fn);
+      setTimeout(function(){ step(ix+1); }, 700);
+    })['catch'](function(err){
+      btn.disabled=false; btn.textContent='Export workbook';
+      alert('The workbook could not be written: '+(err && err.message ? err.message : err));
+    });
+  }
+  step(0);
 }
 
 /* ── Utility program form — written from its own definition ───────── */
