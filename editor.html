@@ -23961,23 +23961,59 @@ async function _preCaptureNormalize(el) {
       var rep = document.createElement('canvas');
       rep.width = drawn.width; rep.height = drawn.height;
       rep.getContext('2d').drawImage(drawn,0,0);
-      rep.style.cssText = 'position:absolute;top:0;left:0;width:'+w+'px;height:'+h+'px;display:block;pointer-events:none' + (svg.id==='csvg' ? ';z-index:4' : '');
+      /* Drop the replacement where the SVG actually sat, not at the parent
+         origin. Hard-coding top:0/left:0 is only correct for layers that
+         fill their parent (#csvg, .evgear-node > svg); anything deliberately
+         offset -- such as the EV bollard pad, which is inset by its apron --
+         would be yanked back to the corner and read as equipment bunched up
+         in the top-left of its own cell. */
+      var _ox = 0, _oy = 0;
+      try{
+        var _pr = par.getBoundingClientRect();
+        _ox = Math.round(rect.left - _pr.left);
+        _oy = Math.round(rect.top  - _pr.top);
+        if(!isFinite(_ox)) _ox = 0;
+        if(!isFinite(_oy)) _oy = 0;
+      }catch(e){ _ox = 0; _oy = 0; }
+      var _z = (svg.id==='csvg') ? ';z-index:4'
+             : (svg.classList && svg.classList.contains('ev-bollard-pad')) ? ';z-index:0' : '';
+      rep.style.cssText = 'position:absolute;top:'+_oy+'px;left:'+_ox+'px;width:'+w+'px;height:'+h
+        + 'px;display:block;pointer-events:none' + _z;
       var parent = svg.parentNode; if(!parent) return;
+      /* Test the COMPUTED position, not the inline one. #sc takes
+         position:absolute from the stylesheet, so parent.style.position
+         reads '' and the old check fired -- stamping an inline
+         position:relative onto #sc and dropping it out of absolute
+         positioning for the duration of the capture. Every absolutely
+         positioned child (.cel equipment, #els, #csvg) then resolved
+         against a different containing block, which is why exported
+         sheets came out shifted and bunched together relative to the
+         map. Only add position when the element genuinely has none. */
+      var _cp = '';
+      try{ _cp = (window.getComputedStyle ? getComputedStyle(parent).position : '') || ''; }catch(e){}
       var oldPos = parent.style.position;
-      if(!oldPos || oldPos==='static') parent.style.position='relative';
+      var _needPos = (_cp === 'static' || _cp === '');
+      if(_needPos) parent.style.position='relative';
       var oldDisp = svg.style.display; svg.style.display='none';
       parent.appendChild(rep);
-      restores.push((function(_svg,_rep,_parent,_od,_op){ return function(){
+      restores.push((function(_svg,_rep,_parent,_od,_op,_set){ return function(){
         _svg.style.display=_od;
-        if(_op===''||_op==='static') _parent.style.position=_op;
+        if(_set) _parent.style.position=_op;
         if(_rep.parentNode) _rep.parentNode.removeChild(_rep);
-      };})(svg, rep, parent, oldDisp, oldPos));
+      };})(svg, rep, parent, oldDisp, oldPos, _needPos));
     }catch(err){ /* leave original SVG in place on failure */ }
   }
 
   // Guided-build / EV equipment icons.
   var evSvgs = el.querySelectorAll('.evgear-node > svg');
   for(var ei=0; ei<evSvgs.length; ei++){ await _rasterizeSvgInPlace(evSvgs[ei]); }
+
+  /* Bollard protection pads sit alongside the charger icon rather than
+     inside .evgear-node, so the selector above never reached them and
+     html2canvas was left to render the raw inline SVG -- which it drops
+     often enough to be unreliable. Rasterize them the same way. */
+  var padSvgs = el.querySelectorAll('svg.ev-bollard-pad');
+  for(var pi=0; pi<padSvgs.length; pi++){ await _rasterizeSvgInPlace(padSvgs[pi]); }
 
   // The whole conduit + trench layer (single big SVG) — rasterize as one image
   // so every polyline, trench band, label and vertex lands on the export.
@@ -24020,8 +24056,37 @@ async function _captureCanvasWithSVG(el, opts) {
   // Returns a cleanup function that restores all DOM changes.
   const cleanup = await _preCaptureNormalize(el);
 
+  /* ── Re-measure after normalising ──────────────────────────────────
+     Callers pass width/height read from the element BEFORE this function
+     runs, because opts is built at the call site. Anything the normalise
+     step does to layout then puts the render target and the canvas out of
+     step: html2canvas draws an element of one size into a bitmap of
+     another, and the difference lands as a NON-UNIFORM squash -- the
+     drawing keeps its height but loses width, so equipment reads as
+     mushed together horizontally while the map behind it looks fine.
+
+     Measuring here, after normalise and immediately before the render,
+     makes the capture self-correcting: whatever the element actually is
+     at this instant is what the bitmap is sized to. It also keeps the
+     aspect ratio true, which matters because the blueprint sheet places
+     the image with object-fit:contain and will letterbox rather than
+     stretch a mismatched one. */
   let cvs;
   try {
+    const liveW = el.offsetWidth  || el.clientWidth  || opts.width  || 0;
+    const liveH = el.offsetHeight || el.clientHeight || opts.height || 0;
+    if (liveW > 1 && liveH > 1) {
+      if (opts.width  && Math.abs(opts.width  - liveW) > 1) opts.width  = liveW;
+      if (opts.height && Math.abs(opts.height - liveH) > 1) opts.height = liveH;
+      if (!opts.width)  opts.width  = liveW;
+      if (!opts.height) opts.height = liveH;
+      /* Pin the layout viewport too, or html2canvas lays the clone out at
+         the window size and reflows anything sized in % or vw. */
+      if (!opts.windowWidth)  opts.windowWidth  = document.documentElement.clientWidth;
+      if (!opts.windowHeight) opts.windowHeight = document.documentElement.clientHeight;
+      if (opts.scrollX == null) opts.scrollX = 0;
+      if (opts.scrollY == null) opts.scrollY = 0;
+    }
     cvs = await html2canvas(el, opts);
   } finally {
     if (typeof cleanup === 'function') cleanup();
