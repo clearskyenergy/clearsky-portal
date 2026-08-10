@@ -24,48 +24,51 @@
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css"/>
 <style>
   :root{
-    --bg:#0a0e14; --panel:#0f1620; --panel2:#131c28; --line:#1e2b3a;
-    --ink:#e6edf3; --muted:#7d8fa3; --dim:#4a5a6b;
-    --amp:#ffb020;        /* interconnect amber - signature */
-    --tx:#ff5c3a;         /* transmission */
-    --sub:#ffb020;        /* substations */
-    --plant:#38d9c4;      /* generation */
-    --dc:#a78bfa;         /* data centers */
-    --ev:#4ea3ff;         /* ev chargers */
-    --bess:#6ee76e;       /* storage */
-    --ok:#6ee76e; --warn:#ffb020; --bad:#ff5c3a;
+    /* SAP-style light theme */
+    --bg:#f5f6f8; --panel:#ffffff; --panel2:#f0f2f5; --line:#dfe3e8;
+    --ink:#1a2733; --muted:#5b6b7b; --dim:#9aa7b4;
+    --amp:#0a6ed1;        /* signature accent — SAP-style blue-grey, calm not gold */
+    --accent:#0a6ed1;
+    --tx:#e0533d;         /* transmission */
+    --sub:#c98a2b;        /* substations */
+    --plant:#1aa39a;      /* generation */
+    --dc:#8a5cd1;         /* data centers */
+    --ev:#3d7fd6;         /* ev chargers */
+    --bess:#2ea043;       /* storage */
+    --ok:#2ea043; --warn:#c98a2b; --bad:#e0533d;
+    --topbar:#ffffff; --topbar-ink:#1a2733;
     --mono:"SFMono-Regular",ui-monospace,Menlo,Consolas,monospace;
     --sans:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
   }
   *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
   html,body{margin:0;height:100%;background:var(--bg);color:var(--ink);font-family:var(--sans);overflow:hidden}
-  #map{position:absolute;top:60px;left:0;right:0;bottom:0;background:#070a0f}
-  .leaflet-container{background:#070a0f;font-family:var(--sans)}
+  #map{position:absolute;top:60px;left:0;right:0;bottom:0;background:#e8ebef}
+  .leaflet-container{background:#e8ebef;font-family:var(--sans)}
 
-  /* OMEGA standard topbar */
+  /* OMEGA topbar — clean white (SAP style) */
   #topbar{position:absolute;top:0;left:0;right:0;height:60px;z-index:1200;
     display:flex;align-items:center;gap:16px;padding:0 20px;
-    background:#0B1E35;border-bottom:1px solid rgba(255,255,255,.08)}
+    background:var(--topbar);border-bottom:1px solid var(--line);box-shadow:0 1px 3px rgba(26,39,51,.06)}
   .tb-logo{display:flex;align-items:center;gap:10px;text-decoration:none}
-  .tb-omega{height:24px;width:auto;display:block}
-  .tb-logo-txt{color:#fff;font-weight:700;font-size:15px;letter-spacing:-.2px}
-  .tb-logo-txt span{color:var(--cs-gold,#E8C56A)}
-  .tb-sep{width:1px;height:24px;background:rgba(255,255,255,.12)}
-  .tb-portal{color:rgba(255,255,255,.45);font-size:12px;font-weight:500;letter-spacing:.5px;text-transform:uppercase}
-  .tb-badge{font-size:10px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:#4ADE80;
-    background:rgba(29,185,84,.14);border:1px solid rgba(29,185,84,.3);padding:4px 10px;border-radius:20px}
-  .tb-title{color:rgba(255,255,255,.85);font-size:13px;font-weight:600;letter-spacing:.02em;padding-left:4px}
+  .tb-omega{height:30px;width:auto;display:block;border-radius:7px}
+  .tb-logo-txt{color:var(--ink);font-weight:700;font-size:15px;letter-spacing:-.2px}
+  .tb-logo-txt span{color:var(--accent)}
+  .tb-sep{width:1px;height:24px;background:var(--line)}
+  .tb-portal{color:var(--muted);font-size:12px;font-weight:500;letter-spacing:.5px;text-transform:uppercase}
+  .tb-badge{font-size:10px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:#1a7f37;
+    background:rgba(46,160,67,.10);border:1px solid rgba(46,160,67,.28);padding:4px 10px;border-radius:20px}
+  .tb-title{color:var(--ink);font-size:13px;font-weight:600;letter-spacing:.02em;padding-left:4px}
   .tb-spacer{flex:1}
-  .tb-back{background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.15);color:rgba(255,255,255,.7);
+  .tb-back{background:var(--panel2);border:1px solid var(--line);color:var(--muted);
     border-radius:7px;padding:7px 14px;cursor:pointer;font-size:12px;font-weight:600;text-decoration:none}
-  .tb-back:hover{background:rgba(255,255,255,.14);color:#fff}
+  .tb-back:hover{background:#e6e9ee;color:var(--ink)}
   #search{position:relative;width:min(300px,32vw)}
-  #search input{width:100%;height:32px;border:1px solid rgba(255,255,255,.15);background:rgba(255,255,255,.06);
-    color:#fff;border-radius:7px;padding:0 30px 0 11px;font-size:13px;font-family:var(--sans);outline:none}
-  #search input::placeholder{color:rgba(255,255,255,.4)}
-  #search input:focus{border-color:var(--amp)}
-  #search .ic{position:absolute;right:9px;top:8px;color:rgba(255,255,255,.4);font-size:13px}
-  .modechip{font-family:var(--mono);font-size:10px;color:var(--amp);border:1px solid rgba(255,176,32,.4);
+  #search input{width:100%;height:32px;border:1px solid var(--line);background:var(--panel2);
+    color:var(--ink);border-radius:7px;padding:0 30px 0 11px;font-size:13px;font-family:var(--sans);outline:none}
+  #search input::placeholder{color:var(--dim)}
+  #search input:focus{border-color:var(--accent)}
+  #search .ic{position:absolute;right:9px;top:8px;color:var(--dim);font-size:13px}
+  .modechip{font-family:var(--mono);font-size:10px;color:var(--accent);border:1px solid var(--accent);
     border-radius:20px;padding:6px 12px;letter-spacing:.1em;text-transform:uppercase;cursor:pointer;user-select:none;white-space:nowrap}
   .modechip.on{background:rgba(255,176,32,.16);border-color:var(--amp)}
 
@@ -83,7 +86,7 @@
   .pchip{font-size:11px;padding:5px 9px;border-radius:14px;border:1px solid var(--line);background:var(--panel);
     color:var(--ink);cursor:pointer;user-select:none;white-space:nowrap;display:flex;align-items:center;gap:5px}
   .pchip:hover{border-color:var(--amp)}
-  .pchip.on{background:var(--amp);border-color:var(--amp);color:#0a0e14;font-weight:700}
+  .pchip.on{background:var(--amp);border-color:var(--amp);color:#fff;font-weight:700}
   .pchip .pi{font-size:11px}
   #railFilter{position:relative;flex:0 0 auto;border-bottom:1px solid var(--line)}
   #railFilter input{width:100%;height:30px;border:0;background:var(--panel2);color:var(--ink);
@@ -103,7 +106,7 @@
   .lyr:last-child{border-bottom:0}
   .lyr:hover{background:var(--panel2)}
   .lyr.hidden{display:none}
-  .sw{width:11px;height:11px;border-radius:3px;flex:0 0 auto;box-shadow:0 0 0 3px rgba(255,255,255,.04)}
+  .sw{width:11px;height:11px;border-radius:3px;flex:0 0 auto;box-shadow:0 0 0 3px rgba(26,39,51,.05)}
   .lyr .nm{font-size:12px;flex:1}
   .lyr .st{font-family:var(--mono);font-size:9px;color:var(--dim)}
   .lyr.off{opacity:.4}
@@ -111,7 +114,7 @@
   .tick{width:14px;height:14px;border-radius:4px;border:1.5px solid var(--line);flex:0 0 auto;position:relative}
   .lyr:not(.off) .tick{background:var(--amp);border-color:var(--amp)}
   .lyr:not(.off) .tick:after{content:"";position:absolute;left:4px;top:1px;width:4px;height:8px;
-    border:solid #0a0e14;border-width:0 2px 2px 0;transform:rotate(45deg)}
+    border:solid #fff;border-width:0 2px 2px 0;transform:rotate(45deg)}
 
   /* Analysis panel (right) */
   #panel{position:absolute;right:12px;top:72px;bottom:12px;z-index:1150;width:326px;
@@ -161,7 +164,7 @@
   #baseSwitch .bchip{font-family:var(--mono);font-size:10px;color:var(--muted);padding:5px 9px;border-radius:5px;
     cursor:pointer;user-select:none;letter-spacing:.04em;white-space:nowrap}
   #baseSwitch .bchip:hover{background:var(--panel2);color:var(--ink)}
-  #baseSwitch .bchip.on{background:var(--amp);color:#0a0e14;font-weight:700}
+  #baseSwitch .bchip.on{background:var(--amp);color:#fff;font-weight:700}
   #baseSwitch .bsep{width:1px;align-self:stretch;background:var(--line);margin:2px 2px}
   #baseSwitch .invtoggle{color:var(--amp)}
   #baseSwitch .invtoggle.on{background:rgba(255,176,32,.16);color:var(--amp);font-weight:700}
@@ -202,7 +205,7 @@
 
 <div id="topbar">
   <a href="/" id="tb-logo-link" class="tb-logo">
-    <img src="/clearsky-omega-mark-white.png" alt="OMEGA" class="tb-omega" onerror="this.style.display='none'">
+    <img src="/omega-logo.png" alt="OMEGA" class="tb-omega" onerror="this.style.display='none'">
     <span class="tb-logo-txt">ClearSky<span>-OMEGA</span></span>
   </a>
   <div class="tb-sep"></div>
@@ -242,8 +245,8 @@
 <div id="status"><span class="d"></span><span id="stTxt">Ready · public grid data</span></div>
 
 <div id="baseSwitch">
-  <span class="bchip on" data-b="dark" onclick="__setBase('dark')">Dark</span>
-  <span class="bchip" data-b="light" onclick="__setBase('light')">Light</span>
+  <span class="bchip" data-b="dark" onclick="__setBase('dark')">Dark</span>
+  <span class="bchip on" data-b="light" onclick="__setBase('light')">Light</span>
   <span class="bchip" data-b="streets" onclick="__setBase('streets')">Streets</span>
   <span class="bchip" data-b="satellite" onclick="__setBase('satellite')">Satellite</span>
   <span class="bchip" data-b="hybrid" onclick="__setBase('hybrid')">Hybrid</span>
@@ -476,6 +479,12 @@ var LAYERS = {
     label:function(a){return a.name||"Colo facility";},
     meta:function(a){return (a.city||"")+(a.net_count?" · "+a.net_count+" networks":"");}
   },
+  carrierhotels: {
+    name:"Carrier Hotels (1.6k)", color:"#8a5cd1", on:false, geom:"bubble", role:"connectivity",
+    url:"__STATIC__", staticFile:"/data/peeringdb-facilities.geojson",
+    label:function(a){return a.name||"Facility";},
+    meta:function(a){return (a.operator?a.operator+" · ":"")+(a.city||"")+(a.state?", "+a.state:"")+(a.networks?" · "+a.networks+" networks":"");}
+  },
   /* ── FCC fiber-SERVICE coverage (the govt "fiber like water" layer) ──
      ISPs must report fiber availability to the FCC by law (Broadband DATA Act).
      Utah SGID republishes the FCC BDC API monthly as per-provider fiber hexes.
@@ -533,7 +542,7 @@ var LAYERS = {
     meta:function(a){return (a.TYPEPIPE||a.typepipe||"transmission")+" gas";}
   }
 };
-var ORDER=["substations","transmission","plants","datacenters","ev","bess","osm_lines","osm_subs","osm_plants","eia_plants","fiber","fiber_cls","backbone","fiber_ca","subsea","ll_backbone","fiber_verified","fiber_estimated","fiber_licensed","ixp","colo","fcc_fiber","zayo","utility_terr","iso_rto","ba_area","flood","water","gas"];
+var ORDER=["substations","transmission","plants","datacenters","ev","bess","osm_lines","osm_subs","osm_plants","eia_plants","fiber","fiber_cls","backbone","fiber_ca","subsea","ll_backbone","fiber_verified","fiber_estimated","fiber_licensed","ixp","colo","carrierhotels","fcc_fiber","zayo","utility_terr","iso_rto","ba_area","flood","water","gas"];
 
 /* ---------- EIA technology taxonomy (matches EIA energy_source_code / technology) ---------- */
 var EIA_TECH={
@@ -601,8 +610,8 @@ var BASEMAPS={
      baseTile("https://{s}.basemaps.cartocdn.com/dark_only_labels/{z}/{x}/{y}{r}.png",{subdomains:"abcd"})
   ]) }
 };
-var currentBase="dark";
-BASEMAPS.dark.layer.addTo(map);
+var currentBase="light";
+BASEMAPS.light.layer.addTo(map);
 function setBasemap(key){
   if(!BASEMAPS[key]||key===currentBase) return;
   map.removeLayer(BASEMAPS[currentBase].layer);
@@ -783,7 +792,12 @@ function fetchStatic(key,cb){
     var raw = json.features ? json.features : (json.length!=null ? json : []);
     var feats=[];
     for(var i=0;i<raw.length;i++){ var f=raw[i]; if(!f||!f.geometry) continue;
-      feats.push({props:f.properties||{}, geom:f.geometry}); }
+      var ft={props:f.properties||{}, geom:f.geometry};
+      if(L2.geom==="bubble"){ // size by 'networks' (carrier-hotel density)
+        var n=+(f.properties&&f.properties.networks)||0;
+        ft.bubbleMw=n; ft.bubbleColor=L2.color; // reuse bubble renderer (sqrt scale)
+      }
+      feats.push(ft); }
     if(!feats.length){ status(L2.name+": source returned no US features",false); }
     cb(feats);
   });
