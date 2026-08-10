@@ -3447,13 +3447,17 @@ if(document.readyState==='loading'){
     <!-- Site Equipment -->
     <div style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:var(--amber);margin-bottom:5px">⚙️ Site Equipment</div>
     <div style="display:flex;flex-direction:column;gap:4px;margin-bottom:10px" id="ce-site-items">
+      <div class="ce-row"><span class="ce-lbl" title="Once a pro forma or EPC price exists, enter it here. It overrides the benchmark build-up for every downstream number: proposal, ITC, IRR, payback, LCOE.">Contracted cost ($)</span><input class="ce-inp" id="ce-actual-total" type="number" value="" placeholder="benchmark" oninput="_debounceCost()" onfocus="this.select()" onclick="this.select()"></div>
+      <div class="ce-row"><span class="ce-lbl">Solar PV ($/Wdc)</span><input class="ce-inp" id="ce-pv-wdc" type="number" step="0.01" value="" placeholder="auto" oninput="_debounceCost()" onfocus="this.select()" onclick="this.select()"></div>
+      <div class="ce-row"><span class="ce-lbl">BESS energy ($/kWh)</span><input class="ce-inp" id="ce-bess-kwh" type="number" value="" placeholder="241" oninput="_debounceCost()" onfocus="this.select()" onclick="this.select()"></div>
+      <div class="ce-row"><span class="ce-lbl">BESS power ($/kW)</span><input class="ce-inp" id="ce-bess-kw" type="number" value="" placeholder="379" oninput="_debounceCost()" onfocus="this.select()" onclick="this.select()"></div>
       <div class="ce-row"><span class="ce-lbl">Concrete Pad</span><input class="ce-inp" id="ce-pad" type="number" value="4800" oninput="_debounceCost()" onfocus="this.select()" onclick="this.select()"></div>
       <div class="ce-row"><span class="ce-lbl">AC Disconnect</span><input class="ce-inp" id="ce-disco" type="number" value="3200" oninput="_debounceCost()" onfocus="this.select()" onclick="this.select()"></div>
       <div class="ce-row"><span class="ce-lbl">Smart Meter (CT/PT)</span><input class="ce-inp" id="ce-meter" type="number" value="3850" oninput="_debounceCost()" onfocus="this.select()" onclick="this.select()"></div>
-      <div class="ce-row"><span class="ce-lbl">Bollards (8×)</span><input class="ce-inp" id="ce-bollards" type="number" value="4800" oninput="_debounceCost()" onfocus="this.select()" onclick="this.select()"></div>
+      <div class="ce-row"><span class="ce-lbl">Bollard (each)</span><input class="ce-inp" id="ce-bollards" type="number" value="600" oninput="_debounceCost()" onfocus="this.select()" onclick="this.select()"></div>
       <div class="ce-row"><span class="ce-lbl">Junction Box</span><input class="ce-inp" id="ce-jbox" type="number" value="850" oninput="_debounceCost()" onfocus="this.select()" onclick="this.select()"></div>
       <div class="ce-row"><span class="ce-lbl">Panelboard (2000A)</span><input class="ce-inp" id="ce-panel" type="number" value="18500" oninput="_debounceCost()" onfocus="this.select()" onclick="this.select()"></div>
-      <div class="ce-row"><span class="ce-lbl">Misc Site Hardware</span><input class="ce-inp" id="ce-misc" type="number" value="8500" oninput="_debounceCost()" onfocus="this.select()" onclick="this.select()"></div>
+      <div class="ce-row"><span class="ce-lbl">Misc Site Hardware</span><input class="ce-inp" id="ce-misc" type="number" value="" placeholder="0" oninput="_debounceCost()" onfocus="this.select()" onclick="this.select()"></div>
       <div class="ce-row" id="ce-xfmr-row"><span class="ce-lbl" style="color:#F97316">🔌 Transformer (if reqd)</span><input class="ce-inp" id="ce-xfmr" type="number" value="22000" oninput="_debounceCost()" onfocus="this.select()" onclick="this.select()"></div>
     </div>
 
@@ -3484,9 +3488,9 @@ if(document.readyState==='loading'){
     <!-- Indirect -->
     <div style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:var(--sub);margin-bottom:5px">📋 Indirect Costs</div>
     <div style="display:flex;flex-direction:column;gap:4px;margin-bottom:10px">
-      <div class="ce-row"><span class="ce-lbl">Engineering & Design</span><input class="ce-inp" id="ce-eng" type="number" value="15000" oninput="_debounceCost()" onfocus="this.select()" onclick="this.select()"></div>
-      <div class="ce-row"><span class="ce-lbl">Permitting & AHJ</span><input class="ce-inp" id="ce-perm" type="number" value="3500" oninput="_debounceCost()" onfocus="this.select()" onclick="this.select()"></div>
-      <div class="ce-row"><span class="ce-lbl">Commissioning</span><input class="ce-inp" id="ce-comm" type="number" value="8500" oninput="_debounceCost()" onfocus="this.select()" onclick="this.select()"></div>
+      <div class="ce-row"><span class="ce-lbl">Engineering & Design</span><input class="ce-inp" id="ce-eng" type="number" value="" placeholder="0" oninput="_debounceCost()" onfocus="this.select()" onclick="this.select()"></div>
+      <div class="ce-row"><span class="ce-lbl">Permitting & AHJ</span><input class="ce-inp" id="ce-perm" type="number" value="" placeholder="0" oninput="_debounceCost()" onfocus="this.select()" onclick="this.select()"></div>
+      <div class="ce-row"><span class="ce-lbl">Commissioning</span><input class="ce-inp" id="ce-comm" type="number" value="" placeholder="0" oninput="_debounceCost()" onfocus="this.select()" onclick="this.select()"></div>
       <div class="ce-row"><span class="ce-lbl">Contingency %</span><input class="ce-inp" id="ce-cont" type="number" value="10" min="0" max="30" oninput="_debounceCost()" onfocus="this.select()" onclick="this.select()"><span class="ce-unit">%</span></div>
     </div>
 
@@ -3565,7 +3569,7 @@ if(document.readyState==='loading'){
       <!-- EMS Software Fee -->
       <div style="background:rgba(124,58,237,.07);border:1px solid rgba(124,58,237,.2);border-radius:7px;padding:8px;margin-top:8px">
         <label style="display:flex;align-items:center;gap:8px;cursor:pointer;margin-bottom:5px">
-          <input type="checkbox" id="ems-toggle" checked style="accent-color:#7C3AED;width:14px;height:14px" oninput="_debounceCost();_debounceROI()">
+          <input type="checkbox" id="ems-toggle" style="accent-color:#7C3AED;width:14px;height:14px" oninput="_debounceCost();_debounceROI()">
           <span style="font-size:11px;font-weight:700;color:#A78BFA">⚡ EMS Software & Monitoring</span>
         </label>
         <div style="font-size:9px;color:var(--sub);margin-bottom:6px">EMS cloud platform -- real-time dispatch, remote monitoring, demand optimization, VPP connectivity</div>
@@ -8357,7 +8361,39 @@ function renderEl(el){
     const fn=ICONS[el.eqId]||ICONS.jbox;
     const sz=el.w||60;
     const ldx=el.lblDx||0, ldy=el.lblDy||(sz+8);
-    inner=`<div class="elbody eq-node" style="width:${sz}px;transform:rotate(${el.rot||0}deg)">
+    /* BOLLARD PROTECTION PAD -----------------------------------------
+       An EV charger is never a bare pedestal on a drawing: it stands on a
+       protected island. This draws that island UNDER the charger icon --
+       an orange-bordered box with diagonal blue hatching, the convention
+       for a bollard-protected zone -- so the reviewer sees the protection
+       and its footprint, not just the unit. Purely presentational: the
+       bollards themselves are still real elements (eqId 'bollard') and
+       are what the estimate counts. */
+    const _padOn = (el.eqId==='charger') && (el.bollardPad !== false)
+                   && (window.OMEGA_EV_PAD !== false);
+    const _pad = _padOn ? (function(){
+      const g = Math.round(sz*0.42);                 // apron around the unit
+      const W = sz + g*2;
+      const uid = 'evpad-'+String(el.id).replace(/[^A-Za-z0-9_-]/g,'');
+      return `<svg class="ev-bollard-pad" width="${W}" height="${W}" viewBox="0 0 ${W} ${W}"
+                   style="position:absolute;left:${-g}px;top:${-g}px;
+                          transform:rotate(${el.rot||0}deg);pointer-events:none;z-index:0"
+                   aria-hidden="true">
+        <defs>
+          <pattern id="${uid}" width="9" height="9" patternUnits="userSpaceOnUse"
+                   patternTransform="rotate(45)">
+            <line x1="0" y1="0" x2="0" y2="9" stroke="#2F7FE0" stroke-width="2.4"/>
+          </pattern>
+        </defs>
+        <rect x="1.5" y="1.5" width="${W-3}" height="${W-3}" rx="3"
+              fill="#F4A020" fill-opacity=".30"/>
+        <rect x="1.5" y="1.5" width="${W-3}" height="${W-3}" rx="3"
+              fill="url(#${uid})" fill-opacity=".85"/>
+        <rect x="1.5" y="1.5" width="${W-3}" height="${W-3}" rx="3"
+              fill="none" stroke="#F4A020" stroke-width="3"/>
+      </svg>`;
+    })() : '';
+    inner=`${_pad}<div class="elbody eq-node" style="width:${sz}px;transform:rotate(${el.rot||0}deg);position:relative;z-index:1">
       ${fn(sz)}
     </div>
     ${(!el.hideLabel && el.eqId !== 'bollard') ? `<div class="eq-lbl-wrap" data-lid="${el.id}" style="position:absolute;left:${sz/2+ldx}px;top:${sz/2+ldy}px;transform:translate(-50%,0);cursor:grab;z-index:10;pointer-events:auto">
@@ -8389,7 +8425,26 @@ function renderEl(el){
     } else {
       _gearHtml=rf(gw,gh);
     }
-    inner='<div class="elbody evgear-node" style="width:'+gw+'px;height:'+gh+'px;transform:rotate('+(el.rot||0)+'deg)'+flip+';transform-origin:center">'
+    /* Bollard protection pad. The earlier version of this only ran in the
+       type==='eq' branch, but guided builds place chargers as type
+       'evgear' with the role on .evKind -- so it never appeared on the
+       units that actually needed it. */
+    var _evPad='';
+    if(el.evKind==='charger' && el.bollardPad!==false && window.OMEGA_EV_PAD!==false){
+      var _pg=Math.round(Math.max(gw,gh)*0.42);
+      var _pw2=gw+_pg*2, _ph2=gh+_pg*2;
+      var _pid='evpad-'+String(el.id).replace(/[^A-Za-z0-9_-]/g,'');
+      _evPad='<svg class="ev-bollard-pad" width="'+_pw2+'" height="'+_ph2+'" viewBox="0 0 '+_pw2+' '+_ph2+'"'
+        + ' style="position:absolute;left:'+(-_pg)+'px;top:'+(-_pg)+'px;transform:rotate('+(el.rot||0)+'deg);'
+        + 'transform-origin:center;pointer-events:none;z-index:0" aria-hidden="true">'
+        + '<defs><pattern id="'+_pid+'" width="9" height="9" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">'
+        + '<line x1="0" y1="0" x2="0" y2="9" stroke="#2F7FE0" stroke-width="2.4"/></pattern></defs>'
+        + '<rect x="1.5" y="1.5" width="'+(_pw2-3)+'" height="'+(_ph2-3)+'" rx="3" fill="#F4A020" fill-opacity=".30"/>'
+        + '<rect x="1.5" y="1.5" width="'+(_pw2-3)+'" height="'+(_ph2-3)+'" rx="3" fill="url(#'+_pid+')" fill-opacity=".85"/>'
+        + '<rect x="1.5" y="1.5" width="'+(_pw2-3)+'" height="'+(_ph2-3)+'" rx="3" fill="none" stroke="#F4A020" stroke-width="3"/>'
+        + '</svg>';
+    }
+    inner=_evPad+'<div class="elbody evgear-node" style="position:relative;z-index:1;width:'+gw+'px;height:'+gh+'px;transform:rotate('+(el.rot||0)+'deg)'+flip+';transform-origin:center">'
       + _gearHtml + '</div>'
       + ((!el.hideLabel) ? '<div class="eq-lbl-wrap" data-lid="'+el.id+'" style="position:absolute;left:'+(gw/2+(el.lblDx||0))+'px;top:'+(gh+(el.lblDy||6))+'px;transform:translate(-50%,0);cursor:grab;z-index:10;pointer-events:auto">'
         + '<button class="lbl-hide-btn" onclick="event.stopPropagation();toggleElLabel(\''+el.id+'\')" title="Hide label" style="position:absolute;top:-6px;right:-6px;width:14px;height:14px;border-radius:50%;background:rgba(100,100,120,.8);border:none;color:rgba(255,255,255,.7);font-size:9px;line-height:1;cursor:pointer;padding:0;display:none;align-items:center;justify-content:center;z-index:20">x</button>'
@@ -8731,6 +8786,25 @@ function globalMM(e){
     el.w=Math.round(newW);
     const bd=dom.querySelector('.elbody');if(bd){bd.style.width=el.w+'px';bd.style.minWidth=el.w+'px';}
     if(el.type==='eq'){const fn=ICONS[el.eqId]||ICONS.jbox;const os=dom.querySelector('svg');if(os){const t=document.createElement('div');t.innerHTML=fn(el.w);os.replaceWith(t.firstChild);}}
+    /* ── evgear (guided-build EV kit: EVSE, meter bank, outdoor panel) ──
+       This branch did not exist, which is why guided-build equipment could
+       not be resized. renderEl() gives an evgear a FIXED pixel width AND
+       height on both the .cel wrapper and the .elbody, and the artwork
+       inside is width:100%/height:100% of that box. The generic code above
+       only touches .elbody's width -- the wrapper stayed its original size
+       and el.h was never recomputed -- so dragging a corner squashed the
+       artwork inside a box that never moved, and any later re-render put
+       it straight back. Drive height off the stored aspect and resize the
+       wrapper too, so the whole unit scales and the change survives. */
+    if(el.type==='evgear'){
+      const gh=Math.max(12, Math.round(el.w*(el.aspect||0.72)));
+      el.h=gh;
+      dom.style.width=el.w+'px'; dom.style.height=gh+'px';
+      if(bd){ bd.style.height=gh+'px'; bd.style.minWidth=''; }
+      /* Keep the caption under the unit as it grows. */
+      const lw=dom.querySelector('.eq-lbl-wrap');
+      if(lw){ lw.style.left=(el.w/2+(el.lblDx||0))+'px'; lw.style.top=(gh+(el.lblDy||6))+'px'; }
+    }
     if(el.type==='bess-asm'){
       const cfg=el.bessId?S.bessList.find(b=>b.id===el.bessId):null;
       const os=dom.querySelector('svg');
@@ -8778,7 +8852,11 @@ function globalMM(e){
         });
       }
     }
-    document.getElementById('p-w').value=el.w;
+    const _pw=document.getElementById('p-w'); if(_pw) _pw.value=el.w;
+    /* A charger on a trench moves its own connection point as it grows;
+       without this the branch conduit stays pinned to the old edge. */
+    try{ updateAttached(el.id); }catch(e){}
+    try{ if(typeof rerouteTrenchConduits==='function') rerouteTrenchConduits(); }catch(e){}
     return;
   }
   if(S.rotating){
@@ -23987,11 +24065,21 @@ function calcProposalCosts() {
     });
   }
 
-  const totalKwh = S.bessList.reduce((s,b)=>s+(+(b.kwh||0))*(+(b.qty||1)),0);
-  const totalKw  = S.bessList.reduce((s,b)=>s+(+(b.kw||0))*(+(b.qty||1)),0);
+  /* The proposal headline read S.bessList -- the itemised vendor list --
+     and printed "0 kWh / 0 kW" on a project whose Results rail showed
+     2,580 kW and 5,015 kWh, because the fleet was placed on the drawing
+     and never itemised. Read the drawing, fall back to the list. */
+  let totalKwh = S.bessList.reduce((s,b)=>s+(+(b.kwh||0))*(+(b.qty||1)),0);
+  let totalKw  = S.bessList.reduce((s,b)=>s+(+(b.kw||0))*(+(b.qty||1)),0);
+  try{
+    if(!(totalKwh>0) && typeof omegaBessKwh==='function') totalKwh = +omegaBessKwh()||0;
+    if(!(totalKw >0) && typeof omegaBessKw ==='function') totalKw  = +omegaBessKw() ||0;
+  }catch(e){}
+  const solarKwDc = (typeof omegaSolarKwDc==='function') ? (+omegaSolarKwDc()||0) : 0;
+  const solarCost = +(window._SOLAR_TOTAL||0);
 
   // EMS fields
-  const emsOn   = document.getElementById('ems-toggle')?.checked !== false;
+  const emsOn   = document.getElementById('ems-toggle')?.checked === true;
   const emsRate = +(document.getElementById('ems-rate')?.value||12);
   const emsAnnual = window._EMS_ANNUAL || 0;
 
@@ -23999,6 +24087,9 @@ function calcProposalCosts() {
     bessEqCost: bessEqOnly,
     bessInstall: bessInstOnly,
     bessTotal,
+    solarCost, solarKwDc,
+    benchmarked: !!(window._BESS_IS_BENCHMARK || window._SOLAR_IS_BENCHMARK),
+    benchSource: (window.OMEGA_BENCH && window.OMEGA_BENCH.source) || '',
     siteEq,
     condCost: condTotal,
     indirect,
@@ -24030,6 +24121,7 @@ function openProposalExport() {
       <span style="color:#E2EEF9;font-family:'IBM Plex Mono',monospace;font-weight:700">${c.fmt(val)}</span>
     </div>`;
   document.getElementById('prop-cost-lines').innerHTML = [
+    (c.solarCost > 0 ? row(`  Solar PV (${Math.round(c.solarKwDc).toLocaleString()} kW-DC)`, c.solarCost, '#FBBF24') : ''),
     row(`  BESS Equipment (${Math.round(c.totalKwh)}kWh)`, c.bessEqCost, '#60A5FA'),
     row('   BESS Installation Labor', c.bessInstall),
     c.siteEq > 0 ? row('  Site Equipment', c.siteEq) : '',
@@ -24719,7 +24811,9 @@ function getBessCostAuto(kwh, override) {
 const INC_CATALOG = [
   { id:'itc',    tag:'tax',       name:'Federal ITC (30%)',               type:'pct-project', rate:30,   desc:'30% of project cost as federal tax credit (IRA  48/ 48E).' },
   { id:'ira48e', tag:'tax',       name:'IRA  48E Standalone Storage',     type:'pct-project', rate:30,   desc:'Standalone BESS ITC. Stacks with domestic content (+10%) and energy community (+10%) adders.' },
-  { id:'macrs',  tag:'tax',       name:'MACRS 5-yr Depreciation',         type:'fixed',       rate:0,    desc:'5-yr accelerated depreciation -- value depends on client tax rate.' },
+  { id:'domcon', tag:'tax',       name:'Domestic Content Adder (+10%)',   type:'pct-project', rate:10,   desc:'IRA  48/ 48E domestic content bonus. Requires the steel/iron and manufactured-product thresholds be met -- e.g. domestically manufactured BESS and racking. Stacks on top of the base 30% ITC.' },
+  { id:'enercom',tag:'tax',       name:'Energy Community Adder (+10%)',   type:'pct-project', rate:10,   desc:'IRA  48/ 48E energy community bonus for qualifying census tracts (coal closure, brownfield, or fossil-employment areas). Verify the site tract before claiming.' },
+  { id:'macrs',  tag:'tax',       name:'MACRS 5-yr Depreciation',         type:'fixed',       rate:0,    desc:'5-yr accelerated depreciation -- value depends on client tax rate. Enter the modelled tax benefit; 100% bonus depreciation is entered here as a fixed value.' },
   { id:'sgip',   tag:'rebate',    name:'SGIP (CA -- $325/kWh)',            type:'per-kwh',     rate:325,  desc:'CA Self-Generation Incentive Program. PG&E/SCE/SDG&E/LADWP territories.' },
   { id:'comed',  tag:'rebate',    name:'ComEd BESH Rebate ($250/kWh)',    type:'per-kwh',     rate:250,  desc:'ComEd DG Storage Rebate -- standalone BESS qualifies per §16-107.6 PUA (CRGA amendment 2026, ICC Docket 25-0678, eff. July 2026). C&I $250/kWh nameplate. Must enroll in DR/peak load reduction program. Interconnect via Part 466 Level 3 non-export ($500 + $2/kW).' },
   { id:'dr',     tag:'revenue',   name:'Demand Response (Utility)',       type:'fixed',       rate:0,    desc:'Annual demand response program enrollment. Enter estimated annual value.' },
@@ -24877,14 +24971,41 @@ function updateCostEst() {
   }
 
   // Site equipment
-  const pad = +($v('ce-pad')||4800), disco = +($v('ce-disco')||3200);
-  const meter = +($v('ce-meter')||3850), bollards = +($v('ce-bollards')||4800);
-  const jbox = +($v('ce-jbox')||850), panel = +($v('ce-panel')||18500);
-  const misc = +($v('ce-misc')||8500);
+  /* ── SITE EQUIPMENT: unit price x WHAT IS ACTUALLY PLACED ───────────
+     These were summed as flat allowances, so an empty drawing carried
+     $44,500 of pads, disconnects, meters, bollards, j-boxes and a 2000A
+     panelboard that nobody had drawn. Each line is now the unit price on
+     the cost sheet multiplied by the count of that item on the canvas, so
+     the estimate grows as the design does.
+
+     The input fields keep their unit prices -- edit those to re-rate a
+     line. `ce-bollards` was labelled "Bollards (8x)" as a lot price; it is
+     now read per bollard, so its default is the lot divided by 8. */
+  const _n = (id) => (S.elements||[]).filter(function(e){ return e && e.eqId===id; }).length;
+  const _padN  = _n('pad');
+  const _discoN= _n('disco');
+  const _meterN= _n('meter');
+  const _bollN = _n('bollard');
+  const _jboxN = _n('jbox');
+  const _panelN= _n('panel');
+
+  const pad      = (+($v('ce-pad')     ||4800)) * _padN;
+  const disco    = (+($v('ce-disco')   ||3200)) * _discoN;
+  const meter    = (+($v('ce-meter')   ||3850)) * _meterN;
+  const bollards = (+($v('ce-bollards')|| 600)) * _bollN;
+  const jbox     = (+($v('ce-jbox')    || 850)) * _jboxN;
+  const panel    = (+($v('ce-panel')   ||18500))* _panelN;
+  /* Misc site hardware is a judgement allowance, so it only applies once
+     there is real site equipment to be miscellaneous about. */
+  const _siteItems = _padN+_discoN+_meterN+_bollN+_jboxN+_panelN;
+  const misc = _siteItems > 0 ? +($v('ce-misc')||0) : 0;
+
   // Transformer cost line (added to site equipment if needed)
-  const hasXfmr = S.elements.some(e=>e.eqId==='transformer') || S.bessList.some(b=>b.xfmr && b.xfmr !== 'N/A');
+  const hasXfmr = S.elements.some(e=>e.eqId==='transformer'||e.eqId==='xfmr') || S.bessList.some(b=>b.xfmr && b.xfmr !== 'N/A');
   const xfmrCost = hasXfmr ? +($v('ce-xfmr')||22000) : 0;
   const siteEq = pad + disco + meter + bollards + jbox + panel + misc + xfmrCost;
+  window._SITE_EQ_COUNTS = { pad:_padN, disco:_discoN, meter:_meterN,
+                             bollard:_bollN, jbox:_jboxN, panel:_panelN };
 
   // Conduit from actual drawn runs
   let condTotal = 0;
@@ -24977,20 +25098,26 @@ function updateCostEst() {
   if(ctEl) ctEl.textContent = condTotal>0 ? fmt(condTotal) : '$--';
 
   // EMS Software fee
-  const emsOn = document.getElementById('ems-toggle')?.checked !== false;
+  const emsOn = document.getElementById('ems-toggle')?.checked === true;
   const emsRate = +($v('ems-rate')||12);
   const emsSetup = +($v('ems-setup')||4500);
-  const kwh_total = S.bessList.reduce((s,b)=>s+(+(b.kwh||0))*(+(b.qty||1)),0)||760;
-  const emsAnnual = emsOn ? kwh_total * emsRate : 0;
-  const emsCost   = emsOn ? emsSetup + emsAnnual : 0; // Year 1 cost
+  /* The old `|| 760` invented 760 kWh of storage whenever bessList was empty,
+     so an empty drawing was billed 760 x $12 = $9,120/yr of EMS software plus
+     a $4,500 setup. EMS is priced per kWh of storage: no storage, no fee. */
+  const kwh_total = S.bessList.reduce((s,b)=>s+(+(b.kwh||0))*(+(b.qty||1)),0);
+  const emsAnnual = (emsOn && kwh_total > 0) ? kwh_total * emsRate : 0;
+  const emsCost   = (emsOn && kwh_total > 0) ? emsSetup + emsAnnual : 0; // Year 1 cost
   const emsCalcEl = document.getElementById('ems-calc');
   if(emsCalcEl) emsCalcEl.textContent = emsOn ? `$${Math.round(emsAnnual).toLocaleString()}/yr` : 'OFF';
   // Store annual EMS for ROI
   window._EMS_ANNUAL = emsAnnual;
 
   // Indirect
-  const eng = +($v('ce-eng')||15000), perm = +($v('ce-perm')||3500);
-  const comm = +($v('ce-comm')||8500);
+  /* Soft costs are entered on the cost sheet when the job is actually
+     scoped -- they are not allowances the drawing can infer. Blank means
+     zero, not "assume $27,000". */
+  const eng = +($v('ce-eng')||0), perm = +($v('ce-perm')||0);
+  const comm = +($v('ce-comm')||0);
   const indirect = eng + perm + comm + emsCost;
 
   // EV charging equipment + install (from chargers placed on the map).
@@ -25001,10 +25128,52 @@ function updateCostEst() {
   // NOTE: conduit & wiring is NOT added here — its labor + material is already
   // covered inside the BESS install cost. condTotal is tracked purely as a
   // MATERIALS estimate (for the sourcing BOM), not as an extra project charge.
-  const sub = bessTotal + siteEq + indirect + evTotal;
+  /* ── SCOPE GATE ────────────────────────────────────────────────────
+     Site equipment ($44,500 of pad / disconnect / meter / bollards / j-box /
+     panel / misc allowances) and the indirects ($15,000 engineering + $3,500
+     permitting + $8,500 commissioning) are FIXED DEFAULTS on the Construction
+     Cost form. They were summed unconditionally, so a drawing with nothing on
+     it still totalled $93,632 -- allowances against a scope that does not
+     exist yet.
+
+     These are real line items once there IS a project, so they are kept, but
+     they only apply when something priceable has actually been placed. This
+     follows the rule already stated in the BESS block above: cost reflects
+     what's PLACED. Annotations and dimension shapes do not count -- a label
+     on a roof is not a scope of work. */
+  var _placedKw = 0;
+  try{
+    var _d = (typeof omegaDer==='function') ? omegaDer() : null;
+    if(_d) _placedKw = (+_d.solarKwDc||0) + (+_d.windKw||0) + (+_d.altKw||0);
+  }catch(e){}
+
+  /* ── SOLAR ────────────────────────────────────────────────────────
+     There was no PV line in this model at all: `sub` summed BESS, site
+     equipment, indirects and EV only, so a 6,125 kW-DC array was priced
+     at ZERO and a multi-megawatt job totalled a few hundred thousand
+     dollars. Priced off the benchmark $/Wdc for the array size. */
+  var solarTotal = 0;
+  try{ solarTotal = omegaSolarCost(); }catch(e){}
+
+  /* ── BESS FALLBACK ────────────────────────────────────────────────
+     bessTotal comes off S.bessList, which is the itemised vendor list.
+     A fleet placed on the drawing but never itemised left it at zero
+     while the Results rail happily read 2,580 kW / 5,015 kWh from the
+     same drawing. Fall back to the benchmark so the two agree. */
+  var _benchBess = 0;
+  if(bessTotal <= 0){
+    try{ _benchBess = omegaBessBenchCost(); }catch(e){}
+    if(_benchBess > 0){ bessTotal = _benchBess; }
+  }
+  window._BESS_IS_BENCHMARK = _benchBess > 0;
+  window._SOLAR_IS_BENCHMARK = solarTotal > 0;
+
+  const inScope = (bessTotal > 0) || (evTotal > 0) || (_placedKw > 0) || (solarTotal > 0);
+
+  const sub = inScope ? (bessTotal + solarTotal + siteEq + indirect + evTotal) : 0;
   const contPct = +($v('ce-cont')||10)/100;
   const cont = sub * contPct;
-  const TOTAL = sub + cont;
+  let TOTAL = sub + cont;
 
   // $/kW metric
   const totalKW = S.bessList.reduce((s,b)=>s+(+(b.kw||0))*(+(b.qty||1)),0);
@@ -25030,6 +25199,7 @@ function updateCostEst() {
         <span style="color:var(--text);font-size:10px;font-weight:600;font-family:'IBM Plex Mono',monospace">${fmt(val)}</span>
       </div>`;
     bd.innerHTML =
+      (solarTotal > 0 ? row('  Solar PV (equip + install)', solarTotal, '#FBBF24') : '') +
       row('  BESS Equipment + Install', bessTotal, 'var(--accent)') +
       (evTotal > 0 ? row('  EV Charging (equip + install)', evTotal, '#22D3EE') : '') +
       row('   Site Equipment', siteEq - xfmrCost, 'var(--amber)') +
@@ -25052,14 +25222,30 @@ function updateCostEst() {
   }
 
   // Store all line totals for export
+  /* Publish zeros when out of scope so every downstream consumer -- the
+     Results rail, the proposal, the BOM, the CSV export -- agrees with the
+     panel instead of each re-deriving its own phantom subtotal. */
+  /* ── CONTRACTED COST OVERRIDE ──────────────────────────────────────
+     A benchmark build-up is what you use BEFORE a price exists. Once a
+     pro forma or an EPC number is in hand, that number is the truth and
+     the estimate should stop arguing with it. Entering it here drives
+     the proposal, the ITC basis, IRR, payback and LCOE, so the whole
+     document set agrees with the deal rather than with the model. */
+  var _actual = +($v('ce-actual-total')||0);
+  if(_actual > 0){ TOTAL = _actual; }
+  window._COST_IS_CONTRACTED = _actual > 0;
+  window._COST_BENCHMARK = sub + cont;   /* keep the build-up for comparison */
+
+  window._IN_SCOPE = inScope;
   window._COST_TOTAL = TOTAL;
+  window._SOLAR_TOTAL = solarTotal;
   window._BESS_TOTAL = bessTotal;
   window._EV_TOTAL = evTotal;
   window._EV_COST_DETAIL = _evCosts;
-  window._SITE_EQ_TOTAL = siteEq;
+  window._SITE_EQ_TOTAL = inScope ? siteEq : 0;
   window._CONDUIT_TOTAL = condTotal;
-  window._INDIRECT_TOTAL = indirect;
-  window._EMS_COST_TOTAL = emsCost;
+  window._INDIRECT_TOTAL = inScope ? indirect : 0;
+  window._EMS_COST_TOTAL = inScope ? emsCost : 0;
   window._CONT_TOTAL = cont;
   window._CONT_PCT = Math.round(contPct*100);
   // Refresh the live cost-breakdown bar wherever it's shown.
@@ -31849,7 +32035,7 @@ function exportSpecSheet() {
   const today       = new Date().toLocaleDateString('en-US',{month:'long',day:'numeric',year:'numeric'});
   const kwh_total   = S.bessList.reduce((s,x)=>s+(+(x.kwh||0))*(+(x.qty||1)),0);
   const kw_total    = S.bessList.reduce((s,x)=>s+(+(x.kw||0))*(+(x.qty||1)),0);
-  const emsOn       = document.getElementById('ems-toggle')?.checked !== false;
+  const emsOn       = document.getElementById('ems-toggle')?.checked === true;
   const emsRate     = +(document.getElementById('ems-rate')?.value||12);
   const emsAnnual   = window._EMS_ANNUAL || 0;
   const grossCost   = window._COST_TOTAL || 0;
@@ -50609,6 +50795,66 @@ function _dcfcPickSite(id){ DCFC.siteType=id;
   m.querySelectorAll('.dcfc-st').forEach(function(el){ var on=el.dataset.st===id;
     el.style.borderColor=on?'#F5A623':'#26364d'; el.style.background=on?'rgba(245,166,35,.1)':'rgba(0,0,0,.15)'; el.classList.toggle('sel',on); });
 }
+/* ═══════════════════════════════════════════════════════════════════
+ *  BENCHMARK CAPITAL COSTS
+ *  ------------------------------------------------------------------
+ *  Source: NREL / DOE SETO PV System Cost Benchmark, 2024 values, and
+ *  NREL "Cost Projections for Utility-Scale Battery Storage: 2025
+ *  Update" (bottom-up 2024 model).
+ *
+ *    PV, installed $/Wdc      residential 3.25 . commercial 1.55 . utility 1.15
+ *    BESS, installed          $241/kWh energy + $379/kW power
+ *
+ *  The BESS split is used rather than a flat $/kWh because a flat rate
+ *  only holds at 4-hour duration. At 4h the split reproduces NREL's
+ *  headline ~$334/kWh; at the ~1.9h duration on this project it
+ *  correctly prices the inverter-heavy power side.
+ *
+ *  These are BENCHMARKS, not quotes -- they exist so an estimate is in
+ *  the right order of magnitude before vendor pricing lands. Every one
+ *  is editable on the Construction Cost sheet.
+ * ═══════════════════════════════════════════════════════════════════ */
+var OMEGA_BENCH = {
+  pvResidential: 3.25,   // $/Wdc
+  pvCommercial:  1.55,   // $/Wdc
+  pvUtility:     1.15,   // $/Wdc
+  bessKwh:        241,   // $/kWh (energy component)
+  bessKw:         379,   // $/kW  (power component)
+  source: 'NREL/DOE SETO PV benchmark (2024) . NREL utility-scale storage 2025 update'
+};
+window.OMEGA_BENCH = OMEGA_BENCH;
+
+/* Sector rate by array size -- a 6 MW ground mount is not priced like a
+   200 kW rooftop, and neither is priced like a 200 MW utility farm. */
+function omegaPvRate(kwDc){
+  var k = +kwDc || 0;
+  if(k < 100)    return OMEGA_BENCH.pvResidential;
+  if(k < 20000)  return OMEGA_BENCH.pvCommercial;
+  return OMEGA_BENCH.pvUtility;
+}
+window.omegaPvRate = omegaPvRate;
+
+/* Benchmark cost of whatever solar is actually on the drawing. */
+function omegaSolarCost(){
+  var kw = (typeof omegaSolarKwDc==='function') ? (+omegaSolarKwDc()||0) : 0;
+  if(kw <= 0) return 0;
+  var r = +(($v && $v('ce-pv-wdc')) || 0) || omegaPvRate(kw);
+  return kw * 1000 * r;
+}
+window.omegaSolarCost = omegaSolarCost;
+
+/* Benchmark cost of the placed BESS fleet, for when nothing has been
+   itemised on the BESS list yet. */
+function omegaBessBenchCost(){
+  var kwh = (typeof omegaBessKwh==='function') ? (+omegaBessKwh()||0) : 0;
+  var kw  = (typeof omegaBessKw ==='function') ? (+omegaBessKw() ||0) : 0;
+  if(kwh<=0 && kw<=0) return 0;
+  var rE = +(($v && $v('ce-bess-kwh')) || 0) || OMEGA_BENCH.bessKwh;
+  var rP = +(($v && $v('ce-bess-kw'))  || 0) || OMEGA_BENCH.bessKw;
+  return kwh*rE + kw*rP;
+}
+window.omegaBessBenchCost = omegaBessBenchCost;
+
 function _dcfcSyncPorts(){
   /* Level 2 owns its own picker (_l2Sync). Falling through here after the L2
      modal closes would reset chargers to the DCFC default of 2 and swap the
@@ -50617,9 +50863,14 @@ function _dcfcSyncPorts(){
   var models=_dcfcModels();
   DCFC.modelId=(document.getElementById('dcfc-model')||{}).value||DCFC.modelId;
   DCFC.model=models.filter(function(m){return m.id===DCFC.modelId;})[0]||models[0];
-  DCFC.chargers=Math.max(1,parseInt((document.getElementById('dcfc-count')||{}).value||'2',10));
-  DCFC.ports=Math.max(1,parseInt((document.getElementById('dcfc-ports')||{}).value||'2',10));
-  DCFC.spare=Math.max(0,parseInt((document.getElementById('dcfc-spare')||{}).value||'1',10));
+  /* Same rule as _l2Sync: a missing input means the modal has closed, not
+     that the user wants the default. Keep whatever is already on DCFC. */
+  var _cEl=document.getElementById('dcfc-count');
+  var _pEl=document.getElementById('dcfc-ports');
+  var _sEl=document.getElementById('dcfc-spare');
+  DCFC.chargers = _cEl ? Math.max(1,parseInt(_cEl.value||'2',10)) : Math.max(1, parseInt(DCFC.chargers,10)||2);
+  DCFC.ports    = _pEl ? Math.max(1,parseInt(_pEl.value||'2',10)) : Math.max(1, parseInt(DCFC.ports,10)||2);
+  DCFC.spare    = _sEl ? Math.max(0,parseInt(_sEl.value||'1',10)) : Math.max(0, parseInt(DCFC.spare,10)||0);
   var totalPorts=DCFC.chargers*DCFC.ports;
   var totalKW=DCFC.model?DCFC.model.kw*DCFC.chargers:0;
   var el=document.getElementById('dcfc-summary');
@@ -51137,8 +51388,17 @@ function _l2Sync(){
   var lm=_l2Model();
   var ampSel=document.getElementById('l2-amps');
   DCFC.l2amps = ampSel ? Math.max(1,parseInt(ampSel.value||'48',10)) : (DCFC.l2amps||_l2AmpsFor(lm));
-  var n=Math.max(1,parseInt((document.getElementById('dcfc-count')||{}).value||'1',10));
-  var sp=Math.max(0,parseInt((document.getElementById('dcfc-spare')||{}).value||'0',10));
+  /* Read the pickers ONLY while they exist. _l2StartPlacing removes the L2
+     modal before calling _dcfcStartPlacing, which calls _dcfcSyncPorts ->
+     _l2Sync again -- at which point getElementById returns null and the old
+     `||'1'` default silently reset the count to ONE. Whatever the user typed
+     in "How many" was discarded between pressing Start Placing and the first
+     click, so a 2-charger job placed one EVSE and finished. Falling back to
+     the value already on DCFC keeps the user's choice. */
+  var _cEl=document.getElementById('dcfc-count');
+  var _sEl=document.getElementById('dcfc-spare');
+  var n  = _cEl ? Math.max(1,parseInt(_cEl.value||'1',10)) : Math.max(1, parseInt(DCFC.chargers,10)||1);
+  var sp = _sEl ? Math.max(0,parseInt(_sEl.value||'0',10)) : Math.max(0, parseInt(DCFC.spare,10)||0);
   DCFC.chargers=n; DCFC.spare=sp; DCFC.ports=(lm&&lm.ports)||1;
   var el=document.getElementById('l2-summary');
   if(el){
@@ -51417,6 +51677,10 @@ _dcfcStartPlacing=function(){
   _dcfcSyncPorts();
   var m=document.getElementById('dcfc-modal'); if(m) m.remove();
   DCFC.active=true;
+  DCFC.chargers = Math.max(1, parseInt(DCFC.chargers,10)||1);
+  /* Build marker: if this line is missing from the console, the deployed
+     build predates the charger-count fix and will only ever place one. */
+  try{ console.info('[omega] guided build starting \u2014 chargers =', DCFC.chargers); }catch(e){}
   DCFC.phase='poi'; DCFC.stepIx=0; DCFC.placed={}; DCFC.chargerEls=[]; DCFC.chargersLeft=DCFC.chargers;
   DCFC.lastEl=null; DCFC._surface='soil'; DCFC._activeRun=null; DCFC._lastEnd=null;
   _dcfcDraw=null;
@@ -53124,27 +53388,71 @@ function _evZoneSet(key, val){
    kW class. Install is estimated as a fraction of equipment (make-ready,
    mounting, commissioning) unless an explicit installCost is present.
    These are planning-grade defaults the user can override in the cost panel. */
+/* ═══════════════════════════════════════════════════════════════════
+ *  AUTEL PRICE BOOK -- April 2026 (LHE_Autel_Charger_Product_Price)
+ *  ------------------------------------------------------------------
+ *  Each Autel entry carries BOTH sides of the sheet:
+ *      cost = the Lionheart / tier price we actually pay
+ *      msrp = Autel list, for a sell-side proposal
+ *  `eq` is what the estimate consumes and follows OMEGA_PRICE_BASIS
+ *  ('cost' default, or 'msrp'). Flip it with omegaPriceBasis('msrp').
+ *
+ *  Tier used is noted per line -- the sheet publishes different tier
+ *  structures per family (Lionheart column where it exists, otherwise
+ *  T1/T2 per Autel's discount policy). Install figures are OUR labour
+ *  estimates, not Autel's -- the sheet prices hardware only, FOB
+ *  Greensboro NC, exclusive of tax, freight and commissioning.
+ * ═══════════════════════════════════════════════════════════════════ */
+var OMEGA_PRICE_BASIS = 'cost';
+function omegaPriceBasis(b){
+  if(b==='cost'||b==='msrp'){
+    OMEGA_PRICE_BASIS=b;
+    try{ _rebuildEvCost(); if(typeof updateCostEstimate==='function') updateCostEstimate(); }catch(e){}
+  }
+  return OMEGA_PRICE_BASIS;
+}
+window.omegaPriceBasis=omegaPriceBasis;
+
+/* pn = Autel part number, so a quote can be raised straight off this. */
+var AUTEL_PRICES = {
+  /* ---- Level 2 AC ------------------------------------------------- */
+  autel_ac_elite:  { cost:714,    msrp:1190,   install:2200, pn:'MCC50AHI',        tier:'T1 40%',     note:'AC Elite Commercial 50A, in-body holster' },
+  autel_single:    { cost:800,    msrp:1143,   install:1800, pn:'UW12-J0650CA0002',tier:'Lionheart',  note:'AC Single 50A LCD, J1772, 19 ft, 5 yr warranty' },
+  autel_ac_pro:    { cost:1119,   msrp:1599,   install:2600, pn:'UW19L002',        tier:'Lionheart',  note:'AC Pro 80A commercial, J1772, 25 ft' },
+  autel_ac_ultra:  { cost:5835,   msrp:7780,   install:3400, pn:'MU38FP7C',        tier:'Lionheart',  note:'AC Ultra floor-standing dual-port full set: 25 ft cable + front post + 9 ft CMS + POS' },
+  /* ---- DC ---------------------------------------------------------- */
+  autel_dc_compact:   { cost:10725, msrp:16500,  install:16000, pn:'UW040A2501', tier:'T1 35%',    note:'DC Compact 40 kW, dual CCS. No pedestal/POS/trolley.' },
+  autel_fast_disp:    { cost:63400, msrp:79250,  install:20000, pn:'UF240A4001', tier:'Lionheart', note:'DC Fast 240 kW, boost cable' },
+  autel_fast_cab:     { cost:63400, msrp:79250,  install:34000, pn:'UF240A4001', tier:'Lionheart', note:'DC Fast 240 kW large cabinet' },
+  autel_dc_fast_aio:  { cost:63400, msrp:79250,  install:36000, pn:'UF240A4001', tier:'Lionheart', note:'DC Fast 240 kW all-in-one' },
+  autel_dh240:        { cost:77850, msrp:103800, install:42000, pn:'UH320',      tier:'Lionheart', note:'DH320 air-cooled two-port + POS + CMS (nearest listed to 240 kW class)' },
+  autel_dh480:        { cost:86250, msrp:115000, install:60000, pn:'UH480',      tier:'Lionheart', note:'DH480 air-cooled two-port, 15in screen, POS + CMS' },
+  autel_hipower_cab:  { cost:113600,msrp:142000, install:45000, pn:'HP640',      tier:'T2 20%',    note:'HiPower 640 kW power cabinet only' },
+  autel_dc_hipower:   { cost:160800,msrp:201000, install:80000, pn:'HP640+LCD',  tier:'T2 20%',    note:'HiPower 640 kW cabinet + liquid-cooled dual-port dispenser' },
+  autel_hipower_disp: { cost:47200, msrp:59000,  install:22000, pn:'LCDP',       tier:'T2 20%',    note:'HiPower liquid-cooled dual-port dispenser (CMS std)' }
+};
+window.AUTEL_PRICES = AUTEL_PRICES;
+
 var EVC_COST = {
-  /* DCFC posts / dispensers / all-in-one (by catalog id) */
+  /* Non-Autel units keep their prior estimates -- no price book for these. */
   tesla_v4_post:      { eq:45000,  install:38000 },
   tesla_v4_unit:      { eq:45000,  install:38000 },
   tesla_v3_cab:       { eq:70000,  install:30000 },
-  alpitronic_hyc400:  { eq:165000, install:70000 },
-  autel_hipower_disp: { eq:32000,  install:22000 },
-  autel_hipower_cab:  { eq:120000, install:45000 },
-  autel_fast_disp:    { eq:26000,  install:20000 },
-  autel_fast_cab:     { eq:78000,  install:34000 },
-  autel_dc_compact:   { eq:28000,  install:16000 },
-  autel_dh240:        { eq:88000,  install:42000 },
-  autel_dh480:        { eq:135000, install:60000 },
-  autel_dc_fast_aio:  { eq:72000,  install:36000 },
-  autel_dc_hipower:   { eq:180000, install:80000 },
-  /* Level 2 */
-  autel_ac_elite:     { eq:1200,   install:2200 },
-  autel_ac_pro:       { eq:1600,   install:2600 },
-  autel_ac_ultra:     { eq:2400,   install:3400 },
-  autel_single:       { eq:900,    install:1800 }
+  alpitronic_hyc400:  { eq:165000, install:70000 }
 };
+
+/* Fold the Autel book into EVC_COST at the active basis. */
+function _rebuildEvCost(){
+  var useMsrp = (OMEGA_PRICE_BASIS === 'msrp');
+  for(var k in AUTEL_PRICES){
+    if(!AUTEL_PRICES.hasOwnProperty(k)) continue;
+    var a = AUTEL_PRICES[k];
+    EVC_COST[k] = { eq: useMsrp ? a.msrp : a.cost, install: a.install,
+                    pn: a.pn, tier: a.tier, msrp: a.msrp, cost: a.cost };
+  }
+  window.EVC_COST = EVC_COST;
+}
+_rebuildEvCost();
 /* Estimate a cost when no explicit entry exists: scale by kW for DC, flat-ish
    for L2. Returns {eq, install}. */
 function _evEstCost(kind, def){
