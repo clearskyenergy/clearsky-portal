@@ -555,11 +555,30 @@ function applyBaselineFromSite(opts){
   var trn = turf ? B.perFoot.trenchTurf : (state==='MA' ? B.perFoot.trenchMA : B.perFoot.trenchCT);
   var peds = Math.max(1, Math.ceil(ports/2));   /* dual-port pedestals */
 
-  L('EVSE','EVSE hardware \u2014 '+(DATA.evModel||'Level 2'), ports,'EA',
-    chg.mat*ports, 0, 'evse','charger');
+  /* ── EVSE hardware ────────────────────────────────────────────────
+     When the editor handed over a real fleet, price each model at its
+     price-book figure and name the part number, instead of collapsing
+     everything into one generic $/port line. The rate card stays as the
+     fallback for a workbook opened without a handoff. */
+  if(EDITOR_FLEET && EDITOR_FLEET.length){
+    for(var _q=0; _q<EDITOR_FLEET.length; _q++){
+      var _u = EDITOR_FLEET[_q];
+      var _lbl = 'EVSE hardware \u2014 ' + (_u.mfr ? _u.mfr+' ' : '') + (_u.model||'charger')
+               + (_u.kw ? ' ('+_u.kw+' kW)' : '')
+               + (_u.pn ? ' \u00b7 PN '+_u.pn : '');
+      L('EVSE', _lbl, _u.qty, 'EA', (_u.unitCost||0)*_u.qty, 0, 'evse','charger');
+      if(_u.unitInstall)
+        L('EVSE','EVSE installation \u2014 '+(_u.model||'charger'), _u.qty,'EA',
+          0, (_u.unitInstall||0)*_u.qty, 'mr','other');
+    }
+  } else {
+    L('EVSE','EVSE hardware \u2014 '+(DATA.evModel||'Level 2'), ports,'EA',
+      chg.mat*ports, 0, 'evse','charger');
+  }
   L('EVSE','Pedestals & mounting', peds,'EA',
     B.perUnit.pedestal.mat*peds, B.perUnit.pedestal.lab*peds, 'evse','pedestal');
-  L('EVSE','EVSE installation', ports,'EA', 0, B.perPort.install.lab*ports, 'mr','other');
+  if(!(EDITOR_FLEET && EDITOR_FLEET.length))
+    L('EVSE','EVSE installation', ports,'EA', 0, B.perPort.install.lab*ports, 'mr','other');
   L('Soft cost','Design & engineering', ports,'EA', 0, B.perPort.design.lab*ports, 'mr','design');
   L('Soft cost','Permitting & inspections', 1,'LS', 0, B.perSite.permit.lab, 'mr','permit');
   L('Electrical','Distribution equipment / panel', 1,'LS',
@@ -1386,11 +1405,39 @@ function packEstimate(est, w){
     site.applicant=(w.document.getElementById('pname')||{}).value||'';
     site.address  =(w.document.getElementById('addr-in')||{}).value||'';
   }catch(e){}
-  return { lines:items, crewRate:crew, site:site, trenchFt:(est.bom&&est.bom.trenchFt)||0 };
+  /* Same fleet data the postMessage path carries, for the same-origin
+     window.opener path. Without it a direct pull priced chargers off the
+     generic rate card while a postMessage pull used the price book. */
+  var fleet=null, basis=null, evT=null;
+  try{ if(w && typeof w.evChargerCosts==='function'){
+    fleet=[]; var _c=w.evChargerCosts();
+    for(var mk in _c.byModel){ if(!_c.byModel.hasOwnProperty(mk)) continue;
+      var mm=_c.byModel[mk];
+      var bk=(w.EVC_COST&&w.EVC_COST[mk])||null;
+      fleet.push({ id:mk, model:mk, mfr:mm.mfr||'', qty:mm.qty, kw:mm.kw||0,
+        unitCost: mm.qty?Math.round((mm.eq/mm.qty)*100)/100:0,
+        unitInstall: mm.qty?Math.round((mm.install/mm.qty)*100)/100:0,
+        eq:Math.round(mm.eq), install:Math.round(mm.install),
+        pn:(bk&&bk.pn)||'', tier:(bk&&bk.tier)||'' });
+    }
+    basis = w.OMEGA_PRICE_BASIS||null;
+    if(typeof w.evChargerTotals==='function'){ var t=w.evChargerTotals();
+      evT={ports:t.ports,l2Units:t.l2Units,dcfcUnits:t.dcfcUnits,l2Kw:t.l2Kw,dcfcKw:t.dcfcKw}; }
+  } }catch(e){}
+  return { lines:items, crewRate:crew, site:site, trenchFt:(est.bom&&est.bom.trenchFt)||0,
+           chargers:fleet, priceBasis:basis, evTotals:evT };
 }
+/* Charger fleet handed over by the editor: real models, part numbers and
+   price-book figures. Held here so the baseline rows and the port count
+   use what is on the drawing rather than a generic port. */
+var EDITOR_FLEET = null, EDITOR_BASIS = null, EDITOR_EVT = null;
+
 function loadPayload(pay){
   LINES=[];
   var i;
+  EDITOR_FLEET = (pay.chargers && pay.chargers.length) ? pay.chargers : null;
+  EDITOR_BASIS = pay.priceBasis || null;
+  EDITOR_EVT   = pay.evTotals   || null;
   for(i=0;i<pay.lines.length;i++) addLine(pay.lines[i]);
   if(pay.crewRate) document.getElementById('p_crew').value=pay.crewRate;
   if(pay.site){
@@ -1406,8 +1453,15 @@ function loadPayload(pay){
      footage, so it is priced here rather than left for retyping. */
   var _std={added:0,filled:0};
   try{ _std=addStandardRows(); }catch(e){}
+  var _fleetNote = '';
+  if(EDITOR_FLEET && EDITOR_FLEET.length){
+    var _n=0, _f2;
+    for(_f2=0;_f2<EDITOR_FLEET.length;_f2++) _n += (EDITOR_FLEET[_f2].qty||0);
+    _fleetNote = ' '+_n+' charger'+(_n===1?'':'s')+' priced from the editor price book'
+               + (EDITOR_BASIS ? ' ('+esc(EDITOR_BASIS)+' basis)' : '') + '.';
+  }
   msg('srcMsg','Loaded '+LINES.length+' cost lines \u2014 '+_std.added+' standard items added and '
-      +_std.filled+' priced from the rate card. Review before exporting.','ok');
+      +_std.filled+' priced from the rate card.'+_fleetNote+' Review before exporting.','ok');
   try{ localStorage.removeItem('OMEGA_EV_COST_HANDOFF'); }catch(e){}
   renderSiteForm(); render();
 }
@@ -1647,6 +1701,19 @@ function autofillFeet(){
   render();
 }
 function autofillPlugs(){
+  /* The editor counts ports from the placed fleet -- dual-port units are
+     two ports, which counting charger LINES cannot know. Prefer it. */
+  if(EDITOR_EVT && EDITOR_EVT.ports > 0){
+    DATA.plugs = Math.round(EDITOR_EVT.ports);
+    var _mk = Math.max(EDITOR_EVT.dcfcKw||0, EDITOR_EVT.l2Kw||0);
+    if(EDITOR_FLEET && EDITOR_FLEET.length){
+      _mk = 0;
+      for(var _f=0;_f<EDITOR_FLEET.length;_f++) if(EDITOR_FLEET[_f].kw>_mk) _mk=EDITOR_FLEET[_f].kw;
+    }
+    if(_mk>0){ DATA.kw1=_mk; DATA.kwsim=Math.round(_mk*DATA.plugs*10)/10; }
+    syncField('plugs'); syncField('kw1'); syncField('kwsim');
+    return;
+  }
   var units=0, kw=0, i, l, m;
   for(i=0;i<LINES.length;i++){
     l=LINES[i];

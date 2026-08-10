@@ -31520,7 +31520,11 @@ function _bomWireGauge(kw) {
 function buildBOM() {
   var items = [];
   var addItem = function(cat, desc, size, qty, unit, note, distSku) {
-    items.push({ category:cat, description:desc, size:size||'', qty:qty, unit:unit||'ea', note:note||'', sku:distSku||'' });
+    /* Returns the item so a caller can attach a real unit price to it
+       (see the EV charging block) instead of relying on rate-card lookup. */
+    var _o = { category:cat, description:desc, size:size||'', qty:qty, unit:unit||'ea', note:note||'', sku:distSku||'' };
+    items.push(_o);
+    return _o;
   };
 
   var b = (S.bessList && S.bessList[0]) ? S.bessList[0] : null;
@@ -31687,9 +31691,25 @@ function buildBOM() {
     var _mk = Object.keys(_evc.byModel);
     for (var _e=0; _e<_mk.length; _e++) {
       var _m = _evc.byModel[_mk[_e]];
-      addItem('EV Charging', _mk[_e], (_m.kw?String(_m.kw)+' kW':''), _m.qty, 'ea',
+      /* Carry the ACTUAL per-unit equipment price on the item. Without it
+         the estimate falls through _sig() to 'ev|dcfc'/'ev|l2', neither of
+         which exists in ELEC_MAT, so _matFor() returned 0 and every
+         charger -- Autel price book and all -- was estimated at $0
+         material. That zero then rode the handoff into the EV Cost
+         Workbook, where it looked like the sitemap simply had no EVSE. */
+      var _it = addItem('EV Charging', _mk[_e], (_m.kw?String(_m.kw)+' kW':''), _m.qty, 'ea',
               (_m.mfr?_m.mfr+' \u00b7 ':'') + 'equip $'+Math.round(_m.eq).toLocaleString()
               + ' + install $'+Math.round(_m.install).toLocaleString());
+      var _unit = (_m.qty>0) ? (_m.eq/_m.qty) : 0;
+      var _src  = (typeof EVC_COST!=='undefined' && EVC_COST[_mk[_e]]) || null;
+      try{
+        var _tgt = _it;
+        if(_tgt){
+          _tgt.unitCost = Math.round(_unit*100)/100;
+          _tgt.unitLabor = (_m.qty>0) ? Math.round((_m.install/_m.qty)*100)/100 : 0;
+          if(_src){ _tgt.pn = _src.pn||''; _tgt.tier = _src.tier||''; }
+        }
+      }catch(e){}
     }
     if (_evc.units > 0) {
       addItem('EV Charging', 'EV make-ready: pad, bollards, conduit stubs, signage', '', _evc.units, 'site',
@@ -55483,7 +55503,10 @@ function buildEstimate(){
     var sig = _sig(it);
     var qty = +it.qty || 0;
     var lu  = _laborFor(sig);          /* hrs per unit */
-    var mu  = _matFor(sig);            /* $ per unit  */
+    /* An item that knows its own price wins over the rate card. EV
+       chargers come off the Autel price book with a real part number;
+       looking them up by signature threw that away. */
+    var mu  = (it.unitCost != null) ? +it.unitCost : _matFor(sig);
     var autoHrs = qty * lu;
     var autoMat = qty * mu;
     var base = sig+'::'+(it.description||'')+'::'+(it.size||'');
@@ -55991,10 +56014,41 @@ window._elecOpenWorkbook = function(){
                  mat:Math.round(l.mat*100)/100,
                  lab:Math.round(l.hrs*ELEC_BID.crewRate*100)/100 });
   }
+  /* The workbook derives its port count and charger class from EVSE lines,
+     and prices anything it cannot identify off its own closed-job card
+     ($2,495/port L2). Hand over the actual charger fleet -- model, part
+     number, kW, ports and the price book figure -- so it prices what is on
+     the drawing instead of a generic port. */
+  var chargers = [];
+  try{
+    if(typeof evChargerCosts === 'function'){
+      var _c = evChargerCosts();
+      for(var k in _c.byModel){
+        if(!_c.byModel.hasOwnProperty(k)) continue;
+        var m = _c.byModel[k];
+        var bk = (typeof EVC_COST!=='undefined' && EVC_COST[k]) || null;
+        chargers.push({
+          id:k, model:k, mfr:m.mfr||'', qty:m.qty, kw:m.kw||0,
+          ports:(m.ports||null),
+          unitCost: m.qty ? Math.round((m.eq/m.qty)*100)/100 : 0,
+          unitInstall: m.qty ? Math.round((m.install/m.qty)*100)/100 : 0,
+          eq:Math.round(m.eq), install:Math.round(m.install),
+          pn:(bk&&bk.pn)||'', tier:(bk&&bk.tier)||'',
+          msrp:(bk&&bk.msrp)||null, cost:(bk&&bk.cost)||null
+        });
+      }
+    }
+  }catch(err){}
+  var evT = (typeof evChargerTotals==='function') ? evChargerTotals() : null;
+
   var payload = {
     lines: lines,
     crewRate: ELEC_BID.crewRate,
     trenchFt: (e.bom && e.bom.trenchFt) || 0,
+    chargers: chargers,
+    priceBasis: (typeof OMEGA_PRICE_BASIS!=='undefined') ? OMEGA_PRICE_BASIS : 'cost',
+    evTotals: evT ? { ports:evT.ports, l2Units:evT.l2Units, dcfcUnits:evT.dcfcUnits,
+                      l2Kw:evT.l2Kw, dcfcKw:evT.dcfcKw } : null,
     site: {
       applicant: (document.getElementById('pname')||{}).value || '',
       address:   (document.getElementById('addr-in')||{}).value || ''
