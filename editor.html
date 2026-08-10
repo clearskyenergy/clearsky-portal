@@ -3458,7 +3458,7 @@ if(document.readyState==='loading'){
       <div class="ce-row"><span class="ce-lbl">Junction Box</span><input class="ce-inp" id="ce-jbox" type="number" value="850" oninput="_debounceCost()" onfocus="this.select()" onclick="this.select()"></div>
       <div class="ce-row"><span class="ce-lbl">Panelboard (2000A)</span><input class="ce-inp" id="ce-panel" type="number" value="18500" oninput="_debounceCost()" onfocus="this.select()" onclick="this.select()"></div>
       <div class="ce-row"><span class="ce-lbl">Misc Site Hardware</span><input class="ce-inp" id="ce-misc" type="number" value="" placeholder="0" oninput="_debounceCost()" onfocus="this.select()" onclick="this.select()"></div>
-      <div class="ce-row" id="ce-xfmr-row"><span class="ce-lbl" style="color:#F97316">🔌 Transformer (if reqd)</span><input class="ce-inp" id="ce-xfmr" type="number" value="22000" oninput="_debounceCost()" onfocus="this.select()" onclick="this.select()"></div>
+      <div class="ce-row" id="ce-xfmr-row"><span class="ce-lbl" style="color:#F97316" title="Transformer pricing swings hard with kVA, primary voltage and lead time, so it is not auto-filled. Enter the quoted number and it flows into Site Equipment.">🔌 Transformer (if reqd)</span><input class="ce-inp" id="ce-xfmr" type="number" value="" placeholder="0 — enter quote" oninput="_debounceCost()" onfocus="this.select()" onclick="this.select()"></div>
     </div>
 
     <!-- Conduit -->
@@ -25002,7 +25002,12 @@ function updateCostEst() {
 
   // Transformer cost line (added to site equipment if needed)
   const hasXfmr = S.elements.some(e=>e.eqId==='transformer'||e.eqId==='xfmr') || S.bessList.some(b=>b.xfmr && b.xfmr !== 'N/A');
-  const xfmrCost = hasXfmr ? +($v('ce-xfmr')||22000) : 0;
+  /* Transformer is quote-driven: kVA, primary voltage, pad vs pole and
+     lead time move it by tens of thousands, so a default here just
+     becomes a number somebody has to remember to overwrite. The line
+     stays visible whenever a transformer is on the drawing; it prices at
+     zero until a real figure is entered. */
+  const xfmrCost = hasXfmr ? +($v('ce-xfmr')||0) : 0;
   const siteEq = pad + disco + meter + bollards + jbox + panel + misc + xfmrCost;
   window._SITE_EQ_COUNTS = { pad:_padN, disco:_discoN, meter:_meterN,
                              bollard:_bollN, jbox:_jboxN, panel:_panelN };
@@ -55382,7 +55387,10 @@ var ELEC_MAT = {
 
   'component|disconnect'  : 1200,
   'component|meter'       : 900,
-  'component|transformer' : 18000,
+  /* Zero by default for the same reason as the Site Equipment line: a
+     transformer is quoted, not looked up. Set a figure here (or on the
+     cost sheet) when the quote lands. */
+  'component|transformer' : 0,
   'component|switchgear'  : 6500,
   'component|grounding'   : 850,
   'component|pad'         : 4500,
