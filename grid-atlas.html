@@ -351,8 +351,13 @@ var LAYERS = {
   datacenters: {
     name:"Data Centers", color:"#a78bfa", on:false, geom:"point", role:"load",
     url:"__OSM__", osmTag:'["telecom"="data_center"]',
-    label:function(a){return a.name||"Data center";},
-    meta:function(a){return a.operator||a.brand||"colo / compute";}
+    osmTagAlt:'["office"="telecommunication"]["telecom"="data_center"]',
+    label:function(a){return a.name||a.operator||a["operator:wikidata"]||"Data center";},
+    meta:function(a){
+      var op=a.operator||a.brand||a.owner||"";
+      var big=/microsoft|google|amazon|aws|meta|facebook|apple|oracle|equinix|digital realty|coresite|qts|switch|vantage|cyrusone/i.test((a.name||"")+" "+op);
+      return (op?op+" · ":"")+(big?"hyperscale/colo":"data center");
+    }
   },
   ev: {
     name:"EV Chargers", color:"#4ea3ff", on:false, geom:"point", role:"load",
