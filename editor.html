@@ -23929,10 +23929,25 @@ async function _preCaptureNormalize(el) {
     try{
       var par = svg.parentNode;
       var rect = svg.getBoundingClientRect();
-      var w = Math.round((par&&par.offsetWidth) || rect.width || svg.clientWidth
-              || parseFloat(svg.getAttribute('width')) || wFallback || 0);
-      var h = Math.round((par&&par.offsetHeight) || rect.height || svg.clientHeight
-              || parseFloat(svg.getAttribute('height')) || hFallback || 0);
+      /* Measure the SVG ITSELF first, not its parent.
+         Parent-first was only correct for layers that fill their parent
+         (#csvg inside #sc, the icon inside .evgear-node). The bollard pad
+         is deliberately LARGER than its .cel wrapper -- it is the charger
+         plus an apron -- so par.offsetWidth returned the unit size and the
+         pad was rasterized into a box 75% too small, then clipped to it.
+         That is why the pads and the chargers sitting on them vanished
+         from the exported sheet while the parking stalls behind them
+         survived: the stalls are #csvg shapes, which fill their parent.
+
+         Attribute width/height is preferred over getBoundingClientRect
+         because the rect of a ROTATED element is its rotated bounding box,
+         which would inflate the raster and shift it. */
+      var _aw = parseFloat(svg.getAttribute('width'));
+      var _ah = parseFloat(svg.getAttribute('height'));
+      var w = Math.round(_aw || rect.width  || svg.clientWidth
+              || (par&&par.offsetWidth)  || wFallback || 0);
+      var h = Math.round(_ah || rect.height || svg.clientHeight
+              || (par&&par.offsetHeight) || hFallback || 0);
       if(w < 2 || h < 2) return;
       var clone = svg.cloneNode(true);
       clone.setAttribute('xmlns','http://www.w3.org/2000/svg');
@@ -23967,18 +23982,33 @@ async function _preCaptureNormalize(el) {
          offset -- such as the EV bollard pad, which is inset by its apron --
          would be yanked back to the corner and read as equipment bunched up
          in the top-left of its own cell. */
+      /* Prefer the SVG's declared offset over a measured one: the measured
+         rect of a rotated element describes its rotated bounding box, so
+         differencing it against the parent walks the raster off position
+         as the unit turns. */
       var _ox = 0, _oy = 0;
-      try{
-        var _pr = par.getBoundingClientRect();
-        _ox = Math.round(rect.left - _pr.left);
-        _oy = Math.round(rect.top  - _pr.top);
-        if(!isFinite(_ox)) _ox = 0;
-        if(!isFinite(_oy)) _oy = 0;
-      }catch(e){ _ox = 0; _oy = 0; }
+      var _sl = parseFloat(svg.style && svg.style.left);
+      var _st = parseFloat(svg.style && svg.style.top);
+      if(isFinite(_sl) && isFinite(_st)){
+        _ox = Math.round(_sl); _oy = Math.round(_st);
+      } else {
+        try{
+          var _pr = par.getBoundingClientRect();
+          _ox = Math.round(rect.left - _pr.left);
+          _oy = Math.round(rect.top  - _pr.top);
+          if(!isFinite(_ox)) _ox = 0;
+          if(!isFinite(_oy)) _oy = 0;
+        }catch(e){ _ox = 0; _oy = 0; }
+      }
+      /* Carry any rotation across to the raster, or a turned charger's pad
+         would flatten back to square on the sheet. */
+      var _tf = '';
+      try{ _tf = (svg.style && svg.style.transform) || ''; }catch(e){}
       var _z = (svg.id==='csvg') ? ';z-index:4'
              : (svg.classList && svg.classList.contains('ev-bollard-pad')) ? ';z-index:0' : '';
       rep.style.cssText = 'position:absolute;top:'+_oy+'px;left:'+_ox+'px;width:'+w+'px;height:'+h
-        + 'px;display:block;pointer-events:none' + _z;
+        + 'px;display:block;pointer-events:none'
+        + (_tf ? ';transform:'+_tf+';transform-origin:center' : '') + _z;
       var parent = svg.parentNode; if(!parent) return;
       /* Test the COMPUTED position, not the inline one. #sc takes
          position:absolute from the stylesheet, so parent.style.position
@@ -25230,6 +25260,15 @@ function updateCostEst() {
      A fleet placed on the drawing but never itemised left it at zero
      while the Results rail happily read 2,580 kW / 5,015 kWh from the
      same drawing. Fall back to the benchmark so the two agree. */
+  /* Data centre electrical package (transformers, switchgear, UPS,
+     microgrid controls, e-house, design). Without this a 750 kW compute
+     load priced like a building panel. */
+  var _dcRom = { active:false, total:0, lines:[] };
+  try{ if(typeof omegaDataCenterROM==='function') _dcRom = omegaDataCenterROM(); }catch(e){}
+  var dcTotal = _dcRom.active ? _dcRom.total : 0;
+  window._DC_ROM_DETAIL = _dcRom;
+  window._DC_TOTAL = dcTotal;
+
   var _benchBess = 0;
   if(bessTotal <= 0){
     try{ _benchBess = omegaBessBenchCost(); }catch(e){}
@@ -25238,9 +25277,9 @@ function updateCostEst() {
   window._BESS_IS_BENCHMARK = _benchBess > 0;
   window._SOLAR_IS_BENCHMARK = solarTotal > 0;
 
-  const inScope = (bessTotal > 0) || (evTotal > 0) || (_placedKw > 0) || (solarTotal > 0);
+  const inScope = (bessTotal > 0) || (evTotal > 0) || (_placedKw > 0) || (solarTotal > 0) || (dcTotal > 0);
 
-  const sub = inScope ? (bessTotal + solarTotal + siteEq + indirect + evTotal) : 0;
+  const sub = inScope ? (bessTotal + solarTotal + siteEq + indirect + evTotal + dcTotal) : 0;
   const contPct = +($v('ce-cont')||10)/100;
   const cont = sub * contPct;
   let TOTAL = sub + cont;
@@ -25270,6 +25309,7 @@ function updateCostEst() {
       </div>`;
     bd.innerHTML =
       (solarTotal > 0 ? row('  Solar PV (equip + install)', solarTotal, '#FBBF24') : '') +
+      (dcTotal > 0 ? row('  Data Centre Electrical (ROM)', dcTotal, '#38BDF8') : '') +
       row('  BESS Equipment + Install', bessTotal, 'var(--accent)') +
       (evTotal > 0 ? row('  EV Charging (equip + install)', evTotal, '#22D3EE') : '') +
       row('   Site Equipment', siteEq - xfmrCost, 'var(--amber)') +
@@ -37669,13 +37709,31 @@ function _olRender(sizeKey, withSched){
       chain+=_olWire(ldX, yLd+4, ldX, yLd+38);
       chain+=_olBox(ldX, yLd+56, 120, 34, '');
       chain+=_olLabel(ldX, yLd+52, 'UPS / STATIC SWITCH', 'middle', 8, 700);
-      chain+=_olLabel(ldX, yLd+64, 'N+1 \u00b7 '+(d.sysv||'480V')+' 3\u03c6', 'middle', 7);
-      yLd+=73;
+      /* Name the frame, the module count and the ride-through. A sheet
+         that says only "UPS N+1" tells the reviewer nothing about whether
+         the battery carries the load long enough for the gen to pick up,
+         which is the whole question on an off-grid microgrid. */
+      var _dcU = (typeof DC_SPEC!=='undefined' && DC_SPEC.ups) ? DC_SPEC.ups : null;
+      chain+=_olLabel(ldX, yLd+62,
+        (_dcU ? _dcU.family+' \u00b7 '+_dcU.frame+' kW frame \u00b7 '+_dcU.upm+' UPM' : 'N+1'),
+        'middle', 6.5);
+      chain+=_olLabel(ldX, yLd+71,
+        'N+1 \u00b7 '+(d.sysv||'480V')+' 3\u03c6'
+        + (_dcU ? ' \u00b7 '+_dcU.runtime : ''), 'middle', 6.5);
+      yLd+=80;
       /* PDU lineup. */
       chain+=_olWire(ldX, yLd, ldX, yLd+30);
       chain+=_olBox(ldX, yLd+48, 120, 34, '');
       chain+=_olLabel(ldX, yLd+44, 'PDU LINEUP', 'middle', 8, 700);
       chain+=_olLabel(ldX, yLd+56, 'TO RACK BUSWAY', 'middle', 7);
+      /* Quantities the reviewer would otherwise have to derive by hand. */
+      try{
+        var _rom = (typeof omegaDataCenterROM==='function') ? omegaDataCenterROM() : null;
+        if(_rom && _rom.active){
+          chain+=_olLabel(ldX, yLd+66,
+            _rom.ups+' x UPS \u00b7 '+_rom.xfmr+' x '+DC_ROM.xfmrKva+' kVA (N+1)', 'middle', 6.5);
+        }
+      }catch(e){}
       yLd+=65;
       /* IT load. */
       chain+=_olWire(ldX, yLd, ldX, yLd+30);
@@ -50945,6 +51003,101 @@ function omegaBessBenchCost(){
 }
 window.omegaBessBenchCost = omegaBessBenchCost;
 
+/* ═══════════════════════════════════════════════════════════════════
+ *  DATA CENTRE ELECTRICAL ROM  --  Eaton EESS, rev 0.0, 30 Apr 2026
+ *  ------------------------------------------------------------------
+ *  Budgetary figures from Eaton's Rough Order of Magnitude proposal for
+ *  the Flux Core Data Systems microgrid (Red Oak, IA): a 750 kW modular
+ *  data centre, off-grid with utility back-up, N+1, gas gen + BESS.
+ *
+ *  These are ROM budget numbers for CONCEPTUAL sizing, not quotes. Eaton
+ *  is explicit that a detailed engineering study is required for a fixed
+ *  price, and their proposal validity was 30 days from 30 Apr 2026 -- so
+ *  treat these as stale for commercial use and re-quote. They are here
+ *  so a data centre one-line lands in the right order of magnitude
+ *  instead of being priced like a building load.
+ * ═══════════════════════════════════════════════════════════════════ */
+var DC_ROM = {
+  xfmrEach:        185000,   /* 1500 kVA padmount, three phase            */
+  xfmrKva:           1500,
+  switchgear:      800500,   /* 480 V LVA switchgear lineup               */
+  microgridCtrl:   325000,   /* incl. generator paralleling               */
+  upsEach:         450500,   /* 9395/9395P, 900 kW ISBM frame, 750 kW rtd */
+  upsRatedKw:         750,
+  eHouseLow:      3000000,
+  eHouseHigh:     3500000,
+  designPctLow:      0.05,   /* 5-6% of equipment pricing                 */
+  designPctHigh:     0.06,
+  source: 'Eaton EESS ROM, Flux Core microgrid, rev 0.0 (30 Apr 2026) -- budgetary, re-quote before use'
+};
+window.DC_ROM = DC_ROM;
+
+/* Equipment specs carried onto the one-line so the sheet says what the
+   package actually is rather than a generic block. */
+var DC_SPEC = {
+  xfmr: { kva:1500, hv:'23000Y/13279', lv:'415', z:'5.75%', vector:'YNd1',
+          cooling:'KNAN', fluid:'Natural ester', taps:'\u00b12 x 2.5% ANBN HV',
+          eff:'DOE 2016', feed:'Loop feed', winding:'Aluminium' },
+  ups:  { family:'Eaton 9395P', frame:900, rated:750, upm:3, eff:'97% (99% in ESS)',
+          batt:'4 x battery cabinet', runtime:'8.2 min @ 750 kW', v:'480/480V' },
+  ctrl: { controller:'Eaton XC303', hmi:'Phoenix VL3 industrial PC + touch',
+          scada:'Ignition Edge', rtu:'Advantech ECU-150', vpn:'Ewon Cozy cellular' }
+};
+window.DC_SPEC = DC_SPEC;
+
+/* Size and price the electrical package for a placed data-centre load.
+   Facility kW (IT x PUE) drives it, because that is what the service and
+   the transformers actually carry -- pricing off the IT figure is the
+   error that undersizes the whole lineup. */
+function omegaDataCenterROM(){
+  var out = { active:false, lines:[], total:0, itKw:0, facilityKw:0,
+              ups:0, xfmr:0, source:DC_ROM.source };
+  try{
+    var el = (S.elements||[]).filter(function(e){
+      return e && (e.loadKind==='datacenter') && (+e.loadKw>0 || +e.loadItKw>0);
+    })[0];
+    if(!el) return out;
+
+    var itKw  = +el.loadItKw || 0;
+    var pue   = +el.loadPue  || 0;
+    var facKw = +el.loadKw   || (itKw && pue ? itKw*pue : itKw);
+    if(!(facKw>0)) return out;
+
+    out.active=true; out.itKw=itKw; out.facilityKw=facKw;
+
+    /* UPS: N+1 on the IT load, which is what the UPS actually supports. */
+    var upsBase = Math.max(1, Math.ceil((itKw||facKw) / DC_ROM.upsRatedKw));
+    var upsQty  = upsBase + 1;                      /* the +1 of N+1 */
+    out.ups = upsQty;
+
+    /* Transformers: facility kW at 0.9 pf, N+1, 80% loading allowance. */
+    var kva     = facKw / 0.9;
+    var xfmrN   = Math.max(1, Math.ceil(kva / (DC_ROM.xfmrKva*0.8)));
+    var xfmrQty = xfmrN + 1;
+    out.xfmr = xfmrQty;
+
+    function L(desc, qty, each){
+      var amt = qty*each;
+      out.lines.push({ desc:desc, qty:qty, each:each, amount:amt });
+      out.total += amt;
+    }
+    L(DC_ROM.xfmrKva+' kVA padmount transformer (N+1)', xfmrQty, DC_ROM.xfmrEach);
+    L('480 V LVA switchgear lineup', 1, DC_ROM.switchgear);
+    L('UPS '+DC_SPEC.ups.family+' '+DC_ROM.upsRatedKw+' kW (N+1)', upsQty, DC_ROM.upsEach);
+    L('Microgrid control package incl. gen paralleling', 1, DC_ROM.microgridCtrl);
+    L('E-house enclosures (all equipment)', 1, DC_ROM.eHouseLow);
+
+    /* Design is quoted as a percentage of equipment, so it goes last. */
+    var design = out.total * DC_ROM.designPctLow;
+    out.lines.push({ desc:'Electrical engineering design ('+Math.round(DC_ROM.designPctLow*100)+'% of equipment)',
+                     qty:1, each:Math.round(design), amount:Math.round(design) });
+    out.total += design;
+    out.total = Math.round(out.total);
+  }catch(e){}
+  return out;
+}
+window.omegaDataCenterROM = omegaDataCenterROM;
+
 function _dcfcSyncPorts(){
   /* Level 2 owns its own picker (_l2Sync). Falling through here after the L2
      modal closes would reset chargers to the DCFC default of 2 and swap the
@@ -51397,7 +51550,13 @@ function _l2Bollards(el, idx){
   if(!el) return; var b=_elBox(el); if(!b) return;
   /* Chargers pair onto one pedestal, so only the odd one carries the bollard. */
   if(typeof idx==='number' && idx%2===0) return;
-  var r=Math.max(8, Math.round((S.pxPerFt||6)*0.5));
+  /* A 6" bollard is genuinely tiny at site scale -- true to size it lands
+     around 3-8 px, which survives on screen but disappears entirely once
+     the sheet is scaled down for an 11x17 export. Drawing symbols are
+     conventionally drawn legible rather than to scale; 14 px keeps it
+     readable on the printed sheet without pretending the post is bigger
+     than it is. The pad hatch behind it still carries the real footprint. */
+  var r=Math.max(14, Math.round((S.pxPerFt||6)*0.5));
   addEl({ type:'eq', eqId:'bollard', label:'', spec:'',
           x:Math.round(b.cx+b.hw+10-r/2), y:Math.round(b.cy-r/2), w:r, rot:0 });
 }
