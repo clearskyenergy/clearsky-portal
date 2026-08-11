@@ -94,6 +94,47 @@
   .leaflet-bottom.leaflet-right .leaflet-control-zoom{margin:0 14px 14px 0}
   body.panel-open .leaflet-bottom.leaflet-right{right:388px}
   @media(max-width:720px){body.panel-open .leaflet-bottom.leaflet-right{right:0}#panel{width:calc(100vw - 20px);right:10px;top:auto;bottom:10px;height:56vh}#search{width:44vw}.sub{display:none}}
+
+  /* ── HIGH-CAPACITY REPORT ── */
+  .rptbtn{background:var(--panel2);border:1px solid var(--line);color:var(--ink);border-radius:7px;
+    padding:8px 13px;font-size:12px;font-weight:600;cursor:pointer;white-space:nowrap}
+  .rptbtn:hover{border-color:var(--accent);color:var(--accent)}
+  #rptWrap{position:fixed;inset:0;z-index:1400;background:rgba(26,39,51,.42);display:none;
+    align-items:center;justify-content:center;padding:24px}
+  #rptWrap.open{display:flex}
+  #rptBox{background:#fff;border:1px solid var(--line);border-radius:14px;width:min(1000px,96vw);
+    max-height:90vh;display:flex;flex-direction:column;box-shadow:0 24px 70px rgba(26,39,51,.28)}
+  .r-h{padding:15px 18px;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:10px}
+  .r-h .ti{font-weight:700;font-size:15px;flex:1}
+  .r-h .x{color:var(--muted);cursor:pointer;font-size:19px;line-height:1}
+  .r-c{padding:16px 18px;overflow:auto;flex:1}
+  .r-ctl{display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap;margin-bottom:12px}
+  .r-f{display:flex;flex-direction:column;gap:5px}
+  .r-f label{font-family:var(--mono);font-size:10px;letter-spacing:.11em;text-transform:uppercase;color:var(--dim)}
+  .r-f select,.r-f input{height:33px;border:1px solid var(--line);background:var(--panel2);color:var(--ink);
+    border-radius:7px;padding:0 10px;font-size:13px;outline:none;font-family:var(--sans)}
+  .r-f input{width:110px}
+  .r-go{height:33px;border:0;background:var(--accent);color:#fff;border-radius:7px;padding:0 16px;
+    font-size:13px;font-weight:600;cursor:pointer}
+  .r-go[disabled]{opacity:.5;cursor:default}
+  .r-csv{height:33px;border:1px solid var(--line);background:#fff;color:var(--ink);border-radius:7px;
+    padding:0 14px;font-size:13px;font-weight:600;cursor:pointer}
+  .r-csv[disabled]{opacity:.4;cursor:default}
+  .r-msg{font-family:var(--mono);font-size:11px;color:var(--muted);margin:6px 0 10px;min-height:15px}
+  .r-msg.err{color:var(--red)}
+  .r-msg.ok{color:var(--green)}
+  .r-bar{height:3px;background:var(--panel2);border-radius:2px;overflow:hidden;margin-bottom:12px}
+  .r-bar i{display:block;height:100%;background:var(--accent);width:0;transition:width .2s}
+  table.r-t{width:100%;border-collapse:collapse;font-size:12.5px}
+  table.r-t th{text-align:left;font-family:var(--mono);font-size:10px;letter-spacing:.09em;
+    text-transform:uppercase;color:var(--dim);padding:7px 9px;border-bottom:1px solid var(--line);
+    cursor:pointer;white-space:nowrap;position:sticky;top:0;background:#fff}
+  table.r-t th:hover{color:var(--accent)}
+  table.r-t td{padding:7px 9px;border-bottom:1px solid #eef1f4}
+  table.r-t td.n{font-family:var(--mono);text-align:right;font-weight:600}
+  table.r-t tr:hover td{background:var(--panel2)}
+  .r-note{font-size:12px;color:var(--muted);line-height:1.55;margin-top:12px;
+    border-left:3px solid var(--amber);padding-left:10px}
 </style>
 </head>
 <body>
@@ -106,6 +147,7 @@
     <input id="q" placeholder="Enter a ComEd-territory address…" autocomplete="off">
     <button class="go" id="goBtn">Check</button>
   </div>
+  <button class="rptbtn" id="rptOpen">High-Capacity Report</button>
   <a href="/" id="back-link" class="back">← Platform</a>
 </div>
 
@@ -119,6 +161,34 @@
     <div class="lr"><span class="sw" style="background:#C9A0DC"></span><span>0 - 500 kW</span></div>
   </div>
   <div class="lf" id="legendFoot">zoom in to 13+ to draw circuits</div>
+</div>
+
+
+<div id="rptWrap">
+  <div id="rptBox">
+    <div class="r-h"><span class="ti">High-Capacity Circuit Report</span><span class="x" id="rptClose">&#10005;</span></div>
+    <div class="r-c">
+      <div class="r-ctl">
+        <div class="r-f"><label>Minimum BESS capacity</label>
+          <select id="rptMin">
+            <option value="1001" selected>1001 kW or more</option>
+            <option value="501">501 kW or more</option>
+            <option value="2000">2000 kW or more</option>
+            <option value="5000">5000 kW or more</option>
+          </select></div>
+        <div class="r-f"><label>Area</label>
+          <select id="rptScope">
+            <option value="view" selected>Current map view</option>
+            <option value="all">Entire ComEd territory</option>
+          </select></div>
+        <button class="r-go" id="rptRun">Run report</button>
+        <button class="r-csv" id="rptCsv" disabled>Download CSV</button>
+      </div>
+      <div class="r-msg" id="rptMsg"></div>
+      <div class="r-bar"><i id="rptBar"></i></div>
+      <div id="rptOut"></div>
+    </div>
+  </div>
 </div>
 
 <div id="panel">
@@ -631,6 +701,210 @@ document.getElementById("q").addEventListener("keydown",function(e){if(e.key==="
     if(b)b.href=url; if(l)l.href=url;
   }catch(e){}
 })();
+
+
+/* ══════════════════════════════════════════════════════════════
+   HIGH-CAPACITY CIRCUIT REPORT
+   Pulls every circuit at/above a kW threshold and returns a sortable
+   table + CSV.
+
+   ALWAYS runs against the most detailed layer (75, the buffered
+   circuits). Layers 71-74 are PLSS grid blocks reporting the MAX
+   circuit in each block, so a report built from them would list the
+   same feeder repeatedly under different block names and inflate the
+   count. See LAYER_GRAIN.
+
+   Paging is done by OBJECTID, not resultOffset. returnIdsOnly is a
+   single cheap call that yields the exact record count up front, and
+   OID chunks are deterministic — resultOffset paging silently repeats
+   or skips rows if the service reorders between calls.
+   ══════════════════════════════════════════════════════════════ */
+var RPT={busy:false,rows:[],sortKey:"bess",sortDir:-1,minKw:1001};
+var RPT_FIELDS="OBJECTID,Feeder,Feeder_N,BESS_HC,PV_HC_kW,EV_HC_kW,Feeder_Q,SS_N,Queue_RD";
+var RPT_CHUNK=200;      /* OIDs per request — keeps the GET URL well under limits */
+var RPT_MAXREC=40000;   /* refuse absurd pulls rather than hammer the service */
+
+function detailLayer(){
+  if(!SVC.layers||!SVC.layers.length) return 75;
+  var best=null;
+  for(var i=0;i<SVC.layers.length;i++){
+    var l=SVC.layers[i];
+    if(best===null||(l.maxScale||0)<(best.maxScale||0)) best=l;
+  }
+  return best?best.id:75;
+}
+function rptUrl(id,params){
+  var u=COMED_BASE+"/"+id+"/query?f=json";
+  for(var k in params){ if(params.hasOwnProperty(k)) u+="&"+k+"="+encodeURIComponent(params[k]); }
+  return u;
+}
+function rptMsg(m,cls){ var e=document.getElementById("rptMsg");
+  if(e){ e.textContent=m; e.className="r-msg"+(cls?(" "+cls):""); } }
+function rptBar(pct){ var e=document.getElementById("rptBar"); if(e) e.style.width=Math.round(pct*100)+"%"; }
+
+function runReport(){
+  if(RPT.busy) return;
+  var minKw=parseFloat(document.getElementById("rptMin").value)||1001;
+  var scope=document.getElementById("rptScope").value;
+  RPT.busy=true; RPT.rows=[]; RPT.minKw=minKw;
+  document.getElementById("rptRun").disabled=true;
+  document.getElementById("rptCsv").disabled=true;
+  document.getElementById("rptOut").innerHTML="";
+  rptBar(0);
+
+  if(!SVC.ready){ rptMsg("Waiting for the ComEd service…"); setTimeout(function(){RPT.busy=false;runReport();},700); return; }
+
+  var id=detailLayer();
+  var where="BESS_HC >= "+minKw;
+  var geo=null;
+  if(scope==="view"){
+    var b=map.getBounds();
+    geo={xmin:b.getWest(),ymin:b.getSouth(),xmax:b.getEast(),ymax:b.getNorth(),spatialReference:{wkid:4326}};
+  }
+  function withGeo(o){
+    if(geo){ o.geometry=JSON.stringify(geo); o.geometryType="esriGeometryEnvelope";
+             o.inSR="4326"; o.spatialRel="esriSpatialRelIntersects"; }
+    return o;
+  }
+
+  rptMsg("Counting circuits at or above "+minKw.toLocaleString()+" kW…");
+  fetchJSON(rptUrl(id,withGeo({where:where,returnIdsOnly:"true"})),function(err,j){
+    if(err||!j||j.error||!j.objectIds){
+      RPT.busy=false; document.getElementById("rptRun").disabled=false;
+      rptMsg("Query failed: "+(err?err.message:(j&&j.error?("service "+j.error.code+" "+(j.error.message||"")):"no ids returned")),"err");
+      return;
+    }
+    var ids=j.objectIds;
+    if(!ids.length){
+      RPT.busy=false; document.getElementById("rptRun").disabled=false; rptBar(0);
+      rptMsg("No circuits at or above "+minKw.toLocaleString()+" kW in this area.","");
+      return;
+    }
+    if(ids.length>RPT_MAXREC){
+      RPT.busy=false; document.getElementById("rptRun").disabled=false;
+      rptMsg(ids.length.toLocaleString()+" records — too many to pull at once. Zoom in or raise the threshold.","err");
+      return;
+    }
+    var chunks=[],n;
+    for(n=0;n<ids.length;n+=RPT_CHUNK) chunks.push(ids.slice(n,n+RPT_CHUNK));
+    var got=[],done=0;
+
+    (function next(){
+      if(done>=chunks.length){ finishReport(got,id); return; }
+      var oids=chunks[done];
+      rptMsg("Fetching "+ids.length.toLocaleString()+" circuit records… "+
+             Math.min((done+1)*RPT_CHUNK,ids.length).toLocaleString()+"/"+ids.length.toLocaleString());
+      rptBar(done/chunks.length);
+      fetchJSON(rptUrl(id,{where:"OBJECTID IN ("+oids.join(",")+")",outFields:RPT_FIELDS,returnGeometry:"false"}),
+        function(e2,j2){
+          if(!e2&&j2&&j2.features){ for(var q=0;q<j2.features.length;q++) got.push(j2.features[q].attributes); }
+          else diag("rpt chunk "+done+": "+(e2?e2.message:(j2&&j2.error?("srv "+j2.error.code):"empty")));
+          done++; next();
+        });
+    })();
+  });
+}
+
+function finishReport(attrs,layerId){
+  /* Buffered circuits are stored as multiple polygon records per feeder, so
+     the raw row count is NOT a circuit count. Collapse to one row per feeder
+     and keep the highest reading. */
+  var by={},order=[];
+  for(var i=0;i<attrs.length;i++){
+    var a=attrs[i], info=interpret(a,[]);
+    var key=(info.feeder||info.feederAlt||("oid"+a.OBJECTID))+"|"+(info.sub||"");
+    if(!by[key]){ by[key]={feeder:info.feeder||info.feederAlt||"—",sub:info.sub||"—",
+                           bess:info.bess,pv:info.pv,ev:info.ev,queue:info.queue,
+                           updated:info.updated,parts:1};
+                  order.push(key); }
+    else{
+      var r=by[key]; r.parts++;
+      if((info.bess||0)>(r.bess||0)){ r.bess=info.bess; r.pv=info.pv; r.ev=info.ev; r.queue=info.queue; }
+    }
+  }
+  var rows=[];
+  for(var k2=0;k2<order.length;k2++) rows.push(by[order[k2]]);
+  RPT.rows=rows;
+  RPT.busy=false;
+  document.getElementById("rptRun").disabled=false;
+  document.getElementById("rptCsv").disabled=!rows.length;
+  rptBar(1);
+  rptMsg(rows.length.toLocaleString()+" distinct feeder"+(rows.length===1?"":"s")+
+         " at or above "+RPT.minKw.toLocaleString()+" kW"+
+         " (from "+attrs.length.toLocaleString()+" polygon records, layer "+layerId+")","ok");
+  renderReport();
+}
+
+function rptSort(key){
+  if(RPT.sortKey===key) RPT.sortDir=-RPT.sortDir; else { RPT.sortKey=key; RPT.sortDir=-1; }
+  renderReport();
+}
+function renderReport(){
+  var rows=RPT.rows.slice(), k=RPT.sortKey, d=RPT.sortDir;
+  rows.sort(function(a,b){
+    var x=a[k],y=b[k];
+    if(typeof x==="string"||typeof y==="string"){
+      x=(x==null?"":String(x)); y=(y==null?"":String(y));
+      return x<y?-d:(x>y?d:0);
+    }
+    return ((y==null?-1:y)-(x==null?-1:x))*(d<0?1:-1);
+  });
+  var cols=[["feeder","Feeder",0],["sub","Substation",0],["bess","BESS kW",1],
+            ["pv","PV kW",1],["ev","EV kW",1],["queue","In queue kW",1],["parts","Segments",1]];
+  var h='<table class="r-t"><thead><tr>';
+  for(var c=0;c<cols.length;c++)
+    h+='<th data-k="'+cols[c][0]+'">'+esc(cols[c][1])+(RPT.sortKey===cols[c][0]?(RPT.sortDir<0?" \u25BE":" \u25B4"):"")+'</th>';
+  h+='</tr></thead><tbody>';
+  for(var r=0;r<rows.length;r++){
+    h+='<tr>';
+    for(var c2=0;c2<cols.length;c2++){
+      var v=rows[r][cols[c2][0]];
+      var txt=(cols[c2][2]&&v!=null&&v!=="")?Math.round(v).toLocaleString():(v==null||v===""?"\u2014":esc(v));
+      h+='<td'+(cols[c2][2]?' class="n"':'')+'>'+txt+'</td>';
+    }
+    h+='</tr>';
+  }
+  h+='</tbody></table>';
+  h+='<div class="r-note"><b>These are circuits, not parcels.</b> Each row is a ComEd feeder whose '+
+     'buffered service area meets the threshold \u2014 not a specific site you can buy. A parcel inside '+
+     'that buffer still has to be physically reachable from the feeder, and the deliverable number is '+
+     'settled by an interconnection study. ComEd\u2019s own metadata says the data refreshes annually.</div>';
+  var out=document.getElementById("rptOut");
+  out.innerHTML=h;
+  var ths=out.getElementsByTagName("th");
+  for(var t=0;t<ths.length;t++)
+    ths[t].onclick=(function(kk){return function(){rptSort(kk);};})(ths[t].getAttribute("data-k"));
+}
+
+function csvCell(v){
+  var s=(v==null?"":String(v));
+  return /[",\n]/.test(s) ? ('"'+s.replace(/"/g,'""')+'"') : s;
+}
+function downloadCsv(){
+  if(!RPT.rows.length) return;
+  var head=["Feeder","Substation","BESS_kW","PV_kW","EV_kW","In_Queue_kW","Buffer_Segments","Queue_Refreshed"];
+  var lines=[head.join(",")];
+  for(var i=0;i<RPT.rows.length;i++){
+    var r=RPT.rows[i];
+    lines.push([r.feeder,r.sub,r.bess,r.pv,r.ev,r.queue,r.parts,r.updated].map(csvCell).join(","));
+  }
+  var blob=new Blob([lines.join("\r\n")],{type:"text/csv;charset=utf-8"});
+  var a=document.createElement("a"), url=URL.createObjectURL(blob);
+  var d=new Date(), stamp=d.getFullYear()+"-"+("0"+(d.getMonth()+1)).slice(-2)+"-"+("0"+d.getDate()).slice(-2);
+  a.href=url; a.download="comed-circuits-"+RPT.minKw+"kW-"+stamp+".csv";
+  document.body.appendChild(a); a.click();
+  setTimeout(function(){ document.body.removeChild(a); URL.revokeObjectURL(url); },250);
+}
+
+document.getElementById("rptOpen").onclick=function(){
+  document.getElementById("rptWrap").className="open";
+  if(!RPT.rows.length) rptMsg("Pick a threshold and area, then run.");
+};
+document.getElementById("rptClose").onclick=function(){ document.getElementById("rptWrap").className=""; };
+document.getElementById("rptWrap").onclick=function(e){ if(e.target===this) this.className=""; };
+document.getElementById("rptRun").onclick=runReport;
+document.getElementById("rptCsv").onclick=downloadCsv;
+
 
 bootService();
 setTimeout(function(){map.invalidateSize();},200);
