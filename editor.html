@@ -11260,8 +11260,25 @@ function _bakeShapeRotation(sh){
     p.x = c.x + dx*cos - dy*sin;
     p.y = c.y + dx*sin + dy*cos;
   }
-  if(sh.pts)      sh.pts.forEach(spin);
+  /* A DER-built array carries BOTH a boundary polygon and a bbox origin
+     (pts[0]) with wPx/hPx. The bbox origin is not a vertex -- it is the
+     top-left of an axis-aligned box -- but it was being spun like one
+     while wPx/hPx kept their pre-rotation extent. On a 300x150 array at
+     35 degrees that left the origin 86 px out and the height 145 px
+     short, so the renderer fallback, the _geoBR restamp and hit-testing
+     all disagreed with the boundary and the array jumped on the next
+     reproject. Recompute the box from the rotated boundary instead. */
+  var _hadBox = !!(sh.boundary && sh.boundary.length>2 && sh.pts && sh.pts.length===1 && sh.wPx>0);
+  if(sh.pts && !_hadBox) sh.pts.forEach(spin);
   if(sh.boundary) sh.boundary.forEach(spin);
+  if(_hadBox){
+    var _xs=sh.boundary.map(function(p){ return p.x; });
+    var _ys=sh.boundary.map(function(p){ return p.y; });
+    var _mnx=Math.min.apply(null,_xs), _mny=Math.min.apply(null,_ys);
+    sh.pts[0].x=_mnx; sh.pts[0].y=_mny;
+    sh.wPx=Math.max(1, Math.max.apply(null,_xs)-_mnx);
+    sh.hPx=Math.max(1, Math.max.apply(null,_ys)-_mny);
+  }
   if(sh.exclusions) sh.exclusions.forEach(function(ring){ if(ring) ring.forEach(spin); });
   if(sh.tables){
     sh.tables.forEach(function(T){
@@ -11277,9 +11294,13 @@ function _bakeShapeRotation(sh){
   if(typeof sh.cx==='number'){ var cc={x:sh.cx,y:sh.cy}; spin(cc); sh.cx=cc.x; sh.cy=cc.y; }
   /* Angle now lives in the geometry, so the transform must not add it again. */
   sh.rot=0;
+  /* ...and the STAMPED angle has to go with it, or the reproject would
+     re-apply a rotation that is already baked into the points and the
+     array would spin a second time on the next pan. */
+  sh._geoRot=0;
   /* Re-stamp from the rotated pixels, dropping the stale square anchors. */
   delete sh._geoPts; delete sh._geoBoundary; delete sh._geoTables;
-  delete sh._geoExcl; delete sh._geoC;
+  delete sh._geoExcl; delete sh._geoC; delete sh._geoBR;
   try{ if(typeof _geoRestampOne==='function') _geoRestampOne(sh); }catch(e){}
   try{ if(typeof renderShape==='function') renderShape(sh); }catch(e){}
   return true;
@@ -11299,7 +11320,14 @@ function _shapeInteractEnd(){
         /* Rotation first: it rewrites the points, and the restamp has to
            record where they ended up, not where they started. */
         var _baked=_bakeShapeRotation(_sh);
-        if(!_baked && typeof _geoRestampOne==='function') _geoRestampOne(_sh);
+        if(!_baked){
+          /* A bbox-driven array (one point + wPx/hPx, e.g. a DER solar
+             block) cannot bake, so the angle stays live -- re-stamp it
+             explicitly or the next reproject restores the OLD angle from
+             a stale _geoRot and the array snaps back. */
+          try{ _sh._geoRot = +_sh.rot||0; }catch(e){}
+          if(typeof _geoRestampOne==='function') _geoRestampOne(_sh);
+        }
       }
     }catch(e){}
     pushHist();
@@ -32652,6 +32680,21 @@ function _geoStampShape(sh, toGeo, force){
       var gbr=toGeo(sh.pts[0].x+sh.wPx, sh.pts[0].y+sh.hPx);
       if(gbr) sh._geoBR={lat:gbr.lat, lng:gbr.lng};
     }
+    /* ── ROTATION IS PART OF THE ANCHOR ───────────────────────────────
+       A rectangular solar array is stored as ONE point plus wPx/hPx, so
+       _canBakeRotation() rejects it (it needs 3+ points) and the angle
+       stays a live CSS transform with nothing holding it to the ground.
+       _geoBR anchors the far corner in lat/lng, but that corner is the
+       UNROTATED one -- on reproject the array was rebuilt square and the
+       rotation came back from sh.rot only if nothing had reset it.
+
+       Stamping the angle alongside the geometry makes rotation survive a
+       pan or zoom the same way position does. Cheap, and it means a
+       bbox-driven array no longer has to be converted to a polygon just
+       to hold an angle. */
+    if((force || sh._geoRot===undefined) && typeof sh.rot==='number'){
+      sh._geoRot = +sh.rot || 0;
+    }
     /* Tables carry only their CENTRE. Width and height come back from
        tableWft/tableHft x pxPerFt at reproject time, which is what makes
        the array scale with the map instead of staying a fixed pixel size. */
@@ -32761,6 +32804,9 @@ function _geoApplyShape(sh, toPx, ppf){
         }
       }
     }
+    /* Restore the stamped angle before the geometry is rebuilt, so a
+       reproject cannot silently square up a rotated array. */
+    if(sh._geoRot!=null && typeof sh.rot==='number') sh.rot=+sh._geoRot||0;
     if(sh._geoTables && sh.tables){
       /* Size in FEET is the invariant; pixels follow the current scale. */
       var tw = (ppf>0 && sh.tableWft>0) ? sh.tableWft*ppf : null;
