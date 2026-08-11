@@ -23966,6 +23966,26 @@ async function _preCaptureNormalize(el) {
       if(w < 2 || h < 2) return;
       var clone = svg.cloneNode(true);
       clone.setAttribute('xmlns','http://www.w3.org/2000/svg');
+      /* ── STRIP THE TRANSFORM BEFORE SERIALISING ──────────────────────
+         The clone inherits the source element's inline style, rotation
+         included. Serialised into a data: URI it renders as a standalone
+         document, so that rotation is BAKED INTO THE IMAGE -- and then the
+         replacement canvas has the same rotation applied to it again. The
+         result is a bollard pad turned twice: sheared off its charger and
+         collapsed toward one corner, which on a sheet full of equipment
+         reads as the layers being smashed together.
+         Rotate the canvas, not the pixels: the raster must be drawn flat
+         and the element carries the angle. Position must go too, or the
+         clone's own left/top would offset the artwork inside its box. */
+      try{
+        if(clone.style){
+          clone.style.transform=''; clone.style.webkitTransform='';
+          clone.style.transformOrigin='';
+          clone.style.left=''; clone.style.top='';
+          clone.style.position='';
+        }
+        clone.removeAttribute('transform');
+      }catch(e){}
       if(!clone.getAttribute('width'))  clone.setAttribute('width', w);
       if(!clone.getAttribute('height')) clone.setAttribute('height', h);
       // If the SVG has no explicit viewBox, give it one matching its box so the
