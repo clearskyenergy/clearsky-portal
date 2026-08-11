@@ -11238,8 +11238,17 @@ var _BAKE_KINDS = { dersolar:1, solar:1, derwind:1, deralt:1, derdc:1,
 function _canBakeRotation(sh){
   if(!sh) return false;
   if(!_BAKE_KINDS[sh.kind]) return false;
-  /* Needs a real point list; a two-corner rect stored as pts is still a
-     rect as far as the renderer is concerned. */
+  /* BAKE ONLY WHAT THE RENDERER ACTUALLY DRAWS FROM.
+     Baking folds the angle into the geometry and sets rot=0, so it is
+     correct only when the renderer reads that geometry back. A plain
+     rectangular solar array does not: _derRenderSolar draws an
+     AXIS-ALIGNED _derRect from pts[0] + wPx/hPx and never looks at
+     boundary. Baking one therefore erased the rotation entirely -- rot
+     went to 0, the boundary spun, and the renderer kept drawing the same
+     square box. Only the auto-layout arrays (boundary + tables, drawn by
+     _derRenderAutoLayout) render from the baked geometry. Everything
+     else keeps its angle live as an SVG transform. */
+  if(sh.kind==='dersolar' && !sh.autoLayout) return false;
   var poly = (sh.boundary && sh.boundary.length>2)
           || (sh.pts && sh.pts.length>2);
   return !!poly;
@@ -11268,7 +11277,12 @@ function _bakeShapeRotation(sh){
      short, so the renderer fallback, the _geoBR restamp and hit-testing
      all disagreed with the boundary and the array jumped on the next
      reproject. Recompute the box from the rotated boundary instead. */
-  var _hadBox = !!(sh.boundary && sh.boundary.length>2 && sh.pts && sh.pts.length===1 && sh.wPx>0);
+  /* Only meaningful for shapes whose box is derived from the boundary.
+     A non-autoLayout array never reaches here now (see _canBakeRotation),
+     but keep the guard explicit so a future kind cannot fall in by
+     accident and get silently resized to its rotated bounding box. */
+  var _hadBox = !!(sh.autoLayout && sh.boundary && sh.boundary.length>2
+                   && sh.pts && sh.pts.length===1 && sh.wPx>0);
   if(sh.pts && !_hadBox) sh.pts.forEach(spin);
   if(sh.boundary) sh.boundary.forEach(spin);
   if(_hadBox){
@@ -47313,6 +47327,38 @@ function _derPlaceSolar(a, b){
       if(sh.kind==='derwind') _derRenderWind(g, sh);
       if(sh.kind==='deralt')  _derRenderAlt(g, sh);
       if(sh.kind==='dersolar')_derRenderSolar(g, sh);
+
+      /* ── APPLY THE ROTATION ───────────────────────────────────────────
+         This wrapper builds its OWN <g> and returns without ever calling
+         _origRender, so the base renderer's transform line -- which is
+         what draws sh.rot -- was skipped entirely for every DER shape.
+         The angle was being stored correctly the whole time (a live array
+         read back rot:333 and held it through pan and zoom); it simply
+         had nothing applying it to the group, so the array drew square no
+         matter what the model said.
+
+         The parts are drawn in absolute canvas pixels, so the rotation
+         goes on the group about the shape's own centre. Recomputed on
+         every render, so it tracks pan and zoom for free -- the geometry
+         underneath has already been reprojected by the time we get here. */
+      var _rr = +sh.rot || 0;
+      if(_rr){
+        var _c = null;
+        try{ if(typeof _shapeCenter==='function') _c = _shapeCenter(sh); }catch(e){}
+        if(!_c && sh.pts && sh.pts.length){
+          /* bbox-driven kinds carry one origin point plus wPx/hPx */
+          _c = (sh.wPx>0 && sh.pts.length===1)
+             ? { x: sh.pts[0].x + sh.wPx/2, y: sh.pts[0].y + sh.hPx/2 }
+             : (function(){
+                 var xs=sh.pts.map(function(p){return p.x;}), ys=sh.pts.map(function(p){return p.y;});
+                 return { x:(Math.min.apply(null,xs)+Math.max.apply(null,xs))/2,
+                          y:(Math.min.apply(null,ys)+Math.max.apply(null,ys))/2 };
+               })();
+        }
+        if(_c && isFinite(_c.x) && isFinite(_c.y)){
+          g.setAttribute('transform','rotate('+_rr+' '+_c.x+' '+_c.y+')');
+        }
+      }
       g.addEventListener('mousedown', function(ev){ _shapeMouseDown(ev, sh.id); });
       g.addEventListener('touchstart', function(ev){ _shapeMouseDown(ev, sh.id); }, {passive:false});
       svg.appendChild(g);
@@ -53134,6 +53180,120 @@ function _mktDoPush(){
   });
 }
 window._mktDoPush=_mktDoPush;
+
+/* ═══════════════════════════════════════════════════════════════════
+ *  OmegaRotDiag()  --  why is my rotation not sticking?
+ *  ------------------------------------------------------------------
+ *  Rotation crosses four subsystems that can each silently undo it:
+ *  the renderer (does it read the geometry the bake writes?), the bake,
+ *  the ground stamp, and the unified anchor engine's frozen aux offsets.
+ *  Reading the code cannot tell you which one is live in a given build.
+ *  This reports the actual state, per shape, in one line each.
+ * ═══════════════════════════════════════════════════════════════════ */
+function OmegaRotDiag(){
+  var rows=[];
+  try{
+    (S.shapes||[]).forEach(function(sh){
+      var canBake = (typeof _canBakeRotation==='function') ? _canBakeRotation(sh) : null;
+      var drawsFrom = (sh.kind==='dersolar')
+        ? (sh.autoLayout ? 'boundary+tables' : 'pts[0]+wPx/hPx (axis-aligned)')
+        : 'points';
+      rows.push({
+        id: sh.id, kind: sh.kind,
+        autoLayout: !!sh.autoLayout,
+        rot: +sh.rot||0,
+        rendersRotation: (+sh.rot||0)!==0 ? 'yes (transform)' : (canBake?'baked into geometry':'NO ANGLE'),
+        drawsFrom: drawsFrom,
+        canBake: canBake,
+        hasAuxFt: !!sh._auxFt,
+        auxKeys: sh._auxFt ? Object.keys(sh._auxFt).join('+') : '',
+        hasGeoAnchor: !!sh._geoAnchor,
+        geoPts: sh._geoPts ? sh._geoPts.length : 0,
+        pts: sh.pts ? sh.pts.length : 0,
+        wPx: sh.wPx!=null ? Math.round(sh.wPx) : null,
+        hPx: sh.hPx!=null ? Math.round(sh.hPx) : null
+      });
+    });
+  }catch(e){}
+  try{
+    if(console.table) console.table(rows); else console.log(rows);
+    console.info('[rotdiag] If rot is non-zero but the array looks square, the renderer is '
+      + 'not applying the transform. If rot is 0 and canBake is false, the angle was lost. '
+      + 'If hasAuxFt is true right after rotating, the anchor engine will restore the old '
+      + 'geometry on the next map event.');
+  }catch(e){}
+  return rows;
+}
+window.OmegaRotDiag = OmegaRotDiag;
+
+/* ═══════════════════════════════════════════════════════════════════
+ *  BUILD STAMP
+ *  ------------------------------------------------------------------
+ *  Deployment drift has cost several debugging rounds: a fix is applied
+ *  here, tested against a host still serving an older file, and reported
+ *  as not working. There is no way to tell two 6 MB HTML files apart by
+ *  looking at them, so the file says which one it is, out loud, on boot.
+ *
+ *  OmegaBuild.check('feature') answers "is this fix actually deployed?"
+ *  in one call, without needing to know what to look for.
+ * ═══════════════════════════════════════════════════════════════════ */
+var OMEGA_BUILD = { id:'e09f2d5975e2', built:'2026-08-11 23:09 UTC' };
+window.OMEGA_BUILD = OMEGA_BUILD;
+window.OmegaBuild = {
+  id: OMEGA_BUILD.id,
+  built: OMEGA_BUILD.built,
+  /* Every feature added in this session, with a live probe. If a probe
+     returns false the build predates that fix -- no guessing. */
+  features: {
+    rotDiag:        function(){ return typeof OmegaRotDiag==='function'; },
+    rotBakeGate:    function(){ return typeof _canBakeRotation==='function'
+                                  && _canBakeRotation({kind:'dersolar',boundary:[1,2,3,4]})===false; },
+    auxInvalidate:  function(){ return typeof OmegaReanchor==='function'; },
+    marketplacePush:function(){ return typeof mktPush==='function'; },
+    buildingNetZero:function(){ return typeof bnzAudit==='function'; },
+    envelopeReport: function(){ return typeof bnzReportHtml==='function'; },
+    oneLineExport:  function(){ return typeof omegaOneLineExport==='function'; },
+    networkProximity:function(){ return typeof omegaNetworkProximity==='function'; },
+    autelPriceBook: function(){ return typeof AUTEL_PRICES!=='undefined'; },
+    solarInEstimate:function(){ return typeof omegaSolarCost==='function'; },
+    elRenderCenter: function(){ return typeof _elRenderSize==='function'; },
+    derRotateRender:function(){
+      /* The DER wrapper must put a rotate() on its own group. Probe the
+         real renderer with a rotated array and read the DOM back. */
+      try{
+        if(typeof renderShape!=='function') return false;
+        var probe={id:'__rotprobe__',kind:'dersolar',autoLayout:false,rot:45,
+                   pts:[{x:0,y:0}],wPx:100,hPx:50};
+        renderShape(probe);
+        var g=document.querySelector('[data-shid="__rotprobe__"]');
+        var ok=!!(g && /rotate\(/.test(g.getAttribute('transform')||''));
+        if(g&&g.parentNode) g.parentNode.removeChild(g);
+        return ok;
+      }catch(e){ return false; }
+    }
+  },
+  check: function(name){
+    var f=this.features[name];
+    if(!f) return { known:false, note:'no such feature probe' };
+    var ok=false; try{ ok=!!f(); }catch(e){}
+    return { feature:name, present:ok, build:this.id, built:this.built };
+  },
+  status: function(){
+    var out={}, k;
+    for(k in this.features){ try{ out[k]=!!this.features[k](); }catch(e){ out[k]=false; } }
+    try{
+      var missing=Object.keys(out).filter(function(x){ return !out[x]; });
+      console.info('[omega/build] '+OMEGA_BUILD.id+'  built '+OMEGA_BUILD.built);
+      if(console.table) console.table(out);
+      console.info(missing.length
+        ? '[omega/build] MISSING: '+missing.join(', ')+' \u2014 this build is older than those fixes.'
+        : '[omega/build] all known fixes present.');
+    }catch(e){}
+    return out;
+  }
+};
+try{ console.info('[omega/build] '+OMEGA_BUILD.id+' \u00b7 built '+OMEGA_BUILD.built
+  +' \u00b7 run OmegaBuild.status() to verify what is deployed'); }catch(e){}
 
 /* ── BNZ panel ─────────────────────────────────────────────────────
    Opens on the selected shape. Rect (zone box) is the fast path;
