@@ -135,6 +135,15 @@
   table.r-t tr:hover td{background:var(--panel2)}
   .r-note{font-size:12px;color:var(--muted);line-height:1.55;margin-top:12px;
     border-left:3px solid var(--amber);padding-left:10px}
+
+  tr.r-row{cursor:pointer}
+  tr.r-row:hover td{background:#eaf2fb}
+  #adWrap{position:fixed;inset:0;z-index:1500;background:rgba(26,39,51,.42);display:none;
+    align-items:center;justify-content:center;padding:24px}
+  #adWrap.open{display:flex}
+  #adBox{background:#fff;border:1px solid var(--line);border-radius:14px;width:min(760px,96vw);
+    max-height:88vh;display:flex;flex-direction:column;box-shadow:0 24px 70px rgba(26,39,51,.28)}
+  .a-src{font-family:var(--mono);font-size:10px;color:var(--dim);letter-spacing:.08em;text-transform:uppercase;margin-bottom:8px}
 </style>
 </head>
 <body>
@@ -187,6 +196,24 @@
       <div class="r-msg" id="rptMsg"></div>
       <div class="r-bar"><i id="rptBar"></i></div>
       <div id="rptOut"></div>
+    </div>
+  </div>
+</div>
+
+
+<div id="adWrap">
+  <div id="adBox">
+    <div class="r-h"><span class="ti" id="adTitle">Addresses</span><span class="x" id="adClose">&#10005;</span></div>
+    <div class="r-c">
+      <div class="r-ctl">
+        <div class="r-f"><label>County parcel source</label>
+          <select id="adCounty"><option value="cook">Cook County</option></select></div>
+        <button class="r-go" id="adRun">Find addresses</button>
+        <button class="r-csv" id="adCsv" disabled>Download CSV</button>
+      </div>
+      <div class="r-msg" id="adMsg"></div>
+      <div class="r-bar"><i id="adBar"></i></div>
+      <div id="adOut"></div>
     </div>
   </div>
 </div>
@@ -815,10 +842,10 @@ function finishReport(attrs,layerId){
     var key=(info.feeder||info.feederAlt||("oid"+a.OBJECTID))+"|"+(info.sub||"");
     if(!by[key]){ by[key]={feeder:info.feeder||info.feederAlt||"—",sub:info.sub||"—",
                            bess:info.bess,pv:info.pv,ev:info.ev,queue:info.queue,
-                           updated:info.updated,parts:1};
+                           updated:info.updated,parts:1,oids:[a.OBJECTID]};
                   order.push(key); }
     else{
-      var r=by[key]; r.parts++;
+      var r=by[key]; r.parts++; r.oids.push(a.OBJECTID);
       if((info.bess||0)>(r.bess||0)){ r.bess=info.bess; r.pv=info.pv; r.ev=info.ev; r.queue=info.queue; }
     }
   }
@@ -856,7 +883,7 @@ function renderReport(){
     h+='<th data-k="'+cols[c][0]+'">'+esc(cols[c][1])+(RPT.sortKey===cols[c][0]?(RPT.sortDir<0?" \u25BE":" \u25B4"):"")+'</th>';
   h+='</tr></thead><tbody>';
   for(var r=0;r<rows.length;r++){
-    h+='<tr>';
+    h+='<tr class="r-row" data-i="'+r+'" title="Show addresses inside this circuit">';
     for(var c2=0;c2<cols.length;c2++){
       var v=rows[r][cols[c2][0]];
       var txt=(cols[c2][2]&&v!=null&&v!=="")?Math.round(v).toLocaleString():(v==null||v===""?"\u2014":esc(v));
@@ -874,6 +901,10 @@ function renderReport(){
   var ths=out.getElementsByTagName("th");
   for(var t=0;t<ths.length;t++)
     ths[t].onclick=(function(kk){return function(){rptSort(kk);};})(ths[t].getAttribute("data-k"));
+  var trs=out.getElementsByClassName("r-row");
+  for(var z=0;z<trs.length;z++)
+    trs[z].onclick=(function(rr){return function(){ addrDrill(rr); };})(rows[parseInt(trs[z].getAttribute("data-i"),10)]);
+  RPT.sorted=rows;
 }
 
 function csvCell(v){
@@ -904,6 +935,198 @@ document.getElementById("rptClose").onclick=function(){ document.getElementById(
 document.getElementById("rptWrap").onclick=function(e){ if(e.target===this) this.className=""; };
 document.getElementById("rptRun").onclick=runReport;
 document.getElementById("rptCsv").onclick=downloadCsv;
+
+
+
+/* ══════════════════════════════════════════════════════════════
+   ADDRESSES INSIDE A CIRCUIT
+
+   NOT geocoding. Google (and every other geocoder) converts ONE point
+   at a time and has no "list every address in this polygon" call;
+   Google's terms also forbid exporting or bulk-saving their addresses,
+   and forbid using their geocodes alongside a non-Google map — this
+   map is Leaflet/CARTO. So neither the capability nor the licence is
+   there.
+
+   Counties publish parcel and address-point layers as open ArcGIS
+   services. This is a spatial join against those: take the feeder's
+   own buffer polygon, ask the county which parcels intersect it. Same
+   /query verb we already use for ComEd.
+
+   Endpoints live in the Worker (PARCELS) so a county URL change is a
+   Worker edit, not a redeploy of every tool.
+   ══════════════════════════════════════════════════════════════ */
+var AD={row:null,busy:false,rows:[],county:"cook",meta:{},cfg:null};
+var AD_MAX=3000;      /* a feeder buffer can cover thousands of parcels */
+var AD_CHUNK=200;
+
+function proxyRoot(){ return PROXY ? PROXY.replace(/\/comed\/?$/,"") : null; }
+
+function loadCounties(){
+  var root=proxyRoot(); if(!root) return;
+  fetchJSON(root+"/counties",function(err,j){
+    if(err||!j||j.error) { diag("counties: "+(err?err.message:"error")); return; }
+    AD.meta=j;
+    var sel=document.getElementById("adCounty"), html="";
+    for(var k in j){ if(j.hasOwnProperty(k)) html+='<option value="'+esc(k)+'">'+esc(j[k].label||k)+'</option>'; }
+    if(html) sel.innerHTML=html;
+  });
+}
+
+function addrDrill(row){
+  AD.row=row; AD.rows=[];
+  document.getElementById("adTitle").textContent="Addresses in feeder "+(row.feeder||"—");
+  document.getElementById("adOut").innerHTML="";
+  document.getElementById("adCsv").disabled=true;
+  document.getElementById("adWrap").className="open";
+  adMsg("This circuit covers "+row.parts+" buffer polygon"+(row.parts===1?"":"s")+
+        " at "+(row.bess!=null?Math.round(row.bess).toLocaleString():"?")+" kW. Pick a source and run.");
+  adBar(0);
+}
+function adMsg(m,cls){ var e=document.getElementById("adMsg"); if(e){ e.textContent=m; e.className="r-msg"+(cls?(" "+cls):""); } }
+function adBar(p){ var e=document.getElementById("adBar"); if(e) e.style.width=Math.round(p*100)+"%"; }
+
+function runAddresses(){
+  if(AD.busy||!AD.row) return;
+  var root=proxyRoot();
+  if(!root){ adMsg("Parcel lookup needs the proxy (PROXY is empty).","err"); return; }
+  AD.busy=true; AD.rows=[];
+  AD.county=document.getElementById("adCounty").value;
+  AD.cfg=AD.meta[AD.county]||{addr:"street_address",idField:"PIN14_dash",label:AD.county};
+  document.getElementById("adRun").disabled=true;
+  document.getElementById("adCsv").disabled=true;
+  document.getElementById("adOut").innerHTML="";
+  adBar(0);
+
+  /* Step 1 — get this feeder's actual buffer geometry back from ComEd.
+     The report drops geometry to stay light, so re-fetch just these OIDs. */
+  adMsg("Fetching circuit boundary\u2026");
+  var lid=detailLayer();
+  fetchJSON(rptUrl(lid,{where:"OBJECTID IN ("+AD.row.oids.join(",")+")",
+                        outFields:"OBJECTID",returnGeometry:"true",geometryPrecision:"6",outSR:"4326"}),
+    function(err,j){
+      if(err||!j||j.error||!j.features||!j.features.length){
+        AD.busy=false; document.getElementById("adRun").disabled=false;
+        adMsg("Could not fetch the circuit boundary: "+(err?err.message:(j&&j.error?("service "+j.error.code):"no geometry")),"err");
+        return;
+      }
+      /* Union by concatenating rings — ArcGIS treats a multi-ring polygon as
+         one geometry for intersects, which is exactly what we want. */
+      var rings=[];
+      for(var i=0;i<j.features.length;i++){
+        var g=j.features[i].geometry;
+        if(g&&g.rings) rings=rings.concat(g.rings);
+      }
+      if(!rings.length){
+        AD.busy=false; document.getElementById("adRun").disabled=false;
+        adMsg("Circuit returned no polygon rings.","err"); return;
+      }
+      var geom=JSON.stringify({rings:rings,spatialReference:{wkid:4326}});
+      countParcels(root,geom);
+    });
+}
+
+function parcelUrl(root,params){
+  var u=root+"/parcel/"+AD.county+"/query?f=json";
+  for(var k in params){ if(params.hasOwnProperty(k)) u+="&"+k+"="+encodeURIComponent(params[k]); }
+  return u;
+}
+
+function countParcels(root,geom){
+  adMsg("Asking "+(AD.cfg.label||AD.county)+" which parcels fall inside\u2026");
+  fetchJSON(parcelUrl(root,{where:"1=1",geometry:geom,geometryType:"esriGeometryPolygon",
+                            inSR:"4326",spatialRel:"esriSpatialRelIntersects",returnIdsOnly:"true"}),
+    function(err,j){
+      if(err||!j||j.error||!j.objectIds){
+        AD.busy=false; document.getElementById("adRun").disabled=false;
+        adMsg("Parcel query failed: "+(err?err.message:(j&&j.error?("service "+j.error.code+" "+(j.error.message||"")):"no ids"))+
+              " \u2014 the county endpoint may have moved; check PARCELS in the Worker.","err");
+        return;
+      }
+      var ids=j.objectIds;
+      if(!ids.length){
+        AD.busy=false; document.getElementById("adRun").disabled=false;
+        adMsg("No parcels found inside this circuit for "+(AD.cfg.label||AD.county)+
+              ". The circuit may sit in a different county.","err");
+        return;
+      }
+      if(ids.length>AD_MAX){
+        AD.busy=false; document.getElementById("adRun").disabled=false;
+        adMsg(ids.length.toLocaleString()+" parcels inside this circuit \u2014 too many to list. "+
+              "Buffered circuits cover wide areas; narrow by parcel type or sub-area first.","err");
+        return;
+      }
+      var chunks=[],n;
+      for(n=0;n<ids.length;n+=AD_CHUNK) chunks.push(ids.slice(n,n+AD_CHUNK));
+      var got=[],done=0;
+      (function next(){
+        if(done>=chunks.length){ finishAddresses(got); return; }
+        adMsg("Pulling "+ids.length.toLocaleString()+" parcel records\u2026 "+
+              Math.min((done+1)*AD_CHUNK,ids.length).toLocaleString()+"/"+ids.length.toLocaleString());
+        adBar(done/chunks.length);
+        var of=[AD.cfg.addr,AD.cfg.idField].filter(Boolean).join(",");
+        fetchJSON(parcelUrl(root,{where:"OBJECTID IN ("+chunks[done].join(",")+")",
+                                  outFields:of,returnGeometry:"false"}),
+          function(e2,j2){
+            if(!e2&&j2&&j2.features){ for(var q=0;q<j2.features.length;q++) got.push(j2.features[q].attributes); }
+            else diag("parcel chunk "+done+": "+(e2?e2.message:(j2&&j2.error?("srv "+j2.error.code):"empty")));
+            done++; next();
+          });
+      })();
+    });
+}
+
+function finishAddresses(attrs){
+  var seen={},rows=[];
+  for(var i=0;i<attrs.length;i++){
+    var a=attrs[i];
+    var ad=a[AD.cfg.addr], id=AD.cfg.idField?a[AD.cfg.idField]:null;
+    if(ad==null||ad==="") continue;                 /* vacant/unaddressed parcels */
+    var k=String(ad).trim().toUpperCase()+"|"+(id||"");
+    if(seen[k]) continue; seen[k]=1;
+    rows.push({addr:String(ad).trim(),id:id||""});
+  }
+  rows.sort(function(x,y){ return x.addr<y.addr?-1:(x.addr>y.addr?1:0); });
+  AD.rows=rows; AD.busy=false;
+  document.getElementById("adRun").disabled=false;
+  document.getElementById("adCsv").disabled=!rows.length;
+  adBar(1);
+  adMsg(rows.length.toLocaleString()+" addressed parcel"+(rows.length===1?"":"s")+
+        " inside feeder "+(AD.row.feeder||"—")+" (from "+attrs.length.toLocaleString()+" parcel records)","ok");
+
+  var h='<div class="a-src">Source: '+esc(AD.cfg.label||AD.county)+' public parcel layer'+
+        (AD.cfg.note?(" \u00B7 "+esc(AD.cfg.note)):"")+'</div>';
+  h+='<table class="r-t"><thead><tr><th>Address</th><th>Parcel ID</th></tr></thead><tbody>';
+  for(var r=0;r<rows.length;r++)
+    h+='<tr><td>'+esc(rows[r].addr)+'</td><td>'+esc(rows[r].id)+'</td></tr>';
+  h+='</tbody></table>';
+  h+='<div class="r-note"><b>Inside the buffer is not the same as servable.</b> These parcels fall within '+
+     'the feeder\u2019s buffered area, which says they are near it \u2014 not that a service drop can reach '+
+     'them, nor that the capacity is reservable for any one of them. The circuit\u2019s kW is shared across '+
+     'everything on it, so the first project to file takes it. Treat this as a canvassing list, not an '+
+     'inventory of available capacity.</div>';
+  document.getElementById("adOut").innerHTML=h;
+}
+
+function downloadAddrCsv(){
+  if(!AD.rows.length) return;
+  var lines=["Address,Parcel_ID,Feeder,Substation,BESS_kW,County"];
+  for(var i=0;i<AD.rows.length;i++){
+    lines.push([AD.rows[i].addr,AD.rows[i].id,AD.row.feeder,AD.row.sub,AD.row.bess,
+                (AD.cfg.label||AD.county)].map(csvCell).join(","));
+  }
+  var blob=new Blob([lines.join("\r\n")],{type:"text/csv;charset=utf-8"});
+  var a=document.createElement("a"), url=URL.createObjectURL(blob);
+  a.href=url; a.download="feeder-"+String(AD.row.feeder||"circuit").replace(/[^A-Za-z0-9_-]/g,"")+"-addresses.csv";
+  document.body.appendChild(a); a.click();
+  setTimeout(function(){ document.body.removeChild(a); URL.revokeObjectURL(url); },250);
+}
+
+document.getElementById("adClose").onclick=function(){ document.getElementById("adWrap").className=""; };
+document.getElementById("adWrap").onclick=function(e){ if(e.target===this) this.className=""; };
+document.getElementById("adRun").onclick=runAddresses;
+document.getElementById("adCsv").onclick=downloadAddrCsv;
+loadCounties();
 
 
 bootService();
