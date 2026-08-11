@@ -2038,7 +2038,7 @@ window.onerror = function(msg, src, line, col, err) {
     </div>
     <div class="rpanel">
       <div class="rpanel-body">
-        <button class="rbtn" id="btn-dtwin" onclick="omegaDigitalTwinSoon()" title="Digital Twin — live operating model of the built site: telemetry against design intent, dispatch replay and drift detection. In development." style="position:relative;opacity:.55"><span class="rb-ico" style="color:#38BDF8">◈</span><span class="rb-lbl">Digital<br>Twin</span><span id="btn-dtwin-soon" style="position:absolute;top:2px;right:2px;background:#F59E0B;color:#0A1628;font-size:7px;font-weight:800;letter-spacing:.4px;line-height:1;padding:2px 3px;border-radius:2px;pointer-events:none">SOON</span></button>
+        <button class="rbtn" id="btn-dtwin" onclick="omegaDigitalTwinSoon()" title="Digital Twin — in development. The one-line handoff is built and callable now: omegaOneLineExport() / omegaTwinPush(siteId)." style="position:relative;opacity:.55"><span class="rb-ico" style="color:#38BDF8">◈</span><span class="rb-lbl">Digital<br>Twin</span><span id="btn-dtwin-soon" style="position:absolute;top:2px;right:2px;background:#F59E0B;color:#0A1628;font-size:7px;font-weight:800;letter-spacing:.4px;line-height:1;padding:2px 3px;border-radius:2px;pointer-events:none">SOON</span></button>
       </div>
       <div class="rpanel-cap">Operations</div>
     </div>
@@ -19265,7 +19265,9 @@ function sldFromSite(opts){
   (S.elements||[]).forEach(function(el){
     if(!el) return;
     var kind=el.evKind||el.eqId||el.bgbRole||'';
-    var cx=(el.x||0)+((el.w||60)/2), cy=(el.y||0)+((el.h||el.w||60)/2);
+    var _ec=(typeof _elRenderCenter==='function') ? _elRenderCenter(el)
+      : { x:(el.x||0)+((el.w||60)/2), y:(el.y||0)+((el.h||el.w||60)/2) };
+    var cx=_ec.x, cy=_ec.y;
     if(kind==='bess'||kind==='acblock'||el.bgbRole==='bess')
       bess.push({ x:cx, y:cy, kw:+el.bessKw||+el.bgbKw||0, kwh:+el.bessKwh||+el.bgbKwh||0,
                   label:el.bessModel||el.label||'BESS' });
@@ -32533,13 +32535,47 @@ function _liveMapState(){
 
 /* Stamp an element's current pixel position as a lat/lng, if a live map is
    active. Called after placement and after a drag/resize ends. */
+/* ── ONE definition of an element's rendered size ────────────────────
+   The anchor has to sit on the pixel the element is actually DRAWN
+   around. Three places independently guessed the height as
+   `el.h || el.w || 60`, but renderEl derives an evgear's height from its
+   aspect ratio when el.h is unset:
+
+       gh = el.h || Math.round(gw * (el.aspect||0.72))
+
+   So a freshly placed charger 30 px wide renders 30x22 while the anchor
+   assumed 30x30 -- pinning the ground point 4 px below the true centre.
+   That offset is in SCREEN pixels and does not scale, so every reproject
+   re-derived the top-left from a centre that was never the centre and
+   the piece walked away from the imagery on pan and zoom. Once el.h was
+   set by a resize the error vanished, which is why it looked intermittent.
+
+   Every anchor path now calls this, so the stamp and the reprojection can
+   no longer disagree about where the middle of a thing is. */
+function _elRenderSize(el){
+  var w = el.w || 60;
+  var h;
+  if(el.h) h = el.h;
+  else if(el.type==='evgear') h = Math.round(w * (el.aspect||0.72));
+  else if(el.type==='bess-asm') h = Math.round(w * 0.55);
+  else h = w;
+  return { w:w, h:h };
+}
+window._elRenderSize=_elRenderSize;
+
+function _elRenderCenter(el){
+  var s=_elRenderSize(el);
+  return { x: el.x + s.w/2, y: el.y + s.h/2 };
+}
+window._elRenderCenter=_elRenderCenter;
+
 function _geoStampElement(el){
   if(!el) return;
   var ms=_liveMapState(); if(!ms) return;
   var sz=_getCanvasSize();
   /* Anchor on the element's CENTER so rotation/resize keep the coordinate. */
-  var cx=el.x+((el.w||60)/2), cy=el.y+((el.h||el.w||60)/2);
-  var geo=_pxToLatLng(cx, cy, ms, sz.w, sz.h);
+  var c=_elRenderCenter(el);
+  var geo=_pxToLatLng(c.x, c.y, ms, sz.w, sz.h);
   if(geo){ el._geoLat=geo.lat; el._geoLng=geo.lng; }
 }
 window._geoStampElement=_geoStampElement;
@@ -32771,6 +32807,16 @@ function _geoRestampOne(o){
     if(o.pts || o.boundary || o.tables || typeof o.cx==='number' || o.target || o.anchor){
       _geoStampShape(o, toGeo, true);
     }
+    /* Trench runs carry _geoPts like a conduit but were never re-stamped
+       after an edit -- _geoStampAll only fills them in when absent, so a
+       rebuilt or dragged run kept the anchor from wherever it was first
+       drawn and the next map idle pulled it back there. */
+    if(o._geoPts!==undefined && o.pts && o.pts.length && !o.boundary){
+      var _tc=o.pts.map(function(pp){ var gg=toGeo(pp.x,pp.y); return gg?{lat:gg.lat,lng:gg.lng}:null; });
+      var _tok=true;
+      for(var _ti=0;_ti<_tc.length;_ti++) if(!_tc[_ti]){ _tok=false; break; }
+      if(_tok) o._geoPts=_tc;   /* a partial anchor is worse than none */
+    }
     if(o.type==='dimension' && typeof o.x1==='number'){
       var gd1r=toGeo(o.x1,o.y1), gd2r=toGeo(o.x2,o.y2);
       if(gd1r && gd2r){ o._geoD1={lat:gd1r.lat,lng:gd1r.lng}; o._geoD2={lat:gd2r.lat,lng:gd2r.lng}; }
@@ -32794,7 +32840,8 @@ function _geoRestampAll(){
   var toGeo=function(x,y){ return _pxToLatLng(x,y,ms,sz.w,sz.h); };
   try{
     (S.elements||[]).forEach(function(el){
-      var g=toGeo(el.x+((el.w||60)/2), el.y+((el.h||el.w||60)/2));
+      var _c=_elRenderCenter(el);
+      var g=toGeo(_c.x, _c.y);
       if(g){ el._geoLat=g.lat; el._geoLng=g.lng; }
     });
     (S.shapes||[]).forEach(function(sh){ _geoStampShape(sh, toGeo, true); });
@@ -33090,7 +33137,8 @@ function _geoStampAll(){
         return;
       }
       if(el._geoLat!=null) return;               /* already anchored */
-      var g=toGeo(el.x+((el.w||60)/2), el.y+((el.h||el.w||60)/2));
+      var _c=_elRenderCenter(el);
+      var g=toGeo(_c.x, _c.y);
       if(g){ el._geoLat=g.lat; el._geoLng=g.lng; }
     });
     /* Patch 6: stamp the whole geometry, not just pts. Non-destructive --
@@ -33141,9 +33189,25 @@ function _geoStampAll(){
     (S._trenches||[]).forEach(function(t){
       if(t._geoPts) return;
       if(t.pts && t.pts.length){
-        t._geoPts=t.pts.map(function(p){ var g=toGeo(p.x,p.y); return g?{lat:g.lat,lng:g.lng}:null; });
+        var _cut=t.pts.map(function(p){ var g=toGeo(p.x,p.y); return g?{lat:g.lat,lng:g.lng}:null; });
+        /* Same rule as conduits: record the anchor only when EVERY point
+           converted. Storing nulls is what makes a run fly apart on zoom,
+           because the reprojector moves only the points that have
+           coordinates and leaves the rest pinned to a screen pixel. */
+        for(var _ci=0;_ci<_cut.length;_ci++) if(!_cut[_ci]) return;
+        t._geoPts=_cut;
       }
     });
+    /* S._trench is the single active run; S._trenches is the list. The
+       active one was never stamped at all. */
+    try{
+      if(S._trench && S._trench.pts && S._trench.pts.length && !S._trench._geoPts){
+        var _ac=S._trench.pts.map(function(p){ var g=toGeo(p.x,p.y); return g?{lat:g.lat,lng:g.lng}:null; });
+        var _aok=true;
+        for(var _ai=0;_ai<_ac.length;_ai++) if(!_ac[_ai]){ _aok=false; break; }
+        if(_aok) S._trench._geoPts=_ac;
+      }
+    }catch(e){}
   }catch(e){}
 }
 window._geoStampAll=_geoStampAll;
@@ -33185,10 +33249,26 @@ function _geoReprojectAll(){
       if(el._geoLat==null || el._geoLng==null) return;
       var px=toPx(el._geoLat, el._geoLng);
       if(!px) return;
-      el.x=px.x-((el.w||60)/2);
-      el.y=px.y-((el.h||el.w||60)/2);
+      var _s=_elRenderSize(el);
+      el.x=px.x-_s.w/2;
+      el.y=px.y-_s.h/2;
       var dom=document.querySelector('[data-elid="'+el.id+'"]');
-      if(dom){ dom.style.left=el.x+'px'; dom.style.top=el.y+'px'; }
+      if(dom){
+        dom.style.left=el.x+'px'; dom.style.top=el.y+'px';
+        /* Reproject moves the wrapper but never rebuilt the body, so a
+           rotation applied since the last full render survived only by
+           luck. Re-assert it from the model, which is the truth. */
+        var _bd=dom.querySelector('.elbody');
+        if(_bd && el.rot){
+          _bd.style.transform='rotate('+el.rot+'deg)';
+          _bd.style.transformOrigin='center';
+        }
+        var _pd=dom.querySelector('.ev-bollard-pad');
+        if(_pd && el.rot){
+          _pd.style.transform='rotate('+el.rot+'deg)';
+          _pd.style.transformOrigin='center';
+        }
+      }
     });
     /* Shapes: rebuild the WHOLE geometry from lat/lng, and re-derive table
        pixel size from feet so a solar array scales with the map instead of
@@ -51900,6 +51980,411 @@ function bnzCompliance(sh){
 }
 window.bnzCompliance = bnzCompliance;
 
+/* ═══════════════════════════════════════════════════════════════════
+ *  BNZ PHASE 4  --  HANDOFF CONTRACT + CALIBRATION
+ *  ------------------------------------------------------------------
+ *  The twin is a separate application. This file does not model it, run
+ *  it, or embed it -- it emits the contract the twin consumes, and
+ *  accepts measured performance back.
+ *
+ *  Direction of travel matters:
+ *    editor -> twin   design intent, assumptions, provenance (this file)
+ *    twin   -> editor measured EUI / demand, as CALIBRATION data
+ *
+ *  Calibration is what turns a screening tool into one that gets better.
+ *  A modelled EUI is a guess; a modelled EUI corrected by fifty measured
+ *  buildings of the same type in the same climate zone is an estimate.
+ * ═══════════════════════════════════════════════════════════════════ */
+var OMEGA_BUILDING_SCHEMA = 'omega.building.v1';
+
+/* Stable IDs. A twin tracking a building across revisions needs an
+   identifier that survives a redraw, so it is derived from the shape ID
+   rather than array position. */
+function _bnzUid(sh){ return 'bldg_' + String(sh.id||'').replace(/[^A-Za-z0-9_-]/g,''); }
+
+function omegaBuildingExport(shapeId){
+  var list = (S.shapes||[]).filter(function(s){
+    return s && s.bnz && (!shapeId || s.id===shapeId); });
+  var site = null;
+  try{ if(isFinite(+S.lat)&&+S.lat!==0) site={lat:+S.lat, lon:+S.lng}; }catch(e){}
+
+  var doc = {
+    schema: OMEGA_BUILDING_SCHEMA,
+    generated: new Date().toISOString(),
+    generator: 'Omega Editor',
+    grade: 'screening',
+    /* Every table that fed the numbers, with its own as_of. A twin
+       comparing measured against modelled has to know WHICH catalog the
+       model used, or the comparison is meaningless. */
+    provenance: {
+      env_spec:   ENV_SPEC.as_of,
+      climate:    CLIMATE.as_of,
+      code_min:   CODE_MIN.as_of,
+      bld_rom:    BLD_ROM.as_of,
+      carbon:     CARBON.as_of,
+      bps_targets:BPS_TARGETS.as_of,
+      rates:      BNZ_RATES.as_of,
+      sources: [ENV_SPEC.source, CLIMATE.source, BLD_ROM.source, CARBON.source]
+    },
+    site: site,
+    buildings: []
+  };
+
+  list.forEach(function(sh){
+    var b = sh.bnz, g = bnzGeometry(sh), env = bnzAudit(sh);
+    var E=null, C=null;
+    try{ E = bnzEnergy(sh); }catch(e){}
+    try{ C = bnzCompliance(sh); }catch(e){}
+
+    doc.buildings.push({
+      id: _bnzUid(sh),
+      name: b.name,
+      delivery: b.delivery,
+      property_type: b.propertyType,
+      geometry: {
+        footprint_sf: round2(g.footprintSf), perimeter_ft: round2(g.perimeterFt),
+        stories: b.stories, floor_to_floor_ft: b.f2f, parapet_ft: b.parapet,
+        gfa_sf: round2(g.gfaSf), gross_wall_sf: round2(g.wallSf),
+        roof_sf: round2(g.roofSf), volume_cf: round2(g.volumeCf),
+        wwr: round4(g.wwr), sv_ratio: round4(g.svRatio),
+        /* Vertices in feet relative to the first, so the twin can rebuild
+           the massing without inheriting our screen coordinates. */
+        edges: g.edges.map(function(e){
+          return { face:e.face, azimuth_deg:round2(e.azimuth), length_ft:round2(e.lengthFt),
+                   wall_sf:round2(e.wallSf), windows:e.winCount, glazing_sf:round2(e.glazingSf),
+                   wwr:round4(e.wwr) }; })
+      },
+      assemblies: env.layers.map(function(l){
+        return { layer:l.layer, assembly:l.assembly, confidence:l.conf,
+                 vendor:l.vendor||null, area:round2(l.area), unit:l.unit,
+                 rate:l.rate, cost:round2(l.cost), r_value:l.r, u_value:l.u,
+                 basis:l.basis }; }),
+      thermal: { ua_btu_hr_f: round2(env.ua), effective_r: round2(env.effR),
+                 wall_thickness_in: env.wallThkIn },
+      /* Assumptions travel WITH the model. A twin that finds a 30% gap
+         needs to know whether we assumed 2,600 occupied hours or 8,760
+         before it blames the envelope. */
+      assumptions: E && E.ok ? {
+        climate_station: E.climate.station, climate_zone: E.climate.zone,
+        hdd65: E.climate.hdd65, cdd65: E.climate.cdd65,
+        occupied_hours: b.occHrs, ach50: b.ach50 || null,
+        gain_utilisation: E.gainUtil, ventilation_cfm: round2(E.ventCfm||0),
+        erv_recovery: b.ervRecovery || 0, thermal_bridge_derate: b.tbDerate || 0.90,
+        lpd_w_sf: b.lpdOverride || null, epd_w_sf: b.epdOverride || null
+      } : null,
+      energy: E && E.ok ? {
+        baseline_eui: round2(E.baseline.eui), proposed_eui: round2(E.proposed.eui),
+        benchmark_eui: E.benchmarkEui, deviation: round4(E.deviation),
+        sanity: E.sanity,
+        elec_kwh_yr: round2(E.proposed.elecKwh), gas_therm_yr: round2(E.proposed.gasTherm),
+        system: E.system ? E.system.id : null,
+        pv_kwdc: round2(E.pvKwdc), pv_kwh_yr: round2(E.pvKwh),
+        net_zero_fraction: round4(E.netZeroPct),
+        pv_kw_to_net_zero: round2(E.pvKwToNetZero),
+        carbon: E.carbon.map(function(c){ return { year:c.year, tco2e:round2(c.tco2e) }; })
+      } : null,
+      compliance: C && C.ok ? {
+        jurisdiction: C.jurisdiction.id, occupancy_group: C.occGroup,
+        pathway: C.altPathway, applies: C.applies,
+        first_non_compliant: C.firstNonCompliant,
+        periods: C.periods.map(function(p){
+          return { label:p.label, confidence:p.conf, cap_tco2e_sf:p.capTSf,
+                   cap_t:round2(p.capT), actual_t:round2(p.tProposed),
+                   penalty_usd:round2(p.penaltyProposed),
+                   penalty_avoided_usd:round2(p.penaltyAvoided) }; })
+      } : null,
+      cost: { envelope_capex: env.capex, per_gfa_sf: round2(env.costPerGfa),
+              per_wall_sf: round2(env.costPerWall) },
+      /* Anything the twin should treat as suspect, carried explicitly
+         rather than left for it to rediscover. */
+      flags: (env.flags||[]).concat(E&&E.flags?E.flags:[]).concat(C&&C.flags?C.flags:[])
+    });
+  });
+  return doc;
+}
+window.omegaBuildingExport = omegaBuildingExport;
+function round2(n){ return (n==null||!isFinite(n))?null:Math.round(n*100)/100; }
+function round4(n){ return (n==null||!isFinite(n))?null:Math.round(n*10000)/10000; }
+
+function omegaBuildingDownload(){
+  try{
+    var doc = omegaBuildingExport();
+    if(!doc.buildings.length){
+      if(typeof showBanner==='function') showBanner('cal','No buildings on the drawing to export.');
+      return;
+    }
+    var blob = new Blob([JSON.stringify(doc,null,2)], {type:'application/json'});
+    var a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = (doc.buildings[0].name||'building').replace(/[^A-Za-z0-9_-]/g,'_')+'.omega.building.v1.json';
+    document.body.appendChild(a); a.click();
+    setTimeout(function(){ URL.revokeObjectURL(a.href); a.remove(); }, 1000);
+    if(typeof showBanner==='function')
+      showBanner('cal','Exported '+doc.buildings.length+' building(s) as '+OMEGA_BUILDING_SCHEMA+'.');
+  }catch(e){
+    if(window.console) console.warn('[omega] building export:', e && e.message);
+  }
+}
+window.omegaBuildingDownload = omegaBuildingDownload;
+
+/* ── CALIBRATION ────────────────────────────────────────────────────
+   The twin returns measured performance. Stored by property type and
+   climate zone, and applied as a correction factor with the sample size
+   attached -- a correction from two buildings is not a correction, and
+   the UI has to be able to say so. */
+var CALIBRATION = { as_of:null, source:'twin', samples:{} };
+window.CALIBRATION = CALIBRATION;
+
+function omegaCalibrationIngest(payload){
+  /* payload: { as_of, records:[{property_type, climate_zone,
+                measured_eui, modelled_eui, gfa_sf, building_id}] } */
+  var out = { accepted:0, rejected:0, keys:[] };
+  try{
+    var recs = (payload && payload.records) || [];
+    recs.forEach(function(r){
+      var pt=r.property_type, cz=String(r.climate_zone||'').replace(/[^0-9]/g,'');
+      var m=+r.measured_eui, d=+r.modelled_eui;
+      if(!pt || !cz || !(m>0) || !(d>0)){ out.rejected++; return; }
+      var k = pt+'|'+cz;
+      if(!CALIBRATION.samples[k]) CALIBRATION.samples[k] = { n:0, sumRatio:0, ratio:1 };
+      var s = CALIBRATION.samples[k];
+      s.n++; s.sumRatio += m/d; s.ratio = s.sumRatio/s.n;
+      out.accepted++; if(out.keys.indexOf(k)<0) out.keys.push(k);
+    });
+    CALIBRATION.as_of = (payload && payload.as_of) || new Date().toISOString();
+  }catch(e){}
+  return out;
+}
+window.omegaCalibrationIngest = omegaCalibrationIngest;
+
+/* Correction factor for a type/zone, with the sample size so the caller
+   can decide whether to trust it. Below MIN_N it returns 1.0 and says
+   why rather than silently applying a two-building "correction". */
+var CAL_MIN_N = 8;
+function omegaCalibrationFactor(propertyType, climateZone){
+  var cz = String(climateZone||'').replace(/[^0-9]/g,'');
+  var s = CALIBRATION.samples[propertyType+'|'+cz];
+  if(!s) return { factor:1, n:0, applied:false, reason:'no measured buildings for this type and climate zone' };
+  if(s.n < CAL_MIN_N)
+    return { factor:1, n:s.n, applied:false,
+             reason:'only '+s.n+' measured building(s) \u2014 need '+CAL_MIN_N+' before a correction is meaningful' };
+  return { factor:s.ratio, n:s.n, applied:true,
+           reason:'corrected from '+s.n+' measured buildings' };
+}
+window.omegaCalibrationFactor = omegaCalibrationFactor;
+
+/* ═══════════════════════════════════════════════════════════════════
+ *  ONE-LINE EXPORT  --  omega.oneline.v1  (twin ingest)
+ *  ------------------------------------------------------------------
+ *  The site digital twin is a SEPARATE application. It builds a
+ *  canonical electrical model from a one-line export and reports, per
+ *  study, what that model can and cannot support.
+ *
+ *  Field names here deliberately match the twin's own Raw* vocabulary
+ *  (key / from_key / to_key / node_key / nominal_kv / component_type),
+ *  because its suggest_mapping() auto-derives a mapping by matching key
+ *  names. Match the vocabulary and no mapping dict is needed at all.
+ *
+ *  THE CENTRAL DISCIPLINE, and it is the twin's own: a field we do not
+ *  know is emitted as null, never as a plausible default. The twin's
+ *  entire value is naming the gap between what a one-line carries and
+ *  what a study needs -- zero-sequence impedance, winding config,
+ *  utility fault MVA, interrupting ratings. Inventing any of those
+ *  turns a BLOCKED short-circuit study into a READY one built on
+ *  fiction, which is worse than no twin at all.
+ * ═══════════════════════════════════════════════════════════════════ */
+var OMEGA_ONELINE_SCHEMA = 'omega.oneline.v1';
+
+/* Editor equipment -> twin ComponentType. Anything unmapped is dropped
+   rather than guessed into the nearest-looking type. */
+var _OL_COMP = {
+  solar:'pv_array', pv:'pv_array', array:'pv_array',
+  bess:'bess', battery:'bess',
+  inverter:'inverter', pcs:'pcs',
+  genset:'genset', generator:'genset', fuelcell:'fuel_cell',
+  wind:'wind_turbine',
+  load:'load', datacenter:'it_load', itload:'it_load',
+  ups:'ups', meter:'meter', xfmr:null, transformer:null
+};
+
+function _olKey(p, i){ return p+'_'+i; }
+function _olNum(v){ var n=+v; return isFinite(n)&&n!==0 ? n : null; }
+
+function omegaOneLineExport(){
+  var nodes=[], branches=[], components=[], poi=null, notes=[];
+  var n=0, c=0, br=0;
+
+  function addNode(name, kv, type){
+    var k=_olKey('n', ++n);
+    nodes.push({ key:k, name:name, nominal_kv:kv,
+                 bus_type:type||'pq', phases:'abc',
+                 /* Grounding and zg live in test reports, not on a
+                    drawing. Null is the honest answer. */
+                 grounding:null, base_mva:100.0 });
+    return k;
+  }
+  function addComp(name, nodeKey, ctype, nameplate, mfr){
+    if(!ctype) return null;
+    var k=_olKey('c', ++c);
+    components.push({ key:k, name:name, node_key:nodeKey, component_type:ctype,
+                      nameplate:nameplate||{}, manufacturer:mfr||null,
+                      serial:null, tag:null,
+                      /* Sequence model fields: a fault current magnitude
+                         must never be invented. */
+                      r1_pu:null, x1_pu:null, r0_pu:null, x0_pu:null,
+                      subtransient_x_pu:null, i_fault_pu:null,
+                      vendor_curve_ref:null, emt_model_ref:null,
+                      ride_through_ref:null, firmware_version:null });
+    return k;
+  }
+  function addBranch(fromK, toK, btype, name, extra){
+    if(!fromK||!toK) return null;
+    var k=_olKey('b', ++br);
+    var row={ key:k, from_key:fromK, to_key:toK, branch_type:btype, name:name||k,
+              r1_pu:null, x1_pu:null, r0_pu:null, x0_pu:null,
+              rating_a:null, interrupting_ka:null, winding_config:null,
+              tap:1.0, coupling:'ac', closed:true };
+    if(extra) for(var q in extra) if(extra.hasOwnProperty(q)) row[q]=extra[q];
+    branches.push(row); return k;
+  }
+
+  /* ── Utility / POI bus ── */
+  var sysKv = 0.48;
+  try{ if(S.sysVolts) sysKv = (+S.sysVolts||480)/1000; }catch(e){}
+  var utilK = addNode('Utility source', 13.8, 'slack');
+  var poiK  = addNode('POI', 13.8, 'pq');
+  addBranch(utilK, poiK, 'breaker', 'Utility breaker');
+
+  var mainK = addNode('Main AC bus', sysKv, 'pq');
+  addBranch(poiK, mainK, 'transformer', 'Main step-down', { winding_config:null });
+  notes.push('Transformer winding configuration and impedance are not on the drawing \u2014 emitted null; short-circuit and arc-flash will block on them until a test report or submittal is loaded.');
+
+  /* ── Generation ── */
+  var solarKw=0, windKw=0;
+  try{ solarKw = (typeof omegaSolarKwDc==='function') ? (+omegaSolarKwDc()||0) : 0; }catch(e){}
+  try{ windKw  = (typeof omegaWindKw==='function') ? (+omegaWindKw()||0) : 0; }catch(e){}
+  if(solarKw>0){
+    var pvBus = addNode('PV collector', sysKv, 'pv');
+    addBranch(pvBus, mainK, 'conductor', 'PV feeder');
+    addComp('PV array', pvBus, 'pv_array', { kw_dc:solarKw });
+    var acKw=0; try{ acKw=(typeof omegaSolarKwAc==='function')?(+omegaSolarKwAc()||0):0; }catch(e){}
+    addComp('PV inverter', pvBus, 'inverter', { kw_ac:acKw||null, kw_dc:solarKw });
+  }
+  if(windKw>0){
+    var wBus = addNode('Wind collector', sysKv, 'pv');
+    addBranch(wBus, mainK, 'conductor', 'Wind feeder');
+    addComp('Wind', wBus, 'wind_turbine', { kw:windKw });
+  }
+
+  /* ── Storage ── */
+  var bKw=0, bKwh=0;
+  try{ bKw=(typeof omegaBessKw==='function')?(+omegaBessKw()||0):0;
+       bKwh=(typeof omegaBessKwh==='function')?(+omegaBessKwh()||0):0; }catch(e){}
+  if(bKw>0||bKwh>0){
+    var bBus = addNode('BESS bus', sysKv, 'pq');
+    addBranch(bBus, mainK, 'conductor', 'BESS feeder');
+    addComp('BESS', bBus, 'bess', { kw:bKw||null, kwh:bKwh||null });
+    addComp('PCS', bBus, 'pcs', { kw:bKw||null });
+  }
+
+  /* ── Loads, including a data centre if one is placed ── */
+  try{
+    (S.elements||[]).forEach(function(el){
+      if(!el || !el.loadKw) return;
+      var lb = addNode((el.label||'Load'), sysKv, 'pq');
+      addBranch(mainK, lb, 'conductor', (el.label||'Load')+' feeder');
+      var ct = (el.loadKind==='datacenter') ? 'it_load' : 'load';
+      addComp(el.label||'Load', lb, ct,
+        { kw:_olNum(el.loadKw), it_kw:_olNum(el.loadItKw), pue:_olNum(el.loadPue) });
+      if(el.loadKind==='datacenter'){
+        addComp('UPS', lb, 'ups', { kw:_olNum(el.loadItKw) });
+        notes.push('Data centre UPS emitted without a sequence model \u2014 it is a fault source, so short-circuit will block until the vendor curve or EMT reference is supplied.');
+      }
+    });
+  }catch(e){}
+
+  /* ── EV chargers as load ── */
+  try{
+    if(typeof evChargerTotals==='function'){
+      var ev=evChargerTotals();
+      if(ev && (ev.l2Kw+ev.dcfcKw)>0){
+        var evb=addNode('EVSE bus', sysKv, 'pq');
+        addBranch(mainK, evb, 'conductor', 'EVSE feeder');
+        addComp('EVSE fleet', evb, 'load', { kw:ev.l2Kw+ev.dcfcKw, ports:ev.ports });
+      }
+    }
+  }catch(e){}
+
+  /* ── POI. Export limit is a real number when the user set one; the
+        agreement type is NOT guessable from a drawing. ── */
+  var expKw=null, impKw=null;
+  try{ expKw=_olNum(S.exportLimitKw); impKw=_olNum(S.importLimitKw); }catch(e){}
+  poi = { node_key:poiK,
+          agreement_type: (expKw===null ? 'non_export' : 'limited_export'),
+          import_limit_kw:impKw, export_limit_kw:expKw,
+          ramp_limit_kw_per_min:null,
+          utility_fault_mva:null, utility_x_over_r:null,
+          metering_component_key:null };
+  if(expKw===null)
+    notes.push('No export limit set in the editor \u2014 POI defaulted to non_export. If this site exports, set the limit before running performance or the dispatch will be wrong.');
+  notes.push('Utility fault MVA and X/R come from the utility, not the drawing \u2014 emitted null.');
+
+  var siteName=''; try{ siteName=(document.getElementById('pname')||{}).value||''; }catch(e){}
+
+  return { schema:OMEGA_ONELINE_SCHEMA,
+           generated:new Date().toISOString(),
+           generator:'Omega Editor',
+           site:{ name:siteName||'Untitled site' },
+           site_name:siteName||'Untitled site',
+           nodes:nodes, branches:branches, components:components,
+           poi:poi, protection:[],
+           /* What we know we do not know. The twin will derive its own
+              blockers; this is the editor being explicit about why. */
+           known_gaps:notes };
+}
+window.omegaOneLineExport = omegaOneLineExport;
+
+function omegaOneLineDownload(){
+  try{
+    var doc=omegaOneLineExport();
+    var blob=new Blob([JSON.stringify(doc,null,2)],{type:'application/json'});
+    var a=document.createElement('a'); a.href=URL.createObjectURL(blob);
+    a.download=(doc.site_name||'site').replace(/[^A-Za-z0-9_-]/g,'_')+'.oneline.v1.json';
+    document.body.appendChild(a); a.click();
+    setTimeout(function(){ URL.revokeObjectURL(a.href); a.remove(); },1000);
+    if(typeof showBanner==='function')
+      showBanner('cal','One-line exported \u2014 '+doc.nodes.length+' nodes, '+doc.components.length+' components, '+doc.known_gaps.length+' known gaps.');
+  }catch(e){ if(window.console) console.warn('[omega] one-line export:',e&&e.message); }
+}
+window.omegaOneLineDownload = omegaOneLineDownload;
+
+/* Push straight to a running twin service: POST /sites/{id}/versions.
+   No mapping dict is sent -- the field names above already match the
+   twin's canonical vocabulary, so suggest_mapping resolves it. */
+var OMEGA_TWIN_URL = 'http://127.0.0.1:8765';
+function omegaTwinPush(siteId){
+  var doc = omegaOneLineExport();
+  return fetch(OMEGA_TWIN_URL+'/sites/'+encodeURIComponent(siteId)+'/versions', {
+    method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({ payload: doc })
+  }).then(function(r){ return r.json().then(function(j){ return {status:r.status, body:j}; }); })
+    .then(function(res){
+      if(res.status>=400){
+        if(typeof showBanner==='function') showBanner('cal','Twin rejected the push: '+(res.body.detail||res.body.error||res.status));
+        return res;
+      }
+      if(typeof showBanner==='function')
+        showBanner('cal','Filed version '+(res.body.version_id||'').slice(0,12)+' against '+siteId+'.');
+      return res;
+    })
+    .catch(function(e){
+      if(typeof showBanner==='function')
+        showBanner('cal','No twin service at '+OMEGA_TWIN_URL+' \u2014 export the file and use: twin push <site> <file>.');
+      throw e;
+    });
+}
+window.omegaTwinPush = omegaTwinPush;
+
 /* ── BNZ panel ─────────────────────────────────────────────────────
    Opens on the selected shape. Rect (zone box) is the fast path;
    any drawn polygon works via the shoelace path.                     */
@@ -52057,7 +52542,9 @@ function _bnzInner(){
   +'<div style="padding:16px 20px;border-bottom:1px solid #1E3A5F;display:flex;align-items:center;justify-content:space-between">'
     +'<div><div style="font-size:16px;font-weight:800;color:#E2EEF9">\u25A4 Building \u2014 Net-Zero</div>'
     +'<div style="font-size:10px;color:#64748B">Screening grade \u00b7 \u00b1'+Math.round((a.tolerance||0.25)*100)+'% \u00b7 envelope + cost. Energy model is Phase 2.</div></div>'
-    +'<button onclick="var h=document.getElementById(\'bnz-modal\');if(h)h.remove()" style="background:none;border:none;color:#64748B;font-size:20px;cursor:pointer;line-height:1">\u00d7</button></div>'
+    +'<div style="display:flex;align-items:center;gap:8px">'
+     +'<button onclick="omegaBuildingDownload()" title="Export this model as omega.building.v1 \u2014 geometry, assemblies, assumptions, energy, compliance and provenance. This is the handoff the digital twin consumes." style="background:rgba(167,139,250,.14);border:1px solid rgba(167,139,250,.45);color:#C4B5FD;font-size:10px;font-weight:700;padding:6px 10px;border-radius:6px;cursor:pointer;font-family:inherit">\u2913 Export for twin</button>'
+     +'<button onclick="var h=document.getElementById(\'bnz-modal\');if(h)h.remove()" style="background:none;border:none;color:#64748B;font-size:20px;cursor:pointer;line-height:1">\u00d7</button></div></div>'
   +'<div style="padding:16px 20px">'
 
    +'<div style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;margin-bottom:14px">'
@@ -52295,17 +52782,20 @@ function omegaCampusFit(acres){
 window.omegaCampusFit = omegaCampusFit;
 
 /* ═══════════════════════════════════════════════════════════════════
- *  DIGITAL TWIN  --  shipped dark
+ *  DIGITAL TWIN  --  gated while the service is built
  *  ------------------------------------------------------------------
- *  Same pattern as 3D View: the entry point exists and is gated on one
- *  flag, so turning it on later is a one-line change rather than a
- *  re-wire. enabled:false shows the SOON badge and the notice.
+ *  The twin is a separate application: electrical one-line studies and
+ *  8760 dispatch. The editor's side of the handoff is FINISHED --
+ *  omegaOneLineExport() emits omega.oneline.v1 and omegaTwinPush(siteId)
+ *  files it against a running service -- but the ribbon entry stays dark
+ *  until the service itself is ready, so nobody clicks into a dead end.
  * ═══════════════════════════════════════════════════════════════════ */
 var OMEGA_TWIN = { enabled:false };
 
 function omegaDigitalTwinSoon(){
+  if(OMEGA_TWIN.enabled){ try{ omegaOneLineDownload(); }catch(e){} return false; }
   if(typeof showBanner==='function')
-    showBanner('cal','Digital Twin \u2014 coming soon.');
+    showBanner('cal','Digital Twin \u2014 coming soon. The one-line export already works: omegaOneLineExport() in the console.');
   return false;
 }
 window.omegaDigitalTwinSoon = omegaDigitalTwinSoon;
@@ -52313,16 +52803,14 @@ window.omegaDigitalTwinSoon = omegaDigitalTwinSoon;
 window.OmegaTwin = {
   enable:function(){
     OMEGA_TWIN.enabled = true;
-    var b=document.getElementById('btn-dtwin');
-    if(b){ b.setAttribute('onclick','openDigitalTwin()'); b.style.opacity=''; }
     var s=document.getElementById('btn-dtwin-soon'); if(s) s.style.display='none';
+    var b=document.getElementById('btn-dtwin'); if(b) b.style.opacity='';
     return true;
   },
   disable:function(){
     OMEGA_TWIN.enabled = false;
-    var b=document.getElementById('btn-dtwin');
-    if(b){ b.setAttribute('onclick','omegaDigitalTwinSoon()'); b.style.opacity='.55'; }
     var s=document.getElementById('btn-dtwin-soon'); if(s) s.style.display='';
+    var b=document.getElementById('btn-dtwin'); if(b) b.style.opacity='.55';
     return true;
   },
   status:function(){ return { enabled:OMEGA_TWIN.enabled }; }
@@ -61646,7 +62134,13 @@ window._crmToastModal=_crmToastModal;
       if((els.length-before.elements)===1 && el.x!=null){
         el._geoLat=LL.lat; el._geoLng=LL.lng; n++;
       } else if(el.x!=null){
-        var g2=pxToGeo(el.x+((el.w||60)/2), el.y+((el.h||el.w||60)/2));
+        /* Native place is an anchoring path too -- same shared centre as
+           the stamp and the reprojector, or a piece dropped here starts
+           life mis-anchored and walks on the first pan. */
+        var _c2=(typeof _elRenderCenter==='function')
+          ? _elRenderCenter(el)
+          : { x:el.x+((el.w||60)/2), y:el.y+((el.h||el.w||60)/2) };
+        var g2=pxToGeo(_c2.x, _c2.y);
         if(g2){ el._geoLat=g2.lat; el._geoLng=g2.lng; n++; }
       }
       /* Ground size, so footprints are to-scale like the prototype. */
