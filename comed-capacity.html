@@ -600,9 +600,37 @@ function geocode(raw){
 document.getElementById("goBtn").onclick=function(){geocode(document.getElementById("q").value);};
 document.getElementById("q").addEventListener("keydown",function(e){if(e.key==="Enter")geocode(this.value);});
 
-(function(){try{var ref=document.referrer,url="https://tools.csebuilders.com/";
-  if(ref&&/\.csebuilders\.com$/.test(new URL(ref).hostname)){var s=new URL(ref).hostname.split(".")[0];if(s&&s!=="tools")url="https://"+s+".csebuilders.com/";}
-  var b=document.getElementById("back-link"),l=document.getElementById("logo-link");if(b)b.href=url;if(l)l.href=url;}catch(e){}})();
+/* ── BACK TO PORTAL ──
+   OMEGATools.hrefFor() appends ?return=<portal origin+path> because this tool
+   is served from TOOL_HOST, a DIFFERENT ORIGIN from the portal — so the
+   referrer is gone on any refresh or rel="noreferrer" link and referrer alone
+   would strand the user on the generic tools host. Prefer the explicit param,
+   validate its host against our own domains so the param can't be used to
+   point our own back-button at someone else's site, then fall back to the
+   referrer, then to the tools host. */
+(function(){
+  var SAFE=/(^|\.)(csebuilders\.com|clearsky-usa\.com)$/;
+  function ok(u){
+    try{ var x=new URL(u); return (x.protocol==="https:"||x.protocol==="http:")&&SAFE.test(x.hostname); }
+    catch(e){ return false; }
+  }
+  try{
+    var url="https://tools.csebuilders.com/";
+    var m=(location.search||"").match(/[?&]return=([^&]+)/);
+    var ret=m?decodeURIComponent(m[1]):null;
+    if(ret&&ok(ret)){
+      url=ret;
+    } else {
+      var ref=document.referrer;
+      if(ref&&ok(ref)){
+        var hn=new URL(ref).hostname, s=hn.split(".")[0];
+        url=(s&&s!=="tools")?("https://"+hn+"/"):"https://tools.csebuilders.com/";
+      }
+    }
+    var b=document.getElementById("back-link"),l=document.getElementById("logo-link");
+    if(b)b.href=url; if(l)l.href=url;
+  }catch(e){}
+})();
 
 bootService();
 setTimeout(function(){map.invalidateSize();},200);
