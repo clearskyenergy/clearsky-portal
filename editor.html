@@ -51440,7 +51440,15 @@ function bnzAudit(sh){
   if(wallR>0){ ua += g.opaqueSf/wallR; aSum += g.opaqueSf; }
   if(+glzA.u>0 && g.glazingSf>0){ ua += g.glazingSf*(+glzA.u); aSum += g.glazingSf; }
   if(b.roofOn && roofR>0){ ua += g.roofSf/roofR; aSum += g.roofSf; }
-  res.ua = ua;
+  /* NAME THESE TWO APART.
+     This is CONDUCTION through the opaque wall, glazing and roof only --
+     the number an envelope reviewer wants, and the one that pairs with
+     effective R over the same area. bnzEnergy() builds a different and
+     larger figure that also carries slab edge, infiltration and
+     ventilation; that one drives the loads. Calling both "UA" is how a
+     reader ends up comparing an assembly against a whole-building number. */
+  res.uaConduction = ua;
+  res.ua = ua;                       /* retained: existing callers */
   res.effR = ua>0 ? aSum/ua : 0;
   res.assemblyArea = aSum;
 
@@ -51675,7 +51683,21 @@ function bnzEnergy(sh){
   if(b.layers.roof   ==='none' || propRoofR<=0) propRoofR = baseRoofR;
   if(b.layers.glazing==='none' || propWinU <=0) propWinU  = baseWinU;
 
-  function ua(wallR, roofR, winU){
+  /* Air leakage differs between the baseline and the proposal, and the
+     first cut used one figure for both. A deep retrofit that re-clads the
+     whole building was therefore credited with ZERO airtightness gain --
+     on this test case infiltration was 66% of the total heat-loss
+     coefficient, so holding it fixed suppressed most of the saving and
+     made the payback look absurd. Re-cladding is the single most
+     effective air-sealing measure there is; if the wall assembly is
+     scoped, the proposal earns a tightened rate. */
+  function achFor(scoped){
+    if(scoped && b.ach50Proposed!=null && b.ach50Proposed!=='') return +b.ach50Proposed;
+    if(!scoped && b.ach50!=null && b.ach50!=='') return +b.ach50;
+    if(isNew) return 5.0;                    /* code-built commercial */
+    return scoped ? 6.0 : 12.0;              /* re-clad vs as-existing */
+  }
+  function ua(wallR, roofR, winU, achOverride){
     var u = 0;
     if(wallR>0) u += g.opaqueSf/wallR;
     if(g.glazingSf>0) u += g.glazingSf*winU;
@@ -51686,7 +51708,7 @@ function bnzEnergy(sh){
        drove the heating load toward zero. Code-built commercial lands
        nearer 5; existing stock 12 and worse. The L5 air-barrier layer
        will drive this directly once it ships. */
-    var ach = (+b.ach50 || (isNew?5.0:12.0)) / 20;            /* LBL N-factor */
+    var ach = (achOverride!=null ? achOverride : (isNew?5.0:12.0)) / 20;   /* LBL N-factor */
     u += 0.018 * ach * (g.volumeCf||0);
     /* Ventilation was missing entirely. Outdoor air has to be conditioned,
        and in densely occupied types it rivals the envelope. */
@@ -51697,8 +51719,11 @@ function bnzEnergy(sh){
     var tb = (+b.tbDerate || 0.90);                           /* thermal bridging */
     return u/tb;
   }
-  var uaBase = ua(baseWallR, baseRoofR, baseWinU);
-  var uaProp = ua(propWallR, propRoofR, propWinU);
+  var _wallScoped = (b.layers.wall && b.layers.wall!=='none');
+  var _achBase = achFor(false), _achProp = achFor(_wallScoped);
+  out.ach50Baseline = _achBase; out.ach50Proposed = _achProp;
+  var uaBase = ua(baseWallR, baseRoofR, baseWinU, _achBase);
+  var uaProp = ua(propWallR, propRoofR, propWinU, _achProp);
 
   /* Internal gains, Btu/yr. Lighting + plug + people, diversified. */
   var hrs = (+b.occHrs || 2600);
@@ -51707,13 +51732,31 @@ function bnzEnergy(sh){
   var gainsBtu = (lpd+epd) * g.gfaSf * 3.412 * hrs * 0.75
                + people * 450 * hrs;
 
-  /* Solar gain through glazing. Vertical surface POA approximated from
-     annual GHI; the PV engine's POA model is the better source once the
-     wall-tilt path is wired to it. */
-  var ghi = 1500;                                  /* kWh/m2/yr, US mid */
-  var poaVert = ghi * 0.55 * 317;                  /* -> Btu/sf/yr */
+  /* Solar gain through glazing, BY ORIENTATION.
+     The previous cut applied one flat 0.55 factor to every square foot of
+     glass, so a north wall gained as much as a south wall. The geometry
+     already carries an azimuth per edge and windows are entered per side,
+     so the orientation is known -- ignoring it was throwing away data we
+     had. Factors are annual vertical-surface POA as a fraction of GHI at
+     mid-US latitude; the PV engine's own POA model is the better source
+     once the wall-tilt path is wired to it.
+     Conversion: 3412 Btu/kWh / 10.764 sf/m2 = 317 Btu/sf per kWh/m2. */
+  var POA_BY_FACE = { S:0.75, SE:0.68, SW:0.68, E:0.50, W:0.50,
+                      NE:0.35, NW:0.35, N:0.28 };
+  var ghi = (+b.ghiKwhM2 || 1500);                 /* kWh/m2/yr, US mid */
   var shgc = (+glzA.shgc || code.shgc || 0.35);
-  var solarBtu = g.glazingSf * shgc * poaVert * (+b.shadeFactor || 0.85);
+  var shade = (+b.shadeFactor || 0.85);
+  var solarBtu = 0, _solarByFace = {};
+  g.edges.forEach(function(e){
+    if(!(e.glazingSf>0)) return;
+    var fpoa = POA_BY_FACE[e.face];
+    if(fpoa==null) fpoa = 0.50;
+    var q = e.glazingSf * shgc * (ghi*fpoa*317) * shade;
+    solarBtu += q;
+    _solarByFace[e.face] = (_solarByFace[e.face]||0) + q;
+  });
+  out.solarByFace = _solarByFace;
+  out.solarGainBtu = solarBtu;
 
   var hddF = clim.hdd65/Math.max(1,(clim.hdd65+clim.cdd65));
   var cddF = 1-hddF;
@@ -51770,7 +51813,12 @@ function bnzEnergy(sh){
   }
   out.baseline = totals(eBase, baseSys);
   out.proposed = totals(eProp, sys);
+  /* Total heat-loss coefficient: conduction + slab edge + infiltration +
+     ventilation, after the thermal-bridging derate. Larger than the
+     envelope conduction UA in bnzAudit, and deliberately so. */
   out.uaBaseline = uaBase; out.uaProposed = uaProp;
+  out.uaLabel = 'total heat-loss coefficient (conduction + slab + infiltration + ventilation)';
+  out.uaConductionProposed = env.uaConduction;
   out.savingsPct = out.baseline.eui>0 ? (1-out.proposed.eui/out.baseline.eui) : 0;
 
   /* Stage H -- DER offset from the existing PV engine. */
@@ -52385,6 +52433,236 @@ function omegaTwinPush(siteId){
 }
 window.omegaTwinPush = omegaTwinPush;
 
+/* ═══════════════════════════════════════════════════════════════════
+ *  BUILDING / NET-ZERO REPORT
+ *  ------------------------------------------------------------------
+ *  Self-contained HTML: no CDN, no scripts, no external fonts. Open it
+ *  from disk, attach it to an email, or drop it in an iframe.
+ *
+ *  The assumptions appendix is not an afterthought at the bottom -- it
+ *  is the reason the report can be trusted. Every number here is a
+ *  screening estimate, and a reader who cannot see the occupied hours,
+ *  the air-leakage rate and the gain utilisation factor has no way to
+ *  judge whether the EUI applies to their building.
+ * ═══════════════════════════════════════════════════════════════════ */
+function _rEsc(s){ return String(s==null?'':s).replace(/[&<>"]/g,function(c){
+  return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]; }); }
+function _rN(n,d){ if(n==null||!isFinite(n)) return '\u2014';
+  return Number(n).toLocaleString(undefined,{minimumFractionDigits:d||0,maximumFractionDigits:d||0}); }
+function _rMoney(n){ return (n==null||!isFinite(n))?'\u2014':'$'+_rN(Math.round(n)); }
+
+function bnzReportHtml(sh){
+  if(!sh || !sh.bnz) return '';
+  var b=sh.bnz, g=bnzGeometry(sh), env=bnzAudit(sh);
+  var E=null,C=null;
+  try{ E=bnzEnergy(sh); }catch(e){}
+  try{ C=bnzCompliance(sh); }catch(e){}
+
+  var proj=''; try{ proj=(document.getElementById('pname')||{}).value||''; }catch(e){}
+  var addr=''; try{ addr=(document.getElementById('addr-in')||{}).value||''; }catch(e){}
+
+  var CONF={ vendor_quoted:['#166534','Vendor quoted'], vendor_published:['#1e40af','Vendor published'],
+             estimated:['#92400e','Estimated'], placeholder:['#991b1b','Placeholder \u2014 needs a number'],
+             baseline:['#475569','Baseline / unscoped'] };
+  function pill(c){ var x=CONF[c]||CONF.estimated;
+    return '<span class="pill" style="color:'+x[0]+';border-color:'+x[0]+'55;background:'+x[0]+'12">'+x[1]+'</span>'; }
+
+  /* ---- stack ---- */
+  var stack=env.layers.map(function(l){
+    return '<tr><td><strong>'+_rEsc(l.label)+'</strong><div class="sub">'+_rEsc(l.assembly)
+      +(l.vendor?' \u00b7 '+_rEsc(l.vendor):'')+'</div>'
+      +(l.note?'<div class="note">'+_rEsc(l.note)+'</div>':'')+'</td>'
+      +'<td class="c">'+pill(l.conf)+'</td>'
+      +'<td class="r">'+_rN(l.area)+'<div class="sub">'+_rEsc(l.unit)+'</div></td>'
+      +'<td class="r">'+(l.r?'R-'+_rN(l.r,1):(l.u?'U-'+_rN(l.u,2):'\u2014'))+'</td>'
+      +'<td class="r">'+(l.rate?'$'+_rN(l.rate,2):'\u2014')+'</td>'
+      +'<td class="r"><strong>'+_rMoney(l.cost)+'</strong></td></tr>'; }).join('');
+
+  /* ---- windows by side ---- */
+  var sides=g.edges.map(function(e,i){
+    return '<tr><td>Side '+(i+1)+' <span class="sub">facing '+_rEsc(e.face)+' \u00b7 '+_rN(e.azimuth)+'\u00b0</span></td>'
+      +'<td class="r">'+_rN(e.lengthFt)+' ft</td><td class="r">'+_rN(e.wallSf)+' sf</td>'
+      +'<td class="r">'+_rN(e.winCount)+'</td><td class="r">'+_rN(e.glazingSf)+' sf</td>'
+      +'<td class="r">'+_rN(e.wwr*100,1)+'%</td>'
+      +'<td class="r">'+((E&&E.solarByFace&&E.solarByFace[e.face])?_rN(E.solarByFace[e.face]/1e6,1)+' MMBtu':'\u2014')+'</td></tr>'; }).join('');
+
+  /* ---- energy ---- */
+  var energyBlock='';
+  if(E&&E.ok){
+    var eu=E.proposed.byEnd, tot=0; for(var k in eu) tot+=eu[k];
+    var order=[['heat','Heating'],['cool','Cooling'],['dhw','Service hot water'],
+               ['light','Lighting'],['plug','Plug / process'],['fan','Fans & pumps']];
+    var euRows=order.map(function(o){
+      var v=eu[o[0]]||0;
+      return '<tr><td>'+o[1]+'</td><td class="r">'+_rN(v/1000/g.gfaSf,1)+'</td>'
+        +'<td class="r">'+_rN(tot>0?100*v/tot:0,1)+'%</td></tr>'; }).join('');
+    var carbon=E.carbon.map(function(c){
+      return '<tr><td>'+c.year+'</td><td class="r">'+_rN(c.tco2e,1)+'</td><td class="r">'+_rN(c.kgPerSf,2)+'</td></tr>'; }).join('');
+    energyBlock=''
+     +'<h2>Energy</h2>'
+     +'<p class="lede">Climate resolved to <strong>'+_rEsc(E.climate.station)+'</strong>, IECC zone '+_rEsc(E.climate.zone)
+     +' \u2014 '+_rN(E.climate.hdd65)+' HDD<sub>65</sub> / '+_rN(E.climate.cdd65)+' CDD<sub>65</sub>.</p>'
+     +'<div class="kpis">'
+      +kpi('Baseline EUI',_rN(E.baseline.eui,1),'kBtu/sf\u00b7yr')
+      +kpi('Proposed EUI',_rN(E.proposed.eui,1),'benchmark '+E.benchmarkEui)
+      +kpi('Reduction',_rN(E.savingsPct*100,0)+'%','against baseline')
+      +kpi('Electricity',_rN(E.proposed.elecKwh)+' kWh', E.proposed.gasTherm>0?_rN(E.proposed.gasTherm)+' therm gas':'all-electric')
+     +'</div>'
+     +'<div class="two">'
+      +'<div><h3>End use intensity</h3><table><thead><tr><th>End use</th><th class="r">kBtu/sf</th><th class="r">Share</th></tr></thead><tbody>'+euRows+'</tbody></table></div>'
+      +'<div><h3>Operational carbon</h3><table><thead><tr><th>Year</th><th class="r">tCO\u2082e/yr</th><th class="r">kg/sf</th></tr></thead><tbody>'+carbon+'</tbody></table>'
+      +'<p class="note">The grid decarbonises on its own; gas does not. A fuel-switched building\u2019s emissions fall without further capital.</p></div>'
+     +'</div>';
+  }
+
+  /* ---- compliance ---- */
+  var compBlock='';
+  if(C&&C.ok){
+    var pr=C.periods.map(function(p){
+      return '<tr class="'+(p.compliant?'ok':'bad')+'"><td>'+_rEsc(p.label)
+        +' <span class="sub">'+_rEsc(p.conf)+'</span></td>'
+        +'<td class="r">'+p.capTSf.toFixed(5)+'</td><td class="r">'+_rN(p.capT)+'</td>'
+        +'<td class="r">'+_rN(p.tProposed)+'</td>'
+        +'<td class="r">'+(p.overProposed>0?_rN(p.overProposed):'\u2014')+'</td>'
+        +'<td class="r"><strong>'+(p.penaltyProposed>0?_rMoney(p.penaltyProposed):'compliant')+'</strong></td></tr>'; }).join('');
+    compBlock='<h2>Compliance \u2014 '+_rEsc(C.jurisdiction.name)+'</h2>'
+     +'<p class="lede">Occupancy group '+_rEsc(C.occGroup)+' \u00b7 pathway: '+_rEsc((C.altPathwayDef&&C.altPathwayDef.name)||'standard cap')
+     +' \u00b7 penalty $'+C.jurisdiction.penalty.rate+'/tCO\u2082e over cap, annual, no ceiling.'
+     +(C.applies?'':' <strong>Below the '+_rN(C.jurisdiction.applies_if.min_gsf)+' sf threshold \u2014 shown for reference only.</strong>')+'</p>'
+     +'<table><thead><tr><th>Period</th><th class="r">Cap tCO\u2082e/sf</th><th class="r">Cap t</th><th class="r">Actual t</th><th class="r">Over</th><th class="r">Penalty</th></tr></thead><tbody>'+pr+'</tbody></table>'
+     +'<div class="kpis" style="margin-top:14px">'
+      +kpi('First non-compliant',C.firstNonCompliant||'none','on this stack')
+      +kpi('Envelope capex',_rMoney(C.capex),'$'+_rN(env.costPerGfa,2)+'/sf GFA')
+      +kpi('Energy savings',_rMoney(C.energySavings)+'/yr','vs baseline')
+      +kpi('Simple payback',C.paybackYrs?_rN(C.paybackYrs,1)+' yr':'\u2014','capex \u00f7 annual benefit')
+     +'</div>';
+  }
+
+  /* ---- assumptions ---- */
+  var asm=[];
+  if(E&&E.ok){
+    asm.push(['Occupied hours',_rN(b.occHrs||2600)+' h/yr','drives lighting, plug and internal gain']);
+    asm.push(['Air leakage',_rN(E.ach50Baseline,1)+' → '+_rN(E.ach50Proposed,1)+' ACH50',
+              'baseline → proposed; re-cladding tightens the envelope. LBL N-factor 20']);
+    asm.push(['Gain utilisation',_rN((E.gainUtil||0.65)*100)+'%','share of internal gain that displaces heating']);
+    asm.push(['Ventilation',_rN(E.ventCfm||0)+' cfm','outdoor air, no heat recovery unless specified']);
+    asm.push(['Thermal bridging',_rN((b.tbDerate||0.90)*100)+'% derate','applied to the whole heat-loss coefficient']);
+    asm.push(['Solar gain','GHI '+_rN(b.ghiKwhM2||1500)+' kWh/m\u00b2','weighted by facade orientation, '+_rN((b.shadeFactor||0.85)*100)+'% shading']);
+    asm.push(['Distribution losses','12%','applied to heating and cooling delivery']);
+    asm.push(['Non-envelope end uses','BLD_ROM benchmark shares','scaled by area, modified by lighting and plug density']);
+  }
+  var asmRows=asm.map(function(a){ return '<tr><td>'+_rEsc(a[0])+'</td><td><strong>'+_rEsc(a[1])+'</strong></td><td class="sub">'+_rEsc(a[2])+'</td></tr>'; }).join('');
+
+  var flags=[].concat(env.flags||[], (E&&E.flags)||[], (C&&C.flags)||[]);
+  var flagBlock = flags.length
+    ? '<div class="warn"><strong>Open items</strong><ul>'+flags.map(function(x){ return '<li>'+_rEsc(x)+'</li>'; }).join('')+'</ul></div>' : '';
+
+  function kpi(l,v,s){ return '<div class="kpi"><div class="kl">'+_rEsc(l)+'</div><div class="kv">'+v+'</div><div class="ks">'+_rEsc(s||'')+'</div></div>'; }
+
+  return '<!DOCTYPE html><html lang="en"><head><meta charset="utf-8">'
+  +'<meta name="viewport" content="width=device-width,initial-scale=1">'
+  +'<title>'+_rEsc(b.name||'Building')+' \u2014 Envelope & Net-Zero Report</title><style>'
+  +'*{box-sizing:border-box}body{margin:0;padding:32px;background:#f6f7f9;color:#0f172a;'
+  +'font:14px/1.55 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif}'
+  +'.sheet{max-width:1000px;margin:0 auto;background:#fff;border:1px solid #e2e8f0;border-radius:10px;padding:34px 38px}'
+  +'h1{font-size:23px;margin:0 0 2px}h2{font-size:15px;margin:30px 0 8px;padding-bottom:5px;border-bottom:2px solid #0f172a;letter-spacing:.02em}'
+  +'h3{font-size:12px;margin:16px 0 6px;color:#475569;text-transform:uppercase;letter-spacing:.05em}'
+  +'.addr{color:#64748b;margin:0 0 4px}.meta{color:#64748b;font-size:11.5px}'
+  +'table{width:100%;border-collapse:collapse;margin-top:6px;font-size:12.5px}'
+  +'th{text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:.05em;color:#64748b;'
+  +'border-bottom:1px solid #cbd5e1;padding:6px 8px}td{padding:7px 8px;border-bottom:1px solid #f1f5f9;vertical-align:top}'
+  +'.r{text-align:right}.c{text-align:center}.sub{color:#64748b;font-size:11px}'
+  +'.note{color:#92400e;font-size:11px;margin-top:3px}'
+  +'.pill{display:inline-block;font-size:9.5px;font-weight:700;padding:2px 6px;border-radius:10px;border:1px solid}'
+  +'.kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin:12px 0}'
+  +'.kpi{border:1px solid #e2e8f0;border-radius:8px;padding:11px;background:#fafbfc}'
+  +'.kl{font-size:9.5px;text-transform:uppercase;letter-spacing:.05em;color:#64748b}'
+  +'.kv{font-size:19px;font-weight:700;margin:2px 0}.ks{font-size:11px;color:#64748b}'
+  +'.two{display:grid;grid-template-columns:1fr 1fr;gap:24px}'
+  +'.lede{color:#334155;margin:4px 0 10px}'
+  +'tr.bad td{background:#fef2f2}tr.ok td{background:#f0fdf4}'
+  +'.warn{margin-top:18px;border:1px solid #fcd34d;background:#fffbeb;border-radius:8px;padding:12px 16px}'
+  +'.warn ul{margin:6px 0 0 18px;padding:0}.warn li{margin-bottom:4px;font-size:12px}'
+  +'.foot{margin-top:26px;padding-top:14px;border-top:1px solid #e2e8f0;color:#64748b;font-size:10.5px;line-height:1.7}'
+  +'@media print{body{background:#fff;padding:0}.sheet{border:0;border-radius:0}}'
+  +'@media(max-width:760px){.kpis,.two{grid-template-columns:1fr}}'
+  +'</style></head><body><div class="sheet">'
+  +'<h1>'+_rEsc(b.name||'Building')+' \u2014 Envelope &amp; Net-Zero</h1>'
+  +'<p class="addr">'+_rEsc(proj||'')+(addr?' \u00b7 '+_rEsc(addr):'')+'</p>'
+  +'<p class="meta">'+new Date().toLocaleDateString()+' \u00b7 '+_rEsc((BLD_ROM.t[b.propertyType]||{}).name||b.propertyType)
+  +' \u00b7 '+_rEsc((BNZ_DELIVERY.filter(function(d){return d.id===b.delivery;})[0]||{}).name||b.delivery)
+  +' \u00b7 <strong>Screening estimate, \u00b1'+_rN((b.tolerance||0.25)*100)+'%</strong> \u2014 ASHRAE Level 1/2. Not a simulation.</p>'
+
+  +'<h2>Geometry</h2>'
+  +'<div class="kpis">'
+   +kpi('Footprint',_rN(g.footprintSf)+' sf','perimeter '+_rN(g.perimeterFt)+' ft')
+   +kpi('Gross floor',_rN(g.gfaSf)+' sf',_rN(b.stories)+' storeys @ '+_rN(b.f2f,1)+' ft')
+   +kpi('Gross wall',_rN(g.wallSf)+' sf','height '+_rN(g.wallHeightFt)+' ft')
+   +kpi('Window-to-wall',_rN(g.wwr*100,1)+'%',_rN(g.glazingSf)+' sf glazing')
+  +'</div>'
+
+  +'<h2>Assembly stack</h2>'
+  +'<table><thead><tr><th>Layer</th><th class="c">Confidence</th><th class="r">Area</th>'
+  +'<th class="r">Thermal</th><th class="r">Rate</th><th class="r">Cost</th></tr></thead>'
+  +'<tbody>'+stack+'</tbody>'
+  +'<tfoot><tr><td colspan="5" class="r"><strong>Envelope capex</strong></td>'
+  +'<td class="r"><strong>'+_rMoney(env.capex)+'</strong></td></tr></tfoot></table>'
+  +'<p class="note">Envelope is priced per square foot of <strong>wall</strong>, not floor. A long narrow building '
+  +'carries more wall for the same floor area and costs more to clad.</p>'
+
+  +'<h2>Thermal</h2>'
+  +'<div class="kpis">'
+   +kpi('Envelope conduction',_rN(env.uaConduction)+' Btu/hr\u00b7\u00b0F','wall + glazing + roof only')
+   +kpi('Effective R','R-'+_rN(env.effR,1),'area-weighted over those assemblies')
+   +kpi('Total heat loss',E&&E.ok?_rN(E.uaProposed)+' Btu/hr\u00b7\u00b0F':'\u2014','+ slab, infiltration, ventilation')
+   +kpi('Wall thickness',_rN(env.wallThkIn,1)+' in','net floor '+_rN(env.netFloorSf)+' sf')
+  +'</div>'
+
+  +'<h2>Windows by elevation</h2>'
+  +'<table><thead><tr><th>Elevation</th><th class="r">Length</th><th class="r">Wall</th>'
+  +'<th class="r">Windows</th><th class="r">Glazing</th><th class="r">WWR</th><th class="r">Solar gain</th></tr></thead>'
+  +'<tbody>'+sides+'</tbody></table>'
+
+  + energyBlock + compBlock
+
+  +'<h2>Assumptions</h2>'
+  +'<p class="lede">These drive the result as much as the assemblies do. A reader who disagrees with one of these '
+  +'should treat the corresponding output as provisional.</p>'
+  +'<table><tbody>'+asmRows+'</tbody></table>'
+
+  + flagBlock
+
+  +'<div class="foot">'
+  +'<strong>Basis.</strong> Assemblies '+_rEsc(ENV_SPEC.as_of)+' \u2014 '+_rEsc(ENV_SPEC.source)+'. '
+  +'Climate '+_rEsc(CLIMATE.as_of)+' \u2014 '+_rEsc(CLIMATE.source)+'. '
+  +'Benchmarks '+_rEsc(BLD_ROM.as_of)+' \u2014 '+_rEsc(BLD_ROM.source)+'. '
+  +'Carbon '+_rEsc(CARBON.as_of)+'. Caps '+_rEsc(BPS_TARGETS.as_of)+'.<br>'
+  +'<strong>Limits.</strong> This is a screening estimate for feasibility and scoping. It is not an energy model, '
+  +'a code-compliance calculation, or a quotation. Vendor and quote-basis items contribute zero until priced. '
+  +'Compliance caps beyond the published periods are provisional and must be verified with the authority having '
+  +'jurisdiction before they inform a financial decision.'
+  +'</div></div></body></html>';
+}
+window.bnzReportHtml = bnzReportHtml;
+
+function bnzReportDownload(){
+  var sh=_bnzSelShape() || (S.shapes||[]).filter(function(s){ return s.bnz; })[0];
+  if(!sh || !sh.bnz){
+    if(typeof showBanner==='function') showBanner('cal','No building to report on \u2014 draw a shape and assign assemblies first.');
+    return;
+  }
+  try{
+    var html=bnzReportHtml(sh);
+    var blob=new Blob([html],{type:'text/html'});
+    var a=document.createElement('a'); a.href=URL.createObjectURL(blob);
+    a.download=(sh.bnz.name||'building').replace(/[^A-Za-z0-9_-]/g,'_')+'_envelope_report.html';
+    document.body.appendChild(a); a.click();
+    setTimeout(function(){ URL.revokeObjectURL(a.href); a.remove(); },1000);
+    if(typeof showBanner==='function') showBanner('cal','Envelope report exported.');
+  }catch(e){ if(window.console) console.warn('[omega] bnz report:',e&&e.message); }
+}
+window.bnzReportDownload = bnzReportDownload;
+
 /* ── BNZ panel ─────────────────────────────────────────────────────
    Opens on the selected shape. Rect (zone box) is the fast path;
    any drawn polygon works via the shoelace path.                     */
@@ -52543,6 +52821,7 @@ function _bnzInner(){
     +'<div><div style="font-size:16px;font-weight:800;color:#E2EEF9">\u25A4 Building \u2014 Net-Zero</div>'
     +'<div style="font-size:10px;color:#64748B">Screening grade \u00b7 \u00b1'+Math.round((a.tolerance||0.25)*100)+'% \u00b7 envelope + cost. Energy model is Phase 2.</div></div>'
     +'<div style="display:flex;align-items:center;gap:8px">'
+     +'<button onclick="bnzReportDownload()" title="Export a self-contained HTML report: geometry, assembly stack with confidence, windows by elevation, thermal, energy, carbon, compliance and the assumptions that drive them." style="background:rgba(74,222,128,.14);border:1px solid rgba(74,222,128,.45);color:#86EFAC;font-size:10px;font-weight:700;padding:6px 10px;border-radius:6px;cursor:pointer;font-family:inherit">\u2913 Report</button>'
      +'<button onclick="omegaBuildingDownload()" title="Export this model as omega.building.v1 \u2014 geometry, assemblies, assumptions, energy, compliance and provenance. This is the handoff the digital twin consumes." style="background:rgba(167,139,250,.14);border:1px solid rgba(167,139,250,.45);color:#C4B5FD;font-size:10px;font-weight:700;padding:6px 10px;border-radius:6px;cursor:pointer;font-family:inherit">\u2913 Export for twin</button>'
      +'<button onclick="var h=document.getElementById(\'bnz-modal\');if(h)h.remove()" style="background:none;border:none;color:#64748B;font-size:20px;cursor:pointer;line-height:1">\u00d7</button></div></div>'
   +'<div style="padding:16px 20px">'
