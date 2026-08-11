@@ -208,6 +208,13 @@
       <div class="r-ctl">
         <div class="r-f"><label>County parcel source</label>
           <select id="adCounty"><option value="cook">Cook County</option></select></div>
+        <div class="r-f"><label>Property type</label>
+          <select id="adClass">
+            <option value="ci_mud" selected>C&amp;I + multifamily only</option>
+            <option value="ci">Commercial / industrial only</option>
+            <option value="mud">Multifamily only</option>
+            <option value="all">Everything (incl. houses)</option>
+          </select></div>
         <button class="r-go" id="adRun">Find addresses</button>
         <button class="r-csv" id="adCsv" disabled>Download CSV</button>
       </div>
@@ -1060,7 +1067,15 @@ function countParcels(root,geom){
       for(n=0;n<ids.length;n+=AD_CHUNK) chunks.push(ids.slice(n,n+AD_CHUNK));
       var got=[],done=0;
       (function next(){
-        if(done>=chunks.length){ finishAddresses(got); return; }
+        if(done>=chunks.length){
+          var base=[];
+          for(var w=0;w<got.length;w++){
+            var ad=got[w][AD.cfg.addr];
+            base.push({addr:(ad==null?"":String(ad).trim()),
+                       pin:pin14(AD.cfg.idField?got[w][AD.cfg.idField]:null)});
+          }
+          enrichParcels(root,base); return;
+        }
         adMsg("Pulling "+ids.length.toLocaleString()+" parcel records\u2026 "+
               Math.min((done+1)*AD_CHUNK,ids.length).toLocaleString()+"/"+ids.length.toLocaleString());
         adBar(done/chunks.length);
@@ -1076,43 +1091,173 @@ function countParcels(root,geom){
     });
 }
 
-function finishAddresses(attrs){
-  var seen={},rows=[];
-  for(var i=0;i<attrs.length;i++){
-    var a=attrs[i];
-    var ad=a[AD.cfg.addr], id=AD.cfg.idField?a[AD.cfg.idField]:null;
-    if(ad==null||ad==="") continue;                 /* vacant/unaddressed parcels */
-    var k=String(ad).trim().toUpperCase()+"|"+(id||"");
+/* ── COOK COUNTY CLASS CODES ─────────────────────────────────────
+   The Assessor's first digit is the property type. Groups below are
+   deliberately coarse, and every row shows its raw class so a human can
+   sanity-check before anyone is contacted:
+     1  vacant land
+     2  residential — houses AND 2-6 flats, so it is NOT safe to drop
+        wholesale if you want small multifamily; 2-11/2-12 style codes
+        are the flats
+     3  multifamily, 7+ units (apartment buildings)
+     4  not-for-profit
+     5  commercial (5a) and industrial (5b)
+     6,7,8  industrial/commercial incentive classes — still C&I
+     9  multifamily incentive
+   Class code meanings change over time; check the Assessor's current
+   class-code reference before treating any of this as settled. */
+var CLASS_SETS={
+  ci:   function(c){ return /^[5678]\d\d$/.test(c) || c==="RR"; },
+  /* 3xx = apartments 7+, 9xx = multifamily incentive, 2-1x/2-2x = flats.
+     299 is CONDOMINIUM and is deliberately excluded: each unit is separately
+     owned, so it yields hundreds of individual unit owners rather than one
+     building decision-maker — the opposite of a useful MUD lead. */
+  mud:  function(c){ return /^[39]\d\d$/.test(c) || (/^2[12]\d$/.test(c) && c!=="299"); },
+  ci_mud:function(c){ return CLASS_SETS.ci(c)||CLASS_SETS.mud(c); },
+  all:  function(){ return true; }
+};
+function classLabel(c){
+  c=String(c||"");
+  if(c==="RR") return "Railroad";
+  if(c==="EX") return "Exempt";
+  if(!/^\d/.test(c)) return c?("Class "+c):"\u2014";
+  if(/^1/.test(c)) return "Vacant";
+  if(c==="299") return "Condominium";
+  if(/^2[12]\d$/.test(c)) return "Residential (flats)";
+  if(/^2/.test(c)) return "Residential";
+  if(/^3/.test(c)) return "Multifamily 7+";
+  if(/^4/.test(c)) return "Not-for-profit";
+  if(/^5/.test(c)) return "Commercial / industrial";
+  if(/^[678]/.test(c)) return "C&I incentive";
+  if(/^9/.test(c)) return "Multifamily incentive";
+  return "Class "+c;
+}
+function pin14(v){ var d=String(v==null?"":v).replace(/\D/g,""); return d.length?("00000000000000"+d).slice(-14):null; }
+
+/* Step 3 — enrich the PINs with class + owner from the Assessor.
+   VERIFIED against the live API, not guessed:
+     universe  -> pin, class, year
+     addresses -> pin, year, prop_address_*, mail_address_*, owner_address_*
+
+   THE YEAR FIELD IS LOAD-BEARING. Both datasets are historic: one row per
+   parcel per tax year, going back to the 1990s. Query without handling it
+   and you get ~27 rows per parcel and no guarantee which one you render —
+   a 2011 owner shown as today's contact looks exactly like a correct
+   result. So we pull every year for the chunk and keep only the newest
+   row per PIN. Chunk is small (50) to keep rows/PIN * PINs under the
+   $limit even with decades of history. */
+function enrichParcels(root,base){
+  var pins=[],i;
+  for(i=0;i<base.length;i++){ if(base[i].pin) pins.push(base[i].pin); }
+  if(!pins.length){ finishAddresses(base,{},{}); return; }
+  var CH=50, chunks=[];
+  for(i=0;i<pins.length;i+=CH) chunks.push(pins.slice(i,i+CH));
+  var cls={},own={},done=0;
+
+  function soql(ds,sel,list){
+    return root+"/socrata/"+ds+"?$select="+encodeURIComponent(sel)+
+           "&$where="+encodeURIComponent("pin in ('"+list.join("','")+"')")+"&$limit=50000";
+  }
+  /* keep the row with the highest `year` for each pin */
+  function keepNewest(store,rows,build){
+    if(!rows||!rows.length) return;
+    for(var n=0;n<rows.length;n++){
+      var r=rows[n]; if(!r.pin) continue;
+      var y=parseInt(r.year,10); if(isNaN(y)) y=0;
+      var cur=store[r.pin];
+      if(!cur || y>cur.__y){ var v=build(r); v.__y=y; store[r.pin]=v; }
+    }
+  }
+
+  (function next(){
+    if(done>=chunks.length){ finishAddresses(base,cls,own); return; }
+    adMsg("Looking up property class and ownership\u2026 "+
+          Math.min((done+1)*CH,pins.length).toLocaleString()+"/"+pins.length.toLocaleString());
+    adBar(.5+.5*(done/chunks.length));
+    var list=chunks[done];
+    fetchJSON(soql("universe","pin,class,year",list),function(e1,j1){
+      if(!e1&&j1&&j1.length) keepNewest(cls,j1,function(r){ return {cls:r["class"],year:r.year}; });
+      else diag("universe chunk "+done+": "+(e1?e1.message:"empty"));
+      fetchJSON(soql("addresses",
+        "pin,year,prop_address_full,prop_address_city_name,prop_address_zipcode_1,"+
+        "mail_address_name,mail_address_full,mail_address_city_name,mail_address_state,mail_address_zipcode_1,"+
+        "owner_address_name,owner_address_full,owner_address_city_name,owner_address_state,owner_address_zipcode_1",list),
+        function(e2,j2){
+          if(!e2&&j2&&j2.length) keepNewest(own,j2,function(r){
+            return {
+              owner: r.owner_address_name || r.mail_address_name || "",
+              mail: [r.mail_address_full||r.owner_address_full,
+                     r.mail_address_city_name||r.owner_address_city_name,
+                     r.mail_address_state||r.owner_address_state,
+                     r.mail_address_zipcode_1||r.owner_address_zipcode_1].filter(Boolean).join(", "),
+              prop: [r.prop_address_full,r.prop_address_city_name,r.prop_address_zipcode_1].filter(Boolean).join(", "),
+              propShort: r.prop_address_full||"",
+              year: r.year
+            };
+          });
+          else diag("addresses chunk "+done+": "+(e2?e2.message:"empty"));
+          done++; next();
+        });
+    });
+  })();
+}
+
+function finishAddresses(base,cls,own){
+  var want=CLASS_SETS[document.getElementById("adClass").value]||CLASS_SETS.ci_mud;
+  var seen={},rows=[],dropped=0,noClass=0;
+  for(var i=0;i<base.length;i++){
+    var b=base[i], ce=(b.pin&&cls[b.pin])?cls[b.pin]:null, c=ce?String(ce.cls||""):"";
+    if(!c) noClass++;
+    /* An unknown class is NOT silently treated as a match — that is how a
+       house ends up on a commercial call list. Unknowns are excluded from
+       filtered views and counted so the gap is visible. */
+    if(!want(c) || (!c && document.getElementById("adClass").value!=="all")){ dropped++; continue; }
+    var o=(b.pin&&own[b.pin])?own[b.pin]:{};
+    var k=(b.pin||b.addr);
     if(seen[k]) continue; seen[k]=1;
-    rows.push({addr:String(ad).trim(),id:id||""});
+    /* Assessor's own property address beats the GIS layer's when present */
+    rows.push({addr:o.propShort||b.addr,pin:b.pin||"",cls:c,clsLabel:classLabel(c),
+      owner:o.owner||"", mail:o.mail||"", asOf:o.year||(ce?ce.year:"")});
   }
   rows.sort(function(x,y){ return x.addr<y.addr?-1:(x.addr>y.addr?1:0); });
   AD.rows=rows; AD.busy=false;
   document.getElementById("adRun").disabled=false;
   document.getElementById("adCsv").disabled=!rows.length;
   adBar(1);
-  adMsg(rows.length.toLocaleString()+" addressed parcel"+(rows.length===1?"":"s")+
-        " inside feeder "+(AD.row.feeder||"—")+" (from "+attrs.length.toLocaleString()+" parcel records)","ok");
+  adMsg(rows.length.toLocaleString()+" matching parcel"+(rows.length===1?"":"s")+
+        " in feeder "+(AD.row.feeder||"\u2014")+
+        " \u00B7 "+dropped.toLocaleString()+" filtered out"+
+        (noClass?(" \u00B7 "+noClass.toLocaleString()+" had no class code"):""),"ok");
 
-  var h='<div class="a-src">Source: '+esc(AD.cfg.label||AD.county)+' public parcel layer'+
-        (AD.cfg.note?(" \u00B7 "+esc(AD.cfg.note)):"")+'</div>';
-  h+='<table class="r-t"><thead><tr><th>Address</th><th>Parcel ID</th></tr></thead><tbody>';
-  for(var r=0;r<rows.length;r++)
-    h+='<tr><td>'+esc(rows[r].addr)+'</td><td>'+esc(rows[r].id)+'</td></tr>';
+  var h='<div class="a-src">Sources: '+esc(AD.cfg.label||AD.county)+' parcel layer \u00B7 '+
+        'Cook County Assessor Parcel Universe (class) \u00B7 Parcel Addresses (owner &amp; mailing)</div>';
+  h+='<table class="r-t"><thead><tr><th>Address</th><th>Type</th><th>Owner / taxpayer</th><th>Mailing address</th><th>Tax yr</th><th>PIN</th></tr></thead><tbody>';
+  for(var r=0;r<rows.length;r++){
+    h+='<tr><td>'+esc(rows[r].addr)+'</td><td>'+esc(rows[r].clsLabel)+
+       ' <span style="color:var(--dim);font-family:var(--mono);font-size:10px">'+esc(rows[r].cls)+'</span></td>'+
+       '<td>'+esc(rows[r].owner||"\u2014")+'</td><td>'+esc(rows[r].mail||"\u2014")+'</td>'+
+       '<td style="font-family:var(--mono);font-size:11px">'+esc(rows[r].asOf||"\u2014")+'</td>'+
+       '<td style="font-family:var(--mono);font-size:11px">'+esc(rows[r].pin)+'</td></tr>';
+  }
   h+='</tbody></table>';
-  h+='<div class="r-note"><b>Inside the buffer is not the same as servable.</b> These parcels fall within '+
-     'the feeder\u2019s buffered area, which says they are near it \u2014 not that a service drop can reach '+
-     'them, nor that the capacity is reservable for any one of them. The circuit\u2019s kW is shared across '+
-     'everything on it, so the first project to file takes it. Treat this as a canvassing list, not an '+
-     'inventory of available capacity.</div>';
+  h+='<div class="r-note"><b>Before you contact anyone.</b> Ownership and mailing addresses are Illinois '+
+     'public records and mail is straightforward. Phone is not: no autodialer or prerecorded call to any '+
+     'mobile number without prior express consent, regardless of whether the owner is a business, and '+
+     'scrub against the federal and Illinois do-not-call lists \u2014 a large share of small multifamily is '+
+     'owned by individuals using personal numbers. The mailing address is where the tax bill goes, which '+
+     'is often an LLC agent or management company rather than a decision-maker.</div>';
+  h+='<div class="r-note"><b>Capacity is shared, not allocated.</b> Every parcel here sits on the same '+
+     'feeder and draws from the same kW. Do not tell more than one owner that the capacity is theirs \u2014 '+
+     'it belongs to whoever completes interconnection first.</div>';
   document.getElementById("adOut").innerHTML=h;
 }
 
 function downloadAddrCsv(){
   if(!AD.rows.length) return;
-  var lines=["Address,Parcel_ID,Feeder,Substation,BESS_kW,County"];
+  var lines=["Address,Property_Type,Class_Code,Owner_Taxpayer,Mailing_Address,Tax_Year,PIN,Feeder,Substation,BESS_kW,County"];
   for(var i=0;i<AD.rows.length;i++){
-    lines.push([AD.rows[i].addr,AD.rows[i].id,AD.row.feeder,AD.row.sub,AD.row.bess,
+    var r=AD.rows[i];
+    lines.push([r.addr,r.clsLabel,r.cls,r.owner,r.mail,r.asOf,r.pin,AD.row.feeder,AD.row.sub,AD.row.bess,
                 (AD.cfg.label||AD.county)].map(csvCell).join(","));
   }
   var blob=new Blob([lines.join("\r\n")],{type:"text/csv;charset=utf-8"});
