@@ -11320,6 +11320,10 @@ function _shapeInteractEnd(){
         /* Rotation first: it rewrites the points, and the restamp has to
            record where they ended up, not where they started. */
         var _baked=_bakeShapeRotation(_sh);
+        /* The unified anchor engine owns reprojection; tell it this shape
+           changed shape, not just position, so it re-records the aux
+           offsets instead of restoring the pre-rotation ones. */
+        try{ if(window.OmegaReanchor) OmegaReanchor(_sh.id); }catch(e){}
         if(!_baked){
           /* A bbox-driven array (one point + wPx/hPx, e.g. a DER solar
              block) cannot bake, so the angle stays live -- re-stamp it
@@ -65717,8 +65721,21 @@ window._crmToastModal=_crmToastModal;
     return changed;
   }
 
-  /* Re-stamp after a deliberate move: the new pixels become the truth. */
-  function restamp(o){ if(o) delete o._geoAnchor; }
+  /* Re-stamp after a deliberate move: the new pixels become the truth.
+
+     _auxFt has to go with it. It freezes boundary/tables/exclusions as
+     fixed offsets from the anchor, in feet, and applyOffsets() rewrites
+     them from that record on EVERY pass. Offsets recorded before a
+     rotation describe the un-rotated shape, so the next map event
+     faithfully restored the old geometry and the array snapped back
+     square -- the rotation was applied, then silently undone a frame
+     later. Dropping the record forces it to be re-taken from the rotated
+     pixels. */
+  function restamp(o){
+    if(!o) return;
+    delete o._geoAnchor;
+    try{ delete o._auxFt; }catch(e){}
+  }
   window.OmegaReanchor=function(which){
     var s=S_(); if(!s) return 0;
     var n=0;
