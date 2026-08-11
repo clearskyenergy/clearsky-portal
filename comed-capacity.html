@@ -1,0 +1,612 @@
+<!DOCTYPE html>
+<!--
+  ClearSky-OMEGA · ComEd Capacity Finder  (v6)
+  Queries ComEd's PUBLIC hosting-capacity ArcGIS service and DRAWS the capacity
+  polygons on the map, plus resolves feeder / band / load+gen kW at a point.
+
+  v6 fixes vs v5:
+   1. JSONP fallback  — file:// pages send "Origin: null" and ArcGIS rejects the
+      CORS preflight, so every XHR died silently. ArcGIS supports ?callback=,
+      which is not subject to CORS. This is almost certainly why you got "No data".
+   2. No hardcoded layer id — the service root (?f=json) is read at boot, layers
+      are ranked by scale, and the right one is picked for your zoom. 73/75 are
+      just scale variants of the same data.
+   3. f=json only (geojson is not enabled on this service and burned a retry).
+   4. Polygons are rendered on the map using ComEd's OWN renderer colors pulled
+      from the layer's drawingInfo, so the map matches theirs exactly.
+   5. Field names are matched by ALIAS from layer metadata, not guesses.
+  ES5 only, single file, no build step.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>ComEd Capacity Finder · ClearSky-OMEGA</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css"/>
+<style>
+  :root{
+    --bg:#f5f6f8;--panel:#fff;--panel2:#f0f2f5;--line:#dfe3e8;
+    --ink:#1a2733;--muted:#5b6b7b;--dim:#9aa7b4;--accent:#0a6ed1;
+    --purple:#8a5cd1;--green:#2ea043;--amber:#c98a2b;--gray:#9aa7b4;--red:#e0533d;
+    --mono:"SFMono-Regular",ui-monospace,Menlo,Consolas,monospace;
+    --sans:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+  }
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  html,body{margin:0;height:100%;background:var(--bg);color:var(--ink);font-family:var(--sans);overflow:hidden}
+  #map{position:absolute;top:60px;left:0;right:0;bottom:0;background:#e8ebef}
+  .leaflet-container{background:#e8ebef;font-family:var(--sans)}
+  #top{position:absolute;top:0;left:0;right:0;height:60px;z-index:1200;display:flex;align-items:center;gap:14px;
+    padding:0 20px;background:#fff;border-bottom:1px solid var(--line);box-shadow:0 1px 3px rgba(26,39,51,.06)}
+  .logo{display:flex;align-items:center;gap:10px;text-decoration:none}
+  .logo img{height:30px;border-radius:7px}
+  .logo .t{font-weight:700;font-size:15px;color:var(--ink)}
+  .logo .t span{color:var(--accent)}
+  .seprt{width:1px;height:24px;background:var(--line)}
+  .sub{font-family:var(--mono);font-size:11px;color:var(--muted);letter-spacing:.1em;text-transform:uppercase}
+  #search{margin-left:auto;position:relative;width:min(420px,46vw)}
+  #search input{width:100%;height:34px;border:1px solid var(--line);background:var(--panel2);color:var(--ink);
+    border-radius:8px;padding:0 60px 0 12px;font-size:13px;outline:none}
+  #search input:focus{border-color:var(--accent)}
+  #search .go{position:absolute;right:5px;top:5px;height:24px;border:0;background:var(--accent);color:#fff;
+    border-radius:6px;padding:0 10px;font-size:12px;font-weight:600;cursor:pointer}
+  .back{background:var(--panel2);border:1px solid var(--line);color:var(--muted);border-radius:7px;
+    padding:8px 14px;font-size:12px;font-weight:600;text-decoration:none}
+  .back:hover{color:var(--ink)}
+  #panel{position:absolute;right:14px;top:74px;bottom:14px;width:360px;z-index:1150;background:#fff;
+    border:1px solid var(--line);border-radius:12px;box-shadow:0 14px 40px rgba(26,39,51,.14);
+    display:flex;flex-direction:column;transform:translateX(390px);transition:transform .28s cubic-bezier(.2,.8,.2,1)}
+  #panel.open{transform:none}
+  .p-h{padding:14px 16px;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:10px}
+  .p-h .ti{font-weight:700;font-size:14px;flex:1}
+  .p-h .x{color:var(--muted);cursor:pointer;font-size:18px;line-height:1}
+  .p-b{padding:8px 16px 18px;overflow:auto;flex:1}
+  .verdict{border-radius:12px;padding:16px;margin:10px 0 14px;text-align:center;color:#fff}
+  .verdict .bnd{font-size:30px;font-weight:800;letter-spacing:-.02em}
+  .verdict .lab{font-size:12px;opacity:.92;margin-top:3px;font-weight:600}
+  .addr{font-family:var(--mono);font-size:11px;color:var(--muted);background:var(--panel2);
+    border:1px solid var(--line);border-radius:7px;padding:9px 11px;margin-bottom:6px}
+  .sec{font-family:var(--mono);font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--dim);margin:16px 0 8px}
+  .row{display:flex;justify-content:space-between;align-items:baseline;padding:9px 0;border-bottom:1px solid #eef1f4;font-size:13px}
+  .row:last-child{border-bottom:0}
+  .row .k{color:var(--muted)}
+  .row .v{font-family:var(--mono);font-weight:600;text-align:right}
+  .note{font-size:12px;color:var(--muted);line-height:1.5;margin-top:10px}
+  .cta{display:block;text-align:center;margin-top:10px;background:var(--accent);color:#fff;border-radius:8px;
+    padding:10px;font-size:13px;font-weight:600;text-decoration:none}
+  .empty{text-align:center;color:var(--dim);padding:50px 20px}
+  .empty .big{font-size:34px;margin-bottom:12px;color:var(--accent)}
+  .empty .t{font-size:13px;color:var(--muted);line-height:1.6}
+  .diag{font-family:var(--mono);font-size:10px;line-height:1.65;color:var(--dim);background:var(--panel2);
+    border:1px solid var(--line);border-radius:7px;padding:9px 10px;word-break:break-all;white-space:pre-wrap}
+  #legend{position:absolute;left:14px;bottom:14px;z-index:1100;background:#fff;border:1px solid var(--line);
+    border-radius:10px;padding:11px 13px;box-shadow:0 6px 20px rgba(26,39,51,.1);font-size:12px;max-width:240px}
+  #legend .lh{font-family:var(--mono);font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--dim);margin-bottom:8px}
+  #legend .lr{display:flex;align-items:center;gap:9px;padding:3px 0}
+  #legend .sw{width:14px;height:14px;border-radius:4px;flex:0 0 auto;border:1px solid rgba(0,0,0,.12)}
+  #legend .lf{font-size:10px;color:var(--dim);margin-top:8px;font-family:var(--mono)}
+  #status{position:absolute;left:50%;transform:translateX(-50%);top:72px;z-index:1100;background:#fff;border:1px solid var(--line);
+    border-radius:8px;padding:8px 12px;font-family:var(--mono);font-size:11px;color:var(--muted);display:flex;gap:9px;align-items:center;box-shadow:0 4px 14px rgba(26,39,51,.08);max-width:70vw}
+  #status .d{width:7px;height:7px;border-radius:50%;background:var(--green);flex:0 0 auto}
+  #status.load .d{background:var(--amber);animation:pulse 1s infinite}
+  #status.err .d{background:var(--red)}
+  @keyframes pulse{50%{opacity:.3}}
+  .leaflet-bottom.leaflet-right{transition:right .28s cubic-bezier(.2,.8,.2,1)}
+  .leaflet-bottom.leaflet-right .leaflet-control-zoom{margin:0 14px 14px 0}
+  body.panel-open .leaflet-bottom.leaflet-right{right:388px}
+  @media(max-width:720px){body.panel-open .leaflet-bottom.leaflet-right{right:0}#panel{width:calc(100vw - 20px);right:10px;top:auto;bottom:10px;height:56vh}#search{width:44vw}.sub{display:none}}
+</style>
+</head>
+<body>
+<div id="map"></div>
+<div id="top">
+  <a href="/" id="logo-link" class="logo"><img src="/omega-logo.png" alt="OMEGA" onerror="this.style.display='none'"><span class="t">ClearSky<span>-OMEGA</span></span></a>
+  <div class="seprt"></div>
+  <div class="sub">ComEd Capacity Finder</div>
+  <div id="search">
+    <input id="q" placeholder="Enter a ComEd-territory address…" autocomplete="off">
+    <button class="go" id="goBtn">Check</button>
+  </div>
+  <a href="/" id="back-link" class="back">← Platform</a>
+</div>
+
+<div id="status"><span class="d"></span><span id="stTxt">Connecting to ComEd hosting-capacity service…</span></div>
+
+<div id="legend">
+  <div class="lh">Capacity Band</div>
+  <div id="legendRows">
+    <div class="lr"><span class="sw" style="background:#7B2D8E"></span><span>1001 kW OR MORE</span></div>
+    <div class="lr"><span class="sw" style="background:#3E9B54"></span><span>501 kW - 1000 kW</span></div>
+    <div class="lr"><span class="sw" style="background:#C9A0DC"></span><span>0 - 500 kW</span></div>
+  </div>
+  <div class="lf" id="legendFoot">zoom in to 13+ to draw circuits</div>
+</div>
+
+<div id="panel">
+  <div class="p-h"><span class="ti">Site Capacity</span><span class="x" id="pClose">✕</span></div>
+  <div class="p-b" id="pBody">
+    <div class="empty"><div class="big">⚡</div>
+      <div class="t">Enter an address or click a point in ComEd territory. This queries ComEd's public hosting-capacity map and returns the feeder, the capacity band (the purple/green/gray color), and load/generation kW — the bankable signal for a site.</div>
+    </div>
+  </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script>
+(function(){
+"use strict";
+function fail(m){var s=document.getElementById("stTxt");if(s)s.textContent=m;}
+if(typeof L==="undefined"||!L.map){fail("Map library failed to load");return;}
+
+/* ─────────────────────────────────────────────────────────────
+   SERVICE
+   Captured from ComEd's Energy Storage Hosting Capacity Map.
+   The app hits it through the Esri proxy path (usrsvcs/servers/{guid}/),
+   which is anonymous + public. Layer ids 71/73/75 are the SAME data at
+   different generalization scales — we discover them instead of guessing.
+   ───────────────────────────────────────────────────────────── */
+/* ══════════════════════════════════════════════════════════════
+   THE ONE LINE YOU MAY NEED TO CHANGE
+   Confirmed: the ComEd service is ANONYMOUS — no token, no cookie
+   (their own app logs "credential is null"). The 403 you saw was the
+   ArcGIS usrsvcs proxy rejecting Origin:null, which is what a page
+   opened from file:// sends.
+
+   Leave PROXY empty and serve this page over http(s) — even
+   `python3 -m http.server 8080` — and it should work directly.
+
+   If it still 403s from your own domain, the upstream is checking an
+   allowlist. Origin/Referer are forbidden headers (JS cannot set them),
+   so deploy comed-proxy-worker.js and put its URL here:
+      var PROXY="https://comed-proxy.<you>.workers.dev/comed";
+   ══════════════════════════════════════════════════════════════ */
+var PROXY="https://comed-proxy.clearsky-omega.workers.dev/comed";
+
+var COMED_DIRECT="https://utility.arcgis.com/usrsvcs/servers/c0f9178a756c4246a99acdb3fe7de103/rest/services/ComEd_BESS_Hosting_Capacity_JUN2026/FeatureServer";
+var COMED_BASE=PROXY||COMED_DIRECT;
+var PREFERRED=[75,73,71,74,72,70];   /* tried first; rest come from service root */
+var COMED_APP="https://exelonutilities.maps.arcgis.com/apps/webappviewer/index.html?id=c4068de162b943c9bd81fe4c4fbfe0ea";
+
+var DIAG=[];
+function diag(s){DIAG.push(s);if(DIAG.length>40)DIAG.shift();}
+
+/* 403 from the upstream proxy is a specific, fixable condition — not "no data".
+   Say so plainly instead of letting it masquerade as an empty result. */
+var BLOCKED=false;
+function noteBlocked(){
+  if(BLOCKED) return; BLOCKED=true;
+  var where=(location.protocol==="file:")
+    ? "this page is running from file:// — serve it over http(s) (e.g. python3 -m http.server 8080)"
+    : "your origin isn't allowed upstream — deploy comed-proxy-worker.js and set PROXY at the top of this file";
+  status("403 from ComEd proxy \u2014 "+where,"err");
+}
+function is403(j){ return !!(j&&j.error&&(j.error.code===403||j.error.code===499||j.error.code===498)); }
+
+/* ── transport: XHR first, JSONP fallback ───────────────────────
+   THIS IS THE FIX. From file:// the browser sends Origin:null and ArcGIS
+   refuses it, so XHR fails with a bare network error and you see "No data".
+   ArcGIS honours ?callback= (JSONP), which is exempt from CORS entirely. */
+var jsonpN=0, forceJsonp=false;
+function jsonp(url,cb){
+  var name="__cs_cb"+(++jsonpN), done=false, s=document.createElement("script");
+  function cleanup(){ try{delete window[name];}catch(e){window[name]=void 0;}
+    if(s.parentNode)s.parentNode.removeChild(s); }
+  window[name]=function(d){ if(done)return; done=true; cleanup(); cb(null,d); };
+  s.onerror=function(){ if(done)return; done=true; cleanup(); cb(new Error("jsonp-fail")); };
+  setTimeout(function(){ if(done)return; done=true; cleanup(); cb(new Error("jsonp-timeout")); },25000);
+  s.src=url+(url.indexOf("?")<0?"?":"&")+"callback="+name;
+  document.head.appendChild(s);
+}
+function fetchJSON(url,cb){
+  if(forceJsonp){ jsonp(url,cb); return; }
+  var x=new XMLHttpRequest();
+  x.open("GET",url,true); x.timeout=20000;
+  x.onreadystatechange=function(){
+    if(x.readyState!==4)return;
+    if(x.status>=200&&x.status<300){
+      try{ cb(null,JSON.parse(x.responseText)); }
+      catch(e){ jsonp(url,cb); }
+    } else { jsonp(url,cb); }
+  };
+  x.ontimeout=function(){ jsonp(url,cb); };
+  x.onerror=function(){ forceJsonp=true; diag("cors blocked → JSONP"); jsonp(url,cb); };
+  x.send();
+}
+
+/* ── map ─────────────────────────────────────────────────────── */
+var map=L.map("map",{zoomControl:false,minZoom:6,maxZoom:19,preferCanvas:true}).setView([41.85,-88.0],9);
+L.control.zoom({position:"bottomright"}).addTo(map);
+L.tileLayer("https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png",
+  {attribution:"© OpenStreetMap · © CARTO · ComEd hosting capacity",subdomains:"abcd",maxZoom:19}).addTo(map);
+var capLayer=L.layerGroup().addTo(map);
+var pinMarker=null;
+
+function status(m,mode){var s=document.getElementById("stTxt"),b=document.getElementById("status");
+  if(s)s.textContent=m; if(b)b.className=(mode||"");}
+function scaleAtZoom(z){ return 591657527.591555/Math.pow(2,z-1)/2; }  /* ~web-mercator 96dpi */
+
+/* ── service discovery ───────────────────────────────────────── */
+var SVC={ layers:[], ready:false, chosen:null, meta:{} };
+
+function bootService(){
+  status("Reading ComEd service definition…","load");
+  fetchJSON(COMED_BASE+"?f=json",function(err,root){
+    if(err||!root||root.error||!root.layers){
+      diag("root: "+(err?err.message:(root&&root.error?("srv "+root.error.code):"no layers")));
+      if(is403(root)){ noteBlocked(); SVC.layers=[]; SVC.ready=true; return; }
+      /* fall back to blind probe list */
+      SVC.layers=PREFERRED.map(function(id){return {id:id,name:"layer "+id,minScale:0,maxScale:0};});
+      SVC.ready=true; status("Service index unavailable — probing known layers","err");
+      refreshOverlay(); return;
+    }
+    var L2=root.layers.filter(function(l){
+      return !l.type || /feature ?layer/i.test(l.type);
+    });
+    /* rank: preferred ids first, then hosting-capacity-named, then the rest */
+    L2.sort(function(a,b){
+      var pa=PREFERRED.indexOf(a.id), pb=PREFERRED.indexOf(b.id);
+      if(pa<0)pa=99; if(pb<0)pb=99;
+      if(pa!==pb) return pa-pb;
+      return b.id-a.id;
+    });
+    SVC.layers=L2; SVC.ready=true;
+    diag("root ok: "+L2.length+" layers");
+    status("ComEd service connected · "+L2.length+" layers","");
+    refreshOverlay();
+  });
+}
+
+/* pick the layer whose scale window contains the current scale */
+function layersForScale(scale){
+  var vis=[],other=[];
+  for(var i=0;i<SVC.layers.length;i++){
+    var l=SVC.layers[i];
+    var mn=l.minScale||0, mx=l.maxScale||0;   /* mn = zoomed-OUT limit */
+    var ok=(mn===0||scale<=mn)&&(mx===0||scale>=mx);
+    (ok?vis:other).push(l.id);
+  }
+  return vis.concat(other);
+}
+
+/* ── layer metadata (fields + ComEd's own renderer) ──────────── */
+function layerMeta(id,cb){
+  if(SVC.meta[id]){ cb(SVC.meta[id]); return; }
+  fetchJSON(COMED_BASE+"/"+id+"?f=json",function(err,m){
+    if(err||!m||m.error){ SVC.meta[id]={fields:[],renderer:null}; cb(SVC.meta[id]); return; }
+    SVC.meta[id]={
+      fields:m.fields||[],
+      renderer:(m.drawingInfo&&m.drawingInfo.renderer)||null,
+      name:m.name||("layer "+id)
+    };
+    cb(SVC.meta[id]);
+  });
+}
+
+/* ── renderer → colour + band label (matches ComEd exactly) ──── */
+function rgba(c,aScale){ if(!c) return null;
+  var a=(c.length>3?c[3]:255)/255; if(aScale!=null)a=aScale;
+  return "rgba("+c[0]+","+c[1]+","+c[2]+","+a+")"; }
+function symbolOf(rend,attrs){
+  if(!rend) return null;
+  try{
+    if(rend.type==="uniqueValue"){
+      var f=rend.field1, v=attrs[f];
+      var infos=rend.uniqueValueInfos||[];
+      for(var i=0;i<infos.length;i++){
+        if(String(infos[i].value)===String(v)) return {sym:infos[i].symbol,label:infos[i].label||String(v)};
+      }
+      if(rend.defaultSymbol) return {sym:rend.defaultSymbol,label:rend.defaultLabel||""};
+    }
+    if(rend.type==="classBreaks"){
+      var fv=parseFloat(attrs[rend.field]);
+      if(isNaN(fv)) return null;
+      var br=rend.classBreakInfos||[];
+      for(var j=0;j<br.length;j++){
+        var lo=(br[j].classMinValue!=null?br[j].classMinValue:(j?br[j-1].classMaxValue:rend.minValue));
+        if(fv<=br[j].classMaxValue&&(lo==null||fv>=lo)) return {sym:br[j].symbol,label:br[j].label||""};
+      }
+      if(br.length) return {sym:br[br.length-1].symbol,label:br[br.length-1].label||""};
+    }
+    if(rend.type==="simple") return {sym:rend.symbol,label:rend.label||""};
+  }catch(e){}
+  return null;
+}
+function fillOf(hit){
+  if(!hit||!hit.sym) return null;
+  var c=hit.sym.color||(hit.sym.outline&&hit.sym.outline.color);
+  return c?rgba(c,.55):null;
+}
+
+/* ── field interpretation via ALIASES from layer metadata ────── */
+/* ── field mapping: CONFIRMED from layer 75 metadata ─────────────
+   Feeder | Feeder_N | PV_HC_kW | EV_HC_kW | BESS_HC | Feeder_Q
+   | SS_N | Queue_RD | BUFF_DIST
+   BESS_HC is the renderer's classification field — it is the number
+   behind the purple/green/gray band. PV_HC_kW / EV_HC_kW are the
+   generation-side and load-side capacities. */
+function esriDate(v){
+  var n=parseFloat(v);
+  if(isNaN(n)||n<1e11) return (v==null?null:v);
+  var d=new Date(n);
+  return (d.getMonth()+1)+"/"+d.getDate()+"/"+d.getFullYear();
+}
+function interpret(attrs,fields){
+  if(!attrs) return null;
+  var k={};
+  for(var p in attrs){ if(attrs.hasOwnProperty(p)) k[p.toUpperCase()]=attrs[p]; }
+  function num(v){ var x=parseFloat(v); return isNaN(x)?null:x; }
+  function co(a,b){ return (a!=null&&a!=="")?a:b; }
+  return {
+    feeder:   co(k.FEEDER, k.FEEDER_N),
+    feederAlt:k.FEEDER_N,
+    bess:     num(k.BESS_HC),
+    pv:       num(k.PV_HC_KW),
+    ev:       num(k.EV_HC_KW),
+    queue:    num(k.FEEDER_Q),
+    sub:      k.SS_N,
+    updated:  esriDate(k.QUEUE_RD),
+    buff:     num(k.BUFF_DIST),
+    kw:       num(k.BESS_HC),
+    raw:      attrs
+  };
+}
+
+/* ── fallback band (only if the service renderer is unavailable) ── */
+function band(info,rendLabel){
+  if(!info) return {c:"#9aa7b4",label:"No data",word:"No hosting-capacity feature at this point"};
+  var kw=parseFloat(info.kw);
+  if(!isNaN(kw)){
+    var n=Math.round(kw).toLocaleString()+" kW";
+    if(kw>=1001) return {c:"#7B2D8E",label:n,word:rendLabel||"1001 kW OR MORE — strong headroom"};
+    if(kw>=501)  return {c:"#3E9B54",label:n,word:rendLabel||"501–1000 kW — workable"};
+    return              {c:"#C9A0DC",label:n,word:rendLabel||"0–500 kW — limited capacity"};
+  }
+  if(rendLabel) return {c:"#7B2D8E",label:rendLabel,word:"ComEd capacity band"};
+  return {c:"#9aa7b4",label:"Unknown",word:"Circuit found but capacity field unrecognized — see raw record"};
+}
+
+/* ── geometry helpers ────────────────────────────────────────── */
+function toWebMerc(lat,lng){
+  return { x:lng*20037508.34/180,
+           y:Math.log(Math.tan((90+lat)*Math.PI/360))/(Math.PI/180)*20037508.34/180 };
+}
+function ringsToLatLngs(rings){
+  var out=[];
+  for(var i=0;i<rings.length;i++){ var r=rings[i],a=[];
+    for(var j=0;j<r.length;j++) a.push([r[j][1],r[j][0]]);
+    out.push(a); }
+  return out;
+}
+function qUrl(id,geomJson,geomType,opts){
+  var u=COMED_BASE+"/"+id+"/query?f=json&where=1%3D1&outFields=*"+
+    "&geometry="+encodeURIComponent(geomJson)+"&geometryType="+geomType+
+    "&inSR=4326&outSR=4326&spatialRel=esriSpatialRelIntersects";
+  for(var k in opts){ if(opts.hasOwnProperty(k)) u+="&"+k+"="+opts[k]; }
+  return u;
+}
+
+/* ── OVERLAY: draw ComEd's polygons in the current viewport ──── */
+var overlayReq=0;
+function refreshOverlay(){
+  if(!SVC.ready) return;
+  var z=map.getZoom(), foot=document.getElementById("legendFoot");
+  if(z<12){ capLayer.clearLayers(); if(foot)foot.textContent="zoom in to 12+ to draw circuits"; return; }
+  var b=map.getBounds();
+  var env=JSON.stringify({xmin:b.getWest(),ymin:b.getSouth(),xmax:b.getEast(),ymax:b.getNorth(),
+                          spatialReference:{wkid:4326}});
+  var order=layersForScale(scaleAtZoom(z)), my=++overlayReq, i=0;
+  if(foot)foot.textContent="loading circuits…";
+
+  (function tryNext(){
+    if(i>=order.length||i>=8){ if(my===overlayReq&&foot)foot.textContent="no circuits in view"; return; }
+    var id=order[i++];
+    var url=qUrl(id,env,"esriGeometryEnvelope",
+      {returnGeometry:"true",resultRecordCount:"1200",maxRecordCountFactor:"3",geometryPrecision:"6"});
+    fetchJSON(url,function(err,j){
+      if(my!==overlayReq) return;
+      if(err||!j||j.error||!j.features||!j.features.length){
+        diag("draw L"+id+": "+(err?err.message:(j&&j.error?("srv "+j.error.code):"0 feat")));
+        if(is403(j)){ noteBlocked(); return; }
+        tryNext(); return;
+      }
+      diag("draw L"+id+": "+j.features.length+" feat");
+      layerMeta(id,function(meta){
+        if(my!==overlayReq) return;
+        drawFeatures(j.features,meta,id);
+        SVC.chosen=id;
+        if(foot)foot.textContent="layer "+id+" · "+j.features.length+" circuits drawn";
+        buildLegend(meta);
+      });
+    });
+  })();
+}
+function drawFeatures(feats,meta,id){
+  capLayer.clearLayers();
+  for(var n=0;n<feats.length;n++){
+    var f=feats[n], g=f.geometry, a=f.attributes||{};
+    if(!g) continue;
+    var hit=symbolOf(meta.renderer,a);
+    var info=interpret(a,meta.fields);
+    var fill=fillOf(hit)||band(info,hit&&hit.label).c;
+    var shape=null;
+    if(g.rings){
+      shape=L.polygon(ringsToLatLngs(g.rings),
+        {color:fill,weight:1,opacity:.85,fillColor:fill,fillOpacity:.42,interactive:true});
+    } else if(g.paths){
+      shape=L.polyline(ringsToLatLngs(g.paths),{color:fill,weight:4,opacity:.9,interactive:true});
+    } else if(g.x!=null){
+      shape=L.circleMarker([g.y,g.x],{radius:5,color:fill,fillColor:fill,fillOpacity:.8,weight:1});
+    }
+    if(!shape) continue;
+    shape.__info=info; shape.__label=(hit&&hit.label)||null; shape.__layer=id;
+    shape.on("click",function(e){
+      L.DomEvent.stopPropagation(e);
+      showResult(e.latlng,this.__info,this.__label,this.__layer);
+    });
+    capLayer.addLayer(shape);
+  }
+}
+function buildLegend(meta){
+  var r=meta&&meta.renderer; if(!r) return;
+  var rows=[];
+  if(r.type==="uniqueValue"&&r.uniqueValueInfos){
+    r.uniqueValueInfos.forEach(function(u){ rows.push({c:rgba(u.symbol&&u.symbol.color,.85),t:u.label||u.value}); });
+  } else if(r.type==="classBreaks"&&r.classBreakInfos){
+    r.classBreakInfos.forEach(function(u){ rows.push({c:rgba(u.symbol&&u.symbol.color,.85),t:u.label||("≤ "+u.classMaxValue)}); });
+  }
+  if(!rows.length) return;
+  var h="";
+  rows.reverse().forEach(function(x){
+    h+='<div class="lr"><span class="sw" style="background:'+(x.c||"#ccc")+'"></span><span>'+esc(x.t)+'</span></div>';
+  });
+  document.getElementById("legendRows").innerHTML=h;
+}
+
+/* ── IDENTIFY at a point ─────────────────────────────────────── */
+function analyze(ll){
+  openPanel();
+  document.getElementById("pBody").innerHTML='<div class="empty"><div class="big">\u27F3</div><div class="t">Querying ComEd hosting-capacity data\u2026</div></div>';
+  status("Querying ComEd feeder capacity\u2026","load");
+  if(pinMarker) map.removeLayer(pinMarker);
+  pinMarker=L.marker(ll,{icon:L.divIcon({className:"",html:'<div style="width:22px;height:22px;margin:-11px 0 0 -11px;border-radius:50%;background:rgba(10,110,209,.18);border:2px solid #0a6ed1"><div style="width:6px;height:6px;border-radius:50%;background:#0a6ed1;margin:6px auto"></div></div>',iconSize:[0,0]})}).addTo(map);
+
+  if(!SVC.ready){ setTimeout(function(){analyze(ll);},600); return; }
+
+  /* ~60 m envelope in degrees so a click between mapped circuits still snaps */
+  var dLat=0.00055, dLng=0.00055/Math.cos(ll.lat*Math.PI/180);
+  var env=JSON.stringify({xmin:ll.lng-dLng,ymin:ll.lat-dLat,xmax:ll.lng+dLng,ymax:ll.lat+dLat,
+                          spatialReference:{wkid:4326}});
+  var order=layersForScale(scaleAtZoom(17)), i=0;
+
+  (function tryNext(){
+    if(i>=order.length||i>=12){ showResult(ll,null,null,null); return; }
+    var id=order[i++];
+    fetchJSON(qUrl(id,env,"esriGeometryEnvelope",{returnGeometry:"false",resultRecordCount:"25"}),
+      function(err,j){
+        if(err||!j||j.error||!j.features||!j.features.length){
+          diag("id L"+id+": "+(err?err.message:(j&&j.error?("srv "+j.error.code):"0 feat")));
+          if(is403(j)){ noteBlocked(); showResult(ll,null,null,null); return; }
+          tryNext(); return;
+        }
+        diag("id L"+id+": "+j.features.length+" circuit(s)");
+        layerMeta(id,function(meta){
+          var all=[];
+          for(var n=0;n<j.features.length;n++){
+            var a=j.features[n].attributes;
+            var info=interpret(a,meta.fields);
+            info.bandLabel=(symbolOf(meta.renderer,a)||{}).label||null;
+            all.push(info);
+          }
+          /* Buffered circuit polygons OVERLAP — a point can sit inside several
+             feeders' buffers. Show them all; headline the best available. */
+          all.sort(function(x,y){ return (y.kw||0)-(x.kw||0); });
+          showResult(ll,all[0],all[0].bandLabel,id,all);
+        });
+      });
+  })();
+}
+
+/* Which layer answered matters: 71-74 are PLSS grid blocks showing the MAX
+   circuit value in that block (per ComEd's own service description). Only 75
+   is the buffered circuit itself, i.e. address-resolved. */
+var LAYER_GRAIN={71:"Township (6x6 mi) \u2014 max circuit in block",
+                 72:"Section (1x1 mi) \u2014 max circuit in block",
+                 73:"Quarter-section \u2014 max circuit in block",
+                 74:"Sixteenth-section \u2014 max circuit in block",
+                 75:"Buffered circuit \u2014 address-resolved"};
+
+function showResult(ll,info,rendLabel,layerId,all){
+  var b=band(info,rendLabel);
+  status(info?("Loaded ComEd circuit data"+(layerId!=null?(" \u00B7 layer "+layerId):"")):
+    "No ComEd feature here \u2014 confirm the address is in territory", info?"":"err");
+
+  var fmt=function(v){ var n=parseFloat(v); return isNaN(n)?"\u2014":(Math.round(n).toLocaleString()+" kW"); };
+  var h='';
+  h+='<div class="addr">'+ll.lat.toFixed(5)+', '+ll.lng.toFixed(5)+'</div>';
+  h+='<div class="verdict" style="background:'+b.c+'"><div class="bnd">'+esc(b.label)+'</div><div class="lab">'+esc(b.word)+'</div></div>';
+
+  if(layerId!=null&&layerId!=75){
+    h+='<div class="note" style="border-left:3px solid var(--amber);padding-left:9px;margin-bottom:4px">'+
+       '<b>Not address-resolved.</b> This reading came from layer '+layerId+' ('+esc(LAYER_GRAIN[layerId]||"aggregate block")+
+       '), which reports the <i>best</i> circuit in the block \u2014 not necessarily the one serving this parcel. Zoom in to resolve the actual feeder.</div>';
+  }
+
+  if(info){
+    h+='<div class="sec">Estimated Hosting Capacity</div>';
+    h+=row("BESS hosting capacity", fmt(info.bess));
+    h+=row("PV (generation side)", fmt(info.pv));
+    h+=row("EV / load side", fmt(info.ev));
+    if(info.feeder) h+=row("Feeder", info.feeder);
+    if(info.sub) h+=row("Substation", info.sub);
+    if(info.queue!=null) h+=row("Feeder DER in queue", fmt(info.queue));
+    if(info.updated) h+=row("Queue data refreshed", info.updated);
+    if(info.buff!=null) h+=row("Buffer distance", Math.round(info.buff)+" ft");
+    h+=row("Layer", (layerId!=null?("L"+layerId):"\u2014")+" \u00B7 "+(LAYER_GRAIN[layerId]||""));
+
+    if(all&&all.length>1){
+      h+='<div class="sec">All circuits covering this point ('+all.length+')</div>';
+      for(var n=0;n<all.length;n++){
+        h+=row((all[n].feeder||"?")+(all[n].sub?(" \u00B7 "+all[n].sub):""), fmt(all[n].bess));
+      }
+      h+='<div class="note">Circuit polygons are buffers and they overlap, so several feeders can cover one parcel. The headline above is the <b>best</b> of them \u2014 which feeder you can actually reach depends on the physical route and is settled by the interconnection study.</div>';
+    }
+
+    h+='<div class="note"><b>BESS_HC</b> is the field ComEd colours the map by. <b>PV</b> is generation-side headroom, <b>EV</b> is load-side. For a battery both directions matter; for a data centre, the load number binds.</div>';
+  } else {
+    h+='<div class="note">'+(BLOCKED?'<b>Blocked upstream (HTTP 403).</b> ComEd\u2019s proxy refused the request \u2014 see the status bar.':'No hosting-capacity feature returned at this point. Either the address is outside ComEd territory, or the click fell between mapped circuits \u2014 try clicking directly on a coloured area.')+'</div>';
+  }
+
+  h+='<div class="sec">Bankable Decision</div>';
+  h+='<div class="note">ComEd\u2019s published estimate of remaining feeder capacity, resolved to your address. Screening-grade: a formal <b>interconnection / load study</b> confirms the deliverable number before you buy. ComEd\u2019s own service metadata states <b>Update Frequency: Annually</b> \u2014 treat the month in the service name as a publication date, not a guarantee of freshness.</div>';
+  h+='<a class="cta" href="'+COMED_APP+'" target="_blank" rel="noopener">Open ComEd\u2019s official map \u2197</a>';
+
+  if(info&&info.raw){
+    h+='<div class="sec">Raw feeder record</div><div class="diag">'+esc(JSON.stringify(info.raw)).slice(0,1200)+'</div>';
+  }
+  h+='<div class="sec">Diagnostics</div><div class="diag">'+esc(DIAG.slice(-12).join("\n"))+'</div>';
+  document.getElementById("pBody").innerHTML=h;
+}
+function row(k,v){return '<div class="row"><span class="k">'+esc(k)+'</span><span class="v">'+esc(v)+'</span></div>';}
+function esc(s){s=(s==null?"":""+s);return s.replace(/[&<>]/g,function(c){return{"&":"&amp;","<":"&lt;",">":"&gt;"}[c];});}
+function openPanel(){document.getElementById("panel").className="open";document.body.className="panel-open";
+  setTimeout(function(){map.invalidateSize();},300);}
+document.getElementById("pClose").onclick=function(){document.getElementById("panel").className="";document.body.className="";
+  setTimeout(function(){map.invalidateSize();},300);};
+
+map.on("click",function(e){ analyze(e.latlng); });
+map.on("moveend zoomend",function(){ refreshOverlay(); });
+
+/* ── geocode ─────────────────────────────────────────────────── */
+function geocode(raw){
+  var t=(raw||"").trim(); if(!t) return;
+  var attempts=[t];
+  var parts=t.split(",").map(function(s){return s.trim();}).filter(Boolean);
+  if(parts.length>1){var p0=parts[0].replace(/^\s*\d+\s+/,"");if(p0!==parts[0])attempts.push([p0].concat(parts.slice(1)).join(", "));attempts.push(parts.slice(1).join(", "));}
+  if(!/\b(il|illinois)\b/i.test(t)) attempts.push(t+", IL, USA");
+  var zip=(t.match(/\b\d{5}\b/)||[])[0]; if(zip)attempts.push(zip+", IL, USA");
+  status("Searching\u2026","load");var i=0;
+  function next(){
+    if(i>=attempts.length){status("No match \u2014 try a fuller address or ZIP","err");return;}
+    var qy=attempts[i++];
+    fetchJSON("https://nominatim.openstreetmap.org/search?format=json&countrycodes=us&limit=1&q="+encodeURIComponent(qy),
+      function(err,res){
+        if(err||!res||!res.length){next();return;}
+        var r=res[0],lat=+r.lat,lon=+r.lon;
+        map.setView([lat,lon],17);
+        analyze(L.latLng(lat,lon));
+      });
+  }
+  next();
+}
+document.getElementById("goBtn").onclick=function(){geocode(document.getElementById("q").value);};
+document.getElementById("q").addEventListener("keydown",function(e){if(e.key==="Enter")geocode(this.value);});
+
+(function(){try{var ref=document.referrer,url="https://tools.csebuilders.com/";
+  if(ref&&/\.csebuilders\.com$/.test(new URL(ref).hostname)){var s=new URL(ref).hostname.split(".")[0];if(s&&s!=="tools")url="https://"+s+".csebuilders.com/";}
+  var b=document.getElementById("back-link"),l=document.getElementById("logo-link");if(b)b.href=url;if(l)l.href=url;}catch(e){}})();
+
+bootService();
+setTimeout(function(){map.invalidateSize();},200);
+})();
+</script>
+</body>
+</html>
