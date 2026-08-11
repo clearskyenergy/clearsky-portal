@@ -38490,8 +38490,55 @@ Respond with ONLY the JSON, no other text.`
     // Company block -- uses all filled-in fields
     const companyName = company.toUpperCase().replace(' LLC','').replace(' INC','').replace(' CORP','');
     const companySuffix = company.match(/\b(LLC|INC|CORP|CO)\b/i)?.[0]?.toUpperCase() || '';
+    /* ── FIT THE COMPANY NAME TO ITS BOX ──────────────────────────────
+       The name was hard-coded to 16px in a 180px column with 8px padding
+       -- 164px of usable width. Measured in a browser at that size:
+         CONCORDENERGYUSA       200px   overflows by 36
+         SUN ENERGY SOLUTIONS   223px   overflows by 59
+         FLUX CORE DATA SYSTEMS 241px   overflows by 77
+         CLEARSKY OMEGA         167px   overflows by 3
+       Four of six real tenant names ran past the edge and were clipped by
+       the column's overflow:hidden, so the drawing went out with the
+       company name cut off -- on the one block a reviewer uses to identify
+       who issued the sheet.
+
+       Multi-word names wrap; the size is driven by the longest single
+       WORD, since that is what cannot be broken. Arial Black with 1px
+       tracking measures ~0.78 x font-size per character. Height is
+       constrained too, or a three-line name would push the licence and
+       address rows out of a fixed 108px title block. */
+    const _tbAvailW = 164, _tbAvailH = 46;
+    const _tbSize = (function(){
+      const words = String(companyName).split(/\s+/).filter(Boolean);
+      const longest = words.reduce((m,w)=>Math.max(m,w.length), 1);
+      /* 0.82 rather than the measured 0.78: trailing letter-spacing and
+         sub-pixel rounding put a name that "just fits" one pixel over, and
+         the wrap that follows breaks a single word mid-token --
+         CONCORDENERGYUS / A. Cheaper to give up a point of size. */
+      let s = Math.floor(_tbAvailW / (longest * 0.82));
+      s = Math.max(7, Math.min(16, s));
+      /* Now check the wrapped height at that size and shrink if needed. */
+      for(let guard=0; guard<12; guard++){
+        const perLine = Math.max(1, Math.floor(_tbAvailW / (s*0.78)));
+        let lines = 1, cur = 0;
+        for(const w of words){
+          if(cur === 0){ cur = w.length; }
+          else if(cur + 1 + w.length <= perLine){ cur += 1 + w.length; }
+          else { lines++; cur = w.length; }
+        }
+        if(lines * s * 1.1 <= _tbAvailH || s <= 7) return s;
+        s--;
+      }
+      return s;
+    })();
+    const _tbTrack = _tbSize >= 13 ? 1 : 0.3;   /* tracking hurts at small sizes */
+    /* A one-word name has nowhere legitimate to break, so it must not be
+       allowed to: the size calculation above already guarantees it fits. */
+    const _tbNoWrap = (String(companyName).trim().split(/\s+/).length === 1)
+      ? 'white-space:nowrap' : 'white-space:normal';
+
     const companyBlock = `
-      <div style="font-size:16px;font-weight:900;color:${fg};letter-spacing:1px;font-family:'Arial Black',Arial;line-height:1.1">${companyName}</div>
+      <div style="font-size:${_tbSize}px;font-weight:900;color:${fg};letter-spacing:${_tbTrack}px;font-family:'Arial Black',Arial;line-height:1.1;max-width:${_tbAvailW}px;${_tbNoWrap};word-break:normal;overflow-wrap:break-word">${companyName}</div>
       ${companySuffix ? `<div style="font-size:9px;font-weight:700;color:${line};letter-spacing:2px;font-family:Arial">${companySuffix}</div>` : ''}
       ${license ? `<div style="font-size:8px;color:${dim};margin-top:3px;font-family:Arial">Lic: ${license}</div>` : ''}
       ${companyAddr ? `<div style="font-size:7.5px;color:${dim};margin-top:2px;font-family:Arial;line-height:1.3">${companyAddr}</div>` : ''}
