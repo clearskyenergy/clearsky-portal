@@ -2143,6 +2143,12 @@ window.onerror = function(msg, src, line, col, err) {
     </div>
     <div class="rpanel">
       <div class="rpanel-body">
+        <button class="rbtn" onclick="rbRun(openMarketplacePush)" title="Push to Marketplace — file this project into the finance platform as an open deal, attributed to your account and scoped to your organisation."><span class="rb-ico" style="color:#4ADE80">↗</span><span class="rb-lbl">Push to<br>Marketplace</span></button>
+      </div>
+      <div class="rpanel-cap">Marketplace</div>
+    </div>
+    <div class="rpanel">
+      <div class="rpanel-body">
         <button class="rbtn" onclick="rbRun(openValidationExport)" title="Send this permit set for independent engineering validation and PE stamp approval"><span class="rb-ico">✒</span><span class="rb-lbl">Export for<br>Validation</span></button>
         <button class="rbtn" onclick="rbRun(openValidationStatus)" title="View validation status / mark received"><span class="rb-ico">◷</span><span class="rb-lbl">Validation<br>Status</span></button>
       </div>
@@ -52729,6 +52735,355 @@ function bnzReportDownload(){
   }catch(e){ if(window.console) console.warn('[omega] bnz report:',e&&e.message); }
 }
 window.bnzReportDownload = bnzReportDownload;
+
+/* ═══════════════════════════════════════════════════════════════════
+ *  PUSH TO MARKETPLACE  --  fin_projects
+ *  ------------------------------------------------------------------
+ *  Files the current drawing into the finance platform as an open deal.
+ *  The editor and the portal share one Firebase project (clearsky-portal)
+ *  so this writes directly; no export step, no re-keying.
+ *
+ *  The document shape is the portal's, not ours -- it mirrors what
+ *  seed-data-center-deals.html writes, field for field. If the portal
+ *  changes its schema this has to follow, which is why every field below
+ *  is grouped by WHY the portal wants it rather than alphabetically.
+ *
+ *  TENANT LINKAGE is the point of the feature: developerUid is what the
+ *  security rules check on write, and orgKey is what lets colleagues in
+ *  the same organisation see the deal afterwards. Both come from the
+ *  signed-in user's fin_profiles record, never from anything typed into
+ *  a form -- a pushed deal has to be attributable to a real account.
+ * ═══════════════════════════════════════════════════════════════════ */
+var MKT_COL = 'fin_projects';
+
+/* Same slug rule the portal uses, so an org resolves identically on both
+   sides. Diverging here would silo a tenant from their own deals. */
+function _mktOrgKeyOf(name){
+  return String(name||'').toLowerCase()
+    .replace(/[^a-z0-9]+/g,' ').replace(/^\s+|\s+$/g,'').replace(/\s+/g,'-');
+}
+function _mktIso(d){ return d.toISOString().slice(0,10); }
+function _mktNum(v, fallback){
+  if(v===''||v===null||v===undefined) return +fallback||0;
+  var n=+v; return isFinite(n) ? n : (+fallback||0);
+}
+function _mktAddDays(d,n){ var x=new Date(d.getTime()); x.setDate(x.getDate()+n); return x; }
+function _mktClean(o){          /* drop nulls so the portal reads "unknown", not zero */
+  var out={},k,v;
+  for(k in o){ if(!Object.prototype.hasOwnProperty.call(o,k)) continue;
+    v=o[k]; if(v===null||v===undefined||v==='') continue; out[k]=v; }
+  return out;
+}
+
+/* What kind of thing is this? Drives the portal's `tech` facet. */
+var MKT_TECH = [
+  { id:'solar',      name:'Solar PV',              devStage:'Development' },
+  { id:'storage',    name:'Storage / BESS',        devStage:'Development' },
+  { id:'solar_bess', name:'Solar + Storage',       devStage:'Development' },
+  { id:'ev',         name:'EV Charging',           devStage:'Development' },
+  { id:'datacenter', name:'Data Centre / Microgrid',devStage:'Development' },
+  { id:'land',       name:'Powered Land / Site',   devStage:'Opportunity introduced' },
+  { id:'efficiency', name:'Building / Efficiency', devStage:'Development' }
+];
+
+/* Read the signed-in user's marketplace profile. Without it we cannot
+   attribute the deal, and the rules will reject the write anyway. */
+function mktProfile(){
+  return new Promise(function(resolve){
+    try{
+      if(!_db || !_currentUser){ resolve(null); return; }
+      _db.collection('fin_profiles').doc(_currentUser.uid).get().then(function(snap){
+        var p = snap.exists ? (snap.data()||{}) : {};
+        resolve({ uid:_currentUser.uid,
+                  email: p.email || _currentUser.email || '',
+                  name:  p.name  || _currentUser.email || '',
+                  org:   p.org   || '',
+                  orgKey:p.orgKey|| _mktOrgKeyOf(p.org),
+                  role:  p.role  || 'none',
+                  canWrite: (p.role==='developer' || p.role==='originator') });
+      })['catch'](function(){ resolve(null); });
+    }catch(e){ resolve(null); }
+  });
+}
+window.mktProfile = mktProfile;
+
+/* Everything the drawing already knows, so the form starts filled in
+   rather than asking for what the editor can answer itself. */
+function mktDrawingSummary(){
+  var out = { mw:0, mwh:0, solarKwDc:0, bessKw:0, bessKwh:0, evPorts:0,
+              itKw:0, acres:0, capex:0, tech:'solar', spec:{} };
+  try{
+    out.solarKwDc = (typeof omegaSolarKwDc==='function') ? (+omegaSolarKwDc()||0) : 0;
+    out.bessKw     = (typeof omegaBessKw==='function')  ? (+omegaBessKw()||0)  : 0;
+    out.bessKwh    = (typeof omegaBessKwh==='function') ? (+omegaBessKwh()||0) : 0;
+    if(typeof evChargerTotals==='function'){ var ev=evChargerTotals(); out.evPorts=ev.ports||0; }
+    (S.elements||[]).forEach(function(e){ if(e && e.loadKind==='datacenter') out.itKw += (+e.loadItKw||0); });
+    out.capex = Math.round(+window._COST_TOTAL||0);
+  }catch(e){}
+
+  /* MW is AC where we know it, DC otherwise -- the portal compares deals
+     on nameplate, so mixing the two silently mis-ranks a listing. */
+  var acKw=0; try{ acKw=(typeof omegaSolarKwAc==='function')?(+omegaSolarKwAc()||0):0; }catch(e){}
+  out.mw  = Math.round(((acKw||out.solarKwDc) + out.bessKw)/100)/10;
+  out.mwh = Math.round((out.bessKwh/1000)*10)/10;
+
+  if(out.itKw>0)                              out.tech='datacenter';
+  else if(out.solarKwDc>0 && out.bessKwh>0)   out.tech='solar_bess';
+  else if(out.solarKwDc>0)                    out.tech='solar';
+  else if(out.bessKwh>0)                      out.tech='storage';
+  else if(out.evPorts>0)                      out.tech='ev';
+  else                                        out.tech='land';
+
+  out.spec = _mktClean({
+    solarKwDc: out.solarKwDc || null,
+    solarKwAc: acKw || null,
+    bessKw:    out.bessKw  || null,
+    bessKwh:   out.bessKwh || null,
+    evPorts:   out.evPorts || null,
+    itKw:      out.itKw    || null,
+    envelopeCapex: (window._BNZ_TOTAL||0) || null,
+    dcElectricalRom: (window._DC_TOTAL||0) || null,
+    trenchFt: Math.round(+((window._CIVIL_TRENCH_FT)||0)) || null,
+    sourceRef: 'Omega Editor \u00b7 ' + (_projectId||'unsaved')
+  });
+  return out;
+}
+window.mktDrawingSummary = mktDrawingSummary;
+
+/* Build the document. Grouped by why the portal wants each field. */
+function mktBuildDoc(form, prof, sum){
+  var today=new Date();
+  var links=[];
+  if(form.editorUrl) links.push({ label:'Omega Editor \u2014 site map', url:form.editorUrl });
+  if(form.deckUrl)   links.push({ label:'Deck / data room', url:form.deckUrl });
+
+  var spec = _mktClean(sum.spec);
+  spec.powerConcept = form.powerConcept || '';
+  spec.costBasis = window._COST_IS_CONTRACTED ? 'contracted' : 'benchmark';
+
+  return {
+    /* read by the security rules */
+    developerUid: prof.uid,
+    status: 'open',
+    awardedTo: null,
+    /* org scoping, so colleagues in the same org see it */
+    orgKey: prof.orgKey || _mktOrgKeyOf(prof.org),
+    org: prof.org || '',
+    submittedBy: prof.name || prof.email,
+    submittedByEmail: prof.email || null,
+    /* the marketplace's own lifecycle, kept apart from the rules' status */
+    outcome: 'active',
+    dealId: form.dealId,
+    name: form.name,
+    state: form.state || '',
+    city: form.city || '',
+    tech: form.tech,
+    /* An unsized opportunity has no nameplate. sizePending stops the
+       portal inventing a 0.1 MW placeholder. */
+    /* The form is an OVERRIDE, not the source. A blank field falls back
+       to what the drawing computed, so clearing a box cannot silently
+       list a 6.5 MW project as unsized. sizePending is then honest: it
+       means neither the operator nor the drawing knows the nameplate. */
+    mw:  _mktNum(form.mw,  sum.mw),
+    mwh: _mktNum(form.mwh, sum.mwh),
+    ask: _mktNum(form.ask, sum.capex),
+    ppaRate: _mktNum(form.ppaRate, 0),
+    sizePending: !(_mktNum(form.mw, sum.mw) > 0 || _mktNum(form.mwh, sum.mwh) > 0),
+    stage: 'Submitted',
+    devStage: form.devStage || 'Development',
+    submitted: _mktIso(today),
+    decided: null,
+    cod: form.cod || _mktIso(_mktAddDays(today, 540)),
+    offtake: form.offtake || 'Speculative \u2014 no signed offtake',
+    interconnect: form.interconnect || '',
+    permits: form.permits || '',
+    siteControl: form.siteControl || '',
+    assetSpec: spec,
+    developer: prof.org || '',
+    originator: prof.name || prof.email,
+    bidders: 0,
+    offers: 0,
+    links: links,
+    sizing: null,
+    bill: null,
+    createdAt: Date.now()
+  };
+}
+
+/* Update patch: descriptive fields only. Never resets a live negotiation
+   -- status, outcome, offers, bidders, award state and the original
+   submission date all survive a re-push. */
+function mktBuildPatch(form, prof, sum){
+  var d = mktBuildDoc(form, prof, sum);
+  ['status','awardedTo','outcome','bidders','offers','submitted','createdAt','developerUid']
+    .forEach(function(k){ delete d[k]; });
+  d.updatedAt = Date.now();
+  return d;
+}
+
+function _mktDocId(form){
+  return 'omega-' + String(form.dealId||form.name||'deal')
+    .toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-+|-+$/g,'').slice(0,60);
+}
+
+/* The write itself. Creates or updates, and reports precisely which. */
+function mktPush(form){
+  return mktProfile().then(function(prof){
+    if(!prof) throw new Error('Not signed in \u2014 sign in before pushing to the marketplace.');
+    if(!prof.canWrite)
+      throw new Error('Your marketplace role is "'+prof.role+'". The rules allow developer or originator to create in '
+        +MKT_COL+'. Ask an admin to update your fin_profiles record.');
+    var sum=mktDrawingSummary();
+    var ref=_db.collection(MKT_COL).doc(_mktDocId(form));
+    return ref.get().then(function(snap){
+      var exists=snap.exists;
+      var op = exists ? ref.update(mktBuildPatch(form,prof,sum)) : ref.set(mktBuildDoc(form,prof,sum));
+      return op.then(function(){
+        return { ok:true, id:ref.id, created:!exists, updated:exists,
+                 org:prof.org, orgKey:prof.orgKey, by:prof.email };
+      });
+    });
+  });
+}
+window.mktPush = mktPush;
+
+/* ── Push to Marketplace panel ─────────────────────────────────────── */
+function openMarketplacePush(){
+  var host=document.getElementById('mkt-modal');
+  if(!host){
+    host=document.createElement('div'); host.id='mkt-modal';
+    host.setAttribute('style','position:fixed;inset:0;background:rgba(6,12,22,.82);z-index:10000;display:flex;align-items:center;justify-content:center;padding:20px');
+    host.onclick=function(e){ if(e.target===host) host.remove(); };
+    document.body.appendChild(host);
+  }
+  host.innerHTML='<div style="background:#0F1D30;border:1px solid #1E3A5F;border-radius:12px;padding:26px;color:#94A3B8;font-size:12px">Reading your marketplace profile\u2026</div>';
+  mktProfile().then(function(prof){ host.innerHTML=_mktInner(prof); })
+              .catch(function(){ host.innerHTML=_mktInner(null); });
+}
+window.openMarketplacePush = openMarketplacePush;
+
+function _mktInner(prof){
+  var esc=function(s){ return String(s==null?'':s).replace(/[&<>"]/g,function(c){
+    return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]; }); };
+  var sum=mktDrawingSummary();
+  var pname=''; try{ pname=(document.getElementById('pname')||{}).value||''; }catch(e){}
+  var addr='';  try{ addr=(document.getElementById('addr-in')||{}).value||''; }catch(e){}
+  /* Best-effort split of "123 Main St, New Haven, CT" */
+  var parts=addr.split(',').map(function(x){ return x.trim(); });
+  var city = parts.length>=2 ? parts[parts.length-2] : '';
+  var st   = parts.length>=1 ? (parts[parts.length-1]||'').split(/\s+/)[0] : '';
+  if(st.length>2) st=st.slice(0,2).toUpperCase();
+
+  var head='<div style="padding:16px 20px;border-bottom:1px solid #1E3A5F;display:flex;align-items:center;justify-content:space-between">'
+   +'<div><div style="font-size:16px;font-weight:800;color:#E2EEF9">\u2197 Push to Marketplace</div>'
+   +'<div style="font-size:10px;color:#64748B">Files this project into the finance platform as an open deal, attributed to your account.</div></div>'
+   +'<button onclick="var h=document.getElementById(\'mkt-modal\');if(h)h.remove()" style="background:none;border:none;color:#64748B;font-size:20px;cursor:pointer;line-height:1">\u00d7</button></div>';
+
+  if(!prof){
+    return '<div style="background:#0F1D30;border:1px solid #1E3A5F;border-radius:12px;max-width:560px;width:100%">'+head
+      +'<div style="padding:22px;color:#FCA5A5;font-size:12px;line-height:1.7">Not signed in, or no marketplace profile found.<br><br>'
+      +'A deal has to be attributable to a real account \u2014 the security rules check <code>developerUid</code> on write, and '
+      +'<code>orgKey</code> is what lets colleagues in your organisation see it afterwards. Sign in and try again.</div></div>';
+  }
+
+  var roleCol = prof.canWrite ? '#4ADE80' : '#F87171';
+  var who='<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:14px;padding:9px 11px;background:#0B1626;border:1px solid #1E3A5F;border-radius:8px">'
+   +'<span style="font-size:10px;color:#64748B;text-transform:uppercase;letter-spacing:.4px">Pushing as</span>'
+   +'<strong style="color:#E2EEF9;font-size:12px">'+esc(prof.email||'\u2014')+'</strong>'
+   +'<span style="font-size:9.5px;font-weight:800;padding:2px 6px;border-radius:9px;background:'+roleCol+'22;color:'+roleCol+';border:1px solid '+roleCol+'55">'+esc(prof.role)+'</span>'
+   +'<span style="font-size:10px;color:#94A3B8">org <strong style="color:#E2EEF9">'+esc(prof.org||'none')+'</strong>'
+   +(prof.orgKey?' <code style="color:#64748B">'+esc(prof.orgKey)+'</code>':'')+'</span></div>'
+   + (prof.canWrite ? '' :
+      '<div style="margin-bottom:12px;padding:9px 11px;background:rgba(248,113,113,.08);border:1px solid rgba(248,113,113,.35);border-radius:8px;font-size:10.5px;color:#FCA5A5;line-height:1.6">'
+      +'The rules let a <strong>developer</strong> or <strong>originator</strong> create in <code>fin_projects</code>. '
+      +'Your role is <strong>'+esc(prof.role)+'</strong>, so the write will be refused. Ask an admin to update your profile.</div>');
+
+  function fld(id,label,val,ph,w){ return '<div style="flex:'+(w||'1 1 160px')+'">'
+    +'<div style="font-size:9px;color:#64748B;text-transform:uppercase;letter-spacing:.4px;margin-bottom:3px">'+label+'</div>'
+    +'<input id="'+id+'" value="'+esc(val)+'" placeholder="'+esc(ph||'')+'" style="width:100%;background:#0B1626;border:1px solid #1E3A5F;color:#E2EEF9;border-radius:5px;padding:5px 7px;font-size:11.5px;font-family:inherit"></div>'; }
+
+  var techOpts=MKT_TECH.map(function(t){ return '<option value="'+t.id+'"'+(t.id===sum.tech?' selected':'')+'>'+esc(t.name)+'</option>'; }).join('');
+  var dealId=(pname||'deal').toUpperCase().replace(/[^A-Z0-9]+/g,'-').replace(/^-+|-+$/g,'').slice(0,24);
+
+  return '<div style="background:#0F1D30;border:1px solid #1E3A5F;border-radius:12px;max-width:720px;width:100%;max-height:92vh;overflow:auto;box-shadow:0 20px 60px rgba(0,0,0,.6)">'
+  +head
+  +'<div style="padding:16px 20px">'
+   +who
+   +'<div style="font-size:10px;font-weight:800;color:#64748B;letter-spacing:.5px;margin:2px 0 7px">WHAT IS THIS?</div>'
+   +'<div style="display:flex;gap:9px;flex-wrap:wrap;margin-bottom:11px">'
+     +fld('mkt-name','Deal name',pname,'Project name','2 1 260px')
+     +'<div style="flex:1 1 190px"><div style="font-size:9px;color:#64748B;text-transform:uppercase;letter-spacing:.4px;margin-bottom:3px">Asset type</div>'
+      +'<select id="mkt-tech" style="width:100%;background:#0B1626;border:1px solid #1E3A5F;color:#E2EEF9;border-radius:5px;padding:5px 7px;font-size:11.5px;font-family:inherit">'+techOpts+'</select></div>'
+   +'</div>'
+   +'<div style="display:flex;gap:9px;flex-wrap:wrap;margin-bottom:11px">'
+     +fld('mkt-dealid','Deal ref',dealId,'INTERNAL-REF')
+     +fld('mkt-city','City',city,'City')
+     +fld('mkt-state','State',st,'CT','0 1 70px')
+     +fld('mkt-cod','COD target','','YYYY-MM-DD','0 1 120px')
+   +'</div>'
+   +'<div style="font-size:10px;font-weight:800;color:#64748B;letter-spacing:.5px;margin:14px 0 7px">SIZE &amp; ASK '
+     +'<span style="font-weight:400;text-transform:none;letter-spacing:0;color:#94A3B8">\u2014 read from the drawing, override if the deal differs</span></div>'
+   +'<div style="display:flex;gap:9px;flex-wrap:wrap;margin-bottom:11px">'
+     +fld('mkt-mw','MW',sum.mw||'','0','0 1 90px')
+     +fld('mkt-mwh','MWh',sum.mwh||'','0','0 1 90px')
+     +fld('mkt-ask','Ask $', sum.capex||'','0','0 1 130px')
+     +fld('mkt-ppa','PPA $/kWh','','0.00','0 1 110px')
+   +'</div>'
+   +'<div style="font-size:10px;font-weight:800;color:#64748B;letter-spacing:.5px;margin:14px 0 7px">DILIGENCE</div>'
+   +'<div style="display:flex;gap:9px;flex-wrap:wrap;margin-bottom:11px">'
+     +fld('mkt-offtake','Offtake','','Speculative \u2014 no signed offtake','1 1 220px')
+     +fld('mkt-ic','Interconnection','','e.g. application filed','1 1 200px')
+   +'</div>'
+   +'<div style="display:flex;gap:9px;flex-wrap:wrap;margin-bottom:11px">'
+     +fld('mkt-permits','Permits','','e.g. site plan approved','1 1 200px')
+     +fld('mkt-sc','Site control','','e.g. LOI signed','1 1 200px')
+   +'</div>'
+   +'<div style="display:flex;gap:9px;flex-wrap:wrap;margin-bottom:14px">'
+     +fld('mkt-deck','Deck / data room URL','','https://\u2026','1 1 300px')
+     +fld('mkt-power','Power concept','','e.g. off-grid gas + BESS','1 1 220px')
+   +'</div>'
+   +'<div style="font-size:10px;color:#64748B;line-height:1.65;margin-bottom:12px">'
+    +'Files to <code>'+esc(MKT_COL)+'</code> with status <code>open</code>, owned by your account and scoped to your org. '
+    +'Re-pushing the same deal ref updates the descriptive fields only \u2014 status, outcome, offers, bidders, award state '
+    +'and the original submission date are never reset by a re-push.'
+   +'</div>'
+   +'<button id="mkt-go"'+(prof.canWrite?'':' disabled')+' onclick="_mktDoPush()" style="width:100%;padding:11px;border-radius:8px;cursor:'+(prof.canWrite?'pointer':'not-allowed')+';font-family:inherit;font-size:12.5px;font-weight:800;'
+    +'background:'+(prof.canWrite?'rgba(74,222,128,.16)':'rgba(100,116,139,.14)')+';border:1px solid '+(prof.canWrite?'rgba(74,222,128,.5)':'rgba(100,116,139,.4)')+';color:'+(prof.canWrite?'#86EFAC':'#64748B')+'">\u2197 Push to Marketplace</button>'
+   +'<div id="mkt-log" style="margin-top:12px;font-size:11px;line-height:1.7"></div>'
+  +'</div></div>';
+}
+
+function _mktDoPush(){
+  var v=function(id){ var e=document.getElementById(id); return e?e.value.trim():''; };
+  var log=document.getElementById('mkt-log');
+  var btn=document.getElementById('mkt-go');
+  var form={ name:v('mkt-name'), tech:v('mkt-tech'), dealId:v('mkt-dealid'),
+             city:v('mkt-city'), state:v('mkt-state').toUpperCase().slice(0,2),
+             cod:v('mkt-cod'), mw:v('mkt-mw'), mwh:v('mkt-mwh'), ask:v('mkt-ask'),
+             ppaRate:v('mkt-ppa'), offtake:v('mkt-offtake'), interconnect:v('mkt-ic'),
+             permits:v('mkt-permits'), siteControl:v('mkt-sc'), deckUrl:v('mkt-deck'),
+             powerConcept:v('mkt-power'),
+             editorUrl:(function(){ try{ return location.href; }catch(e){ return ''; } })(),
+             devStage:(MKT_TECH.filter(function(t){return t.id===v('mkt-tech');})[0]||{}).devStage };
+  if(!form.name){ log.innerHTML='<span style="color:#FCA5A5">A deal name is required.</span>'; return; }
+  if(!form.dealId){ log.innerHTML='<span style="color:#FCA5A5">A deal ref is required \u2014 it is the document key.</span>'; return; }
+  btn.disabled=true; btn.textContent='Writing\u2026';
+  log.innerHTML='<span style="color:#94A3B8">Writing to '+MKT_COL+'\u2026</span>';
+  mktPush(form).then(function(r){
+    btn.disabled=false; btn.textContent='\u2197 Push to Marketplace';
+    log.innerHTML='<span style="color:#4ADE80">\u2713 '+(r.created?'Created':'Updated')+' <code>'+r.id+'</code></span>'
+      +'<div style="color:#94A3B8;margin-top:4px">Live in the marketplace, owned by '+r.by
+      +', scoped to <strong>'+(r.org||'no org')+'</strong>. Every partner account sees it now.</div>';
+    try{ if(typeof showBanner==='function') showBanner('cal','Pushed to the marketplace as '+r.id+'.'); }catch(e){}
+  })['catch'](function(e){
+    btn.disabled=false; btn.textContent='\u2197 Push to Marketplace';
+    var msg=(e&&e.message)?e.message:String(e);
+    var code=(e&&e.code)?e.code:'';
+    log.innerHTML='<span style="color:#FCA5A5">\u2717 '+(code?code+' \u2014 ':'')+msg+'</span>'
+      +(code==='permission-denied'?'<div style="color:#94A3B8;margin-top:4px">A permission-denied here is almost always the role check on <code>fin_profiles</code>.</div>':'');
+  });
+}
+window._mktDoPush=_mktDoPush;
 
 /* ── BNZ panel ─────────────────────────────────────────────────────
    Opens on the selected shape. Rect (zone box) is the fast path;
