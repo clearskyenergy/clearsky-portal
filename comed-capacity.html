@@ -290,6 +290,12 @@ function is403(j){ return !!(j&&j.error&&(j.error.code===403||j.error.code===499
    refuses it, so XHR fails with a bare network error and you see "No data".
    ArcGIS honours ?callback= (JSONP), which is exempt from CORS entirely. */
 var jsonpN=0, forceJsonp=false;
+/* JSONP exists ONLY for the file:// case, where the browser sends
+   Origin:null and the ArcGIS proxy refuses it. Over http(s) the Worker
+   returns proper CORS headers, so an XHR failure means something else —
+   a URL too long, or a server error — and retrying as JSONP just turns a
+   clear error into a useless "jsonp-fail". Never fall back off file://. */
+var CAN_JSONP = (location.protocol === "file:");
 function jsonp(url,cb){
   var name="__cs_cb"+(++jsonpN), done=false, s=document.createElement("script");
   function cleanup(){ try{delete window[name];}catch(e){window[name]=void 0;}
@@ -301,19 +307,37 @@ function jsonp(url,cb){
   document.head.appendChild(s);
 }
 function fetchJSON(url,cb){
-  if(forceJsonp){ jsonp(url,cb); return; }
+  if(forceJsonp&&CAN_JSONP){ jsonp(url,cb); return; }
   var x=new XMLHttpRequest();
   x.open("GET",url,true); x.timeout=20000;
   x.onreadystatechange=function(){
     if(x.readyState!==4)return;
     if(x.status>=200&&x.status<300){
       try{ cb(null,JSON.parse(x.responseText)); }
-      catch(e){ jsonp(url,cb); }
-    } else { jsonp(url,cb); }
+      catch(e){ if(CAN_JSONP) jsonp(url,cb); else cb(new Error("bad JSON from server")); }
+    } else if(CAN_JSONP){ jsonp(url,cb); }
+    else { cb(new Error("HTTP "+x.status+(url.length>7000?" (url "+url.length+" chars \u2014 too long?)":""))); }
   };
   x.ontimeout=function(){ jsonp(url,cb); };
   x.onerror=function(){ forceJsonp=true; diag("cors blocked → JSONP"); jsonp(url,cb); };
   x.send();
+}
+
+/* Long queries (a feeder buffer polygon is easily 100k characters) cannot
+   ride in a GET query string. Same parameters, form-encoded POST body. */
+function fetchJSONPost(url,body,cb){
+  var x=new XMLHttpRequest();
+  x.open("POST",url,true); x.timeout=45000;
+  x.setRequestHeader("Content-Type","application/x-www-form-urlencoded");
+  x.onreadystatechange=function(){
+    if(x.readyState!==4) return;
+    if(x.status>=200&&x.status<300){
+      try{ cb(null,JSON.parse(x.responseText)); }catch(e){ cb(new Error("bad JSON from server")); }
+    } else cb(new Error("HTTP "+x.status));
+  };
+  x.ontimeout=function(){ cb(new Error("timeout")); };
+  x.onerror=function(){ cb(new Error("network error")); };
+  x.send(body);
 }
 
 /* ── map ─────────────────────────────────────────────────────── */
@@ -1009,8 +1033,13 @@ function runAddresses(){
      The report drops geometry to stay light, so re-fetch just these OIDs. */
   adMsg("Fetching circuit boundary\u2026");
   var lid=detailLayer();
+  /* maxAllowableOffset generalises the polygon server-side. A raw feeder
+     buffer has thousands of vertices; at ~0.00025 deg (~25 m) the shape is
+     still accurate enough to select parcels but a fraction of the size.
+     Without this the geometry alone can exceed 100k characters. */
   fetchJSON(rptUrl(lid,{where:"OBJECTID IN ("+AD.row.oids.join(",")+")",
-                        outFields:"OBJECTID",returnGeometry:"true",geometryPrecision:"6",outSR:"4326"}),
+                        outFields:"OBJECTID",returnGeometry:"true",geometryPrecision:"5",
+                        maxAllowableOffset:"0.00025",outSR:"4326"}),
     function(err,j){
       if(err||!j||j.error||!j.features||!j.features.length){
         AD.busy=false; document.getElementById("adRun").disabled=false;
@@ -1029,20 +1058,24 @@ function runAddresses(){
         adMsg("Circuit returned no polygon rings.","err"); return;
       }
       var geom=JSON.stringify({rings:rings,spatialReference:{wkid:4326}});
+      var verts=0; for(var v=0;v<rings.length;v++) verts+=rings[v].length;
+      diag("feeder geom: "+rings.length+" rings, "+verts+" verts, "+geom.length+" chars");
       countParcels(root,geom);
     });
 }
 
-function parcelUrl(root,params){
-  var u=root+"/parcel/"+AD.county+"/query?f=json";
-  for(var k in params){ if(params.hasOwnProperty(k)) u+="&"+k+"="+encodeURIComponent(params[k]); }
-  return u;
+function parcelUrl(root){ return root+"/parcel/"+AD.county+"/query"; }
+function formBody(params){
+  var parts=["f=json"];
+  for(var k in params){ if(params.hasOwnProperty(k)) parts.push(k+"="+encodeURIComponent(params[k])); }
+  return parts.join("&");
 }
 
 function countParcels(root,geom){
   adMsg("Asking "+(AD.cfg.label||AD.county)+" which parcels fall inside\u2026");
-  fetchJSON(parcelUrl(root,{where:"1=1",geometry:geom,geometryType:"esriGeometryPolygon",
-                            inSR:"4326",spatialRel:"esriSpatialRelIntersects",returnIdsOnly:"true"}),
+  fetchJSONPost(parcelUrl(root),
+    formBody({where:"1=1",geometry:geom,geometryType:"esriGeometryPolygon",
+              inSR:"4326",spatialRel:"esriSpatialRelIntersects",returnIdsOnly:"true"}),
     function(err,j){
       if(err||!j||j.error||!j.objectIds){
         AD.busy=false; document.getElementById("adRun").disabled=false;
@@ -1080,8 +1113,9 @@ function countParcels(root,geom){
               Math.min((done+1)*AD_CHUNK,ids.length).toLocaleString()+"/"+ids.length.toLocaleString());
         adBar(done/chunks.length);
         var of=[AD.cfg.addr,AD.cfg.idField].filter(Boolean).join(",");
-        fetchJSON(parcelUrl(root,{where:"OBJECTID IN ("+chunks[done].join(",")+")",
-                                  outFields:of,returnGeometry:"false"}),
+        fetchJSONPost(parcelUrl(root),
+          formBody({where:"OBJECTID IN ("+chunks[done].join(",")+")",
+                    outFields:of,returnGeometry:"false"}),
           function(e2,j2){
             if(!e2&&j2&&j2.features){ for(var q=0;q<j2.features.length;q++) got.push(j2.features[q].attributes); }
             else diag("parcel chunk "+done+": "+(e2?e2.message:(j2&&j2.error?("srv "+j2.error.code):"empty")));
