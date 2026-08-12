@@ -53501,6 +53501,34 @@ function _mktDocId(form){
 }
 
 /* The write itself. Creates or updates, and reports precisely which. */
+/* ── WHY THIS NEEDS A TIMEOUT ──────────────────────────────────────
+   A Firestore set()/update() promise resolves on SERVER acknowledgement,
+   not on the local write. When the connection is degraded -- and this
+   project's console is full of
+       WebChannelConnection RPC 'Listen' stream transport errored
+   -- the SDK accepts the write into its local queue and the promise
+   simply never settles. No success, no error, and a panel that sits on
+   "Writing to fin_projects..." forever.
+
+   The write is NOT lost in that state: it is queued and syncs when the
+   connection returns. So the honest report is "queued, not confirmed",
+   which is a different thing from both success and failure, and the only
+   one of the three that is actually true. */
+function _mktTimeout(promise, ms, label){
+  var timer;
+  return Promise.race([
+    promise.then(function(v){ clearTimeout(timer); return v; },
+                 function(e){ clearTimeout(timer); throw e; }),
+    new Promise(function(_, reject){
+      timer = setTimeout(function(){
+        var err = new Error(label);
+        err.code = 'omega/timeout';
+        reject(err);
+      }, ms);
+    })
+  ]);
+}
+
 function mktPush(form){
   return mktProfile().then(function(prof){
     if(!prof) throw new Error('Not signed in \u2014 sign in before pushing to the marketplace.');
@@ -53509,14 +53537,43 @@ function mktPush(form){
         + 'every write will be denied. Register once in the marketplace, then try again.');
     var sum=mktDrawingSummary();
     var ref=_db.collection(MKT_COL).doc(_mktDocId(form));
-    return ref.get().then(function(snap){
-      var exists=snap.exists;
-      var op = exists ? ref.update(mktBuildPatch(form,prof,sum)) : ref.set(mktBuildDoc(form,prof,sum));
-      return op.then(function(){
-        return { ok:true, id:ref.id, created:!exists, updated:exists,
-                 org:prof.org, orgKey:prof.orgKey, by:prof.email };
+
+    /* Existence decides create vs update, and the rules treat them
+       differently -- update requires the document to already be there.
+       A get() can also hang offline, so if it does, assume NEW and fall
+       back to an update when the create is refused for existing. */
+    return _mktTimeout(ref.get(), 8000, 'get-timeout')
+      .then(function(snap){ return snap.exists; })
+      ['catch'](function(){ return null; })          /* unknown */
+      .then(function(exists){
+        function attempt(isUpdate){
+          return isUpdate ? ref.update(mktBuildPatch(form,prof,sum))
+                          : ref.set(mktBuildDoc(form,prof,sum));
+        }
+        var first = (exists===true);
+        return _mktTimeout(attempt(first), 15000, 'write-timeout')
+          .then(function(){
+            return { ok:true, id:ref.id, created:!first, updated:first, confirmed:true,
+                     org:prof.org, orgKey:prof.orgKey, by:prof.email };
+          })
+          ['catch'](function(e){
+            /* Unknown existence and the guess was wrong -> try the other way. */
+            if(exists===null && e && e.code!=='omega/timeout'){
+              return _mktTimeout(attempt(!first), 15000, 'write-timeout')
+                .then(function(){
+                  return { ok:true, id:ref.id, created:first, updated:!first, confirmed:true,
+                           org:prof.org, orgKey:prof.orgKey, by:prof.email };
+                });
+            }
+            if(e && e.code==='omega/timeout'){
+              /* Queued locally. Report it as such rather than as success
+                 or failure, because it is neither yet. */
+              return { ok:true, id:ref.id, created:!first, updated:first, confirmed:false,
+                       org:prof.org, orgKey:prof.orgKey, by:prof.email };
+            }
+            throw e;
+          });
       });
-    });
   });
 }
 window.mktPush = mktPush;
@@ -53710,6 +53767,19 @@ function _mktDoPush(){
   log.innerHTML='<span style="color:#94A3B8">Writing to '+MKT_COL+'\u2026</span>';
   mktPush(form).then(function(r){
     btn.disabled=false; btn.textContent='\u2197 Push to Marketplace';
+    if(r.confirmed===false){
+      log.innerHTML='<span style="color:#FBBF24">\u25CF Queued \u2014 not yet confirmed by the server</span>'
+        +'<div style="color:#94A3B8;margin-top:6px;line-height:1.7">'
+        +'Firestore accepted <code>'+r.id+'</code> into its local write queue but has not acknowledged it. '
+        +'That is a connection problem, not a rules problem \u2014 this project\u2019s console shows '
+        +'<code>WebChannelConnection transport errored</code>, which usually means a proxy, VPN or '
+        +'extension is blocking Firestore\u2019s long-poll channel.'
+        +'<br><br><strong>The deal is not lost.</strong> It syncs automatically when the connection returns. '
+        +'Confirm it landed by reloading the marketplace, or run <code>OmegaMarketDiag()</code>.'
+        +'</div>';
+      try{ if(typeof showBanner==='function') showBanner('cal','Marketplace push queued \u2014 awaiting server acknowledgement.'); }catch(e){}
+      return;
+    }
     log.innerHTML='<span style="color:#4ADE80">\u2713 '+(r.created?'Created':'Updated')+' <code>'+r.id+'</code></span>'
       +'<div style="color:#94A3B8;margin-top:4px">Live in the marketplace, owned by '+r.by
       +', scoped to <strong>'+(r.org||'no org')+'</strong>. Every partner account sees it now.</div>';
@@ -53813,7 +53883,7 @@ window.OmegaRotDiag = OmegaRotDiag;
  *  OmegaBuild.check('feature') answers "is this fix actually deployed?"
  *  in one call, without needing to know what to look for.
  * ═══════════════════════════════════════════════════════════════════ */
-var OMEGA_BUILD = { id:'afb036cbbdc6', built:'2026-08-11 23:09 UTC' };
+var OMEGA_BUILD = { id:'4ac51a8e94ce', built:'2026-08-11 23:09 UTC' };
 window.OMEGA_BUILD = OMEGA_BUILD;
 window.OmegaBuild = {
   id: OMEGA_BUILD.id,
