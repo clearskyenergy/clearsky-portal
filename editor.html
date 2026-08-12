@@ -22590,6 +22590,36 @@ async function _loadProject(id){
     const rawShapes   = d.shapes   || [];
 
     const doRender = (resolvedMs, forceRescale) => {
+      /* ── IDEMPOTENT ───────────────────────────────────────────────────
+         doRender is called from SIX places -- the geo path, two rescale
+         paths, the no-map path, a map-idle callback and a fallback timer.
+         Several are async, so more than one can fire for a single load:
+         the map resolves late, the fallback has already run, and both
+         render. Each call PUSHED into S.elements / S.conduits / S.shapes
+         and drew, without ever clearing first.
+
+         The model de-duplicates by id when it re-renders, so the visible
+         residue is whatever the second pass did not overwrite -- which is
+         exactly the ghost conduit runs: a second copy of the same run
+         under a fresh id, or a node left behind from the previous project
+         because #csvg was never emptied between loads.
+
+         Clearing both the arrays and the layers at the top makes a repeat
+         call harmless: the last one wins and the drawing matches the
+         saved document rather than the sum of every attempt. */
+      try{
+        S.elements.length = 0;
+        S.conduits.length = 0;
+        if(S.shapes) S.shapes.length = 0;
+        var _els=document.getElementById('els');   if(_els) _els.innerHTML='';
+        var _csv=document.getElementById('csvg');  if(_csv) _csv.innerHTML='';
+        /* innerHTML='' also removes the runtime <defs> the dimension
+           arrows and conduit markers reference. */
+        try{ if(typeof _ensureDimArrows==='function') _ensureDimArrows(); }catch(e){}
+        /* Trench spine lives outside #csvg and survived a reload on its own. */
+        var _tsp=document.getElementById('trench-spine');
+        if(_tsp && _tsp.parentNode) _tsp.parentNode.removeChild(_tsp);
+      }catch(e){}
       // When a frozen snapshot is on screen (object-fit:cover), the pixel
       // cover-rescale tracks it deterministically; geo assumes a live,
       // re-centered map, so we skip geo in that case.
@@ -53478,7 +53508,7 @@ window.OmegaRotDiag = OmegaRotDiag;
  *  OmegaBuild.check('feature') answers "is this fix actually deployed?"
  *  in one call, without needing to know what to look for.
  * ═══════════════════════════════════════════════════════════════════ */
-var OMEGA_BUILD = { id:'6bf29c1a6c2e', built:'2026-08-11 23:09 UTC' };
+var OMEGA_BUILD = { id:'f5799e275e39', built:'2026-08-11 23:09 UTC' };
 window.OMEGA_BUILD = OMEGA_BUILD;
 window.OmegaBuild = {
   id: OMEGA_BUILD.id,
