@@ -83,6 +83,9 @@
   #legend .lh{font-family:var(--mono);font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--dim);margin-bottom:8px}
   #legend .lr{display:flex;align-items:center;gap:9px;padding:3px 0}
   #legend .sw{width:14px;height:14px;border-radius:4px;flex:0 0 auto;border:1px solid rgba(0,0,0,.12)}
+  #legend .lp{display:flex;align-items:center;gap:7px;margin-top:9px;padding-top:9px;
+    border-top:1px solid var(--line);font-size:11px;color:var(--muted);cursor:pointer;user-select:none}
+  #legend .lp input{margin:0;cursor:pointer}
   #legend .lf{font-size:10px;color:var(--dim);margin-top:8px;font-family:var(--mono)}
   #status{position:absolute;left:50%;transform:translateX(-50%);top:72px;z-index:1100;background:#fff;border:1px solid var(--line);
     border-radius:8px;padding:8px 12px;font-family:var(--mono);font-size:11px;color:var(--muted);display:flex;gap:9px;align-items:center;box-shadow:0 4px 14px rgba(26,39,51,.08);max-width:70vw}
@@ -96,9 +99,23 @@
   @media(max-width:720px){body.panel-open .leaflet-bottom.leaflet-right{right:0}#panel{width:calc(100vw - 20px);right:10px;top:auto;bottom:10px;height:56vh}#search{width:44vw}.sub{display:none}}
 
   /* ── HIGH-CAPACITY REPORT ── */
+  .findbtn{background:#E8590C;border:0;color:#fff;border-radius:7px;padding:9px 16px;
+    font-size:13px;font-weight:700;cursor:pointer;white-space:nowrap;box-shadow:0 1px 3px rgba(232,89,12,.35)}
+  .findbtn:hover{background:#d24f08}
+  .findbtn[disabled]{opacity:.55;cursor:default}
+  .big-num{font-size:26px;font-weight:800;letter-spacing:-.02em}
+  .stat{display:flex;gap:22px;margin:2px 0 14px;flex-wrap:wrap}
+  .stat div{display:flex;flex-direction:column}
+  .stat .k{font-family:var(--mono);font-size:9px;letter-spacing:.13em;text-transform:uppercase;color:var(--dim)}
+  .steps{font-family:var(--mono);font-size:11px;color:var(--muted);line-height:1.8}
+  .steps .on{color:var(--accent);font-weight:600}
+  .steps .ok{color:var(--green)}
   .rptbtn{background:var(--panel2);border:1px solid var(--line);color:var(--ink);border-radius:7px;
     padding:8px 13px;font-size:12px;font-weight:600;cursor:pointer;white-space:nowrap}
   .rptbtn:hover{border-color:var(--accent);color:var(--accent)}
+  #fdWrap{position:fixed;inset:0;z-index:1450;background:rgba(26,39,51,.42);display:none;
+    align-items:center;justify-content:center;padding:24px}
+  #fdWrap.open{display:flex}
   #rptWrap{position:fixed;inset:0;z-index:1400;background:rgba(26,39,51,.42);display:none;
     align-items:center;justify-content:center;padding:24px}
   #rptWrap.open{display:flex}
@@ -156,7 +173,8 @@
     <input id="q" placeholder="Enter a ComEd-territory address…" autocomplete="off">
     <button class="go" id="goBtn">Check</button>
   </div>
-  <button class="rptbtn" id="rptOpen">High-Capacity Report</button>
+  <button class="findbtn" id="findOpen">⚡ Find Sites</button>
+  <button class="rptbtn" id="rptOpen">Circuits</button>
   <a href="/" id="back-link" class="back">← Platform</a>
 </div>
 
@@ -165,13 +183,52 @@
 <div id="legend">
   <div class="lh">Capacity Band</div>
   <div id="legendRows">
-    <div class="lr"><span class="sw" style="background:#7B2D8E"></span><span>1001 kW OR MORE</span></div>
-    <div class="lr"><span class="sw" style="background:#3E9B54"></span><span>501 kW - 1000 kW</span></div>
-    <div class="lr"><span class="sw" style="background:#C9A0DC"></span><span>0 - 500 kW</span></div>
+    <div class="lr"><span class="sw" style="background:#8C8C8C"></span><span>1001 kW OR MORE</span></div>
+    <div class="lr"><span class="sw" style="background:#00DB00"></span><span>501 kW - 1000 kW</span></div>
+    <div class="lr"><span class="sw" style="background:#A900E6"></span><span>0 - 500 kW</span></div>
   </div>
+  <label class="lp"><input type="checkbox" id="prospect" checked><span>Prospecting colours</span></label>
   <div class="lf" id="legendFoot">zoom in to 13+ to draw circuits</div>
 </div>
 
+
+
+<div id="fdWrap">
+  <div id="rptBox">
+    <div class="r-h"><span class="ti">Find Sites</span><span class="x" id="fdClose">&#10005;</span></div>
+    <div class="r-c">
+      <div class="r-ctl">
+        <div class="r-f"><label>Power needed</label>
+          <select id="fdMin">
+            <option value="1001" selected>1,001 kW or more</option>
+            <option value="2000">2,000 kW or more</option>
+            <option value="5000">5,000 kW or more</option>
+            <option value="10000">10,000 kW or more</option>
+            <option value="501">501 kW or more</option>
+          </select></div>
+        <div class="r-f"><label>Property type</label>
+          <select id="fdClass">
+            <option value="ci_mud" selected>C&amp;I + multifamily</option>
+            <option value="ci">Commercial / industrial</option>
+            <option value="mud">Multifamily</option>
+            <option value="all">Everything</option>
+          </select></div>
+        <div class="r-f"><label>Use for</label>
+          <select id="fdUse">
+            <option value="bess" selected>Battery (charge + discharge)</option>
+            <option value="ev">Load only (data centre, EV)</option>
+            <option value="pv">Export only (solar)</option>
+          </select></div>
+        <button class="findbtn" id="fdRun">Find sites</button>
+        <button class="r-csv" id="fdCsv" disabled>Download CSV</button>
+      </div>
+      <div class="r-msg" id="fdMsg">Pan the map to the area you want, then run. Everything visible on screen is searched.</div>
+      <div class="r-bar"><i id="fdBar"></i></div>
+      <div class="steps" id="fdSteps"></div>
+      <div id="fdOut"></div>
+    </div>
+  </div>
+</div>
 
 <div id="rptWrap">
   <div id="rptBox">
@@ -478,17 +535,41 @@ function interpret(attrs,fields){
   };
 }
 
+/* ── COLOURS ─────────────────────────────────────────────────────
+   ComEd paints 1001+ kW GREY, 501-1000 green, 0-500 purple. Grey for
+   the best band is fine on a utility reference map and actively bad on
+   a prospecting map — grey reads as "dead", and the 1001+ areas are the
+   only ones a rep cares about. PROSPECTING mode keeps the same bands but
+   inverts the emphasis: the band you can sell into is hot and opaque,
+   everything else fades back. Toggle off to match ComEd exactly when
+   showing the map to someone who knows their version. */
+var COMED_COLORS  ={hi:"#8C8C8C", mid:"#00DB00", lo:"#A900E6"};
+var PROSPECT_COLORS={hi:"#E8590C", mid:"#F2B705", lo:"#C9CDD2"};
+var PROSPECT=true;
+function palette(){ return PROSPECT?PROSPECT_COLORS:COMED_COLORS; }
+function bandOf(kw){ var n=parseFloat(kw); if(isNaN(n)) return null;
+  return n>=1001?"hi":(n>=501?"mid":"lo"); }
+function bandColor(kw){ var b=bandOf(kw); return b?palette()[b]:"#9aa7b4"; }
+function bandFill(kw){ var b=bandOf(kw); if(!b) return {c:"#9aa7b4",o:.25};
+  if(!PROSPECT) return {c:COMED_COLORS[b],o:.42};
+  /* hot band opaque, the rest pushed back so it reads as background */
+  return b==="hi"?{c:PROSPECT_COLORS.hi,o:.62}
+       : b==="mid"?{c:PROSPECT_COLORS.mid,o:.34}
+       :           {c:PROSPECT_COLORS.lo,o:.16};
+}
+
 /* ── fallback band (only if the service renderer is unavailable) ── */
 function band(info,rendLabel){
   if(!info) return {c:"#9aa7b4",label:"No data",word:"No hosting-capacity feature at this point"};
   var kw=parseFloat(info.kw);
   if(!isNaN(kw)){
     var n=Math.round(kw).toLocaleString()+" kW";
-    if(kw>=1001) return {c:"#7B2D8E",label:n,word:rendLabel||"1001 kW OR MORE — strong headroom"};
-    if(kw>=501)  return {c:"#3E9B54",label:n,word:rendLabel||"501–1000 kW — workable"};
-    return              {c:"#C9A0DC",label:n,word:rendLabel||"0–500 kW — limited capacity"};
+    var c=bandColor(kw);
+    if(kw>=1001) return {c:c,label:n,word:rendLabel||"1001 kW OR MORE \u2014 strong headroom"};
+    if(kw>=501)  return {c:c,label:n,word:rendLabel||"501\u20131000 kW \u2014 workable"};
+    return              {c:c,label:n,word:rendLabel||"0\u2013500 kW \u2014 limited capacity"};
   }
-  if(rendLabel) return {c:"#7B2D8E",label:rendLabel,word:"ComEd capacity band"};
+  if(rendLabel) return {c:palette().hi,label:rendLabel,word:"ComEd capacity band"};
   return {c:"#9aa7b4",label:"Unknown",word:"Circuit found but capacity field unrecognized — see raw record"};
 }
 
@@ -554,11 +635,16 @@ function drawFeatures(feats,meta,id){
     if(!g) continue;
     var hit=symbolOf(meta.renderer,a);
     var info=interpret(a,meta.fields);
-    var fill=fillOf(hit)||band(info,hit&&hit.label).c;
+    /* colour by BESS_HC, the same field ComEd classifies on, so our
+       bands always agree with theirs even in prospecting mode */
+    var pf=bandFill(info&&info.bess);
+    var fill=pf.c, fillOp=pf.o;
     var shape=null;
     if(g.rings){
       shape=L.polygon(ringsToLatLngs(g.rings),
-        {color:fill,weight:1,opacity:.85,fillColor:fill,fillOpacity:.42,interactive:true});
+        {color:fill,weight:(PROSPECT&&bandOf(info&&info.bess)==="hi")?1.6:1,
+         opacity:(PROSPECT&&bandOf(info&&info.bess)!=="hi")?.35:.9,
+         fillColor:fill,fillOpacity:fillOp,interactive:true});
     } else if(g.paths){
       shape=L.polyline(ringsToLatLngs(g.paths),{color:fill,weight:4,opacity:.9,interactive:true});
     } else if(g.x!=null){
@@ -1306,6 +1392,265 @@ document.getElementById("adWrap").onclick=function(e){ if(e.target===this) this.
 document.getElementById("adRun").onclick=runAddresses;
 document.getElementById("adCsv").onclick=downloadAddrCsv;
 loadCounties();
+
+
+
+/* ══════════════════════════════════════════════════════════════
+   FIND SITES — the whole chain in one action
+   circuits in view -> their buffer polygons -> parcels inside ->
+   class + owner -> one ranked, exportable list.
+
+   Built for a rep who wants "show me where I can sell a 2 MW battery
+   around here", not for someone who wants to inspect feeders. The
+   three-dialog version underneath still exists (Circuits button) for
+   when you do.
+
+   CAPS ARE DELIBERATE. A single feeder buffer can cover thousands of
+   parcels and the sweep is one request per feeder plus one per 50
+   parcels. Unbounded, this is thousands of calls and a rep staring at a
+   spinner. We take the highest-capacity feeders first, because that is
+   the order a rep would work them anyway.
+   ══════════════════════════════════════════════════════════════ */
+var FD={busy:false,rows:[],useField:"bess"};
+var FD_MAX_FEEDERS=8, FD_MAX_PARCELS=800, FD_MAX_ROWS=1500;
+
+function fdMsg(m,c){var e=document.getElementById("fdMsg"); if(e){e.textContent=m; e.className="r-msg"+(c?(" "+c):"");}}
+function fdBar(p){var e=document.getElementById("fdBar"); if(e) e.style.width=Math.round(p*100)+"%";}
+function fdStep(html){var e=document.getElementById("fdSteps"); if(e) e.innerHTML=html;}
+
+function runFindSites(){
+  if(FD.busy) return;
+  var root=proxyRoot();
+  if(!root){ fdMsg("Site search needs the proxy (PROXY is empty).","err"); return; }
+  if(!SVC.ready){ fdMsg("Still connecting to ComEd\u2026"); setTimeout(runFindSites,700); return; }
+
+  var minKw=parseFloat(document.getElementById("fdMin").value)||1001;
+  var useF =document.getElementById("fdUse").value;
+  FD.busy=true; FD.rows=[]; FD.useField=useF;
+  document.getElementById("fdRun").disabled=true;
+  document.getElementById("fdCsv").disabled=true;
+  document.getElementById("fdOut").innerHTML="";
+  fdBar(0);
+
+  /* Which kW column actually binds depends on what they're siting.
+     A battery needs both directions, so BESS_HC (the min of the two).
+     A data centre only draws, so EV_HC_kW is the real ceiling and using
+     BESS would understate it. Solar only exports, so PV_HC_kW. */
+  var fieldMap={bess:"BESS_HC", ev:"EV_HC_kW", pv:"PV_HC_kW"};
+  var col=fieldMap[useF]||"BESS_HC";
+  var lid=detailLayer();
+  var b=map.getBounds();
+  var env=JSON.stringify({xmin:b.getWest(),ymin:b.getSouth(),xmax:b.getEast(),ymax:b.getNorth(),
+                          spatialReference:{wkid:4326}});
+
+  fdStep('<div class="on">1 · Finding circuits in view\u2026</div>');
+  fdMsg("Searching circuits with "+minKw.toLocaleString()+"+ kW of "+
+        (useF==="ev"?"load":useF==="pv"?"export":"battery")+" headroom\u2026");
+
+  fetchJSON(rptUrl(lid,{where:col+" >= "+minKw, geometry:env,geometryType:"esriGeometryEnvelope",
+                        inSR:"4326",spatialRel:"esriSpatialRelIntersects",
+                        outFields:"OBJECTID,Feeder,SS_N,BESS_HC,PV_HC_kW,EV_HC_kW,Feeder_Q",
+                        returnGeometry:"false",resultRecordCount:"400"}),
+    function(err,j){
+      if(err||!j||j.error||!j.features){
+        fdDone("Circuit search failed: "+(err?err.message:(j&&j.error?("service "+j.error.code):"no result")),"err"); return;
+      }
+      if(!j.features.length){
+        fdDone("No circuits at "+minKw.toLocaleString()+"+ kW in this view. Zoom out, pan, or lower the threshold.","err"); return;
+      }
+      /* collapse buffer segments to one entry per feeder, best value wins */
+      var by={},order=[];
+      for(var i=0;i<j.features.length;i++){
+        var a=j.features[i].attributes, f=a.Feeder||("oid"+a.OBJECTID);
+        var v=parseFloat(a[col]); if(isNaN(v)) v=0;
+        if(!by[f]){ by[f]={feeder:f,sub:a.SS_N||"",val:v,bess:a.BESS_HC,pv:a.PV_HC_kW,ev:a.EV_HC_kW,
+                           queue:a.Feeder_Q,oids:[a.OBJECTID]}; order.push(f); }
+        else { by[f].oids.push(a.OBJECTID); if(v>by[f].val){ by[f].val=v; by[f].bess=a.BESS_HC;
+               by[f].pv=a.PV_HC_kW; by[f].ev=a.EV_HC_kW; } }
+      }
+      var feeders=order.map(function(k){return by[k];});
+      feeders.sort(function(x,y){ return y.val-x.val; });
+      var total=feeders.length;
+      if(feeders.length>FD_MAX_FEEDERS) feeders=feeders.slice(0,FD_MAX_FEEDERS);
+
+      fdStep('<div class="ok">1 \u00b7 '+total+' circuit'+(total===1?"":"s")+' found'+
+             (total>FD_MAX_FEEDERS?(" \u2014 working the top "+FD_MAX_FEEDERS+" by capacity"):"")+'</div>'+
+             '<div class="on">2 \u00b7 Pulling parcels\u2026</div>');
+      sweepFeeders(root,feeders,0,[],total);
+    });
+}
+
+/* one feeder at a time: geometry -> parcel ids -> parcel records */
+function sweepFeeders(root,feeders,i,acc,total){
+  if(i>=feeders.length){ enrichSweep(root,acc,feeders,total); return; }
+  var f=feeders[i];
+  fdBar(.10+.55*(i/feeders.length));
+  fdMsg("Circuit "+(i+1)+" of "+feeders.length+" \u00b7 "+f.feeder+
+        " ("+Math.round(f.val).toLocaleString()+" kW) \u00b7 "+acc.length.toLocaleString()+" parcels so far");
+
+  fetchJSON(rptUrl(detailLayer(),{where:"OBJECTID IN ("+f.oids.join(",")+")",outFields:"OBJECTID",
+            returnGeometry:"true",geometryPrecision:"5",maxAllowableOffset:"0.00025",outSR:"4326"}),
+    function(e1,j1){
+      if(e1||!j1||!j1.features||!j1.features.length){ diag("sweep geom "+f.feeder+": fail"); sweepFeeders(root,feeders,i+1,acc,total); return; }
+      var rings=[];
+      for(var n=0;n<j1.features.length;n++){ var g=j1.features[n].geometry; if(g&&g.rings) rings=rings.concat(g.rings); }
+      if(!rings.length){ sweepFeeders(root,feeders,i+1,acc,total); return; }
+      var geom=JSON.stringify({rings:rings,spatialReference:{wkid:4326}});
+
+      fetchJSONPost(parcelUrl(root),
+        formBody({where:"1=1",geometry:geom,geometryType:"esriGeometryPolygon",inSR:"4326",
+                  spatialRel:"esriSpatialRelIntersects",returnIdsOnly:"true"}),
+        function(e2,j2){
+          if(e2||!j2||!j2.objectIds||!j2.objectIds.length){
+            diag("sweep parcels "+f.feeder+": "+(e2?e2.message:"none")); sweepFeeders(root,feeders,i+1,acc,total); return;
+          }
+          var ids=j2.objectIds.slice(0,FD_MAX_PARCELS), chunks=[],c;
+          for(c=0;c<ids.length;c+=200) chunks.push(ids.slice(c,c+200));
+          var d=0;
+          (function nextChunk(){
+            if(d>=chunks.length){ sweepFeeders(root,feeders,i+1,acc,total); return; }
+            fetchJSONPost(parcelUrl(root),
+              formBody({where:"OBJECTID IN ("+chunks[d].join(",")+")",
+                        outFields:[AD.cfg?AD.cfg.addr:"street_address",AD.cfg?AD.cfg.idField:"PIN14_dash"].join(","),
+                        returnGeometry:"false"}),
+              function(e3,j3){
+                if(!e3&&j3&&j3.features){
+                  for(var q=0;q<j3.features.length;q++){
+                    if(acc.length>=FD_MAX_ROWS) break;
+                    var at=j3.features[q].attributes;
+                    acc.push({addr:String(at[AD.cfg?AD.cfg.addr:"street_address"]||"").trim(),
+                              pin:pin14(at[AD.cfg?AD.cfg.idField:"PIN14_dash"]),
+                              feeder:f.feeder,sub:f.sub,val:f.val,bess:f.bess,pv:f.pv,ev:f.ev,queue:f.queue});
+                  }
+                }
+                d++; nextChunk();
+              });
+          })();
+        });
+    });
+}
+
+/* class + owner for everything collected, then render */
+function enrichSweep(root,acc,feeders,total){
+  if(!acc.length){ fdDone("Circuits found, but no parcels inside them for Cook County. The area may be in another county.","err"); return; }
+  fdStep(document.getElementById("fdSteps").innerHTML.replace('class="on">2','class="ok">2').replace(/Pulling parcels…/,"Pulling parcels \u2014 "+acc.length.toLocaleString()+" found")+
+         '<div class="on">3 \u00b7 Looking up owners\u2026</div>');
+  var pins=[],seen={},i;
+  for(i=0;i<acc.length;i++) if(acc[i].pin&&!seen[acc[i].pin]){ seen[acc[i].pin]=1; pins.push(acc[i].pin); }
+  var CH=50, chunks=[];
+  for(i=0;i<pins.length;i+=CH) chunks.push(pins.slice(i,i+CH));
+  var cls={},own={},done=0;
+  function soql(ds,sel,list){
+    return root+"/socrata/"+ds+"?$select="+encodeURIComponent(sel)+
+           "&$where="+encodeURIComponent("pin in ('"+list.join("','")+"')")+"&$limit=50000";
+  }
+  function keepNewest(store,rows,build){
+    if(!rows||!rows.length) return;
+    for(var n=0;n<rows.length;n++){ var r=rows[n]; if(!r.pin) continue;
+      var y=parseInt(r.year,10); if(isNaN(y)) y=0;
+      var cur=store[r.pin]; if(!cur||y>cur.__y){ var v=build(r); v.__y=y; store[r.pin]=v; } }
+  }
+  (function next(){
+    if(done>=chunks.length){ renderSweep(acc,cls,own,feeders,total); return; }
+    fdBar(.65+.32*(done/chunks.length));
+    fdMsg("Owner lookup \u00b7 "+Math.min((done+1)*CH,pins.length).toLocaleString()+"/"+pins.length.toLocaleString());
+    var list=chunks[done];
+    fetchJSON(soql("universe","pin,class,year",list),function(e1,j1){
+      if(!e1&&j1&&j1.length) keepNewest(cls,j1,function(r){return {cls:r["class"],year:r.year};});
+      fetchJSON(soql("addresses","pin,year,prop_address_full,prop_address_city_name,prop_address_zipcode_1,"+
+        "mail_address_name,mail_address_full,mail_address_city_name,mail_address_state,mail_address_zipcode_1,"+
+        "owner_address_name",list),function(e2,j2){
+          if(!e2&&j2&&j2.length) keepNewest(own,j2,function(r){ return {
+            owner:r.owner_address_name||r.mail_address_name||"",
+            mail:[r.mail_address_full,r.mail_address_city_name,r.mail_address_state,r.mail_address_zipcode_1].filter(Boolean).join(", "),
+            propShort:r.prop_address_full||"", year:r.year }; });
+          done++; next();
+        });
+    });
+  })();
+}
+
+function renderSweep(acc,cls,own,feeders,total){
+  var want=CLASS_SETS[document.getElementById("fdClass").value]||CLASS_SETS.ci_mud;
+  var allMode=document.getElementById("fdClass").value==="all";
+  var seen={},rows=[],dropped=0;
+  for(var i=0;i<acc.length;i++){
+    var a=acc[i], ce=a.pin?cls[a.pin]:null, c=ce?String(ce.cls||""):"";
+    if(!want(c)||(!c&&!allMode)){ dropped++; continue; }
+    var o=(a.pin&&own[a.pin])?own[a.pin]:{};
+    var addr=o.propShort||a.addr;
+    if(!addr) { dropped++; continue; }
+    var k=(a.pin||addr)+"|"+a.feeder;
+    if(seen[k]) continue; seen[k]=1;
+    rows.push({addr:addr,pin:a.pin||"",cls:c,clsLabel:classLabel(c),
+               owner:o.owner||"",mail:o.mail||"",asOf:o.year||"",
+               feeder:a.feeder,sub:a.sub,val:a.val,bess:a.bess,pv:a.pv,ev:a.ev});
+  }
+  rows.sort(function(x,y){ return (y.val||0)-(x.val||0) || (x.addr<y.addr?-1:1); });
+  FD.rows=rows; FD.busy=false;
+  document.getElementById("fdRun").disabled=false;
+  document.getElementById("fdCsv").disabled=!rows.length;
+  fdBar(1);
+  fdStep('');
+
+  var uniqOwners={},uf={};
+  rows.forEach(function(r){ if(r.owner) uniqOwners[r.owner]=1; uf[r.feeder]=1; });
+  var best=rows.length?rows[0].val:0;
+  var useLbl={bess:"battery",ev:"load",pv:"export"}[FD.useField];
+
+  fdMsg(rows.length.toLocaleString()+" sites \u00b7 "+Object.keys(uf).length+" circuits \u00b7 "+
+        Object.keys(uniqOwners).length.toLocaleString()+" distinct owners"+
+        (dropped?(" \u00b7 "+dropped.toLocaleString()+" filtered out"):""),"ok");
+
+  var h='<div class="stat">'+
+    '<div><span class="k">Sites</span><span class="big-num">'+rows.length.toLocaleString()+'</span></div>'+
+    '<div><span class="k">Owners to contact</span><span class="big-num">'+Object.keys(uniqOwners).length.toLocaleString()+'</span></div>'+
+    '<div><span class="k">Best circuit</span><span class="big-num">'+Math.round(best).toLocaleString()+' kW</span></div>'+
+    '<div><span class="k">Circuits</span><span class="big-num">'+Object.keys(uf).length+'</span></div></div>';
+
+  h+='<table class="r-t"><thead><tr><th>Address</th><th>Type</th><th>Owner</th><th>Mailing</th>'+
+     '<th>Feeder</th><th>'+esc(useLbl)+' kW</th></tr></thead><tbody>';
+  for(var r2=0;r2<rows.length;r2++){
+    var R=rows[r2];
+    h+='<tr><td>'+esc(R.addr)+'</td><td>'+esc(R.clsLabel)+'</td><td>'+esc(R.owner||"\u2014")+'</td>'+
+       '<td>'+esc(R.mail||"\u2014")+'</td><td style="font-family:var(--mono);font-size:11px">'+esc(R.feeder)+'</td>'+
+       '<td class="n">'+(R.val!=null?Math.round(R.val).toLocaleString():"\u2014")+'</td></tr>';
+  }
+  h+='</tbody></table>';
+  h+='<div class="r-note"><b>The kW is the circuit\u2019s, not the parcel\u2019s.</b> Every site on the same feeder '+
+     'draws from one shared number, and it goes to whoever finishes interconnection first \u2014 so this is a '+
+     'prospecting list, not an inventory. A parcel being inside the buffer means it is near the feeder, not that '+
+     'a service drop can reach it. The deliverable figure comes from the interconnection study.</div>';
+  document.getElementById("fdOut").innerHTML=h;
+}
+
+function fdDone(msg,cls){
+  FD.busy=false; document.getElementById("fdRun").disabled=false;
+  fdBar(0); fdStep(''); fdMsg(msg,cls||"");
+}
+
+function downloadFdCsv(){
+  if(!FD.rows.length) return;
+  var lines=["Address,Property_Type,Class,Owner,Mailing_Address,PIN,Feeder,Substation,Circuit_kW,BESS_kW,PV_kW,EV_kW,Tax_Year"];
+  for(var i=0;i<FD.rows.length;i++){ var r=FD.rows[i];
+    lines.push([r.addr,r.clsLabel,r.cls,r.owner,r.mail,r.pin,r.feeder,r.sub,r.val,r.bess,r.pv,r.ev,r.asOf].map(csvCell).join(",")); }
+  var blob=new Blob([lines.join("\r\n")],{type:"text/csv;charset=utf-8"});
+  var a=document.createElement("a"), url=URL.createObjectURL(blob);
+  var d=new Date(), st=d.getFullYear()+"-"+("0"+(d.getMonth()+1)).slice(-2)+"-"+("0"+d.getDate()).slice(-2);
+  a.href=url; a.download="clearsky-sites-"+st+".csv";
+  document.body.appendChild(a); a.click();
+  setTimeout(function(){document.body.removeChild(a);URL.revokeObjectURL(url);},250);
+}
+
+document.getElementById("findOpen").onclick=function(){
+  document.getElementById("fdWrap").className="open";
+  if(!FD.rows.length) fdMsg("Pan the map to the area you want, then run. Everything visible on screen is searched.");
+};
+document.getElementById("fdClose").onclick=function(){ document.getElementById("fdWrap").className=""; };
+document.getElementById("fdWrap").onclick=function(e){ if(e.target===this) this.className=""; };
+document.getElementById("fdRun").onclick=runFindSites;
+document.getElementById("fdCsv").onclick=downloadFdCsv;
+document.getElementById("prospect").onchange=function(){ PROSPECT=this.checked; repaint(); };
 
 
 bootService();
