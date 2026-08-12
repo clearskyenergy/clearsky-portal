@@ -1535,19 +1535,63 @@ function esc(v) {
     /* Mirrors the client half of OI.postMessage when the library predates it,
        so a stale cached omega-intake.js degrades to a working send instead of
        a dead button. */
-    function sendMessage(text) {
-      if (typeof OI.postMessage === 'function') {
-        return Promise.resolve(OI.postMessage(rec, text, 'client', me));
-      }
-      rec.messages = rec.messages || [];
-      rec.messages.push({
+    /* A message is written as a THREE-FIELD update, not as a save of the
+       whole record.
+
+       The rule that permits client messaging outside the status gate is
+       affectedKeys().hasOnly(['messages','notify','updatedAt']). A full-record
+       save satisfies that only by accident — the moment anything else on the
+       record differs by a byte (an activity entry appended alongside the
+       message, a timestamp that re-serialises, a field the library normalises
+       on write) the key set widens and Firestore refuses the whole thing with
+       the same permission-denied as before. arrayUnion also appends exactly
+       one entry, which is the other half of what the rule checks.
+
+       So the narrow write is the primary path and the library is the
+       fallback, rather than the other way round. */
+    function newMessage(text) {
+      return {
         id: 'm_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 7),
         side: 'client', text: text, by: me,
         at: OI.nowIso ? OI.nowIso() : new Date().toISOString()
+      };
+    }
+
+    function directSend(msg) {
+      var fs = firebase.firestore();
+      var notify = {};
+      Object.keys(rec.notify || {}).forEach(function (k) { notify[k] = rec.notify[k]; });
+      notify.unreadForStaff = true;
+      return fs.collection('intake_projects').doc(rec.intakeId).update({
+        messages: firebase.firestore.FieldValue.arrayUnion(msg),
+        notify: notify,
+        updatedAt: msg.at
+      }).then(function () {
+        /* keep the in-memory copy in step so the thread repaints without a
+           round trip */
+        rec.messages = (rec.messages || []).concat([msg]);
+        rec.notify = notify;
+        rec.updatedAt = msg.at;
       });
+    }
+
+    function canWriteDirect() {
+      try {
+        return !!(window.firebase && firebase.firestore && firebase.apps.length
+                  && rec && rec.intakeId);
+      } catch (e) { return false; }
+    }
+
+    function sendMessage(text) {
+      var msg = newMessage(text);
+      if (canWriteDirect()) return directSend(msg);
+      if (typeof OI.postMessage === 'function') {
+        return Promise.resolve(OI.postMessage(rec, text, 'client', me));
+      }
+      rec.messages = (rec.messages || []).concat([msg]);
       rec.notify = rec.notify || {};
       rec.notify.unreadForStaff = true;
-      rec.updatedAt = OI.nowIso ? OI.nowIso() : new Date().toISOString();
+      rec.updatedAt = msg.at;
       return OI.store().save(rec);
     }
 

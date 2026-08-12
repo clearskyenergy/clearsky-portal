@@ -1,0 +1,71 @@
+/* ============================================================
+   PATCH — /intake_projects  ·  client messaging
+   Replaces the `allow update:` clause and adds three helper
+   functions above it. Nothing else in the block changes.
+   ============================================================ */
+
+/* ── ADD THESE THREE FUNCTIONS ──────────────────────────────
+   Place them inside match /intake_projects/{intakeId}, next to
+   clientStatus() / clientStatusMove(). */
+
+      /* A message is not a state change, and it must not be gated on one.
+         clientStatus() is evaluated against the status ON THE WRITE, not the
+         status being moved to — so a record sitting in 'in_review',
+         'changes_requested', 'quoted', 'in_production' or 'delivered' fails
+         it on EVERY client write, including one that only appends a message.
+         The result was a customer who could be asked a question by the
+         "Request info" button and had no way to answer it.
+
+         This carves messaging out of the status gate entirely. It cannot be
+         used to reach anything else: the affected keys are pinned to the
+         three the thread actually touches, so status, quote, admin,
+         commission, orgId and the deliverables are all still untouchable by
+         the same write. */
+      function onlyMessaging() {
+        return request.resource.data.diff(resource.data).affectedKeys()
+                 .hasOnly(['messages', 'notify', 'updatedAt']);
+      }
+      /* Exactly one new entry. A client may add to the thread; they may not
+         truncate it, and they may not paste in fifty entries at once. */
+      function appendsOneMessage() {
+        return request.resource.data.get('messages', []).size()
+             == resource.data.get('messages', []).size() + 1;
+      }
+      /* The new entry is theirs and is marked as theirs, so a client cannot
+         forge a message that renders as staff in their own portal and then
+         point at it later. */
+      function newMessageIsClients() {
+        return request.resource.data.messages[resource.data.get('messages', []).size()]
+                 .get('side', '') == 'client';
+      }
+
+
+/* ── REPLACE THE EXISTING `allow update:` WITH THIS ─────────
+   The first three branches are unchanged, character for character.
+   The fourth is new. */
+
+      allow update: if isOmegaAdmin()
+                    || (isOmegaStaff()
+                        && quoteUnchanged()
+                        && commissionUnchanged()
+                        && responseStampOnce())
+                    || (signedIn()
+                        && (myOrgRecord() || isCreator())
+                        && request.resource.data.orgId == resource.data.orgId
+                        && adminUnchanged()
+                        && quoteUnchanged()
+                        && commissionUnchanged()
+                        && responseUnchanged()
+                        && clientStatus(request.resource.data.status)
+                        && clientStatusMove())
+                    /* ← ADDED: post a message, in any state. Deliberately
+                         does NOT call clientStatus(): that is the whole bug.
+                         Everything a status gate is actually protecting —
+                         price, ownership, workflow position, internal notes —
+                         is protected here by onlyMessaging() instead, which
+                         is a tighter constraint, not a looser one. */
+                    || (signedIn()
+                        && (myOrgRecord() || isCreator())
+                        && onlyMessaging()
+                        && appendsOneMessage()
+                        && newMessageIsClients());
