@@ -1599,10 +1599,29 @@ var DIRS={N:1,S:1,E:1,W:1,NE:1,NW:1,SE:1,SW:1,NORTH:1,SOUTH:1,EAST:1,WEST:1,
 var TYPES={ST:1,STREET:1,AVE:1,AV:1,AVENUE:1,RD:1,ROAD:1,BLVD:1,BOULEVARD:1,DR:1,DRIVE:1,
            LN:1,LANE:1,CT:1,COURT:1,PL:1,PLACE:1,PKWY:1,PARKWAY:1,HWY:1,HIGHWAY:1,
            TER:1,TERRACE:1,CIR:1,CIRCLE:1,WAY:1,SQ:1,SQUARE:1,EXPY:1,EXPRESSWAY:1};
+/* Chicago licence addresses carry unit detail the Assessor's do not:
+   "4840 N MARINE DR 5 FLOORS", "1200 W FULTON ST STE 300", "45 E RANDOLPH
+   UNIT 2B". Cut everything from the first unit marker onward, or those
+   trailing words become part of the street key and nothing matches. */
+var UNIT_RE=/\b(STE|SUITE|UNIT|APT|APARTMENT|FL|FLR|FLOOR|FLOORS|RM|ROOM|BLDG|BUILDING|LOT|SPC|SPACE|BSMT|BASEMENT|REAR|FRNT|FRONT|LOWER|UPPER|PH|TRLR|DEPT|OFC|OFFICE|#)\b/;
+function stripUnit(s){
+  var t=String(s==null?"":s).toUpperCase();
+  var m=t.match(UNIT_RE);
+  if(m&&m.index>0){
+    t=t.slice(0,m.index);
+    /* "1ST FLOOR" / "2 FL": the ordinal belongs to the unit, not the street,
+       so cut it too — but ONLY here, immediately before a unit marker.
+       Chicago street names are frequently ordinals (87TH ST, 1ST AVE), and
+       stripping those anywhere else would break far more than it fixes. */
+    t=t.replace(/\s+\d+(ST|ND|RD|TH)?\s*$/,"");
+  }
+  /* a bare trailing token after a street type is a unit: "... ST 300" */
+  return t.replace(/\s+\d+[A-Z]?\s*$/,"").trim();
+}
 function addrKey(num,street){
   num=String(num==null?"":num).trim().replace(/[^0-9].*$/,"");   /* 1450-52 -> 1450 */
   if(!num) return null;
-  var w=String(street==null?"":street).toUpperCase().replace(/[^A-Z0-9 ]/g," ").split(/\s+/).filter(Boolean);
+  var w=stripUnit(street).replace(/[^A-Z0-9 ]/g," ").split(/\s+/).filter(Boolean);
   var core=[];
   for(var i=0;i<w.length;i++){
     var t=w[i];
@@ -1775,7 +1794,11 @@ function chicagoLicences(root,b,stats){
      The geo column has been named both `location` and `geocoded_column`
      over the years, so try one and fall back. */
   function attempt(col,after){
-    var where="within_box("+col+", "+b.getNorth()+", "+b.getWest()+", "+b.getSouth()+", "+b.getEast()+")";
+    /* AAI = issued and active. The dataset also carries revoked, cancelled
+       and expired records; calling a business that closed two years ago is
+       worse than having no number at all. */
+    var where="within_box("+col+", "+b.getNorth()+", "+b.getWest()+", "+
+              b.getSouth()+", "+b.getEast()+") AND license_status='AAI'";
     fetchJSON(root+"/socrata/chibiz?$where="+encodeURIComponent(where)+"&$limit=20000",
       function(err,j){ after(err||!j||j.error?null:j); });
   }
