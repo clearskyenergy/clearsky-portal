@@ -53237,7 +53237,7 @@ window.OmegaRotDiag = OmegaRotDiag;
  *  OmegaBuild.check('feature') answers "is this fix actually deployed?"
  *  in one call, without needing to know what to look for.
  * ═══════════════════════════════════════════════════════════════════ */
-var OMEGA_BUILD = { id:'e09f2d5975e2', built:'2026-08-11 23:09 UTC' };
+var OMEGA_BUILD = { id:'908711d08d41', built:'2026-08-11 23:09 UTC' };
 window.OMEGA_BUILD = OMEGA_BUILD;
 window.OmegaBuild = {
   id: OMEGA_BUILD.id,
@@ -53257,6 +53257,7 @@ window.OmegaBuild = {
     autelPriceBook: function(){ return typeof AUTEL_PRICES!=='undefined'; },
     solarInEstimate:function(){ return typeof omegaSolarCost==='function'; },
     elRenderCenter: function(){ return typeof _elRenderSize==='function'; },
+    elementZoomScale:function(){ return typeof omegaRescaleElements==='function'; },
     derRotateRender:function(){
       /* The DER wrapper must put a rotate() on its own group. Probe the
          real renderer with a rotated array and read the DOM back. */
@@ -53294,6 +53295,92 @@ window.OmegaBuild = {
 };
 try{ console.info('[omega/build] '+OMEGA_BUILD.id+' \u00b7 built '+OMEGA_BUILD.built
   +' \u00b7 run OmegaBuild.status() to verify what is deployed'); }catch(e){}
+
+/* ═══════════════════════════════════════════════════════════════════
+ *  ELEMENT ZOOM SCALING
+ *  ------------------------------------------------------------------
+ *  Shapes carry their size in FEET (wFt/hFt) and rebuild their pixels
+ *  from pxPerFt on every reproject, so they track the imagery. Elements
+ *  never did: el.w/el.h are raw pixels, fixed at placement, and nothing
+ *  rescaled them on zoom. OmegaInsert.rescaleExisting() does the right
+ *  arithmetic but only ever ran when called by hand.
+ *
+ *  So a BESS pad drawn at 20 px/ft stayed 20 px/ft wide after zooming
+ *  out to 6 -- three times its true footprint, and growing every time
+ *  the map pulled back. Position was anchored, size was not.
+ *
+ *  This rebuilds pixel size from the stored footprint in feet, about the
+ *  element's CENTRE so nothing walks across the drawing, and runs from
+ *  the same reprojection the anchor engine drives.
+ * ═══════════════════════════════════════════════════════════════════ */
+function _elFootprintFt(el){
+  if(!el) return null;
+  /* Set by the insert layer; fall back to the catalog, then to whatever
+     the element was drawn at, so an old drawing still scales. */
+  var lf = +el.lf || 0, wf = +el.wf || 0;
+  if(!(lf>0) && typeof footprintOf==='function' && el.eqId){
+    try{ var f=footprintOf(el.eqId); if(f){ lf=+f.lf||0; wf=+f.wf||0; } }catch(e){}
+  }
+  if(!(lf>0) && el._ppfAtPlace>0 && el.w>0){
+    lf = el.w/el._ppfAtPlace;
+    wf = (el.h||el.w)/el._ppfAtPlace;
+  }
+  if(!(lf>0)) return null;
+  if(!(wf>0)) wf = lf*0.72;
+  return { lf:lf, wf:wf };
+}
+
+function omegaRescaleElements(){
+  var ppf = +(S && S.pxPerFt) || 0;
+  if(!(ppf>0)) return 0;
+  var n=0;
+  (S.elements||[]).forEach(function(el){
+    if(!el) return;
+    /* evgear and bess-asm were excluded by the old type==='eq' test, which
+       is exactly the equipment the user watched balloon on zoom-out. */
+    if(el.type!=='eq' && el.type!=='evgear' && el.type!=='bess-asm') return;
+    var f=_elFootprintFt(el); if(!f) return;
+    /* Remember the scale it was drawn at, so a footprint-less element can
+       still derive one later. */
+    if(!(el._ppfAtPlace>0)) el._ppfAtPlace = ppf;
+
+    var wantW = Math.max(10, Math.round(f.lf*ppf));
+    var wantH = Math.max(8,  Math.round(f.wf*ppf));
+    if(Math.abs((el.w||0)-wantW) <= 1 && Math.abs((el.h||0)-wantH) <= 1) return;
+
+    /* Grow about the centre. The geo anchor is the centre too, so this
+       keeps the ground position fixed while the size changes. */
+    var c = (typeof _elRenderCenter==='function')
+      ? _elRenderCenter(el)
+      : { x:el.x+((el.w||60)/2), y:el.y+((el.h||el.w||60)/2) };
+    el.w=wantW; el.h=wantH;
+    el.x=c.x-wantW/2; el.y=c.y-wantH/2;
+    n++;
+    try{ if(typeof renderEl==='function') renderEl(el); }catch(e){}
+  });
+  return n;
+}
+window.omegaRescaleElements = omegaRescaleElements;
+
+/* Run it as part of reprojection. Wrapping rather than editing the engine
+   keeps this independent of which anchoring generation is live. */
+(function(){
+  var tries=0;
+  var iv=setInterval(function(){
+    if(++tries>200){ clearInterval(iv); return; }
+    var f=window._geoReprojectAll;
+    if(typeof f!=='function' || f.__omegaElScale) return;
+    clearInterval(iv);
+    var wrapped=function(){
+      var r=f.apply(this, arguments);
+      try{ omegaRescaleElements(); }catch(e){}
+      return r;
+    };
+    wrapped.__omegaElScale=true;
+    window._geoReprojectAll=wrapped;
+    try{ console.info('[omega/elscale] element footprints now rescale with zoom'); }catch(e){}
+  }, 60);
+})();
 
 /* ── BNZ panel ─────────────────────────────────────────────────────
    Opens on the selected shape. Rect (zone box) is the fast path;
