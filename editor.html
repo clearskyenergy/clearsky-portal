@@ -2086,6 +2086,7 @@ window.onerror = function(msg, src, line, col, err) {
      anchoring entirely. Restore by re-instating this button:
      <button class="rbtn" id="rb-clearplot" onclick="clearPlot()" title="Clear the committed plot and return to the live interactive map"><span class="rb-ico">✕</span><span class="rb-lbl">Clear<br>Plot</span></button> -->
         <button class="rbtn" id="rb-recenter" onclick="recenterOnEquipment()" title="Recenter the view on your placed equipment — brings any off-screen equipment back into the window"><span class="rb-ico" style="color:#34A853">⊕</span><span class="rb-lbl">Recenter</span></button>
+        <button class="rbtn" id="btn-pv-view" onclick="omegaPvViewCycle()" title="Solar view — cycle individual modules → row bands → outline only. A view setting: it is not saved with the drawing and never changes a number."><span class="rb-ico" style="color:#60A5FA">☷</span><span class="rb-lbl">Solar<br>Panels</span></button>
         <button class="rbtn" id="btn-3d" onclick="omega3dSoon()" title="3D site view &mdash; tilt and orbit to inspect the site. Editing pauses while tilted; press 2D or Esc to return." style="position:relative"><span class="rb-ico" style="display:inline-flex;align-items:center;justify-content:center"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 2.8 21 7.6 12 12.4 3 7.6z"/><path d="M3 7.6v8.8L12 21.2V12.4"/><path d="M21 7.6v8.8L12 21.2"/></svg></span><span class="rb-lbl">3D<br>View</span><span id="btn-3d-soon" style="position:absolute;top:2px;right:2px;background:#F59E0B;color:#0A1628;font-size:7px;font-weight:800;letter-spacing:.4px;line-height:1;padding:2px 3px;border-radius:2px;pointer-events:none">SOON</span></button>
         <button class="rbtn" id="rb-crosshair" onclick="nnToggleCrosshair()" title="Toggle the AutoCAD-style crosshair cursor in draw/placement modes"><span class="rb-ico">✛</span><span class="rb-lbl">Crosshair</span></button>
       </div>
@@ -47453,6 +47454,179 @@ function _derPlaceSolar(a, b){
     +', '+L.setbackFt+' ft setback) \u2014 draw another or ESC');
 }
 
+
+/* ═══════════════════════════════════════════════════════════════════
+ *  PV DETAIL VIEW
+ *  ------------------------------------------------------------------
+ *  The array used to be drawn as grid lines at a FIXED PIXEL spacing --
+ *  14 px columns, 22 px rows, 0.5 px wide at 50% opacity. Three things
+ *  followed from that: the lines were nearly invisible on satellite
+ *  imagery, the visible row count meant nothing (it changed with zoom,
+ *  not with the design), and nobody could see the modules at all.
+ *
+ *  Modules are now drawn at their REAL size in feet, on the real row
+ *  pitch implied by the ground-cover ratio, so what is on screen is the
+ *  layout the kW number came from. Zoom out and they get smaller,
+ *  because they are 3.6 ft wide and that is what 3.6 ft looks like.
+ *
+ *  Three view modes, because one rendering cannot serve every task:
+ *    panels    -- individual modules. The design view.
+ *    schematic -- row bands only. Legible when zoomed out over a campus.
+ *    off       -- outline and setback only. For reading the imagery
+ *                 underneath, which is the whole point of a site map.
+ *
+ *  Mode is a VIEW setting, not project data: it is not saved with the
+ *  drawing and does not touch the model, so switching it can never
+ *  change a number.
+ * ═══════════════════════════════════════════════════════════════════ */
+var OMEGA_PV_VIEW = 'panels';           /* panels | off */
+var PV_MODULE = { wFt:3.6, hFt:7.2, gapFt:0.08 };   /* ~1.1 x 2.2 m portrait */
+/* Above this many rects the browser starts to struggle and the modules are
+   sub-pixel anyway, so the renderer drops to row bands and says so. */
+var PV_MAX_MODULES = 3500;
+
+function omegaPvView(mode){
+  /* 'schematic' is no longer a user-facing mode -- row bands told you less
+     than the modules did. It survives inside the renderer purely as the
+     fallback for arrays too dense to draw module-by-module. */
+  if(mode==='schematic') mode='panels';
+  if(mode==='panels'||mode==='off'){
+    OMEGA_PV_VIEW = mode;
+    try{
+      (S.shapes||[]).forEach(function(sh){
+        if(sh && sh.kind==='dersolar' && typeof renderShape==='function') renderShape(sh);
+      });
+    }catch(e){}
+    try{ _pvSyncBtn(); }catch(e){}
+    try{
+      var drew=0, tooSmall=0;
+      (S.shapes||[]).forEach(function(sh){
+        if(sh && sh.kind==='dersolar' && sh._pvDrawn){
+          if(sh._pvDrawn.mode==='too-small') tooSmall++;
+          else drew++;
+        }
+      });
+      var msg='Solar panels: '+(mode==='panels'?'shown':'hidden');
+      /* Say when an array physically cannot show modules, rather than
+         letting the toggle look inert. */
+      if(mode!=='off' && tooSmall && !drew)
+        msg += ' \u2014 '+tooSmall+' array(s) too small to show modules at this zoom';
+      if(typeof showBanner==='function') showBanner('cal', msg);
+    }catch(e){}
+  }
+  return OMEGA_PV_VIEW;
+}
+window.omegaPvView = omegaPvView;
+
+function omegaPvViewCycle(){
+  return omegaPvView(OMEGA_PV_VIEW==='panels' ? 'off' : 'panels');
+}
+window.omegaPvViewCycle = omegaPvViewCycle;
+
+function _pvSyncBtn(){
+  var b=document.getElementById('btn-pv-view'); if(!b) return;
+  var lbl = OMEGA_PV_VIEW==='panels' ? 'Panels' : 'Hidden';
+  var sub=b.querySelector('.rb-lbl');
+  if(sub) sub.innerHTML='Solar<br>'+lbl;
+  b.style.opacity = (OMEGA_PV_VIEW==='off') ? '.55' : '';
+}
+window._pvSyncBtn=_pvSyncBtn;
+
+/* Draw the modules for one array into g, inside the buildable rectangle.
+   Returns the number of module rects actually drawn. */
+function _pvDrawModules(g, gx, gy, gw, gh, ppf, sh){
+  if(OMEGA_PV_VIEW==='off') return 0;
+  if(!(ppf>0) || gw<=2 || gh<=2) return 0;
+
+  var gcr = (+sh.gcr>0 && +sh.gcr<=1) ? +sh.gcr : 0.40;
+  var modWpx = PV_MODULE.wFt*ppf;
+  var modHpx = PV_MODULE.hFt*ppf;
+  var gapPx  = Math.max(0.5, PV_MODULE.gapFt*ppf);
+  /* Row pitch.
+     GROUND mount needs inter-row spacing so one row does not shade the
+     next, and GCR is exactly that ratio -- the collector covers gcr of
+     the ground it stands on, so pitch = module length / gcr.
+     ROOF mount on a flush or low-tilt system does not: the modules lie
+     close to the deck and are laid nearly edge to edge, which is why a
+     rooftop array looks packed rather than striped. Using the ground
+     pitch on a roof left most of the deck empty and looked wrong,
+     because it was. */
+  var isRoof = (sh.mount==='roof');
+  var pitchPx = isRoof ? (modHpx + gapPx)
+                       : (modHpx / Math.max(0.15, gcr));
+
+  /* The LAST row needs only its own depth -- there is no row behind it to
+     shade, so it does not need a full pitch of clearance. floor(depth/pitch)
+     silently dropped that row: a 29 ft buildable depth at an 18 ft pitch
+     computed 1 row when 2 genuinely fit (row two spans 18.0-25.2 ft).
+     Same reasoning for the last column and its trailing gap. */
+  var cols = Math.floor((gw + gapPx) / (modWpx + gapPx));
+  var rows = Math.floor((gh - modHpx) / pitchPx) + 1;
+  if(gh < modHpx) rows = 0;
+  /* A small array can compute to zero rows -- 1,500 sqft with a 10 ft
+     setback leaves 18.7 ft of depth against an 18 ft row pitch, so one
+     bad rounding drops it to none. Returning 0 there drew NOTHING and
+     both view modes looked identical, which reads as the toggle being
+     broken rather than the array being too small to fit a row.
+     Draw what does fit, and record why when nothing does. */
+  if(cols<1 || rows<1){
+    var fitsOne = (gw >= modWpx) && (gh >= modHpx);
+    if(!fitsOne){
+      sh._pvDrawn = { mode:'too-small', rows:rows, cols:cols, modules:0,
+                      note:'buildable area smaller than one module at this scale' };
+      return 0;
+    }
+    cols = Math.max(1, cols);
+    rows = Math.max(1, rows);
+  }
+
+  var total = cols*rows;
+  /* Too many to draw honestly, or too small to see -- fall back to bands. */
+  var bandsOnly = (OMEGA_PV_VIEW==='schematic') || total>PV_MAX_MODULES || modWpx<2.5;
+
+  if(bandsOnly){
+    for(var r=0;r<rows;r++){
+      var by=gy+r*pitchPx;
+      if(by+modHpx>gy+gh+0.5) break;
+      var band=_mkNS('rect');
+      band.setAttribute('x',gx); band.setAttribute('y',by);
+      band.setAttribute('width',Math.max(1,cols*(modWpx+gapPx)-gapPx));
+      band.setAttribute('height',Math.max(0.8,modHpx));
+      band.setAttribute('fill','#1E4FA8');
+      band.setAttribute('fill-opacity',0.72);
+      band.setAttribute('stroke','#93C5FD');
+      band.setAttribute('stroke-width',Math.min(0.7, Math.max(0.25, modHpx*0.06)));
+      g.appendChild(band);
+    }
+    sh._pvDrawn = { mode:'bands', rows:rows, cols:cols, modules:total };
+    return 0;
+  }
+
+  /* Individual modules. One <rect> each, dark-blue fill with a light edge
+     so they read against both dark asphalt and bright roof membrane. */
+  var drawn=0;
+  for(var rr=0; rr<rows; rr++){
+    var my=gy+rr*pitchPx;
+    if(my+modHpx>gy+gh+0.5) break;
+    for(var cc=0; cc<cols; cc++){
+      var mx=gx+cc*(modWpx+gapPx);
+      if(mx+modWpx>gx+gw+0.5) break;
+      var m=_mkNS('rect');
+      m.setAttribute('x',mx); m.setAttribute('y',my);
+      m.setAttribute('width',modWpx); m.setAttribute('height',modHpx);
+      m.setAttribute('fill','#1B3F8B');
+      m.setAttribute('fill-opacity',0.88);
+      m.setAttribute('stroke','#9DC4F5');
+      m.setAttribute('stroke-width',Math.min(0.6, Math.max(0.18, modWpx*0.05)));
+      g.appendChild(m);
+      drawn++;
+    }
+  }
+  sh._pvDrawn = { mode:'modules', rows:rows, cols:cols, modules:drawn };
+  return drawn;
+}
+window._pvDrawModules=_pvDrawModules;
+
 /* ---- RENDER --------------------------------------------------------- */
 /* Register renderers by extending renderShape's dispatch via wrapper. */
 (function(){
@@ -47635,13 +47809,11 @@ function _derRenderSolar(g, sh){
      count tracks the GCR model rather than the raw footprint. */
   var gx = (sbPx>0 && iw>4) ? x+sbPx : x, gy = (sbPx>0 && ih>4) ? y+sbPx : y;
   var gw = (sbPx>0 && iw>4) ? iw : w,     gh = (sbPx>0 && ih>4) ? ih : h;
-  var cols=Math.max(2,Math.round(gw/14)), rows=Math.max(2,Math.round(gh/22));
-  for(var c=1;c<cols;c++){ var lx=gx+c*(gw/cols); var l=_mkNS('line');
-    l.setAttribute('x1',lx);l.setAttribute('y1',gy);l.setAttribute('x2',lx);l.setAttribute('y2',gy+gh);
-    l.setAttribute('stroke','#2563EB');l.setAttribute('stroke-width',0.5);l.setAttribute('opacity',0.5);g.appendChild(l); }
-  for(var r=1;r<rows;r++){ var ly=gy+r*(gh/rows); var l2=_mkNS('line');
-    l2.setAttribute('x1',gx);l2.setAttribute('y1',ly);l2.setAttribute('x2',gx+gw);l2.setAttribute('y2',ly);
-    l2.setAttribute('stroke','#2563EB');l2.setAttribute('stroke-width',0.5);l2.setAttribute('opacity',0.5);g.appendChild(l2); }
+  /* Real modules at their real size, on the row pitch the GCR implies.
+     The old code drew lines every 14 and 22 SCREEN pixels at 0.5 px wide
+     and 50% opacity -- invisible on imagery, and a row count that changed
+     with zoom instead of with the design. */
+  _pvDrawModules(g, gx, gy, gw, gh, ppf, sh);
   _derText(g, x+w/2, y+h/2, '\u2600 '+(sh.kw||0)+' kW-DC', 11, '#1D4ED8', 'middle', '800');
   var _ml = sh.mount==='roof'?'ROOFTOP':(sh.mount==='adjacent'?'SOLAR CANOPY':'GROUND');
   _derText(g, x+w/2, y+h/2+13, _ml+' \u2022 '+(sh.sqft||0).toLocaleString()+' sqft', 8, '#3B82F6', 'middle', '600');
@@ -53512,7 +53684,7 @@ window.OmegaRotDiag = OmegaRotDiag;
  *  OmegaBuild.check('feature') answers "is this fix actually deployed?"
  *  in one call, without needing to know what to look for.
  * ═══════════════════════════════════════════════════════════════════ */
-var OMEGA_BUILD = { id:'006d974a6c73', built:'2026-08-11 23:09 UTC' };
+var OMEGA_BUILD = { id:'b6343e6f63bc', built:'2026-08-11 23:09 UTC' };
 window.OMEGA_BUILD = OMEGA_BUILD;
 window.OmegaBuild = {
   id: OMEGA_BUILD.id,
@@ -53534,6 +53706,7 @@ window.OmegaBuild = {
     elRenderCenter: function(){ return typeof _elRenderSize==='function'; },
     elementZoomScale:function(){ return typeof omegaRescaleElements==='function'; },
     ghostSweep:function(){ return typeof omegaSweepGhosts==='function'; },
+    pvDetailView:function(){ return typeof _pvDrawModules==='function'; },
     marketAnyValidated:function(){
       /* The gate must not refuse on role. Probe the shape of the profile
          object rather than the source text. */
@@ -53574,6 +53747,9 @@ window.OmegaBuild = {
     return out;
   }
 };
+try{ if(document.readyState==='loading')
+  document.addEventListener('DOMContentLoaded', function(){ try{ _pvSyncBtn(); }catch(e){} });
+else setTimeout(function(){ try{ _pvSyncBtn(); }catch(e){} }, 0); }catch(e){}
 try{ console.info('[omega/build] '+OMEGA_BUILD.id+' \u00b7 built '+OMEGA_BUILD.built
   +' \u00b7 run OmegaBuild.status() to verify what is deployed'); }catch(e){}
 
