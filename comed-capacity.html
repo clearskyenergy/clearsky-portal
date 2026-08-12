@@ -220,6 +220,8 @@
             <option value="pv">Export only (solar)</option>
           </select></div>
         <button class="findbtn" id="fdRun">Find sites</button>
+        <button class="r-csv" id="fdPhone" disabled>☎ Find contacts</button>
+        <button class="r-csv" id="fdView">By owner</button>
         <button class="r-csv" id="fdCsv" disabled>Download CSV</button>
       </div>
       <div class="r-msg" id="fdMsg">Pan the map to the area you want, then run. Everything visible on screen is searched.</div>
@@ -1570,6 +1572,362 @@ function enrichSweep(root,acc,feeders,total){
   })();
 }
 
+
+/* ══════════════════════════════════════════════════════════════
+   PHONE LOOKUP — businesses only, from OpenStreetMap
+
+   WHAT THIS IS NOT: a skip-trace. It does not touch people-search
+   sites. Those forbid scraping, break constantly, and match on
+   name+address alone — which on a list like this means a real chance
+   of dialling a stranger who shares a name with the owner. A number
+   with no provenance and no DNC scrub is the expensive kind of lead.
+
+   WHAT THIS IS: businesses that chose to publish their phone number
+   in OpenStreetMap, matched to your parcels by street address. Open
+   data, free, no key, licensed for exactly this. Coverage is partial
+   — chains and storefronts are well tagged, warehouses and holding
+   companies usually are not — so treat a hit as a bonus and the
+   search link as the fallback.
+   ══════════════════════════════════════════════════════════════ */
+var OVERPASS="https://overpass-api.de/api/interpreter";
+
+/* "4345 S MICHIGAN AVE" and OSM's "4345" + "South Michigan Avenue"
+   have to collapse to the same key. Strip directionals and street
+   types, keep the core name. */
+var DIRS={N:1,S:1,E:1,W:1,NE:1,NW:1,SE:1,SW:1,NORTH:1,SOUTH:1,EAST:1,WEST:1,
+          NORTHEAST:1,NORTHWEST:1,SOUTHEAST:1,SOUTHWEST:1};
+var TYPES={ST:1,STREET:1,AVE:1,AV:1,AVENUE:1,RD:1,ROAD:1,BLVD:1,BOULEVARD:1,DR:1,DRIVE:1,
+           LN:1,LANE:1,CT:1,COURT:1,PL:1,PLACE:1,PKWY:1,PARKWAY:1,HWY:1,HIGHWAY:1,
+           TER:1,TERRACE:1,CIR:1,CIRCLE:1,WAY:1,SQ:1,SQUARE:1,EXPY:1,EXPRESSWAY:1};
+function addrKey(num,street){
+  num=String(num==null?"":num).trim().replace(/[^0-9].*$/,"");   /* 1450-52 -> 1450 */
+  if(!num) return null;
+  var w=String(street==null?"":street).toUpperCase().replace(/[^A-Z0-9 ]/g," ").split(/\s+/).filter(Boolean);
+  var core=[];
+  for(var i=0;i<w.length;i++){
+    var t=w[i];
+    if(DIRS[t]&&(i===0||i===w.length-1)) continue;
+    if(TYPES[t]&&i>0) continue;
+    core.push(t);
+  }
+  if(!core.length) return null;
+  return num+"|"+core.join(" ");
+}
+/* our rows carry one combined string; split leading house number off */
+function keyFromFull(full){
+  var s=String(full||"").trim();
+  var m=s.match(/^(\d+[A-Za-z]?(?:-\d+)?)\s+(.*)$/);
+  if(!m) return null;
+  return addrKey(m[1], m[2].split(",")[0]);
+}
+function prettyPhone(p){
+  var d=String(p||"").replace(/[^\d]/g,"");
+  if(d.length===11&&d.charAt(0)==="1") d=d.slice(1);
+  if(d.length!==10) return String(p||"").trim();
+  return "("+d.slice(0,3)+") "+d.slice(3,6)+"-"+d.slice(6);
+}
+function searchLink(owner,addr){
+  var q='"'+(owner||"").replace(/"/g,"")+'" '+(addr||"").split(",")[0]+' phone';
+  return "https://www.google.com/search?q="+encodeURIComponent(q);
+}
+
+function findPhones(){
+  if(!FD.rows.length) return;
+  var btn=document.getElementById("fdPhone");
+  btn.disabled=true; btn.textContent="\u260e Searching\u2026";
+  var b=map.getBounds();
+  var bbox=b.getSouth().toFixed(5)+","+b.getWest().toFixed(5)+","+
+           b.getNorth().toFixed(5)+","+b.getEast().toFixed(5);
+  var q="[out:json][timeout:40];("+
+        'nwr["phone"]["addr:housenumber"]('+bbox+');'+
+        'nwr["contact:phone"]["addr:housenumber"]('+bbox+');'+
+        ");out center tags;";
+
+  var x=new XMLHttpRequest();
+  x.open("POST",OVERPASS,true); x.timeout=60000;
+  x.setRequestHeader("Content-Type","application/x-www-form-urlencoded");
+  x.onreadystatechange=function(){
+    if(x.readyState!==4) return;
+    btn.disabled=false; btn.textContent="\u260e Find phones";
+    if(x.status<200||x.status>=300){ fdMsg("Phone lookup unavailable (Overpass "+x.status+"). Use the search links.","err"); return; }
+    var data; try{ data=JSON.parse(x.responseText); }catch(e){ fdMsg("Phone lookup returned bad data.","err"); return; }
+    var idx={},els=(data&&data.elements)||[];
+    for(var i=0;i<els.length;i++){
+      var t=els[i].tags||{};
+      var ph=t.phone||t["contact:phone"];
+      if(!ph) continue;
+      var k=addrKey(t["addr:housenumber"],t["addr:street"]);
+      if(k&&!idx[k]) idx[k]={phone:ph,name:t.name||""};
+    }
+    var hit=0;
+    for(var r=0;r<FD.rows.length;r++){
+      var k2=keyFromFull(FD.rows[r].addr);
+      if(k2&&idx[k2]){ FD.rows[r].phone=prettyPhone(idx[k2].phone);
+                       FD.rows[r].phoneName=idx[k2].name; hit++; }
+    }
+    fdMsg(hit.toLocaleString()+" of "+FD.rows.length.toLocaleString()+" sites matched a published business number"+
+          (hit<FD.rows.length?" \u00b7 use the search link for the rest":""),hit?"ok":"");
+    if(FD_VIEW==="owner") renderOwners(); else if(FD.siteRerender) FD.siteRerender();
+  };
+  x.ontimeout=function(){ btn.disabled=false; btn.textContent="\u260e Find phones";
+    fdMsg("Phone lookup timed out \u2014 Overpass is busy. Try again shortly.","err"); };
+  x.onerror=function(){ btn.disabled=false; btn.textContent="\u260e Find phones";
+    fdMsg("Could not reach OpenStreetMap.","err"); };
+  fdMsg("Looking up published business numbers in this area\u2026");
+  x.send("data="+encodeURIComponent(q));
+}
+
+
+/* ══════════════════════════════════════════════════════════════
+   CONTACT ENRICHMENT — three free public sources, layered
+
+     1. OpenStreetMap        published business phone / website / email
+     2. Chicago licences     who actually TRADES at the address, plus the
+                             licence account number
+     3. Chicago business
+        owners               that account number -> named individuals
+
+   Layer 3 is the valuable one: it is the only free source that gives a
+   PERSON rather than an entity. For a behind-the-meter battery the
+   operating business is often a better first call than the landlord,
+   who may be a passive holder two states away.
+
+   FIELD NAMES ARE DISCOVERED, NOT ASSUMED. Every source here has been
+   renamed at some point, and guessing has already cost this build two
+   rounds. We ask for whole records and locate columns by pattern, so a
+   rename degrades one column instead of silently blanking everything.
+   ══════════════════════════════════════════════════════════════ */
+function pick(obj,res){
+  if(!obj) return "";
+  var keys=[];
+  for(var k in obj){ if(obj.hasOwnProperty(k)) keys.push(k); }
+  for(var r=0;r<res.length;r++){
+    for(var i=0;i<keys.length;i++){
+      if(res[r].test(keys[i])){
+        var v=obj[keys[i]];
+        if(v!=null&&v!==""&&typeof v!=="object") return String(v).trim();
+      }
+    }
+  }
+  return "";
+}
+function titleCase(s){
+  return String(s||"").toLowerCase().replace(/\b([a-z])/g,function(m,c){return c.toUpperCase();}).trim();
+}
+
+var CONTACT={busy:false};
+
+function findContacts(){
+  if(!FD.rows.length||CONTACT.busy) return;
+  var root=proxyRoot(); if(!root){ fdMsg("Contact lookup needs the proxy.","err"); return; }
+  CONTACT.busy=true;
+  var btn=document.getElementById("fdPhone");
+  btn.disabled=true; btn.textContent="\u260e Searching\u2026";
+  var b=map.getBounds();
+  var stats={osm:0,biz:0,people:0};
+
+  /* ── 1 · OpenStreetMap ── */
+  fdMsg("1 of 3 \u00b7 published business numbers\u2026");
+  var bbox=b.getSouth().toFixed(5)+","+b.getWest().toFixed(5)+","+b.getNorth().toFixed(5)+","+b.getEast().toFixed(5);
+  var q="[out:json][timeout:40];("+
+        'nwr["addr:housenumber"]["phone"]('+bbox+');'+
+        'nwr["addr:housenumber"]["contact:phone"]('+bbox+');'+
+        'nwr["addr:housenumber"]["website"]('+bbox+');'+
+        ");out center tags;";
+  var x=new XMLHttpRequest();
+  x.open("POST",OVERPASS,true); x.timeout=60000;
+  x.setRequestHeader("Content-Type","application/x-www-form-urlencoded");
+  x.onreadystatechange=function(){
+    if(x.readyState!==4) return;
+    if(x.status>=200&&x.status<300){
+      var data=null; try{ data=JSON.parse(x.responseText); }catch(e){}
+      var idx={},els=(data&&data.elements)||[];
+      for(var i=0;i<els.length;i++){
+        var t=els[i].tags||{}, k=addrKey(t["addr:housenumber"],t["addr:street"]);
+        if(!k) continue;
+        if(!idx[k]) idx[k]={};
+        var ph=t.phone||t["contact:phone"];
+        if(ph&&!idx[k].phone) idx[k].phone=prettyPhone(ph);
+        var w=t.website||t["contact:website"];
+        if(w&&!idx[k].web) idx[k].web=w;
+        if(t.name&&!idx[k].name) idx[k].name=t.name;
+      }
+      for(var r=0;r<FD.rows.length;r++){
+        var k2=keyFromFull(FD.rows[r].addr);
+        if(k2&&idx[k2]){
+          if(idx[k2].phone&&!FD.rows[r].phone){ FD.rows[r].phone=idx[k2].phone; FD.rows[r].phoneSrc="OpenStreetMap"; stats.osm++; }
+          if(idx[k2].web) FD.rows[r].web=idx[k2].web;
+          if(idx[k2].name) FD.rows[r].bizName=FD.rows[r].bizName||idx[k2].name;
+        }
+      }
+    } else diag("overpass "+x.status);
+    chicagoLicences(root,b,stats);
+  };
+  x.ontimeout=function(){ diag("overpass timeout"); chicagoLicences(root,b,stats); };
+  x.onerror=function(){ diag("overpass error"); chicagoLicences(root,b,stats); };
+  x.send("data="+encodeURIComponent(q));
+}
+
+/* ── 2 · who trades at the address ── */
+function chicagoLicences(root,b,stats){
+  fdMsg("2 of 3 \u00b7 businesses licensed at these addresses\u2026");
+  /* one bbox query for the whole view, matched locally — same shape as OSM.
+     The geo column has been named both `location` and `geocoded_column`
+     over the years, so try one and fall back. */
+  function attempt(col,after){
+    var where="within_box("+col+", "+b.getNorth()+", "+b.getWest()+", "+b.getSouth()+", "+b.getEast()+")";
+    fetchJSON(root+"/socrata/chibiz?$where="+encodeURIComponent(where)+"&$limit=20000",
+      function(err,j){ after(err||!j||j.error?null:j); });
+  }
+  attempt("location",function(j){
+    if(j&&j.length!==undefined){ useLicences(root,j,stats); return; }
+    attempt("geocoded_column",function(j2){
+      if(j2&&j2.length!==undefined){ useLicences(root,j2,stats); return; }
+      diag("chibiz: both geo columns failed");
+      finishContacts(stats);
+    });
+  });
+}
+
+function useLicences(root,recs,stats){
+  var idx={};
+  for(var i=0;i<recs.length;i++){
+    var r=recs[i];
+    var addr=pick(r,[/^address$/i,/address/i]);
+    var m=String(addr||"").trim().match(/^(\d+[A-Za-z]?(?:-\d+)?)\s+(.*)$/);
+    if(!m) continue;
+    var k=addrKey(m[1],m[2]);
+    if(!k) continue;
+    var rec={
+      legal: pick(r,[/^legal_name$/i,/legal.*name/i]),
+      dba:   pick(r,[/doing_business/i,/^dba/i]),
+      acct:  pick(r,[/account_number/i,/^account/i]),
+      kind:  pick(r,[/license_description/i,/business_activity/i])
+    };
+    if(!idx[k]) idx[k]=rec;
+  }
+  var accts={},n=0;
+  for(var q=0;q<FD.rows.length;q++){
+    var k2=keyFromFull(FD.rows[q].addr);
+    if(k2&&idx[k2]){
+      var L=idx[k2];
+      FD.rows[q].biz=L.dba||L.legal||"";
+      FD.rows[q].bizLegal=L.legal||"";
+      FD.rows[q].bizKind=L.kind||"";
+      FD.rows[q].acct=L.acct||"";
+      if(L.acct&&!accts[L.acct]){ accts[L.acct]=1; n++; }
+      stats.biz++;
+    }
+  }
+  var list=Object.keys(accts);
+  if(!list.length){ finishContacts(stats); return; }
+  chicagoOwners(root,list,stats);
+}
+
+/* ── 3 · account number -> named people ── */
+function chicagoOwners(root,accts,stats){
+  var CH=80, chunks=[],i;
+  for(i=0;i<accts.length&&i<2000;i+=CH) chunks.push(accts.slice(i,i+CH));
+  var byAcct={},done=0;
+  (function next(){
+    if(done>=chunks.length){
+      for(var r=0;r<FD.rows.length;r++){
+        var a=FD.rows[r].acct;
+        if(a&&byAcct[a]&&byAcct[a].length){
+          FD.rows[r].people=byAcct[a].slice(0,4).join("; ");
+          stats.people++;
+        }
+      }
+      finishContacts(stats); return;
+    }
+    fdMsg("3 of 3 \u00b7 named owners \u00b7 "+Math.min((done+1)*CH,accts.length)+"/"+accts.length);
+    var where="account_number in ('"+chunks[done].join("','")+"')";
+    fetchJSON(root+"/socrata/chiowner?$where="+encodeURIComponent(where)+"&$limit=20000",
+      function(err,j){
+        if(!err&&j&&j.length){
+          for(var n=0;n<j.length;n++){
+            var o=j[n];
+            var acct=pick(o,[/account_number/i,/^account/i]); if(!acct) continue;
+            var first=pick(o,[/first.*name/i]), last=pick(o,[/last.*name/i]);
+            var nm=(titleCase(first)+" "+titleCase(last)).trim();
+            if(!nm) nm=titleCase(pick(o,[/legal.*name/i,/owner/i]));
+            if(!nm) continue;
+            var title=pick(o,[/title/i,/role/i]);
+            var label=nm+(title?(" \u00b7 "+titleCase(title)):"");
+            if(!byAcct[acct]) byAcct[acct]=[];
+            if(byAcct[acct].indexOf(label)<0) byAcct[acct].push(label);
+          }
+        } else diag("chiowner chunk "+done+": "+(err?err.message:"empty"));
+        done++; next();
+      });
+  })();
+}
+
+function finishContacts(stats){
+  CONTACT.busy=false;
+  var btn=document.getElementById("fdPhone");
+  btn.disabled=false; btn.textContent="\u260e Find contacts";
+  var msg=[];
+  if(stats.osm)    msg.push(stats.osm.toLocaleString()+" phone"+(stats.osm===1?"":"s"));
+  if(stats.biz)    msg.push(stats.biz.toLocaleString()+" business"+(stats.biz===1?"":"es")+" at address");
+  if(stats.people) msg.push(stats.people.toLocaleString()+" with named owners");
+  fdMsg(msg.length?("Found "+msg.join(" \u00b7 ")+" across "+FD.rows.length.toLocaleString()+" sites")
+                  :"No published contacts matched \u2014 use the search links.", msg.length?"ok":"");
+  if(FD_VIEW==="owner") renderOwners(); else if(FD.siteRerender) FD.siteRerender();
+}
+
+/* ── OWNER ROLLUP ───────────────────────────────────────────────
+   A parcel list is the wrong unit of work for a rep. On a real run,
+   71 sites were held by 32 owners and the top four held 31 of them —
+   one call covers nine addresses. Grouping by owner turns the list
+   into a call sheet, ranked by the best circuit that owner touches. */
+var FD_VIEW="site";
+function ownerRollup(rows){
+  var by={},order=[];
+  for(var i=0;i<rows.length;i++){
+    var r=rows[i], k=(r.owner||"(owner not on record)").toUpperCase();
+    if(!by[k]){ by[k]={owner:r.owner||"(owner not on record)",mail:r.mail,n:0,best:0,
+                       feeders:{},addrs:[],types:{},phone:"",phoneAddr:"",bizs:[],people:""}; order.push(k); }
+    var g=by[k]; g.n++;
+    if(!g.phone&&r.phone){ g.phone=r.phone; g.phoneAddr=r.addr; }
+    if(r.biz&&g.bizs.indexOf(r.biz)<0&&g.bizs.length<6) g.bizs.push(r.biz);
+    if(r.people&&!g.people) g.people=r.people;
+    if((r.val||0)>g.best){ g.best=r.val; g.mail=r.mail||g.mail; }
+    g.feeders[r.feeder]=1; g.types[r.clsLabel]=1;
+    if(g.addrs.length<40) g.addrs.push(r.addr);
+  }
+  var out=order.map(function(k){return by[k];});
+  out.sort(function(a,b){ return (b.best-a.best)||(b.n-a.n); });
+  return out;
+}
+function renderOwners(){
+  var gs=ownerRollup(FD.rows);
+  var useLbl={bess:"battery",ev:"load",pv:"export"}[FD.useField];
+  var h='<div class="stat">'+
+    '<div><span class="k">Owners to call</span><span class="big-num">'+gs.length.toLocaleString()+'</span></div>'+
+    '<div><span class="k">Sites covered</span><span class="big-num">'+FD.rows.length.toLocaleString()+'</span></div>'+
+    '<div><span class="k">Sites per call</span><span class="big-num">'+
+      (gs.length?(FD.rows.length/gs.length).toFixed(1):"0")+'</span></div></div>';
+  var withPh=0; gs.forEach(function(g){ if(g.phone) withPh++; });
+  h+='<table class="r-t"><thead><tr><th>Owner</th><th>Sites</th><th>Best '+esc(useLbl)+' kW</th>'+
+     '<th>Named contact</th><th>Phone</th><th>Business on site</th><th>Mailing</th></tr></thead><tbody>';
+  for(var i=0;i<gs.length;i++){ var g=gs[i];
+    h+='<tr><td><b>'+esc(g.owner)+'</b></td><td class="n">'+g.n+'</td>'+
+       '<td class="n">'+Math.round(g.best).toLocaleString()+'</td>'+
+       '<td>'+(g.people?('<b>'+esc(g.people)+'</b>'):'<span style="color:var(--dim)">\u2014</span>')+'</td>'+
+       '<td>'+(g.phone?('<b>'+esc(g.phone)+'</b>'):
+              ('<a href="'+esc(searchLink(g.bizs[0]||g.owner,g.addrs[0]))+'" target="_blank" rel="noopener" style="color:var(--accent);font-size:11px">search \u2197</a>'))+'</td>'+
+       '<td style="font-size:11px">'+esc(g.bizs.slice(0,3).join(" \u00b7 ")||"\u2014")+'</td>'+
+       '<td style="font-size:11px;color:var(--muted)">'+esc(g.mail||"\u2014")+'</td></tr>';
+  }
+  h+='</tbody></table>';
+  h+='<div class="r-note"><b>Call the owner, not the address.</b> One owner often holds several parcels on the '+
+     'same feeder \u2014 and they all draw from that one shared kW, so it is a single conversation about a single '+
+     'number, not several offers. Most of these are entities: for an LLC or corporation the Illinois Secretary of '+
+     'State business search gives you the registered agent, which is a better first contact than the tax-bill address.</div>';
+  document.getElementById("fdOut").innerHTML=h;
+}
+
 function renderSweep(acc,cls,own,feeders,total){
   var want=CLASS_SETS[document.getElementById("fdClass").value]||CLASS_SETS.ci_mud;
   var allMode=document.getElementById("fdClass").value==="all";
@@ -1590,6 +1948,7 @@ function renderSweep(acc,cls,own,feeders,total){
   FD.rows=rows; FD.busy=false;
   document.getElementById("fdRun").disabled=false;
   document.getElementById("fdCsv").disabled=!rows.length;
+  document.getElementById("fdPhone").disabled=!rows.length;
   fdBar(1);
   fdStep('');
 
@@ -1608,12 +1967,18 @@ function renderSweep(acc,cls,own,feeders,total){
     '<div><span class="k">Best circuit</span><span class="big-num">'+Math.round(best).toLocaleString()+' kW</span></div>'+
     '<div><span class="k">Circuits</span><span class="big-num">'+Object.keys(uf).length+'</span></div></div>';
 
-  h+='<table class="r-t"><thead><tr><th>Address</th><th>Type</th><th>Owner</th><th>Mailing</th>'+
-     '<th>Feeder</th><th>'+esc(useLbl)+' kW</th></tr></thead><tbody>';
+  h+='<table class="r-t"><thead><tr><th>Address</th><th>Owner (title)</th><th>Business on site</th>'+
+     '<th>Named contact</th><th>Phone</th><th>Feeder</th><th>'+esc(useLbl)+' kW</th></tr></thead><tbody>';
   for(var r2=0;r2<rows.length;r2++){
     var R=rows[r2];
-    h+='<tr><td>'+esc(R.addr)+'</td><td>'+esc(R.clsLabel)+'</td><td>'+esc(R.owner||"\u2014")+'</td>'+
-       '<td>'+esc(R.mail||"\u2014")+'</td><td style="font-family:var(--mono);font-size:11px">'+esc(R.feeder)+'</td>'+
+    h+='<tr><td>'+esc(R.addr)+'<div style="font-size:10px;color:var(--dim)">'+esc(R.clsLabel)+'</div></td>'+
+       '<td>'+esc(R.owner||"\u2014")+'</td>'+
+       '<td>'+(R.biz?esc(R.biz):'<span style="color:var(--dim)">\u2014</span>')+
+         (R.bizKind?('<div style="font-size:10px;color:var(--dim)">'+esc(R.bizKind)+'</div>'):'')+'</td>'+
+       '<td>'+(R.people?('<b>'+esc(R.people)+'</b>'):'<span style="color:var(--dim)">\u2014</span>')+'</td>'+
+       '<td>'+(R.phone?('<b>'+esc(R.phone)+'</b>'):
+              ('<a href="'+esc(searchLink(R.biz||R.owner,R.addr))+'" target="_blank" rel="noopener" style="color:var(--accent);font-size:11px">search \u2197</a>'))+'</td>'+
+       '<td style="font-family:var(--mono);font-size:11px">'+esc(R.feeder)+'</td>'+
        '<td class="n">'+(R.val!=null?Math.round(R.val).toLocaleString():"\u2014")+'</td></tr>';
   }
   h+='</tbody></table>';
@@ -1621,7 +1986,9 @@ function renderSweep(acc,cls,own,feeders,total){
      'draws from one shared number, and it goes to whoever finishes interconnection first \u2014 so this is a '+
      'prospecting list, not an inventory. A parcel being inside the buffer means it is near the feeder, not that '+
      'a service drop can reach it. The deliverable figure comes from the interconnection study.</div>';
-  document.getElementById("fdOut").innerHTML=h;
+  FD.siteRerender=function(){ renderSweep(acc,cls,own,feeders,total); };
+  if(FD_VIEW==="owner") renderOwners(); else document.getElementById("fdOut").innerHTML=h;
+  FD.siteHtml=h;
 }
 
 function fdDone(msg,cls){
@@ -1631,13 +1998,28 @@ function fdDone(msg,cls){
 
 function downloadFdCsv(){
   if(!FD.rows.length) return;
-  var lines=["Address,Property_Type,Class,Owner,Mailing_Address,PIN,Feeder,Substation,Circuit_kW,BESS_kW,PV_kW,EV_kW,Tax_Year"];
+  if(FD_VIEW==="owner"){ downloadOwnerCsv(); return; }
+  var lines=["Address,Property_Type,Class,Owner,Business_On_Site,Business_Legal_Name,Business_Type,Named_Contacts,Phone,Phone_Source,Website,Mailing_Address,PIN,Feeder,Substation,Circuit_kW,BESS_kW,PV_kW,EV_kW,Tax_Year"];
   for(var i=0;i<FD.rows.length;i++){ var r=FD.rows[i];
-    lines.push([r.addr,r.clsLabel,r.cls,r.owner,r.mail,r.pin,r.feeder,r.sub,r.val,r.bess,r.pv,r.ev,r.asOf].map(csvCell).join(",")); }
+    lines.push([r.addr,r.clsLabel,r.cls,r.owner,r.biz||"",r.bizLegal||"",r.bizKind||"",r.people||"",r.phone||"",r.phoneSrc||"",r.web||"",r.mail,r.pin,r.feeder,r.sub,r.val,r.bess,r.pv,r.ev,r.asOf].map(csvCell).join(",")); }
   var blob=new Blob([lines.join("\r\n")],{type:"text/csv;charset=utf-8"});
   var a=document.createElement("a"), url=URL.createObjectURL(blob);
   var d=new Date(), st=d.getFullYear()+"-"+("0"+(d.getMonth()+1)).slice(-2)+"-"+("0"+d.getDate()).slice(-2);
   a.href=url; a.download="clearsky-sites-"+st+".csv";
+  document.body.appendChild(a); a.click();
+  setTimeout(function(){document.body.removeChild(a);URL.revokeObjectURL(url);},250);
+}
+
+function downloadOwnerCsv(){
+  var gs=ownerRollup(FD.rows);
+  var lines=["Owner,Sites,Best_Circuit_kW,Named_Contacts,Phone,Businesses_On_Site,Circuits,Mailing_Address,Property_Types,Addresses"];
+  for(var i=0;i<gs.length;i++){ var g=gs[i];
+    lines.push([g.owner,g.n,Math.round(g.best),g.people||"",g.phone||"",g.bizs.join(" | "),Object.keys(g.feeders).join(" "),g.mail,
+                Object.keys(g.types).join(" / "),g.addrs.join(" | ")].map(csvCell).join(",")); }
+  var blob=new Blob([lines.join("\r\n")],{type:"text/csv;charset=utf-8"});
+  var a=document.createElement("a"), url=URL.createObjectURL(blob);
+  var d=new Date(), st=d.getFullYear()+"-"+("0"+(d.getMonth()+1)).slice(-2)+"-"+("0"+d.getDate()).slice(-2);
+  a.href=url; a.download="clearsky-owners-"+st+".csv";
   document.body.appendChild(a); a.click();
   setTimeout(function(){document.body.removeChild(a);URL.revokeObjectURL(url);},250);
 }
@@ -1650,6 +2032,14 @@ document.getElementById("fdClose").onclick=function(){ document.getElementById("
 document.getElementById("fdWrap").onclick=function(e){ if(e.target===this) this.className=""; };
 document.getElementById("fdRun").onclick=runFindSites;
 document.getElementById("fdCsv").onclick=downloadFdCsv;
+document.getElementById("fdPhone").onclick=findContacts;
+document.getElementById("fdView").onclick=function(){
+  if(!FD.rows.length) return;
+  FD_VIEW=(FD_VIEW==="site")?"owner":"site";
+  this.textContent=(FD_VIEW==="site")?"By owner":"By site";
+  if(FD_VIEW==="owner") renderOwners();
+  else document.getElementById("fdOut").innerHTML=FD.siteHtml||"";
+};
 document.getElementById("prospect").onchange=function(){ PROSPECT=this.checked; repaint(); };
 
 
