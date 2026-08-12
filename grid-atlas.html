@@ -292,25 +292,149 @@ window.onerror=function(m){ fail("Error: "+m); };
   }catch(e){}
 })();
 /* Rewrite logo + "← Platform" to the tenant portal the user came from.
-   Served from tools.csebuilders.com and shared, so bare "/" would land on the tool host. */
-function gaTenantPortalUrl(){
-  var BRAND={"nextnrg.com":"nextnrg","solela.com":"solela","chileasing.com":"chileasing",
-    "spatco.com":"spatco","ogisolar.com":"ogisolar"};
-  var slug=null;
-  try{ var org=((window.OMEGATools&&OMEGATools.orgFromUrl?OMEGATools.orgFromUrl(""):"")||"").toLowerCase();
-       if(BRAND[org]) slug=BRAND[org]; }catch(e){}
-  if(!slug&&document.referrer){
-    try{ var h=new URL(document.referrer).hostname;
-      if(/\.csebuilders\.com$/.test(h)){ var sub=h.split(".")[0]; if(sub&&sub!=="tools") slug=sub; } }catch(e2){}
-  }
-  return slug?"https://"+slug+".csebuilders.com/":"https://tools.csebuilders.com/";
+   Served from tools.csebuilders.com and shared, so bare "/" would land on the tool host.
+
+   The old version resolved the tenant from document.referrer alone, which breaks in the
+   normal cases: the referrer is empty on reload/deep-link, stripped by rel="noreferrer"
+   or target="_blank", and never present for tenants on custom domains. It also called
+   OMEGATools.orgFromUrl("") with an empty string, so that path never returned anything.
+   Now we read every signal available, remember the answer for the session, and
+   re-resolve at click time so a reload can't lose the tenant. */
+var GA_TOOL_HOSTS  = {"tools.csebuilders.com":1,"www.csebuilders.com":1,"csebuilders.com":1,"localhost":1,"127.0.0.1":1};
+var GA_BRAND       = {"nextnrg.com":"nextnrg","solela.com":"solela","chileasing.com":"chileasing",
+                      "spatco.com":"spatco","ogisolar.com":"ogisolar"};
+var GA_STORE_KEY   = "omega.tenant.slug";
+var GA_FALLBACK    = "https://tools.csebuilders.com/";
+
+function gaStoreGet(){
+  var v="";
+  try{ if(window.sessionStorage) v=window.sessionStorage.getItem(GA_STORE_KEY)||""; }catch(e){}
+  if(!v){ try{ if(window.localStorage) v=window.localStorage.getItem(GA_STORE_KEY)||""; }catch(e2){} }
+  return v;
 }
-(function wireNav(){
-  var url=gaTenantPortalUrl();
-  var back=document.getElementById("tb-back-link"), logo=document.getElementById("tb-logo-link");
-  if(back) back.setAttribute("href",url);
-  if(logo) logo.setAttribute("href",url);
-})();
+function gaStoreSet(v){
+  if(!v) return;
+  try{ if(window.sessionStorage) window.sessionStorage.setItem(GA_STORE_KEY,v); }catch(e){}
+  try{ if(window.localStorage)  window.localStorage.setItem(GA_STORE_KEY,v);  }catch(e2){}
+}
+/* Hostname without needing URL() (absent in older browsers, throws on relative refs). */
+function gaHostOf(u){
+  var m=String(u||"").match(/^https?:\/\/([^\/?#]+)/i);
+  return m?m[1].toLowerCase().replace(/:\d+$/,""):"";
+}
+/* Host -> tenant key. Known brand domains fold to their portal slug; any other
+   non-tool host is returned whole so we can send the user straight back to it. */
+function gaSlugFromHost(h){
+  h=String(h||"").toLowerCase().replace(/^www\./,"");
+  if(!h||GA_TOOL_HOSTS[h]) return "";
+  if(GA_BRAND[h]) return GA_BRAND[h];
+  var m=h.match(/^([a-z0-9][a-z0-9-]*)\.csebuilders\.com$/);
+  if(m&&m[1]!=="tools"&&m[1]!=="www") return m[1];
+  return /\./.test(h)?h:"";
+}
+/* Accepts a slug, a hostname, or a full URL and normalizes to a tenant key. */
+function gaNormalizeSlug(v){
+  v=String(v==null?"":v).trim().toLowerCase();
+  if(!v||v==="null"||v==="undefined") return "";
+  v=v.replace(/^https?:\/\//,"").replace(/[\/?#].*$/,"").replace(/:\d+$/,"").replace(/^www\./,"");
+  if(!v) return "";
+  if(v.indexOf(".")>-1) return gaSlugFromHost(v);
+  if(GA_TOOL_HOSTS[v+".csebuilders.com"]||v==="tools"||v==="www") return "";
+  return /^[a-z0-9][a-z0-9-]*$/.test(v)?v:"";
+}
+/* Query string AND hash, so ?org=acme and #/atlas?org=acme both work. */
+function gaParam(name){
+  var s=String(location.search||"")+"&"+String(location.hash||"").replace(/^#\/?/,"&");
+  var m=new RegExp("[?&]"+name+"=([^&#]*)","i").exec(s);
+  if(!m) return "";
+  try{ return decodeURIComponent(m[1].replace(/\+/g," ")); }catch(e){ return m[1]; }
+}
+/* args is an array so a genuine no-argument call stays a no-argument call —
+   the old code passed "" and silently defeated OMEGATools.orgFromUrl. */
+function gaTry(fn,args,ctx){
+  try{ if(typeof fn!=="function") return fn; return fn.apply(ctx||null,args||[]); }catch(e){ return ""; }
+}
+function gaResolveTenant(){
+  var i,v;
+
+  /* 1. Explicit hand-off on the URL — the one signal that survives reload & bookmarks. */
+  var P=["org","tenant","tenantId","t","workspace","ws","brand","account","portal"];
+  for(i=0;i<P.length;i++){ v=gaNormalizeSlug(gaParam(P[i])); if(v) return {slug:v,src:"param"}; }
+
+  /* 2. The workspace object the portal injects. */
+  var w=window.OMEGA_WORKSPACE;
+  if(w&&typeof w==="object"){
+    var W=["portalUrl","portalURL","platformUrl","homeUrl","returnUrl","url","origin",
+           "host","hostname","domain","slug","org","orgId","tenant","tenantId","key","id"];
+    for(i=0;i<W.length;i++){ if(w[W[i]]){ v=gaNormalizeSlug(w[W[i]]); if(v) return {slug:v,src:"workspace"}; } }
+  }
+
+  /* 3. Shared OMEGATools helpers (called with real arguments this time). */
+  var T=window.OMEGATools;
+  if(T){
+    var c=[];
+    if(T.orgFromUrl){ c.push(gaTry(T.orgFromUrl,[],T),gaTry(T.orgFromUrl,[location.href],T),gaTry(T.orgFromUrl,[document.referrer||""],T)); }
+    c.push(gaTry(T.currentOrg,[],T),gaTry(T.org,[],T),gaTry(T.tenant,[],T),gaTry(T.portalUrl,[],T));
+    for(i=0;i<c.length;i++){ v=gaNormalizeSlug(c[i]); if(v) return {slug:v,src:"omegatools"}; }
+  }
+
+  /* 4. Referrer — first load only, and only when the portal didn't strip it. */
+  if(document.referrer){ v=gaSlugFromHost(gaHostOf(document.referrer)); if(v) return {slug:v,src:"referrer"}; }
+
+  /* 5. Whatever we resolved earlier this session. */
+  v=gaNormalizeSlug(gaStoreGet());
+  if(v) return {slug:v,src:"stored"};
+
+  return {slug:"",src:"none"};
+}
+function gaTenantPortalUrl(){
+  var r=gaResolveTenant();
+  window.__gaTenant={slug:r.slug,source:r.src};
+  if(!r.slug) return GA_FALLBACK;
+  if(r.src!=="stored") gaStoreSet(r.slug);
+  return r.slug.indexOf(".")>-1 ? "https://"+r.slug+"/" : "https://"+r.slug+".csebuilders.com/";
+}
+/* Pin the tenant onto our own URL so a refresh, bookmark or shared link keeps it. */
+function gaStampUrl(slug){
+  if(!slug||gaParam("org")) return;
+  try{
+    if(!window.history||!history.replaceState) return;
+    var q=location.search||"";
+    var u=location.pathname+(q?q+"&":"?")+"org="+encodeURIComponent(slug)+(location.hash||"");
+    history.replaceState(null,"",u);
+  }catch(e){}
+}
+function gaWireNav(){
+  var url=gaTenantPortalUrl(), ids=["tb-back-link","tb-logo-link"], i, el;
+  gaStampUrl(window.__gaTenant&&window.__gaTenant.slug);
+  for(i=0;i<ids.length;i++){
+    el=document.getElementById(ids[i]);
+    if(!el) continue;
+    el.setAttribute("href",url);
+    if(!el.__gaWired){
+      el.__gaWired=1;
+      /* Re-resolve on click: the workspace object may land after first paint. */
+      el.onclick=function(ev){
+        ev=ev||window.event;
+        var u=gaTenantPortalUrl();
+        this.setAttribute("href",u);
+        var mod=ev&&(ev.metaKey||ev.ctrlKey||ev.shiftKey||ev.altKey||(ev.button&&ev.button!==0));
+        if(mod) return true;                                  /* let new-tab clicks through */
+        if(ev&&ev.preventDefault) ev.preventDefault(); else if(ev) ev.returnValue=false;
+        window.location.href=u;
+        return false;
+      };
+    }
+  }
+  return url;
+}
+gaWireNav();
+if(document.addEventListener){
+  document.addEventListener("DOMContentLoaded",gaWireNav,false);
+  window.addEventListener("load",gaWireNav,false);
+  window.addEventListener("pageshow",gaWireNav,false);        /* bfcache restore */
+}
+setTimeout(gaWireNav,300); setTimeout(gaWireNav,1200);
 
 /* ---------- Layer registry: real public ArcGIS/HIFLD + open endpoints ---------- */
 /* Each layer queries live in the user's browser (no key needed for HIFLD/OSM). */
