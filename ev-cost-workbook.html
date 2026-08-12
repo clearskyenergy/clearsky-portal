@@ -845,18 +845,23 @@ var BLOCKS_ES_L2 = [
       {k:'charger2',   l:'EVSE Hardware #2 (If different than model 1)', es:{sec:'evse', unit:'Per Unit'}},
       {k:'shipping',   l:'Shipping & Handling/ Freight', es:{sec:'evse', unit:'Per Unit'}},
       {k:'pedestal',   l:'Other (i.e., cable management, mounting kits)', es:{sec:'evse', unit:'Per Unit', qty:'one'}},
-      {k:'activation', l:'Activation Fee',     es:{sec:'inel', unit:'Per Unit'}},
+      /* Eligible on Eversource — the Springfield ESMA sheet totals networking
+         on its own line. United Illuminating keeps it non-eligible. */
+      {k:'network',    l:'Networking/Cloud',   es:{sec:'evse', unit:'Total'}},
       {k:'other',      l:'Other',              es:{sec:'evse', unit:'Total'}}
   ]},
   { id:'mr', title:'Eligible Infrastructure Make-Ready Costs', fill:'FFBFBFBF', rows:[
       {k:'design',  l:'Site Design & Engineering',              es:{sec:'dp',   unit:'Per Site'}},
       {k:'permit',  l:'Permitting',                             es:{sec:'dp',   unit:'Per Site'}},
       {k:'trench',  l:'Trenching & Backfill - Continuously Paved Area\n(i.e., asphalt, concrete)',
-                    es:{sec:'gen',  unit:'Per Foot', qty:'ftTrench', split:'restoration'}},
+                    es:{sec:'gen',  unit:'Per Foot', qty:'ftTrenchPaved', split:'restoration'}},
       {k:'trenchTurf', l:'Trenching & Backfill - Non-Continuously Paved Area\n(i.e., ground cover, turf)',
                     es:{sec:'gen',  unit:'Per Foot', qty:'ftTrenchTurf'}},
-      {k:'conduit', l:'Conduit & Cable - Underground',          es:{sec:'gen',  unit:'Per Foot', qty:'ftConduit'}},
-      {k:'wire',    l:'Conduit & Cable - Above Ground/Indoor',  es:{sec:'gen',  unit:'Per Foot', qty:'ftCable'}},
+      {k:'conduit', l:'Conduit & Cable - Underground',          es:{sec:'gen',  unit:'Per Foot', qty:'ftConduitUG'}},
+      /* Above-ground footage, not cable footage: an underground cable run
+         belongs on the Underground line above, and reporting it here told
+         the reviewer the opposite of what was built. */
+      {k:'wire',    l:'Conduit & Cable - Above Ground/Indoor',  es:{sec:'gen',  unit:'Per Foot', qty:'ftConduitAG'}},
       {k:'restore', l:'Restoration and/or Remediation',         es:{sec:'gen',  unit:'Per Site', qty:'ftTrench'}},
       {k:'handhole',l:'Handholes/Manholes',                     es:{sec:'gen',  unit:'Per Unit'}},
       {k:'concrete',l:'Concrete Work/Bases/Pads',               es:{sec:'gen',  unit:'Total'}},
@@ -864,7 +869,9 @@ var BLOCKS_ES_L2 = [
       {k:'boards',  l:'Other (i.e., Additional Cost/Scope Deviations)', es:{sec:'gen', unit:'Total'}},
       {k:'meter',   l:'Metering',                               es:{sec:'util', unit:'Per Unit'}},
       {k:'xfmrpad', l:'Utility Transformer Pad',                es:{sec:'util', unit:'Per Unit'}},
-      {k:'other',   l:'EVSE Installation',                      es:{sec:'evse', unit:'Per Unit', qty:'plugs'}}
+      /* Own key, not 'other': the tax base names this row specifically,
+         and two rows sharing a key cannot be told apart. */
+      {k:'install', l:'EVSE Installation',                      es:{sec:'evse', unit:'Per Unit', qty:'plugs'}}
   ]},
   { id:'fp', title:'Eligible Future Proofing', fill:'FFFFC000', rows:[
       {k:'trench',  l:'Trenching & Backfill - Continuously Paved Area\n(i.e., asphalt, concrete)',
@@ -882,7 +889,12 @@ var BLOCKS_ES_L2 = [
       {k:'signage', l:'Signage',  es:{sec:'inel', unit:'Total'}},
       {k:'striping',l:'Striping', es:{sec:'inel', unit:'Total'}},
       {k:'warranty',l:'Warranty/Maintenance Plan', es:{sec:'inel', unit:'Total'}},
-      {k:'network', l:'EVSE Networking/Software',  es:{sec:'inel', unit:'Total'}},
+      /* Ineligible on Eversource — the Bridgeport sheet books the activation
+         fee below the line, unlike United Illuminating, whose own sheets
+         carry Activation at $395 inside the eligible EVSE block. A row's
+         BLOCK decides which total it lands in, so it has to sit here and
+         not merely map here. */
+      {k:'activation', l:'Activation Fee', es:{sec:'inel', unit:'Per Unit'}},
       {k:'other',   l:'Other', es:{sec:'inel', unit:'Total'}}
   ]}
 ];
@@ -908,7 +920,26 @@ var FORM_ES_CT_L2 = {
   headers:{ type:'Cost Item', desc:'Detail/Notes',
             mat:'Material Total', lab:'Labor Total', tot:'Total Cost' },
   totalLabel:'Invoice Total for Eligible & Ineligible Costs',
-  tax:{ rate:6.35, label:'EVSE Sales Tax', onLabor:false },
+  /* ── Sales tax, exactly as the Bridgeport submission books it ──────
+     That sheet carries ONE tax line, in the Ineligible section, reading
+     material $316.87 and labor $158.75. Those divide out precisely:
+
+       $316.87 / 6.35% = $4,990  = EVSE Hardware #1
+       $158.75 / 6.35% = $2,500  = EVSE Installation (2 x $1,250, the
+                                   same per-unit install rate as the
+                                   Springfield sheet)
+
+     The $1,250 pedestal/mounting line was NOT taxed, and nothing in the
+     make-ready, utility-side or future-proofing blocks was taxed either.
+     That is coherent under CT rules: the charger is tangible personal
+     property and taxable, while a pedestal bolted to the ground is a
+     capital improvement to real property.
+
+     So: hardware taxes into the material column, installation into the
+     labor column, one line, ineligible. `mode:'single'` puts the row in
+     the section named by `section` instead of one row per block. */
+  tax:{ rate:6.35, label:'Sales Tax', mode:'single', section:'ne',
+        matRows:['charger','charger2'], labRows:['install'] },
   left:[
     { title:'Project Details', fields:[
         {k:'esAppNo',   label:'Eversource Application Number:'},
@@ -999,8 +1030,10 @@ function rowExists(bid,k){ var b=blockById(bid), i; for(i=0;i<b.rows.length;i++)
    tenant's real brand hex, put it here and it stops being derived:
        brand:{ band:'1B2A3E', head:'EEF0F2', tot:'DADEE2' }
    ------------------------------------------------------------------ */
-var TENANTS = [
+var TENANT_SEED = [
   { key:'',              name:'— no tenant / generic —', logo:'',                       site:'',               brand:null },
+  { key:'concordenergy.com', name:'Concord Energy LLC',  logo:'',                       site:'',
+    address:'2299 Summer St #1062, Stamford CT 06905', brand:null },
   { key:'nextnrg.com',   name:'NextNRG',                 logo:'',                       site:'nextnrg.com',    brand:null },
   { key:'spatco.com',    name:'SPATCO',                  logo:'/spatco-logo.jpg',       site:'spatco.com',     brand:null },
   { key:'sunesol.com',   name:'SUN Energy Solutions',    logo:'/sunesol-logo-color.png',site:'sunesol.com',    brand:null },
@@ -1008,6 +1041,50 @@ var TENANTS = [
   { key:'solela.com',    name:'Solela LLC',              logo:'/solela-logo.png',       site:'solela.com',     brand:null },
   { key:'chileasing.com',name:'Chileasing Energy',       logo:'/chileasing-logo.png',   site:'chileasing.com', brand:null }
 ];
+
+/* ── 2c. TENANT LIST ──────────────────────────────────────────────
+   The platform already keeps a tenant registry: window.CS_TENANTS,
+   keyed by email domain, published by omega-tools.js / the editor and
+   loaded on tools.csebuilders.com. Read it rather than keeping a
+   second list that drifts — a tenant added there shows up here on the
+   next load with no edit to this file.
+
+   Order of precedence for each tenant:
+     1. CLEARSKY_CONFIG.tenants  — per-deploy override, if config.js sets it
+     2. window.CS_TENANTS        — the platform registry
+     3. TENANT_SEED below        — fallback, and the source of the
+                                   address / brand fields CS_TENANTS
+                                   doesn't carry yet
+   ------------------------------------------------------------------ */
+var TENANTS = TENANT_SEED.slice();
+
+function mergeTenants(){
+  var reg = null, k, t, i, found, src;
+  try{
+    src = (window.CLEARSKY_CONFIG && window.CLEARSKY_CONFIG.tenants) || window.CS_TENANTS || null;
+  }catch(e){ src = null; }
+  if(!src) return;
+  reg = src;
+  for(k in reg){
+    if(!reg.hasOwnProperty(k)) continue;
+    t = reg[k] || {};
+    found = null;
+    for(i=0;i<TENANTS.length;i++){ if(TENANTS[i].key===k) found=TENANTS[i]; }
+    if(found){
+      /* platform wins on name and logo; keep the address and brand we
+         hold locally, since CS_TENANTS has no field for them */
+      if(t.name) found.name = t.name;
+      if(t.logo) found.logo = t.logo;
+      if(t.website) found.site = t.website;
+      if(t.address) found.address = t.address;
+      if(t.brand) found.brand = t.brand;
+    } else {
+      TENANTS.push({ key:k, name:(t.name||k), logo:(t.logo||''),
+                     site:(t.website||''), address:(t.address||''),
+                     brand:(t.brand||null) });
+    }
+  }
+}
 function tenantByKey(k){ var i; for(i=0;i<TENANTS.length;i++){ if(TENANTS[i].key===k) return TENANTS[i]; } return TENANTS[0]; }
 
 /* ---- colour maths, all ES5 ---- */
@@ -1074,8 +1151,18 @@ function applyTenant(key){
   var t=tenantByKey(key);
   DATA.tenant=key;
   if(!key){ msg('tenantMsg','Generic proposal — pick a scheme below or set a hex.',''); render(); return; }
-  if(!val('b_name')) document.getElementById('b_name').value=t.name;
-  if(!val('b_foot') && t.site) document.getElementById('b_foot').value=t.site;
+  /* Overwrite rather than fill-if-blank: picking a tenant is an explicit
+     instruction, and leaving the previous tenant's name on the proposal is
+     the one mistake that must never reach a customer. */
+  document.getElementById('b_name').value = t.name;
+  document.getElementById('b_foot').value = tenantFooter(t);
+  /* The proposal is issued in the tenant's name, so their details are the
+     contractor details unless a profile has already been loaded. */
+  if(!d('company')){
+    DATA.company = t.name;
+    if(t.address) DATA.cAddress = t.address;
+    syncField('company'); syncField('cAddress');
+  }
   if(t.brand){
     PAL={ k:'tenant', name:t.name, band:t.brand.band, head:t.brand.head, tot:t.brand.tot };
     document.getElementById('b_band').value=PAL.band;
@@ -1090,6 +1177,16 @@ function applyTenant(key){
       + 'Upload their logo below and I\u2019ll take the colours from it, or type a hex.','warn');
     render();
   }
+}
+
+/* Address · phone · website, skipping whatever the tenant hasn't given us,
+   so a half-filled record still produces a clean footer line. */
+function tenantFooter(t){
+  var bits=[];
+  if(t.address) bits.push(t.address);
+  if(t.phone)   bits.push(t.phone);
+  if(t.site)    bits.push(t.site);
+  return bits.join('  |  ');
 }
 
 function colourFromLogoPath(src, name){
@@ -1115,6 +1212,104 @@ function colourFromLogoPath(src, name){
   img.src=src;
 }
 
+/* ── 2d. PRICING BENCHMARKS ───────────────────────────────────────
+   Unit rates read off SUBMISSIONS THAT WERE ACCEPTED — two Eversource
+   cost matrices (Bridgeport CT 2-port Rev 04/10/25, Springfield MA
+   6-port Rev Oct 2025) and four United Illuminating L2 sheets for
+   50 Fitch Street. They are a sanity rail, not a price list: a rate
+   inside the band is one a reviewer has approved before, a rate
+   outside it is worth a second look in either direction.
+
+   lo / hi are per unit. Going UNDER the band is flagged too — an
+   underpriced job is the one that loses money after award.
+   ------------------------------------------------------------------ */
+var BENCH = {
+  trench:  { unit:'LF', matLo:10,   matHi:15,   labLo:54,  labHi:86,
+             note:'paved $15/ft, turf $10/ft material; labor $54-86/ft across six accepted sheets' },
+  conduit: { unit:'LF', matLo:1.95, matHi:4.25, labLo:2.50, labHi:20,
+             note:'$1.95-2.75/ft underground, up to $4.25/ft above ground; labor falls sharply on long runs' },
+  wire:    { unit:'LF', matLo:1.95, matHi:4.25, labLo:2.50, labHi:20,
+             note:'priced with the conduit it runs in' },
+  charger: { unit:'ea', matLo:2200, matHi:2495, labLo:0,    labHi:1600,
+             note:'Autel L2 $2,200-2,495/unit; install ~$1,250/unit where broken out' },
+  pedestal:{ unit:'ea', matLo:1250, matHi:1250, labLo:500,  labHi:500,
+             note:'$1,250 material + $500 labor per pedestal in both Eversource sheets' },
+  bollard: { unit:'ea', matLo:250,  matHi:250,  labLo:300,  labHi:300,
+             note:'$250 material + $300 labor each' },
+  network: { unit:'ea', matLo:480,  matHi:480,  labLo:0,    labHi:0,
+             note:'$480 per port, activation billed separately' },
+  restore: { unit:'LF', matLo:9,    matHi:43,   labLo:0,    labHi:18,
+             note:'$43/ft on the Bridgeport job; $9/ft carried as the future-proofing rate' }
+};
+
+/* Rates only mean something against a quantity, and most lines carry one.
+   Where a line has no quantity there is nothing to check, so we skip it
+   rather than invent a denominator. */
+function benchCheck(){
+  var out=[], i, l, b, q, mu, lu, why;
+  for(i=0;i<LINES.length;i++){
+    l=LINES[i];
+    b=BENCH[l.row];
+    if(!b) continue;
+    q=num(l.qty);
+    if(!(q>0)) continue;
+    mu=num(l.mat)/q; lu=num(l.lab)/q;
+    why=[];
+    if(num(l.mat)>0){
+      if(mu < b.matLo*0.5) why.push('material $'+mu.toFixed(2)+'/'+b.unit+' is well under the $'+b.matLo+'-'+b.matHi+' band');
+      else if(mu > b.matHi*1.75) why.push('material $'+mu.toFixed(2)+'/'+b.unit+' is well over the $'+b.matLo+'-'+b.matHi+' band');
+    }
+    if(num(l.lab)>0 && b.labHi>0){
+      if(lu < b.labLo*0.5) why.push('labor $'+lu.toFixed(2)+'/'+b.unit+' is well under the $'+b.labLo+'-'+b.labHi+' band');
+      else if(lu > b.labHi*1.75) why.push('labor $'+lu.toFixed(2)+'/'+b.unit+' is well over the $'+b.labLo+'-'+b.labHi+' band');
+    }
+    if(why.length) out.push({ id:l.id, desc:l.desc, why:why.join('; '), note:b.note });
+  }
+  return out;
+}
+
+/* ── 2e. ELIGIBILITY ──────────────────────────────────────────────
+   What a programme will and won't rebate. Getting this wrong is the
+   usual reason a submission comes back, and it cuts both ways: an
+   ineligible cost in an eligible block invites a kickback, while an
+   eligible cost parked in the ineligible block is money left behind.
+   ------------------------------------------------------------------ */
+var INELIGIBLE_HINTS = [
+  { re:/network|software|cloud|subscription|ocpp/i, row:'network',  says:'networking and software subscriptions' },
+  { re:/warrant|maintenance plan|service plan/i,    row:'warranty',  says:'extended warranty and maintenance plans' },
+  { re:/activation/i,                                row:'activation',says:'activation fees' },
+  { re:/bollard|signage|sign |striping|painting/i,   row:'bollard',   says:'bollards, signage and striping' }
+];
+/* Programmes disagree about what is eligible — Eversource rebates
+   networking, United Illuminating does not — so a hint only fires when the
+   ACTIVE form actually treats that row as non-eligible. Otherwise the tool
+   would nag a rep into moving a line the programme wants where it is. */
+function formSaysIneligible(rowKey){
+  var BL=activeBlocks(), bi, ri;
+  for(bi=0;bi<BL.length;bi++){
+    for(ri=0;ri<BL[bi].rows.length;ri++){
+      if(BL[bi].rows[ri].k===rowKey) return BL[bi].id==='ne';
+    }
+  }
+  return true;                                /* unknown row — be cautious */
+}
+function eligibilityCheck(){
+  var out=[], i, j, l, h;
+  for(i=0;i<LINES.length;i++){
+    l=LINES[i];
+    if(l.bucket==='ne') continue;             /* already ineligible — fine */
+    for(j=0;j<INELIGIBLE_HINTS.length;j++){
+      h=INELIGIBLE_HINTS[j];
+      if(!h.re.test(String(l.desc||''))) continue;
+      if(!(num(l.mat)||num(l.lab))) continue;
+      if(!formSaysIneligible(h.row)) continue;
+      out.push({ id:l.id, desc:l.desc, says:h.says });
+      break;
+    }
+  }
+  return out;
+}
+
 /* ── 3. PALETTES ──────────────────────────────────────────────────── */
 var PALETTES = [
   { k:'charcoal', name:'Charcoal',      band:'2F3437', head:'EFEFEF', tot:'DCDCDC' },
@@ -1130,7 +1325,7 @@ function renderTenantList(){
   for(i=0;i<TENANTS.length;i++){
     t=TENANTS[i];
     h+='<option value="'+esc(t.key)+'"'+(t.key===cur?' selected':'')+'>'+esc(t.name)
-     + (t.key && !t.brand ? '  (colours from logo)' : '')+'</option>';
+     + (t.key && !t.address ? '  \u2014 no address on file' : '')+'</option>';
   }
   document.getElementById('b_tenant').innerHTML=h;
 }
@@ -1356,6 +1551,10 @@ function classify(cat, desc, size){
   /* rows that only exist on the DCFC layout */
   if(dc && /pad|slab|foundation/.test(t))          return {b:'mr', r:'pad',        fp:0};
   if(dc && /commission|startup|start-up|energiz/.test(t)) return {b:'mr', r:'commission', fp:0};
+  /* EVSE installation labour is its own row on the Eversource matrix and is
+     part of their sales-tax base, so it must not be folded into 'other'. */
+  if(/evse install|charger install|install(ation)? \(labor/.test(t) && rowExists('mr','install'))
+    return {b:'mr', r:'install', fp:0};
   if(/meter/.test(t))                              return {b:'mr', r:'meter',    fp:0};
   if(/panel|switchgear|mdp|breaker|disconnect|lug|termination/.test(t)) return {b:'mr', r:'panel', fp:0};
   if(/service point|poi|service board|utility service/.test(t)) return {b:'mr', r:'boards', fp:0};
@@ -1444,6 +1643,8 @@ function loadPayload(pay){
     if(!d('applicant') && pay.site.applicant) DATA.applicant=pay.site.applicant;
     if(!d('address')   && pay.site.address)   DATA.address  =pay.site.address;
   }
+  EDITOR_FEET = pay.feet || null;
+  if(pay.chargers) applyChargerCosts(pay.chargers);
   if(pay.contractor) applyContractor(pay.contractor);
   if(applyDetectedClass()) setClass(DATA['class']);
   autofillFeet(); autofillPlugs();
@@ -1465,6 +1666,39 @@ function loadPayload(pay){
   try{ localStorage.removeItem('OMEGA_EV_COST_HANDOFF'); }catch(e){}
   renderSiteForm(); render();
 }
+/* buildBOM() writes a charger's equipment price into the item's NOTE string,
+   not a material field, so EV Charging lines arrive priced for labour only.
+   Left alone that lands as $0 Charger Hardware on the UI sheet and $0 EVSE
+   Hardware #1 on the Eversource matrix — the largest eligible cost on an L2
+   job, missing from both. evChargerCosts() has the real figures. */
+function applyChargerCosts(c){
+  if(!c || !c.byModel) return 0;
+  var filled=0, i, l, k, m;
+  for(i=0;i<LINES.length;i++){
+    l=LINES[i];
+    if(l.bucket!=='evse' || l.row!=='charger') continue;
+    if(num(l.mat)>0) continue;                    /* already priced — leave it */
+    m=null;
+    for(k in c.byModel){
+      if(!c.byModel.hasOwnProperty(k)) continue;
+      if(String(k).toLowerCase()===String(l.desc).toLowerCase()){ m=c.byModel[k]; break; }
+    }
+    if(m){ l.mat=r2(num(m.eq)); filled++; }
+  }
+  return filled;
+}
+
+/* A submission with $0 charger hardware is the kind of thing a reviewer
+   catches, not the rep — so say it loudly rather than let it export. */
+function chargerGap(){
+  var i, l, n=0;
+  for(i=0;i<LINES.length;i++){
+    l=LINES[i];
+    if(l.bucket==='evse' && l.row==='charger' && !num(l.mat)) n++;
+  }
+  return n;
+}
+
 function togglePaste(){
   var b=document.getElementById('pasteBox');
   b.style.display=(b.style.display==='none')?'block':'none';
@@ -1683,20 +1917,76 @@ function delLine(id){
 }
 
 /* ── 9. AUTOFILL ──────────────────────────────────────────────────── */
+/* Footages measured off the drawing, when the editor sent them. */
+var EDITOR_FEET = null;
+
+/* The utility asks for AS-BUILT footage; the BOM's line quantities are
+   PURCHASING quantities. They are not the same number:
+
+     · conduit and wire lines carry a 10% contingency
+     · every trench emits three LF rows — trench, warning tape, bedding —
+       and summing the Civil category counts the same excavation up to
+       three times
+     · a non-EV underground run adds its own trenching on top of any
+       drawn trench, counting one excavation twice
+     · wire lines are CONDUCTOR-feet: a 400 ft run with 3 conductors plus
+       a ground reports ~1,760 ft, not 400
+
+   So when the editor hands over measured geometry we use it. Inferring
+   from line descriptions is the fallback for the pasted-CSV path only,
+   and it is approximate — the banner under the footage fields says so. */
 function autofillFeet(){
-  var trench=0, cond=0, cable=0, i, l, t;
+  if(EDITOR_FEET){
+    var E=EDITOR_FEET;
+    DATA.ftTrench      = Math.round(num(E.trench));
+    DATA.ftTrenchPaved = Math.round(num(E.trenchPaved));
+    DATA.ftTrenchTurf  = Math.round(num(E.trenchTurf!=null?E.trenchTurf:E.trench));
+    DATA.ftConduit     = Math.round(num(E.conduit));
+    DATA.ftConduitUG   = Math.round(num(E.conduitUG!=null?E.conduitUG:E.conduit));
+    DATA.ftConduitAG   = Math.round(num(E.conduitAG));
+    DATA.ftCable       = Math.round(num(E.cable));
+    syncField('ftTrench'); syncField('ftConduit'); syncField('ftCable');
+    render();
+    return;
+  }
+
+  var trench=0, paved=0, cond=0, cable=0, egc=0, i, l, t;
+  var haveDrawnTrench=false;
+  for(i=0;i<LINES.length;i++){
+    t=String(LINES[i].desc||'').toLowerCase();
+    if(/\(in-ground\)|sawcut/.test(t)) haveDrawnTrench=true;
+  }
   for(i=0;i<LINES.length;i++){
     l=LINES[i]; t=(l.desc||'').toLowerCase();
     if(String(l.unit||'').toLowerCase()!=='lf') continue;
     if(/civil/i.test(l.cat)){
-      if(/trench|sawcut/.test(t) && !/tape|bedding|patch|restoration/.test(t)) trench+=num(l.qty);
+      if(!/trench|sawcut/.test(t)) continue;
+      if(/tape|bedding|patch|restoration/.test(t)) continue;
+      /* A generic per-conduit 'Trenching + backfill' describes the same
+         excavation as a drawn trench run. Count the drawn runs only. */
+      if(haveDrawnTrench && !/\(in-ground\)|sawcut/.test(t)) continue;
+      trench+=num(l.qty);
+      /* a sawcut is by definition through paving */
+      if(/sawcut|concrete/.test(t)) paved+=num(l.qty);
     }
     else if(/conduit/i.test(l.cat)) cond+=num(l.qty);
-    else if(/wire|cable/i.test(l.cat)) cable+=num(l.qty);
+    else if(/wire|cable/i.test(l.cat)){
+      /* The ground conductor runs the route once, so it is the closest
+         thing to route length in the line items. Phase conductors are
+         multiples of it and would overstate the run several times over. */
+      if(/ground|egc/.test(t)) egc+=num(l.qty);
+      cable+=num(l.qty);
+    }
   }
   DATA.ftTrench=Math.round(trench);
+  DATA.ftTrenchPaved=Math.round(paved);
+  DATA.ftTrenchTurf=Math.round(trench-paved);
   DATA.ftConduit=Math.round(cond);
-  DATA.ftCable=Math.round(cable);
+  /* No per-run data in a pasted CSV, so treat the conduit as underground —
+     the common case on a make-ready job, and the row a reviewer expects. */
+  DATA.ftConduitUG=Math.round(cond);
+  DATA.ftConduitAG=0;
+  DATA.ftCable=Math.round(egc>0?egc:cable);
   syncField('ftTrench'); syncField('ftConduit'); syncField('ftCable');
   render();
 }
@@ -1741,6 +2031,7 @@ function buildModel(form){
   var t = TAXOV[form.id] || { rate:(form.tax?form.tax.rate:0), onLabor:!!(form.tax&&form.tax.onLabor) };
   var rate=num(t.rate)/100;
   var taxLab=!!t.onLabor;
+  var taxCfg=form.tax||null;
   var taxLabel=(form.tax && form.tax.label) || 'Sales Tax';
 
   var grid={}, bi, ri, b;
@@ -1768,6 +2059,41 @@ function buildModel(form){
     }
   }
 
+  /* Two ways a programme books sales tax, and they are not interchangeable:
+
+       'block'  (United Illuminating) — a tax row inside every block,
+                charged on that block's own material and labor. Their
+                four L2 sheets reconcile to the penny this way.
+
+       'single' (Eversource)          — ONE tax row, in the section the
+                form names, charged only on the rows listed in matRows /
+                labRows. Their Bridgeport sheet taxes the EVSE hardware
+                and the installation and nothing else, and books it as
+                ineligible.
+
+     Taxing an eligible block that the programme does not tax overstates
+     the eligible total, which is exactly what comes back from review. */
+  var single = (taxCfg && taxCfg.mode==='single');
+  var sinkId = single ? (taxCfg.section || BL[BL.length-1].id) : null;
+  function inList(list, k){
+    var z; if(!list) return false;
+    for(z=0;z<list.length;z++){ if(list[z]===k) return true; }
+    return false;
+  }
+  /* the single tax line's base, gathered across every block */
+  var singleMat=0, singleLab=0;
+  if(single){
+    for(bi=0;bi<BL.length;bi++){
+      b=BL[bi];
+      for(ri=0;ri<b.rows.length;ri++){
+        var kk=b.rows[ri].k, gg=grid[b.id][kk];
+        if(inList(taxCfg.matRows, kk)) singleMat += gg.mat;
+        if(inList(taxCfg.labRows, kk)) singleLab += gg.mat + gg.lab;
+      }
+    }
+    singleMat=r2(singleMat); singleLab=r2(singleLab);
+  }
+
   /* Rounded to cents at every level, and each total summed from the rounded
      values below it — so the columns foot by hand for a reviewer. */
   var out=[], gm=0, gl=0;
@@ -1782,15 +2108,27 @@ function buildModel(form){
                   note:(k==='other'||k==='charger')?uniqJoin(g.notes, b.rows[ri].l):'' });
     }
     sm=r2(sm); sl=r2(sl);
-    var tm=r2(sm*rate), tl=taxLab?r2(sl*rate):0;
-    rows.push({ k:'_tax', label:taxLabel, sub:'', mat:tm, lab:tl, note:'', tax:true });
+    var tm, tl;
+    if(single){
+      /* only the sink section carries tax; every other block gets none */
+      tm = (b.id===sinkId) ? r2(singleMat*rate) : 0;
+      tl = (b.id===sinkId) ? r2(singleLab*rate) : 0;
+    } else {
+      tm = r2(sm*rate);
+      tl = taxLab ? r2(sl*rate) : 0;
+    }
+    rows.push({ k:'_tax', label:taxLabel, sub:'', mat:tm, lab:tl, note:'', tax:true,
+                base:(single?{mat:singleMat, lab:singleLab}:null) });
     var bm=r2(sm+tm), bl=r2(sl+tl);
     gm+=bm; gl+=bl;
     out.push({ id:b.id, title:b.title, fill:b.fill, rows:rows, mat:bm, lab:bl });
   }
   gm=r2(gm); gl=r2(gl);
   var inc=r2(nval('b_incent'));
-  return { blocks:out, mat:gm, lab:gl, total:r2(gm+gl), incentive:inc, net:r2(gm+gl-inc) };
+  /* the sheet writers need these to emit live tax formulas */
+  return { blocks:out, mat:gm, lab:gl, total:r2(gm+gl), incentive:inc, net:r2(gm+gl-inc),
+           taxRate:rate, taxOnLabor:taxLab, taxSingle:single, taxSink:sinkId,
+           taxBase:(single?{mat:singleMat, lab:singleLab}:null) };
 }
 
 /* Joins the descriptions behind a row, skipping any that just repeat the row's
@@ -1951,7 +2289,16 @@ function renderSiteForm(){
     }
   }
   if(rh) h+='<div class="sect mt">Program details</div>'+rh;
-  h+='<button class="btn sm" onclick="autofillFeet()">Recalculate footages from lines</button>';
+  h+='<button class="btn sm" onclick="autofillFeet()">Recalculate footages</button>';
+  /* Say where the numbers came from. Measured geometry is as-built; the CSV
+     fallback is inferred from purchasing quantities and still carries the
+     BOM's 10% contingency, which a reviewer would read as extra footage. */
+  h+= EDITOR_FEET
+    ? '<div class="ok" style="margin-top:8px">Footages measured from the site map \u2014 as-built, each length counted once'
+      + (EDITOR_FEET.trenchDrawn===false ? '. No trench was drawn, so the underground conduit route stands in for the excavation \u2014 check it.' : '.')
+      + '</div>'
+    : '<div class="warn" style="margin-top:8px">Footages inferred from the estimate lines, not measured. Those quantities '
+      + 'include the BOM\u2019s 10% contingency, so conduit and cable read high. Verify against the drawing before submitting.</div>';
   document.getElementById('siteForm').innerHTML=h;
 }
 function fieldHTML(f, tight){
@@ -2002,15 +2349,38 @@ function renderMap(){
   }
   tb.innerHTML=h;
   document.getElementById('mapCount').textContent = LINES.length?LINES.length+' lines':'';
-  var orph=orphanCount();
+  var orph=orphanCount(), gap=chargerGap();
+  var bad=benchCheck(), inel=eligibilityCheck(), bi2, bnote='';
+  if(bad.length){
+    bnote='<div class="warn" style="margin-top:8px"><b>Pricing outside the accepted band</b> \u2014 '
+        + 'rates seen on Eversource and United Illuminating submissions that cleared review:<ul style="margin:5px 0 0;padding-left:17px">';
+    for(bi2=0;bi2<bad.length && bi2<6;bi2++)
+      bnote += '<li>'+esc(bad[bi2].desc)+' \u2014 '+esc(bad[bi2].why)+'</li>';
+    bnote += '</ul><div style="margin-top:5px">Neither direction is automatically wrong; site conditions vary. But confirm before submitting \u2014 high invites a kickback, low costs you the margin.</div></div>';
+  }
+  if(inel.length){
+    bnote += '<div class="warn" style="margin-top:8px"><b>Usually not rebate-eligible</b> \u2014 '
+          + 'these are priced in an eligible block:<ul style="margin:5px 0 0;padding-left:17px">';
+    for(bi2=0;bi2<inel.length && bi2<6;bi2++)
+      bnote += '<li>'+esc(inel[bi2].desc)+' \u2014 '+esc(inel[bi2].says)+'</li>';
+    bnote += '</ul><div style="margin-top:5px">Move them to the non-eligible block unless the programme has told you otherwise.</div></div>';
+  }
   document.getElementById('mapEmpty').innerHTML = !LINES.length
     ? 'No lines yet. Load an estimate above, or add cost lines by hand.'
-    : (orph
+    : (gap
+        ? '<div class="warn" style="margin-top:0"><b>Charger hardware is $0.</b> '
+          +gap+' charger line'+(gap>1?'s have':' has')+' no material cost. The editor prices '
+          +'chargers in a note rather than a cost field, so it may not have come across \u2014 '
+          +'enter the equipment price before exporting, or the submission goes in with its '
+          +'largest eligible cost missing.</div>'
+        : '')
+      + (orph
         ? '<div class="warn" style="margin-top:0">'+orph+' line'+(orph>1?'s have':' has')+' no matching category in the '
           +esc(layoutName())+', so '+(orph>1?'they were':'it was')+' parked in the last block. Pick the right row for '
           +(orph>1?'each':'it')+' before exporting.</div>'
         : '')
-      + '<div style="margin-top:'+(orph?'8px':'0')+'">Blocks and rows come from '+esc(layoutName())
+      + bnote
+      + '<div style="margin-top:8px">Blocks and rows come from '+esc(layoutName())
       + '. FP % moves part of a line into Future Proofing — shared trenching defaults to a '
       + nval('p_fp')+'/'+(100-nval('p_fp'))+' split.</div>';
 }
@@ -2184,7 +2554,7 @@ var ES_TPL_ROWS = [
   { r:39, sec:'evse', k:'charger',   cells:'qplns' },
   { r:40, sec:'evse', k:'charger2',  cells:'qplns' },
   { r:41, sec:'evse', k:'shipping',  cells:'pls'   },
-  { r:42, sec:'evse', k:'other',     cells:'qpls'  },   /* EVSE Installation */
+  { r:42, sec:'evse', k:'install',   cells:'qpls'  },   /* EVSE Installation */
   { r:43, sec:'evse', k:'pedestal',  cells:'qplns' },
   { r:45, sec:'inel', k:'bollard',   cells:'qpls'  },
   { r:46, sec:'inel', k:'warranty',  cells:'mls'   },
@@ -2516,14 +2886,19 @@ var ES30 = {
     [40,'EVSE Hardware #1','Per Unit','EVSE Type (L2, DCFC): \nEVSE Make/Model: ','evse','charger',true],
     [41,'EVSE Hardware #2 (If different than model 1)','Per Unit','EVSE Type (L2, DCFC): \nEVSE Make/Model: ','evse','charger2',true],
     [42,'Shipping & Handling/ Freight','Per Unit','','evse','shipping',true],
-    [43,'EVSE Installation','Per Unit','','evse','other',true],
-    [44,'Sales Tax','Total','','evse','tax',true],
-    [45,'Other (i.e., cable management, mounting kits)','Per Unit','Specify:','evse','pedestal',true],
+    /* Version 4.0 moved Sales Tax out of the EVSE block and down into
+       Ineligible — the Bridgeport submission has it at row 50 reading
+       $316.87 / $158.75. Networking takes the freed EVSE slot: the
+       Springfield ESMA sheet carries an "Eligible Networking Total"
+       of its own, so Eversource treats it as eligible, unlike UI. */
+    [43,'EVSE Installation','Per Unit','','evse','install',true],
+    [44,'Other (i.e., cable management, mounting kits)','Per Unit','Specify:','evse','pedestal',true],
+    [45,'Networking/Cloud ','Total','','evse','network',false],
     ['sec',46,'Ineligible Costs'],
     [47,'Protective Bollards, Signs, Parking Spot Striping/Painting','Total','','inel','bollard',true],
     [48,'Warranty/Maintenance Plan','Total','','inel','warranty',false],
     [49,'Activation Fee','Per Unit','','inel','activation',true],
-    [50,'Networking/Cloud ','Total','','inel','network',false],
+    [50,'Sales Tax','Total','','inel','tax',true],
     [51,'Other','Total','Specify:','inel','other',true]
   ],
   summary:[
@@ -2533,7 +2908,11 @@ var ES30 = {
     [56,'Future Proofing','=SUM(I33:I38)'],
     [57,'Eligible EVSE Costs','=SUM(I40:I42,I44:I45)/2'],
     [58,'Total Eligible Rebate','=SUM(H53,H56,H57)'],
-    [59,'Ineligible EVSE Costs','=SUM(I47:I51)']
+    [59,'Ineligible EVSE Costs','=SUM(I47:I51)'],
+    /* esMatrix computes eight summary lines; the map stopped at seven, so the
+       invoice total — the number the reviewer actually reconciles against the
+       application — never reached the sheet. */
+    [60,'Invoice Total for Eligible & Ineligible Costs','=SUM(H58:J59)']
   ]
 };
 
@@ -2563,6 +2942,15 @@ function sheetES30(wb, m, form, site){
     function e(st){ return st ? { style:st, color:{argb:c} } : undefined; }
     return { left:e(l), right:e(r), top:e(t), bottom:e(b2) };
   }
+  /* ExcelJS silently drops a cached result of 0, and a formula with no cached
+     result opens BLANK — Excel only fills it after a recalculate. So a formula
+     is only worth writing when it has a non-zero value to carry; otherwise
+     write the plain number, which reads correctly and has nothing to compute. */
+  function fx(formula, value){
+    var v=r2(value||0);
+    return v ? { formula:formula, result:v } : v;
+  }
+
   function es(addr, value, o){
     o=o||{};
     var c=ws.getCell(addr);
@@ -2578,14 +2966,19 @@ function sheetES30(wb, m, form, site){
   var LET=['B','C','D','E','F','G','H','I','J'];
   function bandRow(r, text){
     ws.getRow(r).height=30;
-    merge(ws,'B'+r+':J'+r);
     /* Local counter: this is called from inside the row loop, and reusing the
-       outer `i` rewinds that loop — an infinite loop, not a cosmetic bug. */
-    for(var bi=0; bi<LET.length; bi++){
-      es(LET[bi]+r, bi===0?text:null, { fill:GRN, bold:true, size:12, fontName:'Arial',
-        color:WHT, align:bi===0?'left':'center',
-        border:bd('medium','medium','medium','medium') });
+       outer `i` rewinds that loop — an infinite loop, not a cosmetic bug.
+
+       Style the slave cells BEFORE merging and write the master LAST: in a
+       merged range the slaves proxy to the master, so writing null to C..J
+       after B wipes the band's own label. */
+    for(var bi=1; bi<LET.length; bi++){
+      es(LET[bi]+r, null, { fill:GRN, bold:true, size:12, fontName:'Arial',
+        color:WHT, align:'center', border:bd('medium','medium','medium','medium') });
     }
+    merge(ws,'B'+r+':J'+r);
+    es('B'+r, text, { fill:GRN, bold:true, size:12, fontName:'Arial',
+      color:WHT, align:'left', border:bd('medium','medium','medium','medium') });
   }
 
   /* ── row 1: mark + date ── */
@@ -2675,9 +3068,14 @@ function sheetES30(wb, m, form, site){
     body('D', unit, { align:'left' });
     body('E', (w2&&w2.qty!=null)?num(w2.qty):null, { align:'center', fmt:'#,##0.##' });
     body('F', (w2&&w2.unitPrice!=null)?r2(w2.unitPrice):null, { align:'center', fmt:MONEY });
-    body('G', gFormula?{formula:'E'+r+'*F'+r}:(w2?r2(w2.mat):0), { align:'left', fmt:MONEY });
-    body('H', (w2?r2(w2.lab):0), { align:'center', fmt:MONEY });
-    body('I', {formula:'SUM(G'+r+':H'+r+')'}, { align:'center', fmt:MONEY });
+    /* A formula written without a cached result opens BLANK — Excel and
+       LibreOffice only fill it after a recalculate, so the sheet looks like
+       the totals never made it into the export. Always carry the value. */
+    var _gv = w2 ? r2(w2.mat) : 0;
+    var _hv = w2 ? r2(w2.lab) : 0;
+    body('G', gFormula?fx('E'+r+'*F'+r, _gv):_gv, { align:'left', fmt:MONEY });
+    body('H', _hv, { align:'center', fmt:MONEY });
+    body('I', fx('SUM(G'+r+':H'+r+')', _gv+_hv), { align:'center', fmt:MONEY });
     body('J', (w2 && (w2.mat||w2.lab))?'Yes':null, { align:'center' });
     banded++; afterBand=false;
   }
@@ -2698,17 +3096,23 @@ function sheetES30(wb, m, form, site){
         border:bd(LET[c2]==='B'?'medium':null,null,null,null) });
     es('G'+sr, ES30.summary[i][1], { fill:sf, wrap:true,
       border:bd('thin','thin','thin','thin',BLK) });
+    /* Style the slave cells BEFORE merging and write the master LAST. In a
+       merged range the slaves proxy to the master, so touching I or J after
+       H clears H — which is why every summary total came out empty while the
+       screen showed the right number. */
+    es('I'+sr, null, { fill:sf }); es('J'+sr, null, { fill:sf });
     merge(ws,'H'+sr+':J'+sr);
-    es('H'+sr, {formula:ES30.summary[i][2].replace(/^=/,'')},
+    es('H'+sr, fx(ES30.summary[i][2].replace(/^=/,''), X.summary[i]?X.summary[i][1]:0),
        { fill:sf, color:NVY, align:'left', fmt:MONEY,
          border:{ left:{style:'thin',color:{argb:BLK}},
                   right:{style:'medium',color:{argb:BLU}},
                   top:{style:'thin',color:{argb:BLK}},
                   bottom:{style:'thin',color:{argb:BLK}} } });
-    es('I'+sr, null, { fill:sf }); es('J'+sr, null, { fill:sf });
   }
 
-  fitPage(ws, 'B1:J'+(ES30.summary[ES30.summary.length-1][0]+1));
+  /* A submission form that splits across two sheets of paper gets printed,
+     stapled and questioned. One page. */
+  fitPage(ws, 'B1:J'+(ES30.summary[ES30.summary.length-1][0]+1), 1);
 }
 
 /* ── Eversource matrix model ──────────────────────────────────────────
@@ -2730,7 +3134,11 @@ function esMatrix(m, form){
       if(def){ for(var q=0;q<def.rows.length;q++){ if(def.rows[q].k===rw.k) meta=def.rows[q].es; } }
       var sec=(meta&&meta.sec) || (b.id==='fp'?'fp':(b.id==='ne'?'inel':(b.id==='evse'?'evse':'gen')));
       if(!bySec[sec]) bySec[sec]=[];
-      bySec[sec].push({ k:rw.k, label:rw.label, note:rw.note||'',
+      /* buildModel names the tax row '_tax'; the Eversource row map calls it
+         'tax'. Without this the tax lands nowhere and the sheet exports a
+         zero where the submission shows $316.87. */
+      var rk = (rw.k==='_tax') ? 'tax' : rw.k;
+      bySec[sec].push({ k:rk, label:rw.label, note:rw.note||'',
                         mat:r2(rw.mat), lab:r2(rw.lab), meta:meta||{} });
     }
   }
@@ -2917,6 +3325,16 @@ function cell(ws, addr, value, opt){
 }
 function merge(ws,range){ try{ ws.mergeCells(range); }catch(e){} }
 
+/* A formula written without a cached result opens BLANK — the sheet only
+   fills in after a manual recalculate. And ExcelJS drops a cached result of
+   zero, so a formula is only worth writing when it carries a value; below
+   that, the plain number reads correctly and has nothing to compute. */
+function fxc(ws, addr, formula, value, opt){
+  var v=r2(value||0);
+  return cell(ws, addr, v ? { formula:formula, result:v } : v, opt);
+}
+function sumF(col,a,b){ return 'SUM('+col+a+':'+col+b+')'; }
+
 /* One page wide, however many tall. Without this the money columns break
    onto a second sheet of paper when anyone prints or PDFs it. */
 function fitPage(ws, area, tall){
@@ -3090,30 +3508,65 @@ function sheetForm(wb, m, form, site){
   cell(ws,'G'+R,form.headers.tot,HDR);
   R++;
 
-  var bi, ri, b, rw;
+  /* Live formulas: change a line item and the block subtotal, its sales tax
+     and the grand total all follow. Only material and labor hold typed
+     numbers — the cells a person actually edits. */
+  var bi, ri, b, rw, hdrRows=[], firstRow, taxRow, taxRate=(m.taxRate||0);
   for(bi=0;bi<m.blocks.length;bi++){
     b=m.blocks[bi];
-    cell(ws,'B'+R,b.title,    {fill:b.fill,bold:true});
-    cell(ws,'C'+R,'',         {fill:'FFFFC000'});
-    cell(ws,'E'+R,b.mat,      {fill:b.fill,bold:true,align:'right',fmt:FMT_ACCT});
-    cell(ws,'F'+R,b.lab,      {fill:b.fill,bold:true,align:'right',fmt:FMT_ACCT});
-    cell(ws,'G'+R,b.mat+b.lab,{fill:b.fill,bold:true,align:'right',fmt:FMT_ACCT});
+    var hdr=R;
+    hdrRows.push(hdr);
+    cell(ws,'B'+hdr,b.title,{fill:b.fill,bold:true});
+    cell(ws,'C'+hdr,'',     {fill:'FFFFC000'});
     R++;
+    firstRow=R; taxRow=R;
     for(ri=0;ri<b.rows.length;ri++){
       rw=b.rows[ri];
       cell(ws,'B'+R, rw.label+rw.sub, {});
       cell(ws,'C'+R, rw.note||'', { bold:rw.k==='charger' });
-      cell(ws,'E'+R, rw.mat,        {align:'right',fmt:FMT_ACCT});
-      cell(ws,'F'+R, rw.lab,        {align:'right',fmt:FMT_ACCT});
-      cell(ws,'G'+R, rw.mat+rw.lab, {align:'right',fmt:FMT_ACCT});
+      if(rw.tax){
+        taxRow=R;
+        if(m.taxSingle){
+          /* the base is specific rows elsewhere on the sheet, not this
+             block's subtotal, so a SUM over the block would be wrong */
+          cell(ws,'E'+R, rw.mat, {align:'right',fmt:FMT_ACCT});
+          cell(ws,'F'+R, rw.lab, {align:'right',fmt:FMT_ACCT});
+        } else {
+          fxc(ws,'E'+R,'ROUND('+sumF('E',firstRow,R-1)+'*'+taxRate+',2)', rw.mat,
+              {align:'right',fmt:FMT_ACCT});
+          if(m.taxOnLabor){
+            fxc(ws,'F'+R,'ROUND('+sumF('F',firstRow,R-1)+'*'+taxRate+',2)', rw.lab,
+                {align:'right',fmt:FMT_ACCT});
+          } else {
+            cell(ws,'F'+R, rw.lab, {align:'right',fmt:FMT_ACCT});
+          }
+        }
+      } else {
+        cell(ws,'E'+R, rw.mat, {align:'right',fmt:FMT_ACCT});
+        cell(ws,'F'+R, rw.lab, {align:'right',fmt:FMT_ACCT});
+      }
+      fxc(ws,'G'+R,'E'+R+'+F'+R, rw.mat+rw.lab, {align:'right',fmt:FMT_ACCT});
       R++;
     }
+    fxc(ws,'E'+hdr, sumF('E',firstRow,taxRow), b.mat,
+        {fill:b.fill,bold:true,align:'right',fmt:FMT_ACCT});
+    fxc(ws,'F'+hdr, sumF('F',firstRow,taxRow), b.lab,
+        {fill:b.fill,bold:true,align:'right',fmt:FMT_ACCT});
+    fxc(ws,'G'+hdr, 'E'+hdr+'+F'+hdr, b.mat+b.lab,
+        {fill:b.fill,bold:true,align:'right',fmt:FMT_ACCT});
+  }
+  /* the grand total adds the block subtotals, never the raw lines — summing
+     the lines would double-count every tax row */
+  var gm='', gl='', gi;
+  for(gi=0;gi<hdrRows.length;gi++){
+    gm += (gi?'+':'')+'E'+hdrRows[gi];
+    gl += (gi?'+':'')+'F'+hdrRows[gi];
   }
   cell(ws,'B'+R,form.totalLabel,{fill:'FFFFC000',bold:true});
   cell(ws,'C'+R,'',             {fill:'FFFFC000'});
-  cell(ws,'E'+R,m.mat,          {fill:'FFFFC000',bold:true,align:'right',fmt:FMT_ACCT});
-  cell(ws,'F'+R,m.lab,          {fill:'FFFFC000',bold:true,align:'right',fmt:FMT_ACCT});
-  cell(ws,'G'+R,m.total,        {fill:'FFFFC000',bold:true,align:'right',fmt:FMT_ACCT});
+  fxc(ws,'E'+R, gm,           m.mat,   {fill:'FFFFC000',bold:true,align:'right',fmt:FMT_ACCT});
+  fxc(ws,'F'+R, gl,           m.lab,   {fill:'FFFFC000',bold:true,align:'right',fmt:FMT_ACCT});
+  fxc(ws,'G'+R,'E'+R+'+F'+R,  m.total, {fill:'FFFFC000',bold:true,align:'right',fmt:FMT_ACCT});
 
   fitPage(ws, 'B1:G'+(R+1));
 }
@@ -3323,6 +3776,7 @@ function applyBrand(){
 }
 
 function boot(){
+  mergeTenants();
   renderTenantList();
   DATA['class']='l2';
   applyBrand();
