@@ -11498,17 +11498,80 @@ function _asmPartInteractEnd(){
 function _openAsmPanel(sh, activeIdx){
   var panel=document.getElementById('asm-panel');
   if(!panel){ panel=_buildAsmPanel(); }
-  panel.style.display='block';
+  panel.style.display='flex';
+  try{ _asmPlacePanel(panel); }catch(e){}
   panel._shId=sh.id;
   _fillAsmPanel(sh, activeIdx);
 }
+/* Measure, don't guess. Find every element that floats over the top of
+   the canvas and overlaps this panel's column, and start below the
+   lowest of them. Re-measured on open and on resize, so a toolbar that
+   appears later cannot end up on top of the panel. */
+function _asmPlacePanel(p){
+  if(!p) return;
+  var sc=document.getElementById('sc'); if(!sc) return;
+  var scR=sc.getBoundingClientRect();
+  var pR=p.getBoundingClientRect();
+  var left=pR.left, right=pR.right;
+  var lowest=scR.top+8;
+  /* Candidates: anything positioned over the canvas that is not the panel
+     itself and is currently visible. */
+  var cands=document.querySelectorAll('#sc > div, #sc > .ov, .canvas-top, #modebar, #arraybar, #layerbar');
+  for(var i=0;i<cands.length;i++){
+    var el=cands[i];
+    if(el===p || p.contains(el)) continue;
+    var cs; try{ cs=getComputedStyle(el); }catch(e){ continue; }
+    if(cs.display==='none' || cs.visibility==='hidden') continue;
+    var r=el.getBoundingClientRect();
+    if(r.height<=0 || r.width<=0) continue;
+    /* only things that sit ABOVE the panel and share its column */
+    if(r.bottom<=scR.top || r.top>scR.top+220) continue;
+    if(r.right<left+4 || r.left>right-4) continue;
+    if(r.bottom>lowest) lowest=r.bottom;
+  }
+  var top=Math.max(8, Math.round(lowest-scR.top)+8);
+  p.style.top=top+'px';
+  p.style.maxHeight='calc(100% - '+(top+16)+'px)';
+}
+window._asmPlacePanel=_asmPlacePanel;
+window.addEventListener('resize', function(){
+  var p=document.getElementById('asm-panel');
+  if(p && p.style.display!=='none'){ try{ _asmPlacePanel(p); }catch(e){} }
+});
+
 function _closeAsmPanel(){
   var p=document.getElementById('asm-panel'); if(p) p.style.display='none';
 }
 function _buildAsmPanel(){
   var p=document.createElement('div');
   p.id='asm-panel';
-  p.style.cssText='position:absolute;top:44px;right:14px;width:230px;max-height:calc(100% - 60px);overflow-y:auto;background:var(--surface);border:1px solid var(--border);border-radius:6px;z-index:320;box-shadow:0 8px 24px rgba(0,0,0,.5);font-family:var(--font-sans,sans-serif);display:none';
+  /* ── POSITION AND STACKING ────────────────────────────────────────
+     Two problems with the old rule, both visible as the panel sitting
+     under the toolbars:
+
+     1. top:44px was a guess at the height of whatever floats over the
+        top of the canvas. That chrome is not a fixed height -- the mode
+        bar, layer tabs and the array toolbar each appear or not
+        depending on what is selected -- so the panel slid under it as
+        soon as the stack got taller than 44 px.
+     2. z-index 320 is below the in-canvas toolbars, so even correctly
+        positioned it lost the overlap.
+
+     Position is now MEASURED against the panels that actually overlap
+     it (see _asmPlacePanel), and the z-index sits above in-canvas chrome
+     while staying well below the modal layer at 500+, so a dialog still
+     covers it.
+
+     The nested scrollers are gone too. The outer div scrolled AND the
+     body inside it scrolled at max-height:340px, so the header could
+     scroll out of view and leave the panel looking decapitated -- which
+     is exactly what a clipped top looks like. One scroller, on the body,
+     with the header pinned. */
+  p.style.cssText='position:absolute;top:44px;right:14px;width:236px;'
+    +'background:var(--surface);border:1px solid var(--border);border-radius:6px;'
+    +'z-index:430;box-shadow:0 10px 28px rgba(0,0,0,.55);'
+    +'font-family:var(--font-sans,sans-serif);display:none;'
+    +'max-height:calc(100% - 24px);display:none;flex-direction:column';
   var sc=document.getElementById('sc');
   if(sc) sc.appendChild(p);
   /* keep clicks inside the panel from bubbling to the canvas deselect handler */
@@ -11519,10 +11582,12 @@ function _buildAsmPanel(){
 function _fillAsmPanel(sh, activeIdx){
   var p=document.getElementById('asm-panel'); if(!p) return;
   var h='';
-  h+='<div style="display:flex;align-items:center;justify-content:space-between;padding:8px 10px;border-bottom:1px solid var(--border)">';
+  /* Header pinned so it cannot scroll away and leave the panel looking
+     cut off at the top. */
+  h+='<div style="flex:0 0 auto;display:flex;align-items:center;justify-content:space-between;padding:8px 10px;border-bottom:1px solid var(--border);background:var(--surface);border-radius:6px 6px 0 0">';
   h+='<span style="font-size:11px;font-weight:700;color:var(--text)">BESS Assembly</span>';
-  h+='<span onclick="_closeAsmPanel()" style="cursor:pointer;color:var(--sub);font-size:14px;line-height:1">\u00d7</span></div>';
-  h+='<div style="padding:9px 10px;max-height:340px;overflow-y:auto">';
+  h+='<span onclick="_closeAsmPanel()" style="cursor:pointer;color:var(--sub);font-size:16px;line-height:1;padding:0 2px">\u00d7</span></div>';
+  h+='<div style="flex:1 1 auto;padding:9px 10px;overflow-y:auto;min-height:0">';
   /* component list */
   h+='<div style="font-size:9px;color:var(--sub);letter-spacing:.06em;margin-bottom:5px">COMPONENTS</div>';
   for(var i=0;i<sh.parts.length;i++){
@@ -29954,15 +30019,48 @@ function _o2Nudge(dxPx, dyPx){
           var c=JSON.parse(JSON.stringify(q)); c.x+=dxPx; c.y+=dyPx; return c;
         });
       }
+    } else if(t.kind==='conduit'){
+      /* ── CONDUITS WERE NOT MOVED AT ALL ──────────────────────────────
+         _o2SoleSelection() returns {kind:'conduit'} for a selected run,
+         but this function only handled 'element' and 'shape'. So Move to
+         accepted the offset, moved nothing, and then the re-anchor pass
+         below ALSO skipped conduits -- leaving the run drawn at its old
+         pixels with a ground anchor that no longer matched. The next map
+         event reprojected it from that stale anchor and the run jumped.
+
+         Endpoints attached to equipment are left to updateAttached() to
+         re-derive after the move, so a run stays welded to the gear it
+         connects rather than sliding off it. */
+      var cd=(S.conduits||[]).filter(function(x){ return x.id===t.id; })[0];
+      if(cd && cd.pts){
+        cd.pts = cd.pts.map(function(p){
+          var q=JSON.parse(JSON.stringify(p));
+          q.x=(q.x||0)+dxPx; q.y=(q.y||0)+dyPx;
+          return q;
+        });
+        if(typeof cd.cx==='number'){ cd.cx+=dxPx; cd.cy+=dyPx; }
+      }
     }
   });
-  /* Patch 8: these moved things in canvas space, so re-anchor exactly them. */
+  /* Patch 8: these moved things in canvas space, so re-anchor exactly them.
+     The array pick was a two-way choice -- elements or shapes -- so a
+     conduit resolved to S.shapes, found nothing, and was never re-stamped.
+     An object moved in pixels but still carrying its old lat/lng is
+     precisely what makes a run snap back on the next pan or zoom. */
   try{
     targets.forEach(function(t){
-      var arr = (t.kind==='element') ? S.elements : S.shapes;
+      var arr = (t.kind==='element') ? S.elements
+              : (t.kind==='conduit') ? S.conduits
+              : S.shapes;
       var o=(arr||[]).filter(function(x){ return x.id===t.id; })[0];
-      if(o && typeof _geoRestampOne==='function') _geoRestampOne(o);
+      if(!o) return;
+      if(typeof _geoRestampOne==='function') _geoRestampOne(o);
+      /* The unified anchor engine keeps its own frozen offsets; tell it
+         this object changed so it re-records rather than restoring. */
+      try{ if(window.OmegaReanchor) OmegaReanchor(o.id); }catch(e){}
     });
+    /* Re-weld any run whose endpoint is attached to a piece of equipment. */
+    try{ if(typeof rerouteTrenchConduits==='function') rerouteTrenchConduits(); }catch(e){}
   }catch(e){}
   _o2Repaint();
   _o2Commit();
@@ -30345,6 +30443,15 @@ function _o2Repaint(){
       if(n && n.parentNode) n.parentNode.removeChild(n);
       if(typeof renderEl==='function') renderEl(el);
     });
+    /* Conduits were omitted, so a moved run kept its OLD line on screen
+       until something else forced a repaint -- which reads as the run
+       jumping the moment anything triggers one. */
+    (S.conduits||[]).forEach(function(c){
+      var n=document.querySelector('[data-cid="'+c.id+'"]');
+      if(n && n.parentNode) n.parentNode.removeChild(n);
+      if(typeof renderConduit==='function') renderConduit(c);
+    });
+    try{ if(typeof _updateConduitSchedule==='function') _updateConduitSchedule(); }catch(e){}
   }catch(e){}
 }
 
@@ -52890,13 +52997,41 @@ function mktProfile(){
       if(!_db || !_currentUser){ resolve(null); return; }
       _db.collection('fin_profiles').doc(_currentUser.uid).get().then(function(snap){
         var p = snap.exists ? (snap.data()||{}) : {};
+        /* ── ANY VALIDATED USER MAY PUSH ──────────────────────────────
+           The gate used to mirror the portal's seeder, which only lets a
+           developer or originator create. That is the SEEDER's policy, not
+           a fact about this editor: anyone signed in with a marketplace
+           profile is a validated user and should be able to file a deal.
+
+           The client no longer refuses on role. Firestore still has the
+           final say -- rules run server-side and cannot be talked out of a
+           decision by the client -- so if the rules are narrower than this,
+           the push is attempted and the real reason is reported rather
+           than being pre-empted by a guess. */
+        var hasProfile = snap.exists;
         resolve({ uid:_currentUser.uid,
                   email: p.email || _currentUser.email || '',
                   name:  p.name  || _currentUser.email || '',
                   org:   p.org   || '',
-                  orgKey:p.orgKey|| _mktOrgKeyOf(p.org),
+                  /* STORED vs DERIVED matters. The rules compare a
+                     submitted orgKey against myProfile().get('orgKey',''),
+                     i.e. the value actually on the profile. Deriving one
+                     from the org name and sending it produces
+                     'sunesol-com' != '' and the create is refused -- while
+                     the same rule would have ACCEPTED the deal had the
+                     field simply been omitted. Keep the two apart so the
+                     push can take that escape hatch. */
+                  orgKey: p.orgKey || '',
+                  orgKeyStored: !!p.orgKey,
+                  orgKeyDerived: _mktOrgKeyOf(p.org),
                   role:  p.role  || 'none',
-                  canWrite: (p.role==='developer' || p.role==='originator') });
+                  approved: (p.approved !== false),
+                  hasProfile: hasProfile,
+                  /* Validated = signed in AND carries a marketplace profile.
+                     Without a profile the rules cannot resolve anything about
+                     the account and every write is denied, so that one is
+                     worth catching before the round trip. */
+                  canWrite: hasProfile });
       })['catch'](function(){ resolve(null); });
     }catch(e){ resolve(null); }
   });
@@ -52957,13 +53092,19 @@ function mktBuildDoc(form, prof, sum){
   spec.powerConcept = form.powerConcept || '';
   spec.costBasis = window._COST_IS_CONTRACTED ? 'contracted' : 'benchmark';
 
-  return {
+  var doc = {
     /* read by the security rules */
     developerUid: prof.uid,
     status: 'open',
     awardedTo: null,
-    /* org scoping, so colleagues in the same org see it */
-    orgKey: prof.orgKey || _mktOrgKeyOf(prof.org),
+    /* Org scoping. Sent ONLY when the profile really carries an orgKey:
+       the rule reads
+           !('orgKey' in data) || data.orgKey == myProfile().orgKey
+       so omitting it is explicitly allowed, while sending a derived value
+       that the profile does not have is an automatic refusal. Omitting
+       costs the deal its org scoping, which is why the panel offers to
+       write the orgKey onto the profile instead -- the fin_profiles rule
+       permits setting it exactly once. */
     org: prof.org || '',
     submittedBy: prof.name || prof.email,
     submittedByEmail: prof.email || null,
@@ -53004,6 +53145,8 @@ function mktBuildDoc(form, prof, sum){
     bill: null,
     createdAt: Date.now()
   };
+  if(prof.orgKeyStored && prof.orgKey) doc.orgKey = prof.orgKey;
+  return doc;
 }
 
 /* Update patch: descriptive fields only. Never resets a live negotiation
@@ -53026,9 +53169,9 @@ function _mktDocId(form){
 function mktPush(form){
   return mktProfile().then(function(prof){
     if(!prof) throw new Error('Not signed in \u2014 sign in before pushing to the marketplace.');
-    if(!prof.canWrite)
-      throw new Error('Your marketplace role is "'+prof.role+'". The rules allow developer or originator to create in '
-        +MKT_COL+'. Ask an admin to update your fin_profiles record.');
+    if(!prof.hasProfile)
+      throw new Error('This account has Firebase auth but no fin_profiles record, so the rules cannot resolve it and '
+        + 'every write will be denied. Register once in the marketplace, then try again.');
     var sum=mktDrawingSummary();
     var ref=_db.collection(MKT_COL).doc(_mktDocId(form));
     return ref.get().then(function(snap){
@@ -53043,6 +53186,60 @@ function mktPush(form){
 }
 window.mktPush = mktPush;
 
+/* Write the derived orgKey onto the caller's own profile.
+   fin_profiles.orgKeySettable() permits this exactly ONCE while the stored
+   value is still empty -- it exists precisely so profiles written before the
+   field did can fill it in. Without it a deal can still be filed, but with no
+   orgKey, which means colleagues in the same firm cannot see it: isOrgMate()
+   requires BOTH sides non-empty. */
+function mktClaimOrgKey(){
+  return mktProfile().then(function(prof){
+    if(!prof) throw new Error('Not signed in.');
+    if(prof.orgKeyStored) return { ok:true, already:true, orgKey:prof.orgKey };
+    var key = prof.orgKeyDerived || _mktOrgKeyOf(prof.org);
+    if(!key) throw new Error('No organisation on your profile to derive a key from. '
+      + 'Set your organisation in the marketplace first.');
+    return _db.collection('fin_profiles').doc(prof.uid).update({ orgKey:key })
+      .then(function(){ return { ok:true, already:false, orgKey:key }; });
+  });
+}
+window.mktClaimOrgKey = mktClaimOrgKey;
+
+
+/* One call that produces everything an admin needs to fix a denial. */
+function OmegaMarketDiag(){
+  return mktProfile().then(function(prof){
+    var sum={}; try{ sum=mktDrawingSummary(); }catch(e){}
+    var out={
+      uid: prof?prof.uid:null,
+      email: prof?prof.email:null,
+      hasFinProfile: prof?prof.hasProfile:false,
+      role: prof?prof.role:null,
+      approved: prof?prof.approved:null,
+      org: prof?prof.org:null,
+      orgKey: prof?prof.orgKey:null,
+      collection: MKT_COL,
+      writesDeveloperUid: prof?prof.uid:null,
+      writesStatus:'open',
+      writesAwardedTo:null,
+      drawingTech: sum.tech, drawingMw: sum.mw, drawingMwh: sum.mwh
+    };
+    try{
+      console.info('[omega/market] send this to whoever owns firestore.rules:');
+      if(console.table) console.table(out); else console.log(out);
+      if(!out.hasFinProfile)
+        console.warn('[omega/market] no fin_profiles record \u2014 every write will be denied.');
+      else if(out.approved===false)
+        console.warn('[omega/market] approved:false \u2014 the portal blocks filing until an admin approves.');
+      else
+        console.info('[omega/market] profile looks writable; a denial now points at the rules themselves.');
+    }catch(e){}
+    return out;
+  });
+}
+window.OmegaMarketDiag = OmegaMarketDiag;
+
+
 /* ── Push to Marketplace panel ─────────────────────────────────────── */
 function openMarketplacePush(){
   var host=document.getElementById('mkt-modal');
@@ -53053,7 +53250,7 @@ function openMarketplacePush(){
     document.body.appendChild(host);
   }
   host.innerHTML='<div style="background:#0F1D30;border:1px solid #1E3A5F;border-radius:12px;padding:26px;color:#94A3B8;font-size:12px">Reading your marketplace profile\u2026</div>';
-  mktProfile().then(function(prof){ host.innerHTML=_mktInner(prof); })
+  mktProfile().then(function(prof){ window.__mktLastProf=prof; host.innerHTML=_mktInner(prof); })
               .catch(function(){ host.innerHTML=_mktInner(null); });
 }
 window.openMarketplacePush = openMarketplacePush;
@@ -53082,17 +53279,28 @@ function _mktInner(prof){
       +'<code>orgKey</code> is what lets colleagues in your organisation see it afterwards. Sign in and try again.</div></div>';
   }
 
-  var roleCol = prof.canWrite ? '#4ADE80' : '#F87171';
+  var roleCol = prof.approved ? '#4ADE80' : '#FBBF24';
   var who='<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:14px;padding:9px 11px;background:#0B1626;border:1px solid #1E3A5F;border-radius:8px">'
    +'<span style="font-size:10px;color:#64748B;text-transform:uppercase;letter-spacing:.4px">Pushing as</span>'
    +'<strong style="color:#E2EEF9;font-size:12px">'+esc(prof.email||'\u2014')+'</strong>'
    +'<span style="font-size:9.5px;font-weight:800;padding:2px 6px;border-radius:9px;background:'+roleCol+'22;color:'+roleCol+';border:1px solid '+roleCol+'55">'+esc(prof.role)+'</span>'
    +'<span style="font-size:10px;color:#94A3B8">org <strong style="color:#E2EEF9">'+esc(prof.org||'none')+'</strong>'
    +(prof.orgKey?' <code style="color:#64748B">'+esc(prof.orgKey)+'</code>':'')+'</span></div>'
-   + (prof.canWrite ? '' :
-      '<div style="margin-bottom:12px;padding:9px 11px;background:rgba(248,113,113,.08);border:1px solid rgba(248,113,113,.35);border-radius:8px;font-size:10.5px;color:#FCA5A5;line-height:1.6">'
-      +'The rules let a <strong>developer</strong> or <strong>originator</strong> create in <code>fin_projects</code>. '
-      +'Your role is <strong>'+esc(prof.role)+'</strong>, so the write will be refused. Ask an admin to update your profile.</div>');
+   + (!prof.hasProfile
+      ? '<div style="margin-bottom:12px;padding:9px 11px;background:rgba(248,113,113,.08);border:1px solid rgba(248,113,113,.35);border-radius:8px;font-size:10.5px;color:#FCA5A5;line-height:1.6">'
+        +'This account has Firebase auth but no <code>fin_profiles</code> record, so the rules cannot resolve it and '
+        +'every write will be denied. Register once in the marketplace, then reload.</div>'
+      : (!prof.orgKeyStored
+        ? '<div style="margin-bottom:12px;padding:9px 11px;background:rgba(56,189,248,.08);border:1px solid rgba(56,189,248,.4);border-radius:8px;font-size:10.5px;color:#BAE6FD;line-height:1.6">'
+          +'Your profile has no <code>orgKey</code>, so this deal will be filed without org scoping and '
+          +'colleagues at <strong>'+esc(prof.org||'your firm')+'</strong> will not see it. '
+          +'<button onclick="_mktClaim()" style="margin-left:6px;background:rgba(56,189,248,.18);border:1px solid rgba(56,189,248,.5);color:#BAE6FD;font-size:10px;font-weight:700;padding:3px 8px;border-radius:5px;cursor:pointer;font-family:inherit">Set it to '+esc(prof.orgKeyDerived||'')+'</button>'
+          +'</div>'
+        : '')
+      + (prof.approved ? ''
+        : '<div style="margin-bottom:12px;padding:9px 11px;background:rgba(251,191,36,.08);border:1px solid rgba(251,191,36,.4);border-radius:8px;font-size:10.5px;color:#FDE68A;line-height:1.6">'
+          +'Your profile has <code>approved: false</code>. The push is still allowed from here, but the rules will '
+          +'very likely refuse it until an administrator approves the account.</div>'));
 
   function fld(id,label,val,ph,w){ return '<div style="flex:'+(w||'1 1 160px')+'">'
     +'<div style="font-size:9px;color:#64748B;text-transform:uppercase;letter-spacing:.4px;margin-bottom:3px">'+label+'</div>'
@@ -53143,8 +53351,8 @@ function _mktInner(prof){
     +'Re-pushing the same deal ref updates the descriptive fields only \u2014 status, outcome, offers, bidders, award state '
     +'and the original submission date are never reset by a re-push.'
    +'</div>'
-   +'<button id="mkt-go"'+(prof.canWrite?'':' disabled')+' onclick="_mktDoPush()" style="width:100%;padding:11px;border-radius:8px;cursor:'+(prof.canWrite?'pointer':'not-allowed')+';font-family:inherit;font-size:12.5px;font-weight:800;'
-    +'background:'+(prof.canWrite?'rgba(74,222,128,.16)':'rgba(100,116,139,.14)')+';border:1px solid '+(prof.canWrite?'rgba(74,222,128,.5)':'rgba(100,116,139,.4)')+';color:'+(prof.canWrite?'#86EFAC':'#64748B')+'">\u2197 Push to Marketplace</button>'
+   +'<button id="mkt-go"'+(prof.hasProfile?'':' disabled')+' onclick="_mktDoPush()" style="width:100%;padding:11px;border-radius:8px;cursor:'+(prof.hasProfile?'pointer':'not-allowed')+';font-family:inherit;font-size:12.5px;font-weight:800;'
+    +'background:'+(prof.hasProfile?'rgba(74,222,128,.16)':'rgba(100,116,139,.14)')+';border:1px solid '+(prof.hasProfile?'rgba(74,222,128,.5)':'rgba(100,116,139,.4)')+';color:'+(prof.hasProfile?'#86EFAC':'#64748B')+'">\u2197 Push to Marketplace</button>'
    +'<div id="mkt-log" style="margin-top:12px;font-size:11px;line-height:1.7"></div>'
   +'</div></div>';
 }
@@ -53175,11 +53383,44 @@ function _mktDoPush(){
     btn.disabled=false; btn.textContent='\u2197 Push to Marketplace';
     var msg=(e&&e.message)?e.message:String(e);
     var code=(e&&e.code)?e.code:'';
-    log.innerHTML='<span style="color:#FCA5A5">\u2717 '+(code?code+' \u2014 ':'')+msg+'</span>'
-      +(code==='permission-denied'?'<div style="color:#94A3B8;margin-top:4px">A permission-denied here is almost always the role check on <code>fin_profiles</code>.</div>':'');
+    var hint='';
+    if(code==='permission-denied' || /permission/i.test(msg)){
+      /* The client no longer gates on role, so a denial here came from
+         firestore.rules and names something only an admin can change.
+         Say which of the three likely causes it is, in order. */
+      hint = '<div style="color:#94A3B8;margin-top:6px;line-height:1.7">'
+        + 'The editor allowed this; <strong>firestore.rules</strong> refused it. In order of likelihood:'
+        + '<br>1. <code>approved</code> is <code>false</code> on your <code>fin_profiles</code> record'
+        + (window.__mktLastProf && window.__mktLastProf.approved===false
+            ? ' &mdash; <strong style="color:#FCA5A5">this is your case</strong>' : '')
+        + '<br>2. the rules restrict creation to <code>developer</code> / <code>originator</code>'
+        + (window.__mktLastProf ? ' (your role: <strong>'+esc(window.__mktLastProf.role)+'</strong>)' : '')
+        + '<br>3. the rules require a field this push does not set'
+        + '<br><br>All three are server-side. Run <code>OmegaMarketDiag()</code> for the full picture to send an admin.'
+        + '</div>';
+    }
+    log.innerHTML='<span style="color:#FCA5A5">\u2717 '+(code?code+' \u2014 ':'')+msg+'</span>'+hint;
   });
 }
 window._mktDoPush=_mktDoPush;
+
+function _mktClaim(){
+  var log=document.getElementById('mkt-log');
+  if(log) log.innerHTML='<span style="color:#94A3B8">Setting orgKey on your profile\u2026</span>';
+  mktClaimOrgKey().then(function(r){
+    if(log) log.innerHTML='<span style="color:#4ADE80">\u2713 orgKey set to <code>'+r.orgKey+'</code>'
+      +(r.already?' (already set)':'')+'. Reopening\u2026</span>';
+    setTimeout(function(){
+      var h=document.getElementById('mkt-modal'); if(h) h.remove();
+      openMarketplacePush();
+    }, 900);
+  })['catch'](function(e){
+    if(log) log.innerHTML='<span style="color:#FCA5A5">\u2717 '+((e&&e.message)||e)
+      +'<div style="color:#94A3B8;margin-top:4px">The rules allow this only while the stored orgKey is empty. '
+      +'If it is already set to something else, an administrator has to move you.</div></span>';
+  });
+}
+window._mktClaim=_mktClaim;
 
 /* ═══════════════════════════════════════════════════════════════════
  *  OmegaRotDiag()  --  why is my rotation not sticking?
@@ -53237,7 +53478,7 @@ window.OmegaRotDiag = OmegaRotDiag;
  *  OmegaBuild.check('feature') answers "is this fix actually deployed?"
  *  in one call, without needing to know what to look for.
  * ═══════════════════════════════════════════════════════════════════ */
-var OMEGA_BUILD = { id:'908711d08d41', built:'2026-08-11 23:09 UTC' };
+var OMEGA_BUILD = { id:'6bf29c1a6c2e', built:'2026-08-11 23:09 UTC' };
 window.OMEGA_BUILD = OMEGA_BUILD;
 window.OmegaBuild = {
   id: OMEGA_BUILD.id,
@@ -53258,6 +53499,11 @@ window.OmegaBuild = {
     solarInEstimate:function(){ return typeof omegaSolarCost==='function'; },
     elRenderCenter: function(){ return typeof _elRenderSize==='function'; },
     elementZoomScale:function(){ return typeof omegaRescaleElements==='function'; },
+    marketAnyValidated:function(){
+      /* The gate must not refuse on role. Probe the shape of the profile
+         object rather than the source text. */
+      return typeof OmegaMarketDiag==='function';
+    },
     derRotateRender:function(){
       /* The DER wrapper must put a rotate() on its own group. Probe the
          real renderer with a rotated array and read the DOM back. */
