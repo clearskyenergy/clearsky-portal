@@ -359,6 +359,10 @@ textarea{min-height:70px;resize:vertical}
 .pp-msg.me .pp-bub{background:var(--accent-soft);border-color:transparent}
 .pp-msg.me .pp-when{text-align:right}
 .pp-send{display:flex;gap:9px;align-items:flex-end}
+.pp-err{margin-top:9px;padding:9px 11px;border-radius:var(--r);font-size:12.5px;line-height:1.5;
+  background:#FBECEA;border:1px solid #E8BDB8;color:#8E2F27}
+.pp-err b{display:block;margin-bottom:2px}
+.pp-err code{font-family:var(--mono);font-size:11.5px}
 #ppMsg{flex:1;border:1px solid var(--rule);border-radius:var(--r);padding:11px 13px;
   font:400 13.5px/1.55 var(--sans);color:var(--ink);background:var(--surface);outline:none;
   resize:vertical;min-height:44px}
@@ -1459,8 +1463,20 @@ function esc(v) {
     }
 
 
-    /* ---- actions ---- */
-    var me = OI.currentEmail();
+    /* ---- actions ----
+       Every listener below is attached AFTER this line, so anything that
+       throws here silently un-wires the entire portal — the Send button, the
+       quote buttons and the file links all render and then do nothing, with
+       no error anywhere. OI.currentEmail is not guaranteed to exist in an
+       older omega-intake.js, so it is resolved defensively rather than
+       called outright. The signed-in user is already known locally; the
+       library was never the only source for it. */
+    var me = '';
+    try {
+      if (typeof OI.currentEmail === 'function') me = OI.currentEmail() || '';
+    } catch (e) { me = ''; }
+    if (!me) me = (user && user.email) || (currentUser() || {}).email || '';
+
     function after(msg) {
       return function () { hydrate(); renderNotice(); refreshList(); if (msg) setMsg(msg); };
     }
@@ -1495,15 +1511,95 @@ function esc(v) {
         .catch(function (e) { bP.disabled = false; fail(e); });
     });
 
+    /* A failed send used to report itself through setMsg, which writes to the
+       action bar at the top of the page — while the customer is looking at
+       the message box near the bottom. From where they were standing the
+       button simply did nothing. Errors now land next to the thing that
+       failed, and carry the Firestore code, because "permission-denied" and
+       "the library is missing" need completely different fixes. */
+    function sendErr(html) {
+      var box = document.getElementById('ppSendErr');
+      if (!box) {
+        box = document.createElement('div');
+        box.id = 'ppSendErr'; box.className = 'pp-err';
+        var host = slot.querySelector('.pp-send');
+        if (host && host.parentNode) host.parentNode.appendChild(box);
+      }
+      box.innerHTML = html;
+    }
+    function clearSendErr() {
+      var box = document.getElementById('ppSendErr');
+      if (box && box.parentNode) box.parentNode.removeChild(box);
+    }
+
+    /* Mirrors the client half of OI.postMessage when the library predates it,
+       so a stale cached omega-intake.js degrades to a working send instead of
+       a dead button. */
+    function sendMessage(text) {
+      if (typeof OI.postMessage === 'function') {
+        return Promise.resolve(OI.postMessage(rec, text, 'client', me));
+      }
+      rec.messages = rec.messages || [];
+      rec.messages.push({
+        id: 'm_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 7),
+        side: 'client', text: text, by: me,
+        at: OI.nowIso ? OI.nowIso() : new Date().toISOString()
+      });
+      rec.notify = rec.notify || {};
+      rec.notify.unreadForStaff = true;
+      rec.updatedAt = OI.nowIso ? OI.nowIso() : new Date().toISOString();
+      return OI.store().save(rec);
+    }
+
     var bS = $('#ppSend');
     if (bS) bS.addEventListener('click', function () {
       var box = $('#ppMsg');
       var text = (box && box.value || '').trim();
       if (!text) return;
+      clearSendErr();
       bS.disabled = true;
-      OI.postMessage(rec, text, 'client', me).then(after())
-        .catch(function (e) { bS.disabled = false; fail(e); });
+      /* try/catch as well as .catch: a missing OI member throws synchronously,
+         which never reaches a promise rejection handler and would leave the
+         button disabled forever. */
+      var p;
+      try { p = sendMessage(text); }
+      catch (e) { bS.disabled = false; return sendErr(explainSend(e)); }
+
+      Promise.resolve(p).then(function () {
+        clearSendErr();
+        if (box) box.value = '';
+        after('Message sent.')();
+      })['catch'](function (e) {
+        bS.disabled = false;
+        sendErr(explainSend(e));
+        console.error('[intake] message send failed:', e);
+      });
     });
+
+    /* Turns the raw failure into the one sentence that identifies which
+       system said no. */
+    function explainSend(e) {
+      var code = (e && (e.code || e.name)) || '';
+      var msg  = (e && e.message) || 'Unknown error';
+      if (/permission|denied|insufficient/i.test(code + ' ' + msg)) {
+        return '<b>Your account isn\u2019t allowed to post on this project.</b>'
+             + 'The message was not saved. This is a Firestore rules result, not a '
+             + 'typo \u2014 send this to your administrator: <code>' + esc(code || 'permission-denied')
+             + '</code> for <code>' + esc(rec.intakeId || 'this record') + '</code> as <code>'
+             + esc(me || 'unknown user') + '</code>.';
+      }
+      if (/is not a function|undefined/i.test(msg)) {
+        return '<b>The messaging library didn\u2019t load.</b>'
+             + 'Reload the page. If it happens again, <code>omega-intake.js</code> is stale or '
+             + 'blocked \u2014 tell your administrator: <code>' + esc(msg) + '</code>.';
+      }
+      if (/offline|network|unavailable/i.test(code + ' ' + msg)) {
+        return '<b>No connection to the server.</b>Your message wasn\u2019t sent. '
+             + 'Check your network and try again \u2014 the text is still in the box.';
+      }
+      return '<b>That message didn\u2019t send.</b>' + esc(msg)
+           + ' \u2014 the text is still in the box, so nothing was lost.';
+    }
 
     /* Resolved per click rather than baked into the href, so the storage rules
        are consulted every time instead of once, forever, by whoever the link
@@ -1526,7 +1622,12 @@ function esc(v) {
 
     var bK = $('#ppAck');
     if (bK) bK.addEventListener('click', function () {
-      OI.markMessagesRead(rec, 'client').then(after()).catch(fail);
+      if (typeof OI.markMessagesRead !== 'function') {
+        rec.notify = rec.notify || {};
+        rec.notify.unreadForClient = false;
+        return OI.store().save(rec).then(after())['catch'](fail);
+      }
+      OI.markMessagesRead(rec, 'client').then(after())['catch'](fail);
     });
   }
 

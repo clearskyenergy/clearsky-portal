@@ -131,6 +131,24 @@ td .sub{font-size:11.5px;color:var(--muted);margin-top:2px}
 textarea{width:100%;border:1px solid var(--rule);border-radius:var(--r);padding:8px 10px;
   min-height:64px;resize:vertical;outline:none;background:var(--surface)}
 textarea:focus,input:focus{border-color:var(--accent)}
+/* ---- messages ---- */
+.thread{max-height:300px;overflow-y:auto;display:flex;flex-direction:column;gap:9px;
+  margin-bottom:11px;padding:2px}
+.msg{max-width:86%;display:flex;flex-direction:column;gap:3px}
+.msg.them{align-self:flex-start}          /* the client */
+.msg.me{align-self:flex-end;align-items:flex-end}  /* us */
+.msg .mw{font-family:var(--mono);font-size:9.5px;letter-spacing:.1em;text-transform:uppercase;
+  color:var(--faint)}
+.msg .bub{padding:8px 11px;border-radius:12px;font-size:12.5px;line-height:1.5;
+  white-space:pre-wrap;word-break:break-word}
+.msg.them .bub{background:var(--sunken);border:1px solid var(--rule);border-bottom-left-radius:4px}
+.msg.me .bub{background:var(--accent);color:#fff;border:1px solid var(--accent);
+  border-bottom-right-radius:4px}
+.msg .mt{font-family:var(--mono);font-size:9.5px;color:var(--faint)}
+.msg.unread .bub{border-color:var(--hot);box-shadow:0 0 0 2px var(--hot-soft)}
+.send{display:flex;gap:8px;align-items:flex-end}
+.send textarea{min-height:52px}
+.mempty{font-size:12.5px;color:var(--muted);line-height:1.55;margin-bottom:11px}
 .log{list-style:none;margin:0;padding:0;font-size:12px}
 .log li{padding:7px 0;border-bottom:1px dashed var(--rule-2)}
 .log li:last-child{border-bottom:0}
@@ -273,6 +291,63 @@ textarea:focus,input:focus{border-color:var(--accent)}
     setTimeout(function () { t.remove(); }, 2600);
   }
 
+  /* ------------------------------------------------------------ messages
+     The client half of this conversation shipped in intake.html; this half
+     did not, so every question a customer typed went into rec.messages and
+     sat there unread. Read state is tracked here with notify.staffReadAt
+     rather than a boolean flag, because a flag can only answer "is there
+     anything new" and loses the answer the moment a second message lands
+     while the first is being read. A timestamp survives that. */
+  function nowIso() { return OI.nowIso ? OI.nowIso() : new Date().toISOString(); }
+
+  function messages(r) {
+    return (r.messages || []).slice().sort(function (a, b) {
+      return Date.parse(a.at || 0) - Date.parse(b.at || 0);
+    });
+  }
+  function staffReadAt(r) {
+    return (r.notify && r.notify.staffReadAt) ? Date.parse(r.notify.staffReadAt) : 0;
+  }
+  function isUnread(r, m) {
+    return m.side === 'client' && Date.parse(m.at || 0) > staffReadAt(r);
+  }
+  function unreadCount(r) {
+    var n = 0;
+    (r.messages || []).forEach(function (m) { if (isUnread(r, m)) n++; });
+    return n;
+  }
+
+  /* Prefer the shared library so admin and client write identical shapes.
+     The fallback exists because omega-intake.js is versioned separately and
+     an older copy on a slow CDN would otherwise silently swallow the reply. */
+  function postStaffMessage(r, text) {
+    if (typeof OI.postMessage === 'function') {
+      return Promise.resolve(OI.postMessage(r, text, 'staff', admin.email));
+    }
+    r.messages = r.messages || [];
+    r.messages.push({
+      id: 'm_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 7),
+      side: 'staff', text: text, at: nowIso(), by: admin.email
+    });
+    r.notify = r.notify || {};
+    r.notify.unreadForClient = true;
+    if (typeof OI.logActivity === 'function') {
+      OI.logActivity(r, 'message', 'Replied to the client.', admin.email);
+    }
+    r.updatedAt = nowIso();
+    return OI.store().save(r);
+  }
+
+  /* One write, and only when something is actually unread — opening a record
+     to check a phone number should not cost a Firestore write. */
+  function markRead(r) {
+    if (!unreadCount(r)) return Promise.resolve(false);
+    r.notify = r.notify || {};
+    r.notify.staffReadAt = nowIso();
+    r.notify.unreadForStaff = false;
+    return OI.store().save(r).then(function () { return true; });
+  }
+
   /* ------------------------------------------------------------- load */
   function load() {
     return OI.store().listAll().then(function (list) {
@@ -305,13 +380,15 @@ textarea:focus,input:focus{border-color:var(--accent)}
     { key: 'changes_requested', label: 'Blocked' },
     { key: 'in_production', label: 'In production' },
     { key: 'delivered', label: 'Delivered' },
-    { key: 'self', label: 'Self-serve' }
+    { key: 'self', label: 'Self-serve' },
+    { key: 'unread', label: 'Client replies' }
   ];
   function renderCounters() {
     var c = $('#counters'); c.innerHTML = '';
     COUNTER_DEFS.forEach(function (d) {
       var n = d.key === '' ? all.length
         : d.key === 'self' ? all.filter(function (r) { return r.routing === 'self'; }).length
+        : d.key === 'unread' ? all.filter(function (r) { return unreadCount(r) > 0; }).length
         : all.filter(function (r) { return r.status === d.key; }).length;
       var b = el('button', 'counter'); b.type = 'button';
       b.setAttribute('aria-pressed', statusFilter === d.key ? 'true' : 'false');
@@ -333,6 +410,7 @@ textarea:focus,input:focus{border-color:var(--accent)}
       if (rt && r.routing !== rt) return false;
       if (sc && !(r.scope && r.scope[sc] && r.scope[sc].enabled)) return false;
       if (statusFilter === 'self') { if (r.routing !== 'self') return false; }
+      else if (statusFilter === 'unread') { if (!unreadCount(r)) return false; }
       else if (statusFilter && r.status !== statusFilter) return false;
       if (q) {
         var hay = [r.project.name, r.project.siteName, r.project.city, r.project.state,
@@ -390,6 +468,12 @@ textarea:focus,input:focus{border-color:var(--accent)}
 
       var c5 = el('td');
       c5.appendChild(el('span', 'badge ' + st.tone, st.label));
+      var un = unreadCount(r);
+      if (un) {
+        var mb = el('div'); mb.style.marginTop = '4px';
+        mb.appendChild(el('span', 'badge hot', un + ' reply' + (un === 1 ? '' : 's')));
+        c5.appendChild(mb);
+      }
       if (r.notify && r.notify.unreadForClient) {
         var nb = el('div'); nb.style.marginTop = '4px';
         nb.appendChild(el('span', 'badge good', 'Notified'));
@@ -414,6 +498,11 @@ textarea:focus,input:focus{border-color:var(--accent)}
     $('#detail').hidden = false;
     renderDetail();
     renderRows();
+    /* Deliberately after the render: the panel still shows what was new while
+       it is being read, and only the queue row behind it goes quiet. */
+    markRead(r).then(function (changed) {
+      if (changed) { renderCounters(); renderRows(); }
+    })['catch'](function () { /* read state is not worth a toast */ });
   }
   function closeDetail() {
     sel = null; $('#shell').classList.remove('open'); $('#detail').hidden = true; renderRows();
@@ -447,6 +536,70 @@ textarea:focus,input:focus{border-color:var(--accent)}
     x.setAttribute('aria-label', 'Close'); x.addEventListener('click', closeDetail);
     head.appendChild(x);
     d.appendChild(head);
+
+    /* ---------- messages ----------
+       Above the intake data on purpose. A customer question is the only thing
+       in this panel with someone waiting on the other end of it; parcel numbers
+       and utility names are not going anywhere. */
+    var sm = el('div', 'sect');
+    var mh = el('h3', null, 'Messages');
+    var un = unreadCount(r);
+    if (un) {
+      var ub = el('span', 'badge hot', un + ' new');
+      ub.style.marginLeft = '8px';
+      mh.appendChild(ub);
+    }
+    sm.appendChild(mh);
+
+    var thread = messages(r);
+    if (!thread.length) {
+      sm.appendChild(el('div', 'mempty',
+        'No messages yet. Anything sent here appears in the client\u2019s project portal.'));
+    } else {
+      var tw = el('div', 'thread');
+      thread.forEach(function (m) {
+        var mine = m.side !== 'client';
+        var row = el('div', 'msg ' + (mine ? 'me' : 'them') + (isUnread(r, m) ? ' unread' : ''));
+        row.appendChild(el('div', 'mw', mine
+          ? (m.by || admin.email || 'You')
+          : (r.customer.contactName || r.customer.email || 'Client')));
+        row.appendChild(el('div', 'bub', m.text || ''));
+        row.appendChild(el('div', 'mt', m.at ? new Date(m.at).toLocaleString() : ''));
+        tw.appendChild(row);
+      });
+      sm.appendChild(tw);
+      /* newest at the bottom, so scroll there — otherwise a long history opens
+         on a question answered three weeks ago */
+      setTimeout(function () { tw.scrollTop = tw.scrollHeight; }, 0);
+    }
+
+    var sendRow = el('div', 'send');
+    var box = document.createElement('textarea');
+    box.placeholder = 'Reply to the client\u2026';
+    box.setAttribute('aria-label', 'Reply to the client');
+    var sendBtn = el('button', 'btn primary', 'Send');
+    sendBtn.type = 'button';
+
+    function doSend() {
+      var text = (box.value || '').trim();
+      if (!text) return;
+      sendBtn.disabled = true;
+      postStaffMessage(r, text).then(function () {
+        box.value = '';
+        toast('Reply sent \u2014 the client sees it in their portal.');
+        apply(); renderDetail();
+      })['catch'](function (e) {
+        sendBtn.disabled = false;
+        toast('Could not send: ' + ((e && e.message) || 'write rejected'));
+      });
+    }
+    sendBtn.addEventListener('click', doSend);
+    box.addEventListener('keydown', function (e) {
+      if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') { e.preventDefault(); doSend(); }
+    });
+    sendRow.appendChild(box); sendRow.appendChild(sendBtn);
+    sm.appendChild(sendRow);
+    d.appendChild(sm);
 
     /* customer + site */
     var s1 = el('div', 'sect'); s1.appendChild(el('h3', null, 'Customer & site'));
