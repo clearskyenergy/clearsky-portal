@@ -1730,8 +1730,14 @@ function pick(obj,res){
   }
   return "";
 }
+/* Chicago already returns mixed case ("Ron", "Marsh & McLennan Companies").
+   Blind title-casing turns McLennan into Mclennan and O'Brien into O'brien,
+   so only normalise when the source is SHOUTING. */
 function titleCase(s){
-  return String(s||"").toLowerCase().replace(/\b([a-z])/g,function(m,c){return c.toUpperCase();}).trim();
+  var t=String(s||"").trim();
+  if(!t) return "";
+  if(t!==t.toUpperCase()) return t;              /* already cased — leave it */
+  return t.toLowerCase().replace(/\b([a-z])/g,function(m,c){return c.toUpperCase();});
 }
 
 var CONTACT={busy:false};
@@ -1855,10 +1861,11 @@ function chicagoOwners(root,accts,stats){
   (function next(){
     if(done>=chunks.length){
       for(var r=0;r<FD.rows.length;r++){
-        var a=FD.rows[r].acct;
-        if(a&&byAcct[a]&&byAcct[a].length){
-          FD.rows[r].people=byAcct[a].slice(0,4).join("; ");
-          stats.people++;
+        var a=FD.rows[r].acct, g=a?byAcct[a]:null;
+        if(g&&(g.people.length||g.entities.length)){
+          /* a named human beats a corporate shareholder for a first call */
+          FD.rows[r].people=g.people.concat(g.entities).slice(0,4).join("; ");
+          if(g.people.length) stats.people++;
         }
       }
       finishContacts(stats); return;
@@ -1871,14 +1878,22 @@ function chicagoOwners(root,accts,stats){
           for(var n=0;n<j.length;n++){
             var o=j[n];
             var acct=pick(o,[/account_number/i,/^account/i]); if(!acct) continue;
-            var first=pick(o,[/first.*name/i]), last=pick(o,[/last.*name/i]);
-            var nm=(titleCase(first)+" "+titleCase(last)).trim();
-            if(!nm) nm=titleCase(pick(o,[/legal.*name/i,/owner/i]));
+            var first=pick(o,[/owner_first_name/i,/first.*name/i]);
+            var mid  =pick(o,[/middle_initial/i,/middle/i]);
+            var last =pick(o,[/owner_last_name/i,/last.*name/i]);
+            var person=[titleCase(first),(mid?titleCase(mid).charAt(0)+".":""),titleCase(last)]
+                       .filter(Boolean).join(" ").trim();
+            /* Entity shareholders come through as owner_name with no first/last.
+               Match owner_name explicitly — a loose /owner/i would also hit
+               owner_title and print "Shareholder" as somebody's name. */
+            var entity=titleCase(pick(o,[/^owner_name$/i,/owner_name/i,/legal.*name/i]));
+            var nm=person||entity;
             if(!nm) continue;
-            var title=pick(o,[/title/i,/role/i]);
+            var title=pick(o,[/owner_title/i,/^title$/i,/role/i]);
             var label=nm+(title?(" \u00b7 "+titleCase(title)):"");
-            if(!byAcct[acct]) byAcct[acct]=[];
-            if(byAcct[acct].indexOf(label)<0) byAcct[acct].push(label);
+            if(!byAcct[acct]) byAcct[acct]={people:[],entities:[]};
+            var bucket=person?byAcct[acct].people:byAcct[acct].entities;
+            if(bucket.indexOf(label)<0) bucket.push(label);
           }
         } else diag("chiowner chunk "+done+": "+(err?err.message:"empty"));
         done++; next();
