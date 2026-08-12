@@ -14761,6 +14761,99 @@ function analyze8760(text){
    ══════════════════════════════════════════════════════════════════════ */
 var _cvSel = null, _cvDrag = null;
 
+
+/* ═══════════════════════════════════════════════════════════════════
+ *  DRAG A WHOLE CONDUIT RUN
+ *  ------------------------------------------------------------------
+ *  The run's hit-line only ever listened for click, dblclick and
+ *  contextmenu. Clicking showed the vertex handles, and from there the
+ *  only thing that moved was ONE point at a time -- so a run you wanted
+ *  to shift by ten feet had to be re-routed vertex by vertex, and to
+ *  anyone who just grabbed it, it sat there.
+ *
+ *  Grab anywhere on the line and the whole run moves. The vertex handles
+ *  still do what they did, so re-routing a single point is unchanged.
+ *
+ *  Endpoints welded to equipment are the one exception: dragging the run
+ *  would tear it off the gear it feeds, so those points are held and the
+ *  run stretches from them. That is what you want when you are moving a
+ *  trench out of a driveway but the panel has not moved.
+ * ═══════════════════════════════════════════════════════════════════ */
+var _cdDrag = null, _cdJustDragged = false;
+
+function _cdDragStart(c, ev){
+  var xy = (typeof _evtXY==='function') ? _evtXY(ev) : null;
+  if(!xy || !c || !c.pts || !c.pts.length) return false;
+  /* Auto-routed runs are regenerated from their endpoints, so moving one
+     by hand would be undone on the next reroute. Say so rather than
+     letting it drift back. */
+  if(c.cluster || c.spine || c.tap || c.mv || c.chainFromEms){
+    if(typeof showBanner==='function')
+      showBanner('cond','This run is auto-routed \u2014 move the equipment it connects and it follows.');
+    return false;
+  }
+  _cdDrag = {
+    cid: c.id, x0: xy.x, y0: xy.y,
+    pts: c.pts.map(function(p){ return { x:p.x, y:p.y, held:!!p.elId }; }),
+    moved: false
+  };
+  try{ document.body.style.cursor='grabbing'; }catch(e){}
+  return true;
+}
+
+function _cdDragMove(ev){
+  if(!_cdDrag) return false;
+  var xy = (typeof _evtXY==='function') ? _evtXY(ev) : null;
+  if(!xy) return false;
+  var c=(S.conduits||[]).filter(function(z){ return z.id===_cdDrag.cid; })[0];
+  if(!c) return false;
+  var dx = xy.x-_cdDrag.x0, dy = xy.y-_cdDrag.y0;
+  if(!_cdDrag.moved && Math.hypot(dx,dy) < 3) return true;   /* let a click stay a click */
+  _cdDrag.moved = true;
+  for(var i=0;i<c.pts.length && i<_cdDrag.pts.length;i++){
+    var o=_cdDrag.pts[i];
+    if(o.held) continue;                    /* welded to equipment: stays put */
+    c.pts[i].x = o.x+dx; c.pts[i].y = o.y+dy;
+  }
+  try{ renderConduit(c); }catch(e){}
+  if(_cvSel===c.id){ try{ _cvShow(c.id); }catch(e){} }
+  return true;
+}
+
+function _cdDragEnd(){
+  if(!_cdDrag) return false;
+  var c=(S.conduits||[]).filter(function(z){ return z.id===_cdDrag.cid; })[0];
+  var moved=_cdDrag.moved;
+  _cdDrag=null;
+  _cdJustDragged = moved;
+  if(moved) setTimeout(function(){ _cdJustDragged=false; }, 0);
+  try{ document.body.style.cursor=''; }catch(e){}
+  if(!c || !moved) return false;
+  /* Same discipline as any other move: re-anchor to the ground, tell the
+     anchor engine its frozen offsets are stale, recompute the length, and
+     commit one history entry. */
+  try{ _cvRestamp(c); }catch(e){}
+  try{ if(window.OmegaReanchor) OmegaReanchor(c.id); }catch(e){}
+  try{ if(typeof _updateConduitSchedule==='function') _updateConduitSchedule(); }catch(e){}
+  try{ if(typeof updCondStat==='function') updCondStat(); }catch(e){}
+  try{ if(typeof pushHist==='function') pushHist(); }catch(e){}
+  return true;
+}
+window._cdDragStart=_cdDragStart;
+window._cdDragMove=_cdDragMove;
+window._cdDragEnd=_cdDragEnd;
+
+/* Wire into the global gesture stream, ahead of the canvas pan handler so
+   a drag on a run does not also pan the map. */
+document.addEventListener('mousemove', function(ev){
+  if(_cdDrag){ ev.preventDefault(); _cdDragMove(ev); }
+}, true);
+document.addEventListener('mouseup', function(){ if(_cdDrag) _cdDragEnd(); }, true);
+document.addEventListener('touchmove', function(ev){
+  if(_cdDrag && ev.touches && ev.touches[0]){ ev.preventDefault(); _cdDragMove(ev.touches[0]); }
+}, {capture:true, passive:false});
+document.addEventListener('touchend', function(){ if(_cdDrag) _cdDragEnd(); }, true);
+
 function _cvClear(){
   var lay=document.getElementById('cond-verts');
   if(lay && lay.parentNode) lay.parentNode.removeChild(lay);
@@ -15007,7 +15100,20 @@ function renderConduit(c){
   const hit=document.createElementNS('http://www.w3.org/2000/svg','polyline');
   hit.setAttribute('points',_drawPts.map(p=>`${p.x},${p.y}`).join(' '));
   hit.setAttribute('stroke','transparent');hit.setAttribute('stroke-width','14');hit.setAttribute('fill','none');
-  hit.style.cursor='pointer'; hit.style.pointerEvents='all';
+  hit.style.cursor='move'; hit.style.pointerEvents='all';
+  /* Grab the line itself to move the whole run. Registered before the
+     click handlers so the drag claims the gesture; a press that never
+     moves more than 3 px still falls through as a click. */
+  hit.addEventListener('mousedown', function(ev){
+    if(S.mode!=='select') return;
+    if(ev.button!==0 || ev.shiftKey || ev.altKey) return;
+    if(_cdDragStart(c, ev)){ ev.stopPropagation(); ev.preventDefault(); }
+  });
+  hit.addEventListener('touchstart', function(ev){
+    if(S.mode!=='select') return;
+    if(!ev.touches || !ev.touches[0]) return;
+    if(_cdDragStart(c, ev.touches[0])){ ev.stopPropagation(); }
+  }, {passive:false});
   hit.addEventListener('dblclick',function(ev){ ev.stopPropagation();
     if(ev.shiftKey){ _cdShowLabel(c); return; }
     _cdHideLabel(c); var gg=document.querySelector('[data-cid="'+c.id+'"]'); if(gg&&gg.parentNode)gg.parentNode.removeChild(gg); renderConduit(c); });
@@ -15016,6 +15122,7 @@ function renderConduit(c){
   hit.addEventListener('click', function(e) {
     if(S.mode !== 'select') return;
     if(e.shiftKey){ e.stopPropagation(); if(typeof selectConduit==='function') selectConduit(c.id); return; }
+    if(_cdJustDragged) return;           /* the gesture was a move, not a vertex insert */
     // Auto-managed conduits (cluster taps/spine, MV trench, EMS chains) are
     // re-routed programmatically -- don't let stray clicks inject vertices
     // (that was causing runs to "explode" with bad points).
@@ -15025,6 +15132,7 @@ function renderConduit(c){
   });
   hit.addEventListener('click', function(e){
     if(e.shiftKey) return;               /* shift-click still selects for delete */
+    if(_cdJustDragged){ _cdJustDragged=false; e.stopPropagation(); return; }
     e.stopPropagation();
     var xy=(typeof _evtXY==='function') ? _evtXY(e) : null;
     if(e.altKey && xy){ _cvInsert(c.id, xy.x, xy.y); return; }
@@ -47552,17 +47660,38 @@ function _pvDrawModules(g, gx, gy, gw, gh, ppf, sh){
      pitch on a roof left most of the deck empty and looked wrong,
      because it was. */
   var isRoof = (sh.mount==='roof');
-  var pitchPx = isRoof ? (modHpx + gapPx)
-                       : (modHpx / Math.max(0.15, gcr));
 
-  /* The LAST row needs only its own depth -- there is no row behind it to
-     shade, so it does not need a full pitch of clearance. floor(depth/pitch)
-     silently dropped that row: a 29 ft buildable depth at an 18 ft pitch
-     computed 1 row when 2 genuinely fit (row two spans 18.0-25.2 ft).
+  /* ── ORIENTATION ──────────────────────────────────────────────────
+     The layout was locked to PORTRAIT, and on a shallow area that wastes
+     most of the depth. A 50 x 25 ft buildable strip at GCR 0.40 takes an
+     18 ft pitch portrait, so exactly ONE row fits -- row two would span
+     18.0 to 25.2 ft against 25 ft of depth -- and the rest sits empty.
+     Turn the same module landscape and the pitch drops to 9 ft: three
+     rows, 18 modules instead of 13, and the strip is actually used.
+
+     Real layouts choose orientation to suit the area, so this tries both
+     and takes whichever fits more modules. Nothing about the physics
+     changes -- same module, same GCR, same shading pitch -- it is the
+     packing that improves. Ties go to portrait, the conventional default.
+
+     The LAST row needs only its own depth: there is no row behind it to
+     shade, so it does not need a full pitch of clearance behind it.
      Same reasoning for the last column and its trailing gap. */
-  var cols = Math.floor((gw + gapPx) / (modWpx + gapPx));
-  var rows = Math.floor((gh - modHpx) / pitchPx) + 1;
-  if(gh < modHpx) rows = 0;
+  function _fit(mw, mh){
+    var pitch = isRoof ? (mh + gapPx) : (mh / Math.max(0.15, gcr));
+    var c = Math.floor((gw + gapPx) / (mw + gapPx));
+    var r = (gh < mh) ? 0 : Math.floor((gh - mh) / pitch) + 1;
+    if(c < 0) c = 0;
+    return { w:mw, h:mh, pitch:pitch, cols:c, rows:r, n:Math.max(0,c*r) };
+  }
+  var portrait  = _fit(modWpx, modHpx);
+  var landscape = _fit(modHpx, modWpx);
+  var best = (landscape.n > portrait.n) ? landscape : portrait;
+
+  modWpx = best.w; modHpx = best.h;
+  var pitchPx = best.pitch;
+  var cols = best.cols, rows = best.rows;
+  var orient = (best===landscape) ? 'landscape' : 'portrait';
   /* A small array can compute to zero rows -- 1,500 sqft with a 10 ft
      setback leaves 18.7 ft of depth against an 18 ft row pitch, so one
      bad rounding drops it to none. Returning 0 there drew NOTHING and
@@ -47572,7 +47701,7 @@ function _pvDrawModules(g, gx, gy, gw, gh, ppf, sh){
   if(cols<1 || rows<1){
     var fitsOne = (gw >= modWpx) && (gh >= modHpx);
     if(!fitsOne){
-      sh._pvDrawn = { mode:'too-small', rows:rows, cols:cols, modules:0,
+      sh._pvDrawn = { mode:'too-small', rows:rows, cols:cols, modules:0, orient:orient,
                       note:'buildable area smaller than one module at this scale' };
       return 0;
     }
@@ -47598,7 +47727,7 @@ function _pvDrawModules(g, gx, gy, gw, gh, ppf, sh){
       band.setAttribute('stroke-width',Math.min(0.7, Math.max(0.25, modHpx*0.06)));
       g.appendChild(band);
     }
-    sh._pvDrawn = { mode:'bands', rows:rows, cols:cols, modules:total };
+    sh._pvDrawn = { mode:'bands', rows:rows, cols:cols, modules:total, orient:orient };
     return 0;
   }
 
@@ -47622,7 +47751,7 @@ function _pvDrawModules(g, gx, gy, gw, gh, ppf, sh){
       drawn++;
     }
   }
-  sh._pvDrawn = { mode:'modules', rows:rows, cols:cols, modules:drawn };
+  sh._pvDrawn = { mode:'modules', rows:rows, cols:cols, modules:drawn, orient:orient };
   return drawn;
 }
 window._pvDrawModules=_pvDrawModules;
@@ -53684,7 +53813,7 @@ window.OmegaRotDiag = OmegaRotDiag;
  *  OmegaBuild.check('feature') answers "is this fix actually deployed?"
  *  in one call, without needing to know what to look for.
  * ═══════════════════════════════════════════════════════════════════ */
-var OMEGA_BUILD = { id:'b6343e6f63bc', built:'2026-08-11 23:09 UTC' };
+var OMEGA_BUILD = { id:'afb036cbbdc6', built:'2026-08-11 23:09 UTC' };
 window.OMEGA_BUILD = OMEGA_BUILD;
 window.OmegaBuild = {
   id: OMEGA_BUILD.id,
@@ -53706,6 +53835,7 @@ window.OmegaBuild = {
     elRenderCenter: function(){ return typeof _elRenderSize==='function'; },
     elementZoomScale:function(){ return typeof omegaRescaleElements==='function'; },
     ghostSweep:function(){ return typeof omegaSweepGhosts==='function'; },
+    conduitDrag:function(){ return typeof _cdDragStart==='function'; },
     pvDetailView:function(){ return typeof _pvDrawModules==='function'; },
     marketAnyValidated:function(){
       /* The gate must not refuse on role. Probe the shape of the profile
