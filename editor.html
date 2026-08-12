@@ -8584,6 +8584,15 @@ function uP(k,v){
   else if(k==='spec'){el.spec=v;let sp=dom.querySelector('.nd-spec');if(sp)sp.textContent=v;else if(v){sp=document.createElement('div');sp.className='nd-spec';sp.textContent=v;dom.querySelector('.eq-node')?.appendChild(sp);}}
   else if(k==='w'){
     el.w=+v;
+    /* Same as the drag-resize path: update the ground footprint or the next
+       zoom reverts this edit. */
+    try{
+      if(S.pxPerFt>0){
+        el._geoWFt = el.w/S.pxPerFt;
+        if(el.h>0) el._geoHFt = el.h/S.pxPerFt;
+        el._domW = el.w;
+      }
+    }catch(e){}
     const bd=dom.querySelector('.elbody');if(bd){bd.style.width=v+'px';bd.style.minWidth=v+'px';}
     if(el.type==='eq'){const fn=ICONS[el.eqId]||ICONS.jbox;const os=dom.querySelector('svg');if(os){const t=document.createElement('div');t.innerHTML=fn(+v);os.replaceWith(t.firstChild);}}
     if(el.type==='evgear'){ el.h=Math.round((+v)*(el.aspect||0.72)); if(typeof _reRenderEl==='function'){ _reRenderEl(el.id); if(typeof rerouteTrenchConduits==='function') rerouteTrenchConduits(); return; } }
@@ -8804,6 +8813,17 @@ function globalMM(e){
     if(c==='se'||c==='ne')newW=Math.max(30,S.rsW+dx);
     if(c==='sw'||c==='nw'){newW=Math.max(30,S.rsW-dx);el.x=scr.left+Math.max(0,(cx-scr.left));dom.style.left=el.x+'px';}
     el.w=Math.round(newW);
+    /* A hand resize changes the element's REAL size, not just its pixels.
+       The stored ground footprint governs every future zoom, so leaving it
+       at the old value means the next map settle quietly snaps the element
+       back to the size the user just changed away from. */
+    try{
+      if(S.pxPerFt>0){
+        el._geoWFt = el.w/S.pxPerFt;
+        if(el.h>0) el._geoHFt = el.h/S.pxPerFt;
+        el._domW = el.w;
+      }
+    }catch(e){}
     const bd=dom.querySelector('.elbody');if(bd){bd.style.width=el.w+'px';bd.style.minWidth=el.w+'px';}
     if(el.type==='eq'){const fn=ICONS[el.eqId]||ICONS.jbox;const os=dom.querySelector('svg');if(os){const t=document.createElement('div');t.innerHTML=fn(el.w);os.replaceWith(t.firstChild);}}
     /* ── evgear (guided-build EV kit: EVSE, meter bank, outdoor panel) ──
@@ -14761,6 +14781,45 @@ function analyze8760(text){
    ══════════════════════════════════════════════════════════════════════ */
 var _cvSel = null, _cvDrag = null;
 
+/* ═══════════════════════════════════════════════════════════════════
+ *  MODEL-SPACE POINTER  (_scXY)
+ *  ------------------------------------------------------------------
+ *  THE VERTEX-JUMP BUG.  c.pts live in #sc model pixels — the same space
+ *  as el.x/el.y and everything _geoReprojectAll writes. _evtXY() returns
+ *  raw VIEWPORT coordinates (e.clientX/clientY). The vertex editor was
+ *  assigning one straight into the other:
+ *
+ *      c.pts[i].x = xy.x;          // client px written as model px
+ *
+ *  So the instant you moved a grabbed handle, the point teleported by the
+ *  canvas's offset inside the window — roughly (-scRect.left, -scRect.top),
+ *  which on a normal layout is a couple hundred pixels up and to the left.
+ *  It read as "random" because the offset changes with the ribbon height,
+ *  the results rail, browser chrome and window position, so the jump was a
+ *  different distance every session.
+ *
+ *  _cdDragMove survived this only because it works in DELTAS (xy - x0), and
+ *  a client-space delta happens to equal a model-space delta at 1:1 scale.
+ *  That is why grabbing the LINE worked and grabbing a POINT did not.
+ *
+ *  This is the transform the older in-render 'cvert' handles already used,
+ *  factored out so there is exactly one of it. The offsetWidth/rect ratio
+ *  keeps it correct if #sc is ever CSS-scaled (print preview, fit-to-page).
+ * ═══════════════════════════════════════════════════════════════════ */
+function _scXY(e){
+  var sc=document.getElementById('sc');
+  var t=(e && e.touches && e.touches.length) ? e.touches[0]
+      : (e && e.changedTouches && e.changedTouches.length) ? e.changedTouches[0] : e;
+  if(!sc || !t) return null;
+  var r=sc.getBoundingClientRect();
+  if(!r.width || !r.height) return null;
+  return {
+    x: (t.clientX - r.left) * (sc.offsetWidth  / r.width),
+    y: (t.clientY - r.top ) * (sc.offsetHeight / r.height)
+  };
+}
+window._scXY=_scXY;
+
 
 /* ═══════════════════════════════════════════════════════════════════
  *  DRAG A WHOLE CONDUIT RUN
@@ -14782,8 +14841,26 @@ var _cvSel = null, _cvDrag = null;
 var _cdDrag = null, _cdJustDragged = false;
 
 function _cdDragStart(c, ev){
-  var xy = (typeof _evtXY==='function') ? _evtXY(ev) : null;
+  var xy = _scXY(ev);
   if(!xy || !c || !c.pts || !c.pts.length) return false;
+  /* Belt and braces on the stacking fix: if this run is in vertex-edit mode
+     and the press landed on one of its handles, that is a POINT edit, not a
+     run move. Paint order should already have given the handle the event —
+     but any future appendChild(g) that slips past _cvRaise would silently
+     turn every vertex drag back into a whole-run drag, and that failure is
+     invisible until someone tries to re-route. Decide by geometry, which
+     cannot be re-stacked. */
+  if(_cvSel===c.id){
+    var hp=(typeof _bankedPts==='function') ? _bankedPts(c) : c.pts;
+    for(var vi=0; vi<c.pts.length; vi++){
+      var dpv=hp[vi]||c.pts[vi];
+      if(Math.hypot(xy.x-dpv.x, xy.y-dpv.y) <= 8){
+        var pv=c.pts[vi];
+        _cvDrag={ cid:c.id, i:vi, ox:pv.x-xy.x, oy:pv.y-xy.y, moved:false };
+        return true;                    /* claim the gesture for the point */
+      }
+    }
+  }
   /* Auto-routed runs are regenerated from their endpoints, so moving one
      by hand would be undone on the next reroute. Say so rather than
      letting it drift back. */
@@ -14803,7 +14880,7 @@ function _cdDragStart(c, ev){
 
 function _cdDragMove(ev){
   if(!_cdDrag) return false;
-  var xy = (typeof _evtXY==='function') ? _evtXY(ev) : null;
+  var xy = _scXY(ev);
   if(!xy) return false;
   var c=(S.conduits||[]).filter(function(z){ return z.id===_cdDrag.cid; })[0];
   if(!c) return false;
@@ -14815,8 +14892,13 @@ function _cdDragMove(ev){
     if(o.held) continue;                    /* welded to equipment: stays put */
     c.pts[i].x = o.x+dx; c.pts[i].y = o.y+dy;
   }
+  /* The ground anchor now describes where this run USED to be. If the map
+     settles mid-gesture, _geoReprojectAll would reproject from it and yank
+     the run back under the cursor. Mark it stale; _cvRestamp re-stamps on
+     drop. */
+  _cvInvalidateAnchor(c);
   try{ renderConduit(c); }catch(e){}
-  if(_cvSel===c.id){ try{ _cvShow(c.id); }catch(e){} }
+  if(_cvSel===c.id){ try{ _cvSync(c); }catch(e){} }
   return true;
 }
 
@@ -14870,9 +14952,17 @@ function _cvShow(cid){
   var lay=_mkNS('g'); lay.setAttribute('id','cond-verts');
   lay.setAttribute('data-for',cid);
 
+  /* Inside a shared trench the run is DRAWN offset from its centreline so
+     the conduits bank side by side. Handles were placed on the raw
+     centreline, so on a corridor run they floated beside the line you can
+     see and you were grabbing at empty space. Put them where the line is;
+     the grab offset captured on mousedown carries the bank through the drag
+     so c.pts still moves by exactly the cursor delta. */
+  var _hp=(typeof _bankedPts==='function') ? _bankedPts(c) : c.pts;
   c.pts.forEach(function(pt,i){
+    var dp=_hp[i]||pt;
     var h=_mkNS('circle');
-    h.setAttribute('cx',pt.x); h.setAttribute('cy',pt.y);
+    h.setAttribute('cx',dp.x); h.setAttribute('cy',dp.y);
     h.setAttribute('r', (i===0||i===c.pts.length-1) ? 6 : 5);
     /* Endpoints read differently: they are usually welded to equipment, and
        dragging one detaches it from whatever it feeds. */
@@ -14880,38 +14970,127 @@ function _cvShow(cid){
     h.setAttribute('stroke','#08111F'); h.setAttribute('stroke-width','1.5');
     h.setAttribute('style','cursor:grab;pointer-events:all');
     h.setAttribute('data-cv', i);
+
+    /* Record where inside the handle the grab happened, so the point moves
+       WITH the cursor instead of snapping its centre onto it. Without this
+       every grab nudged the vertex by up to the handle radius before you
+       had moved at all — a small jump on top of the big one. */
+    var _grab=function(ev){
+      if(ev.altKey){ _cvRemove(cid, i); return true; }
+      var m=_scXY(ev); if(!m) return false;
+      var p=c.pts[i]; if(!p) return false;
+      _cvDrag={ cid:cid, i:i, ox:p.x-m.x, oy:p.y-m.y, moved:false };
+      h.setAttribute('style','cursor:grabbing;pointer-events:all');
+      return true;
+    };
     h.addEventListener('mousedown', function(ev){
       ev.stopPropagation(); ev.preventDefault();
-      if(ev.altKey){ _cvRemove(cid, i); return; }
-      _cvDrag={ cid:cid, i:i };
-      h.setAttribute('style','cursor:grabbing;pointer-events:all');
+      _grab(ev);
     });
+    h.addEventListener('touchstart', function(ev){
+      ev.stopPropagation(); if(ev.cancelable) ev.preventDefault();
+      _grab(ev);
+    }, {passive:false});
     lay.appendChild(h);
   });
   svg.appendChild(lay);
 }
 window._cvShow=_cvShow;
 
+/* Move the existing handles to match c.pts.
+
+   _cvMove used to call _cvShow() on every mousemove, which tore down the
+   whole #cond-verts layer and rebuilt it — destroying the very circle the
+   pointer was holding, dropping its :active state and its listeners, and
+   re-running a full DOM build 60 times a second. Nudging cx/cy on the nodes
+   that already exist keeps the grabbed handle alive under the cursor. */
+function _cvSync(c){
+  if(!c) return;
+  var lay=document.getElementById('cond-verts');
+  if(!lay || lay.getAttribute('data-for')!==c.id) return;
+  var hp=(typeof _bankedPts==='function') ? _bankedPts(c) : c.pts;
+  var hs=lay.childNodes;
+  for(var i=0;i<hs.length && i<c.pts.length;i++){
+    if(!hs[i].setAttribute) continue;
+    var dp=hp[i]||c.pts[i];
+    hs[i].setAttribute('cx', dp.x);
+    hs[i].setAttribute('cy', dp.y);
+  }
+}
+window._cvSync=_cvSync;
+
+/* Keep the handle layer on top of the linework.
+
+   SVG has no z-index — it paints in document order, last child wins. Both
+   exits of renderConduit end with svg.appendChild(g), so EVERY repaint of a
+   run re-stacked its transparent 14px-wide hit-line above #cond-verts. The
+   handles were still drawn in the right place (they are painted before the
+   line, so you could see them through it), but the press landed on the line,
+   not the dot — which handed the gesture to _cdDragStart and moved the WHOLE
+   RUN instead of the point.
+
+   That is why it looked correct until you touched it: _cvShow appended the
+   layer last, so the first press was fine; _cvMove then called
+   renderConduit, the line went back on top, and every press after that
+   grabbed the run. */
+function _cvRaise(){
+  var lay=document.getElementById('cond-verts');
+  if(lay && lay.parentNode) lay.parentNode.appendChild(lay);
+}
+window._cvRaise=_cvRaise;
+
+/* A hand-edited run no longer matches its frozen lat/lng anchor. Leaving the
+   stale anchor in place lets the next map idle reproject the run back to
+   where it was — the "it snapped back" half of this bug. Drop the anchor and
+   the signature that says "pixels agree with anchor"; _cvRestamp rebuilds
+   both from the current points on drop. */
+function _cvInvalidateAnchor(c){
+  if(!c) return;
+  try{ delete c._geoPts; }catch(e){}
+  try{ delete c._geoSig; }catch(e){}
+}
+window._cvInvalidateAnchor=_cvInvalidateAnchor;
+
 function _cvMove(x,y){
   if(!_cvDrag) return false;
   var c=(S.conduits||[]).filter(function(z){return z.id===_cvDrag.cid;})[0];
-  if(!c || !c.pts[_cvDrag.i]) return false;
-  c.pts[_cvDrag.i].x=x; c.pts[_cvDrag.i].y=y;
-  /* A dragged point is no longer welded to an element. */
-  if(c.pts[_cvDrag.i].elId) delete c.pts[_cvDrag.i].elId;
-  if(_cvDrag.i===0) c.fromId=null;
-  if(_cvDrag.i===c.pts.length-1) c.toId=null;
+  var i=_cvDrag.i;
+  if(!c || !c.pts[i]) return false;
+  c.pts[i].x = x + (_cvDrag.ox||0);
+  c.pts[i].y = y + (_cvDrag.oy||0);
+  _cvDrag.moved=true;
+  /* A dragged point is no longer welded to an element.
+
+     fromId/toId were cleared here, but fromElId/toElId were not — and the
+     ENDPOINT WELD pass in _geoReprojectAll reads BOTH:
+         eid = c.fromId || c.fromElId
+     so a detached endpoint still named an element, and the next pan or zoom
+     snapped it straight back onto that element's centre (anything within
+     ~30 ft). You would re-route the end, let go, nudge the map, and watch it
+     jump home. Renounce every weld the reprojector can see. */
+  if(c.pts[i].elId) delete c.pts[i].elId;
+  if(i===0){ c.fromId=null; c.fromElId=null; }
+  if(i===c.pts.length-1){ c.toId=null; c.toElId=null; }
+  _cvInvalidateAnchor(c);
   if(typeof renderConduit==='function') renderConduit(c);
-  _cvShow(_cvDrag.cid);
+  _cvSync(c);
   return true;
 }
 
 function _cvEnd(){
   if(!_cvDrag) return false;
   var c=(S.conduits||[]).filter(function(z){return z.id===_cvDrag.cid;})[0];
+  var moved=!!_cvDrag.moved;
   _cvDrag=null;
   if(!c) return false;
+  /* A press that never moved is not an edit — it should not burn an undo
+     step, and it should not restamp the anchor either. */
+  if(!moved){ _cvShow(c.id); return false; }
   _cvRestamp(c);
+  try{ if(window.OmegaReanchor) OmegaReanchor(c.id); }catch(e){}
+  try{ if(typeof _updateConduitSchedule==='function') _updateConduitSchedule(); }catch(e){}
+  try{ if(typeof updCondStat==='function') updCondStat(); }catch(e){}
+  _cvShow(c.id);
   if(typeof pushHist==='function') pushHist();
   return true;
 }
@@ -14922,10 +15101,22 @@ function _cvRestamp(c){
   try{
     var ms=_liveMapState(), sz=_getCanvasSize();
     if(ms){
-      c._geoPts=c.pts.map(function(p){
+      var _cut=c.pts.map(function(p){
         var g=_pxToLatLng(p.x,p.y,ms,sz.w,sz.h);
         return g?{lat:g.lat,lng:g.lng}:null;
       });
+      /* A partial anchor is worse than none: _geoReprojectAll's length/null
+         guard would reject it and the run would stop tracking the map. */
+      if(_cut.every(function(g){ return g && g.lat!=null && g.lng!=null; })){
+        c._geoPts=_cut;
+        /* Record that the pixels now agree with the anchor we just wrote, or
+           Patch 42's stamper reads this edit as drift and re-anchors the run
+           to itself on the next map move. */
+        try{
+          if(typeof window.__omegaCondPxSig==='function')
+            c._geoSig=window.__omegaCondPxSig(c);
+        }catch(e){}
+      }
     }
   }catch(e){}
   try{
@@ -14945,14 +15136,33 @@ window._cvRestamp=_cvRestamp;
 function _cvInsert(cid, x, y){
   var c=(S.conduits||[]).filter(function(z){return z.id===cid;})[0];
   if(!c || !c.pts || c.pts.length<2) return;
-  var best=1, bd=Infinity;
+  /* Pick the segment by PERPENDICULAR distance to the segment, not by
+     distance to its midpoint.
+
+     The midpoint test is only right when every segment is the same length.
+     On a real run — a long trench leg meeting a short jog at the panel —
+     clicking near the far end of the long leg can sit closer to the SHORT
+     leg's midpoint, so the point was spliced in at the wrong index. The
+     polyline then had to double back to reach it, and the run visibly
+     folded over on itself: the other "random jump". */
+  var best=1, bd=Infinity, px=x, py=y;
   for(var i=0;i<c.pts.length-1;i++){
     var a=c.pts[i], b=c.pts[i+1];
-    var mx=(a.x+b.x)/2, my=(a.y+b.y)/2;
-    var d=Math.hypot(x-mx, y-my);
-    if(d<bd){ bd=d; best=i+1; }
+    var dx=b.x-a.x, dy=b.y-a.y;
+    var L2=dx*dx+dy*dy;
+    var t=L2>0 ? Math.max(0, Math.min(1, ((x-a.x)*dx+(y-a.y)*dy)/L2)) : 0;
+    var d=Math.hypot(x-(a.x+t*dx), y-(a.y+t*dy));
+    if(d<bd){
+      bd=d; best=i+1;
+      /* Drop the new vertex onto the run rather than wherever the click
+         landed, so the route does not kink the moment it is created.
+         Drag it off the line from there. */
+      px=a.x+t*dx; py=a.y+t*dy;
+    }
   }
-  c.pts.splice(best, 0, {x:x, y:y});
+  if(bd>30) return;                      /* click was not on this run */
+  c.pts.splice(best, 0, {x:px, y:py});
+  _cvInvalidateAnchor(c);                /* point count changed — old anchor is dead */
   _cvRestamp(c); _cvShow(cid);
   if(typeof pushHist==='function') pushHist();
 }
@@ -14962,6 +15172,7 @@ function _cvRemove(cid, i){
   var c=(S.conduits||[]).filter(function(z){return z.id===cid;})[0];
   if(!c || !c.pts || c.pts.length<=2) return;      /* a run needs two ends */
   c.pts.splice(i,1);
+  _cvInvalidateAnchor(c);                /* point count changed — old anchor is dead */
   _cvRestamp(c); _cvShow(cid);
   if(typeof pushHist==='function') pushHist();
 }
@@ -14970,10 +15181,18 @@ window._cvRemove=_cvRemove;
 /* Hook into the existing pointer stream rather than adding a second one. */
 document.addEventListener('mousemove', function(e){
   if(!_cvDrag) return;
-  var xy=(typeof _evtXY==='function') ? _evtXY(e) : null;
+  var xy=_scXY(e);
   if(xy){ e.preventDefault(); _cvMove(xy.x, xy.y); }
 }, true);
 document.addEventListener('mouseup', function(){ _cvEnd(); }, true);
+/* Same gesture from a touch device (iPad field use). */
+document.addEventListener('touchmove', function(e){
+  if(!_cvDrag) return;
+  var xy=_scXY(e);
+  if(xy){ if(e.cancelable) e.preventDefault(); _cvMove(xy.x, xy.y); }
+}, {capture:true, passive:false});
+document.addEventListener('touchend',    function(){ _cvEnd(); }, true);
+document.addEventListener('touchcancel', function(){ _cvEnd(); }, true);
 document.addEventListener('keydown', function(e){
   if(e.key==='Escape' && _cvSel) _cvClear();
 });
@@ -15134,7 +15353,7 @@ function renderConduit(c){
     if(e.shiftKey) return;               /* shift-click still selects for delete */
     if(_cdJustDragged){ _cdJustDragged=false; e.stopPropagation(); return; }
     e.stopPropagation();
-    var xy=(typeof _evtXY==='function') ? _evtXY(e) : null;
+    var xy=_scXY(e);
     if(e.altKey && xy){ _cvInsert(c.id, xy.x, xy.y); return; }
     _cvShow(c.id);
     if(typeof showBanner==='function')
@@ -15203,7 +15422,7 @@ function renderConduit(c){
      callout is a decision, not a style, so it is enforced here at the only
      place a box is actually drawn. Whatever else resets labelHidden, the box
      stays gone until the user asks for it back. */
-  if (c._userHid || c.labelHidden || window._hideConduitLabels) { svg.appendChild(g); return; }
+  if (c._userHid || c.labelHidden || window._hideConduitLabels) { svg.appendChild(g); if(typeof _cvRaise==='function') _cvRaise(); return; }
 
   //   Dot at line midpoint
   const dot = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
@@ -15363,8 +15582,19 @@ function renderConduit(c){
     vd.style.cursor = isEndpoint ? 'default' : 'move';
     vd.style.pointerEvents = 'all';
 
+    /* TWO handle systems draw on the same points: these in-render dots, and
+       the #cond-verts overlay raised by _cvShow when you click a run. The
+       overlay is appended to #csvg last, so it sat on top and swallowed the
+       mousedown — meaning the dot you aimed at was never the one that
+       handled the drag. Stand these down while the overlay owns this run so
+       there is one owner of the gesture, not two. */
+    if(typeof _cvSel!=='undefined' && _cvSel===c.id){
+      vd.style.pointerEvents='none';
+      vd.style.cursor='default';
+    }
+
     // Non-endpoint vertex: draggable to reshape conduit
-    if(!isEndpoint) {
+    if(!isEndpoint && !(typeof _cvSel!=='undefined' && _cvSel===c.id)) {
       vd.setAttribute('class', 'cvert');
       vd.addEventListener('mousedown', function(e) {
         if(S.mode !== 'select') return;
@@ -15440,6 +15670,8 @@ function renderConduit(c){
 
   g.appendChild(lg);
   svg.appendChild(g);
+  /* Handles must outrank the linework — see _cvRaise. */
+  if(typeof _cvRaise==='function') _cvRaise();
 }
 
 // Insert a new vertex point into a conduit at the clicked position
@@ -62210,17 +62442,41 @@ window._crmToastModal=_crmToastModal;
      anchor, or it bakes in the wrong dimensions permanently. */
   function stampSizes(){
     var s=S_(), p=ppf(); if(!s||!p) return;
+    /* THE REASON THIS WAS LEFT OFF: "a DCFC reading 3 ft wide was stamped at
+       the wrong zoom." A ground size is recorded ONCE and then governs the
+       element forever, so a stamp taken against a bogus pxPerFt bakes in a
+       permanently wrong footprint — worse than not scaling at all.
+
+       Two gates make the stamp trustworthy instead of hopeful:
+         1. Only stamp against a live, unfrozen map. A committed/frozen plot
+            or a hand-set scale is not the projection these pixels were drawn
+            at, so the division is meaningless.
+         2. Reject implausible results. Site equipment runs roughly 1–60 ft
+            across; anything outside that came from a bad scale, not a real
+            enclosure. Leaving it unstamped means it simply does not scale —
+            which is exactly the old behaviour, and safe. */
+    if(!live()) return;
     (s.elements||[]).forEach(function(el){
       if(el._geoLat==null) return;
-      if(el._geoWFt==null && el.w>0) el._geoWFt=el.w/p;
-      if(el._geoHFt==null && el.h>0) el._geoHFt=el.h/p;
+      if(el._geoWFt==null && el.w>0){
+        var wf = el.w/p;
+        if(wf >= 0.5 && wf <= 200) el._geoWFt = wf;
+      }
+      if(el._geoHFt==null && el.h>0){
+        var hf = el.h/p;
+        if(hf >= 0.5 && hf <= 200) el._geoHFt = hf;
+      }
     });
   }
   function rescale(){
     var s=S_(), p=ppf(); if(!s||!p) return;
     (s.elements||[]).forEach(function(el){
-      if(el._geoWFt!=null) el.w=Math.max(MIN_PX, el._geoWFt*p);
-      if(el._geoHFt!=null) el.h=Math.max(MIN_PX, el._geoHFt*p);
+      /* MIN_PX keeps a far zoom-out from reducing equipment to a sub-pixel
+         speck: below a few pixels an icon carries no information, and a
+         marker you can still see and click beats a mathematically correct
+         dot you cannot. */
+      if(el._geoWFt!=null) el.w=Math.max(MIN_PX, Math.round(el._geoWFt*p));
+      if(el._geoHFt!=null) el.h=Math.max(MIN_PX, Math.round(el._geoHFt*p));
     });
   }
   function syncDom(){
@@ -62229,6 +62485,20 @@ window._crmToastModal=_crmToastModal;
       if(el._geoWFt==null && el._geoHFt==null) return;
       var d=document.querySelector('[data-elid="'+el.id+'"]');
       if(!d) return;
+      /* Setting the wrapper's width is not enough. An 'eq' icon is an SVG
+         built at a fixed pixel size by ICONS[eqId](el.w), and an evgear's
+         artwork is sized against its own box — so a wrapper that changed
+         size around unchanged artwork just clips or letterboxes it. When
+         the size actually moved, rebuild the body from the model.
+
+         Guarded on a real change (>1px) because this runs on every map
+         settle, and re-rendering every element on every pan would cost far
+         more than it buys. */
+      var prev = el._domW;
+      if(el.w>0 && (prev==null || Math.abs(prev-el.w) > 1)){
+        el._domW = el.w;
+        if(typeof renderEl==='function'){ try{ renderEl(el); return; }catch(e){} }
+      }
       if(el.w>0) d.style.width=el.w+'px';
       if(el.h>0) d.style.height=el.h+'px';
     });
@@ -62351,7 +62621,39 @@ window._crmToastModal=_crmToastModal;
   /* The interval only keeps the map hooked; it no longer stamps. */
   setInterval(function(){ hook(); }, TICK);
   hook();
-  if(window.console) console.info('[geo] eager anchoring armed. OmegaGeo.status() / .audit() / .enableScaling()');
+
+  /* ── TURN SCALING ON ──────────────────────────────────────────────
+     This was left as a console-only opt-in, so in practice it never ran:
+     shapes re-derived their pixels from wFt on every zoom while equipment
+     stayed frozen at whatever zoom it was dropped at. One drawing, two
+     scales — zoom out and a meter can grows to span a driveway.
+
+     It is on by default now that stampSizes() refuses to record a footprint
+     from an untrustworthy projection (see the gates there), which was the
+     stated reason for holding it back.
+
+     Armed on a poll rather than at load: pxPerFt does not exist until the
+     map reports a zoom, and elements are not anchored until stamping has
+     run, so there is no single moment at load when this is safe to do. */
+  (function armScaling(){
+    var tries=0;
+    var t=setInterval(function(){
+      tries++;
+      if(tries > 150){ clearInterval(t); return; }   /* ~30s, then give up quietly */
+      if(scaling){ clearInterval(t); return; }
+      var s=S_();
+      if(!s || !live() || !(ppf() > 0)) return;
+      /* Wait for at least one anchored element: stamping ground sizes before
+         positions are anchored records footprints for items that may still
+         be re-projected onto different ground. */
+      var anchored=(s.elements||[]).some(function(el){ return el._geoLat!=null; });
+      if(!anchored) return;
+      clearInterval(t);
+      try{ window.OmegaGeo.enableScaling(); }catch(e){}
+    }, TICK);
+  })();
+
+  if(window.console) console.info('[geo] eager anchoring armed. OmegaGeo.status() / .audit() / .disableScaling()');
 })();
 </script>
 <!-- ================= COMPASS PALETTE =================
