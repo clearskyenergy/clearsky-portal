@@ -53292,6 +53292,125 @@ window.bnzReportDownload = bnzReportDownload;
  *  signed-in user's fin_profiles record, never from anything typed into
  *  a form -- a pushed deal has to be attributable to a real account.
  * ═══════════════════════════════════════════════════════════════════ */
+
+/* ═══════════════════════════════════════════════════════════════════
+ *  CITY / STATE EXTRACTION
+ *  ------------------------------------------------------------------
+ *  The first cut split on commas and took the last token as the state.
+ *  On "300 N Cummings Drive" -- no commas at all -- that produced city
+ *  "" and state "30", because the first token is the house number and it
+ *  was truncated to two characters. A house number is not a state, and
+ *  nothing checked.
+ *
+ *  Two changes. A state is now only accepted if it IS a state: matched
+ *  against the actual list of codes and full names. And when the address
+ *  box has no location in it, the PROJECT NAME is searched too -- people
+ *  routinely name a project "300 N Cummings Drive Washington IL", which
+ *  is where the city and state actually were in this case.
+ * ═══════════════════════════════════════════════════════════════════ */
+var US_STATES = {
+  AL:'Alabama',AK:'Alaska',AZ:'Arizona',AR:'Arkansas',CA:'California',CO:'Colorado',
+  CT:'Connecticut',DE:'Delaware',DC:'District of Columbia',FL:'Florida',GA:'Georgia',
+  HI:'Hawaii',ID:'Idaho',IL:'Illinois',IN:'Indiana',IA:'Iowa',KS:'Kansas',KY:'Kentucky',
+  LA:'Louisiana',ME:'Maine',MD:'Maryland',MA:'Massachusetts',MI:'Michigan',MN:'Minnesota',
+  MS:'Mississippi',MO:'Missouri',MT:'Montana',NE:'Nebraska',NV:'Nevada',NH:'New Hampshire',
+  NJ:'New Jersey',NM:'New Mexico',NY:'New York',NC:'North Carolina',ND:'North Dakota',
+  OH:'Ohio',OK:'Oklahoma',OR:'Oregon',PA:'Pennsylvania',RI:'Rhode Island',
+  SC:'South Carolina',SD:'South Dakota',TN:'Tennessee',TX:'Texas',UT:'Utah',VT:'Vermont',
+  VA:'Virginia',WA:'Washington',WV:'West Virginia',WI:'Wisconsin',WY:'Wyoming',PR:'Puerto Rico'
+};
+var _US_NAME_TO_CODE = (function(){
+  var m={}; for(var k in US_STATES){ if(US_STATES.hasOwnProperty(k)) m[US_STATES[k].toLowerCase()]=k; }
+  return m;
+})();
+
+/* Only a real state passes. Accepts a code or a full name. */
+function _mktState(tok){
+  if(!tok) return '';
+  var t=String(tok).trim().replace(/\./g,'');
+  if(/^[A-Za-z]{2}$/.test(t)){
+    var up=t.toUpperCase();
+    return US_STATES[up] ? up : '';
+  }
+  var byName=_US_NAME_TO_CODE[t.toLowerCase()];
+  return byName || '';
+}
+
+/* Pull { city, state } out of free text. Tries, in order:
+     "..., City, ST 60601"      the normal postal form
+     "..., City, Illinois"      full state name
+     "... City ST"              trailing, no commas -- how projects get named
+   Returns blanks rather than guesses when nothing matches. */
+function mktParseCityState(text){
+  var out={ city:'', state:'' };
+  if(!text) return out;
+  var s=String(text).trim();
+
+  /* Drop a trailing ZIP so it cannot be mistaken for anything. */
+  s = s.replace(/\s+\d{5}(-\d{4})?\s*$/, '').trim();
+
+  var parts=s.split(',').map(function(x){ return x.trim(); }).filter(Boolean);
+  if(parts.length>=2){
+    var st=_mktState(parts[parts.length-1]);
+    if(st){
+      out.state=st;
+      out.city=parts[parts.length-2]||'';
+      return out;
+    }
+    /* Last part is not a state -- it may be "City ST" in one segment. */
+    var tail=parts[parts.length-1].split(/\s+/);
+    var st2=_mktState(tail[tail.length-1]);
+    if(st2){
+      out.state=st2;
+      out.city=tail.slice(0,-1).join(' ') || (parts[parts.length-2]||'');
+      return out;
+    }
+    /* Still nothing: treat the last segment as a city only if it has no
+       digits -- "300 N Cummings Drive" is a street, not a city. */
+    if(!/\d/.test(parts[parts.length-1])) out.city=parts[parts.length-1];
+    return out;
+  }
+
+  /* No commas. Look for a state at the END of the string, and take the
+     word(s) before it as the city. */
+  var w=s.split(/\s+/);
+  for(var take=1; take<=2 && take<w.length; take++){
+    var cand=w.slice(w.length-take).join(' ');
+    var stx=_mktState(cand);
+    if(stx){
+      var before=w.slice(0, w.length-take);
+      /* City is the trailing words that are not part of a street address.
+         Stop at anything containing a digit or a street suffix. */
+      var STREET=/^(st|street|rd|road|dr|drive|ave|avenue|ln|lane|blvd|boulevard|way|ct|court|pl|place|pkwy|parkway|hwy|highway|ter|terrace|cir|circle|n|s|e|w|ne|nw|se|sw)$/i;
+      var city=[];
+      for(var i=before.length-1;i>=0;i--){
+        var tok=before[i];
+        if(/\d/.test(tok) || STREET.test(tok.replace(/\./g,''))) break;
+        city.unshift(tok);
+      }
+      out.state=stx;
+      out.city=city.join(' ');
+      return out;
+    }
+  }
+  return out;
+}
+window.mktParseCityState = mktParseCityState;
+
+/* Address box first, then the project name. People name projects after the
+   site, so the name is a legitimate second source -- and in practice it is
+   often the only one carrying the city and state. */
+function mktSiteCityState(){
+  var addr='', pname='';
+  try{ addr=(document.getElementById('addr-in')||{}).value||''; }catch(e){}
+  try{ pname=(document.getElementById('pname')||{}).value||''; }catch(e){}
+  var a=mktParseCityState(addr);
+  if(a.city && a.state) return a;
+  var b=mktParseCityState(pname);
+  return { city: a.city || b.city, state: a.state || b.state };
+}
+window.mktSiteCityState = mktSiteCityState;
+
 var MKT_COL = 'fin_projects';
 
 /* Same slug rule the portal uses, so an org resolves identically on both
@@ -53653,11 +53772,10 @@ function _mktInner(prof){
   var sum=mktDrawingSummary();
   var pname=''; try{ pname=(document.getElementById('pname')||{}).value||''; }catch(e){}
   var addr='';  try{ addr=(document.getElementById('addr-in')||{}).value||''; }catch(e){}
-  /* Best-effort split of "123 Main St, New Haven, CT" */
-  var parts=addr.split(',').map(function(x){ return x.trim(); });
-  var city = parts.length>=2 ? parts[parts.length-2] : '';
-  var st   = parts.length>=1 ? (parts[parts.length-1]||'').split(/\s+/)[0] : '';
-  if(st.length>2) st=st.slice(0,2).toUpperCase();
+  /* Address box first, project name second, and a state only counts if it
+     really is one -- see mktParseCityState. */
+  var _loc = mktSiteCityState();
+  var city = _loc.city, st = _loc.state;
 
   var head='<div style="padding:16px 20px;border-bottom:1px solid #1E3A5F;display:flex;align-items:center;justify-content:space-between">'
    +'<div><div style="font-size:16px;font-weight:800;color:#E2EEF9">\u2197 Push to Marketplace</div>'
@@ -53883,7 +54001,7 @@ window.OmegaRotDiag = OmegaRotDiag;
  *  OmegaBuild.check('feature') answers "is this fix actually deployed?"
  *  in one call, without needing to know what to look for.
  * ═══════════════════════════════════════════════════════════════════ */
-var OMEGA_BUILD = { id:'4ac51a8e94ce', built:'2026-08-11 23:09 UTC' };
+var OMEGA_BUILD = { id:'3faefc7bd60d', built:'2026-08-11 23:09 UTC' };
 window.OMEGA_BUILD = OMEGA_BUILD;
 window.OmegaBuild = {
   id: OMEGA_BUILD.id,
