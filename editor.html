@@ -22658,6 +22658,10 @@ async function _loadProject(id){
             : rawConduits);
       elems.forEach(el=>{S.elements.push(el);renderEl(el);});
       conds.forEach(c=>{S.conduits.push(c);renderConduit(c);});
+      /* Anything drawn by a path that already ran -- or that runs a beat
+         from now -- is swept against the model rather than trusted. */
+      try{ omegaSweepGhosts({quiet:true}); }catch(e){}
+      setTimeout(function(){ try{ omegaSweepGhosts(); }catch(e){} }, 700);
       // Shapes (BESS pads, EV chargers, DER, stencils) share the elements'
       // fate: geo-anchor them on the geo path, else cover-rescale them when the
       // canvas size changed. Never leave shapes at raw px while elements move.
@@ -53508,7 +53512,7 @@ window.OmegaRotDiag = OmegaRotDiag;
  *  OmegaBuild.check('feature') answers "is this fix actually deployed?"
  *  in one call, without needing to know what to look for.
  * ═══════════════════════════════════════════════════════════════════ */
-var OMEGA_BUILD = { id:'f5799e275e39', built:'2026-08-11 23:09 UTC' };
+var OMEGA_BUILD = { id:'006d974a6c73', built:'2026-08-11 23:09 UTC' };
 window.OMEGA_BUILD = OMEGA_BUILD;
 window.OmegaBuild = {
   id: OMEGA_BUILD.id,
@@ -53529,6 +53533,7 @@ window.OmegaBuild = {
     solarInEstimate:function(){ return typeof omegaSolarCost==='function'; },
     elRenderCenter: function(){ return typeof _elRenderSize==='function'; },
     elementZoomScale:function(){ return typeof omegaRescaleElements==='function'; },
+    ghostSweep:function(){ return typeof omegaSweepGhosts==='function'; },
     marketAnyValidated:function(){
       /* The gate must not refuse on role. Probe the shape of the profile
          object rather than the source text. */
@@ -53655,6 +53660,85 @@ window.omegaRescaleElements = omegaRescaleElements;
     wrapped.__omegaElScale=true;
     window._geoReprojectAll=wrapped;
     try{ console.info('[omega/elscale] element footprints now rescale with zoom'); }catch(e){}
+  }, 60);
+})();
+
+/* ═══════════════════════════════════════════════════════════════════
+ *  ORPHAN SWEEP
+ *  ------------------------------------------------------------------
+ *  Clearing #csvg before a render only helps if nothing draws AFTER the
+ *  clear. Several paths do -- map-idle reprojection, trench rebuilds,
+ *  the DCFC guided build, late async callbacks -- and any of them can
+ *  leave a node whose conduit is no longer in the model. The visible
+ *  result is a run on screen that the schedule does not count, which is
+ *  exactly the shape of the ghosts: COND 5 in the model, more than five
+ *  runs drawn.
+ *
+ *  Rather than chase every path, this is MODEL-DRIVEN: any node keyed to
+ *  an id that S.conduits no longer contains is an orphan by definition,
+ *  whoever drew it and whenever. Cheap enough to run after every load
+ *  and every reprojection.
+ * ═══════════════════════════════════════════════════════════════════ */
+function omegaSweepGhosts(opts){
+  var removed = { conduits:0, labels:0, elements:0, shapes:0, trench:0 };
+  try{
+    var liveC = {}, liveE = {}, liveS = {};
+    (S.conduits||[]).forEach(function(c){ if(c && c.id) liveC[c.id]=1; });
+    (S.elements||[]).forEach(function(e){ if(e && e.id) liveE[e.id]=1; });
+    (S.shapes  ||[]).forEach(function(s){ if(s && s.id) liveS[s.id]=1; });
+
+    function purge(sel, attr, live, key){
+      var nodes=document.querySelectorAll(sel);
+      for(var i=0;i<nodes.length;i++){
+        var id=nodes[i].getAttribute(attr);
+        if(id && !live[id]){
+          if(nodes[i].parentNode) nodes[i].parentNode.removeChild(nodes[i]);
+          removed[key]++;
+        }
+      }
+    }
+    purge('[data-cid]',      'data-cid',      liveC, 'conduits');
+    purge('[data-clbl-id]',  'data-clbl-id',  liveC, 'labels');
+    purge('[data-elid]',     'data-elid',     liveE, 'elements');
+    purge('[data-shid]',     'data-shid',     liveS, 'shapes');
+
+    /* The trench spine is drawn outside #csvg and is not keyed by id, so
+       it cannot be matched against the model -- drop it whenever there is
+       no trench left to draw. */
+    if(!S._trench && !(S._trenches && S._trenches.length)){
+      ['trench-spine','dcfc-trenches'].forEach(function(idv){
+        var n=document.getElementById(idv);
+        if(n && n.parentNode){ n.parentNode.removeChild(n); removed.trench++; }
+      });
+    }
+
+    var total = removed.conduits+removed.labels+removed.elements+removed.shapes+removed.trench;
+    if(total && (!opts || opts.quiet!==true)){
+      try{ console.info('[omega/ghost] removed '+total+' orphan node(s):', removed); }catch(e){}
+    }
+  }catch(e){}
+  return removed;
+}
+window.omegaSweepGhosts = omegaSweepGhosts;
+
+/* Run it after reprojection -- the pass most likely to have drawn late --
+   and once more a beat after load, when the async render paths have
+   settled. Wrapping keeps this independent of which anchoring generation
+   is live. */
+(function(){
+  var tries=0;
+  var iv=setInterval(function(){
+    if(++tries>200){ clearInterval(iv); return; }
+    var f=window._geoReprojectAll;
+    if(typeof f!=='function' || f.__omegaGhost) return;
+    clearInterval(iv);
+    var wrapped=function(){
+      var r=f.apply(this, arguments);
+      try{ omegaSweepGhosts({quiet:true}); }catch(e){}
+      return r;
+    };
+    wrapped.__omegaGhost=true;
+    window._geoReprojectAll=wrapped;
   }, 60);
 })();
 
