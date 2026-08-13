@@ -54158,6 +54158,12 @@ window.bnzReconcile = bnzReconcile;
    hyphenated numbering that geocoders regularly mis-split. Picking for
    the user is how the wrong building's energy data ends up in a report
    that a council reads. */
+/* Draft text for the address box. Module-level rather than in the model
+   because it is a half-typed input, not a saved property \u2014 it must never
+   reach the project file or an export. */
+var _bnzAddrDraft = null;
+window._bnzAddrDraft = null;
+
 function bnzAddressPanelHTML(sh){
   var b = bnzGet(sh);
   var d = b.nycData;
@@ -54165,7 +54171,16 @@ function bnzAddressPanelHTML(sh){
   var h = '<div style="border:1px solid rgba(52,211,153,.28);border-radius:7px;padding:10px;margin:8px 0;background:rgba(52,211,153,.05)">'
     +'<div style="font-size:10px;font-weight:700;letter-spacing:.5px;color:#6EE7B7;text-transform:uppercase;margin-bottom:6px">Address &amp; city records</div>'
     +'<div style="display:flex;gap:6px;align-items:center">'
-    +'<input id="bnz-addr-in" placeholder="e.g. 120 Broadway, Manhattan" value="'+esc(b.address||'')
+    /* THE FIELD KEEPS ITS OWN DRAFT.
+       This was rendered straight from b.address, so every panel rebuild
+       replaced whatever you had typed with the last address that was
+       SAVED. Type a new address, trigger any refresh, and the old one
+       reappears \u2014 which is exactly what happened after a wrong match had
+       already been stored: the Ohio address kept reverting to the Staten
+       Island one. The draft survives rebuilds and is cleared only when a
+       lookup actually lands. */
+    +'<input id="bnz-addr-in" data-bnzk="addrIn" placeholder="e.g. 120 Broadway, Manhattan"'
+    +' oninput="_bnzAddrDraft=this.value" value="'+esc(_bnzAddrDraft!=null?_bnzAddrDraft:(b.address||''))
     +'" style="flex:1;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.18);color:#E2EEF9;font-size:11px;padding:6px 8px;border-radius:5px;font-family:inherit">'
     +'<button onclick="bnzAddressLookup(\''+sh.id+'\')" style="background:rgba(52,211,153,.16);border:1px solid rgba(52,211,153,.45);color:#6EE7B7;font-size:10px;font-weight:700;padding:6px 10px;border-radius:5px;cursor:pointer;font-family:inherit">Look up</button>'
     +'</div>'
@@ -54191,7 +54206,13 @@ function bnzAddressPanelHTML(sh){
         +'<div>Built '+(P.yearBuilt||'\u2014')+' \u00b7 '+(P.numFloors||'\u2014')+' floors \u00b7 '
         +(P.unitsRes!=null?P.unitsRes+' res units':'\u2014')+' \u00b7 class '+esc(P.bldgClass||'\u2014')+'</div>';
     }
-    h += '<button onclick="bnzReconcileShow(\''+sh.id+'\')" style="margin-top:7px;background:rgba(147,197,253,.14);border:1px solid rgba(147,197,253,.4);color:#93C5FD;font-size:10px;font-weight:700;padding:5px 9px;border-radius:5px;cursor:pointer;font-family:inherit">Reconcile model vs filed</button>';
+    h += '<button onclick="bnzReconcileShow(\''+sh.id+'\')" style="margin-top:7px;background:rgba(147,197,253,.14);border:1px solid rgba(147,197,253,.4);color:#93C5FD;font-size:10px;font-weight:700;padding:5px 9px;border-radius:5px;cursor:pointer;font-family:inherit">Reconcile model vs filed</button>'
+      /* A wrong match must be undoable. Before the out-of-area guard
+         existed it was possible to attach a Staten Island lot to an Ohio
+         building, and nothing could take it off again \u2014 so the bad BBL,
+         its PLUTO record and its address stayed on the model and kept
+         reappearing in the field on every rebuild. */
+      + '<button onclick="bnzClearCityRecords(\''+sh.id+'\')" title="Detach this BBL, BIN, LL84 filing and PLUTO record from the building" style="margin-top:7px;margin-left:6px;background:none;border:1px solid #334155;color:#94A3B8;font-size:10px;padding:5px 9px;border-radius:5px;cursor:pointer;font-family:inherit">Clear city records</button>';
     h += '<div id="bnz-recon-out" style="margin-top:7px"></div>';
     h += '</div>';
   }
@@ -54229,9 +54250,16 @@ function bnzAddressLookup(shId){
     if(res.gaps.length)    sh2 += '<div style="margin-top:5px;color:#FBBF24">What is NOT known:<br>\u00b7 '+res.gaps.map(_nzEsc).join('<br>\u00b7 ')+'</div>';
     sh2 += '<div style="margin-top:5px"><span onclick="omegaSiteCard(\''+seed.id+'\')" '
       +'style="color:#7DD3FC;text-decoration:underline;cursor:pointer">Full site record</span></div>';
+    /* The lookup landed, so the box should show the resolved address
+       rather than what was typed. */
+    _bnzAddrDraft = null;
     out.innerHTML = sh2;
     try{ if(typeof pushHist==='function') pushHist(); }catch(e){}
-    setTimeout(function(){ try{ _bnzRefresh(); }catch(e){} }, 900);
+    /* A blind timed refresh here wiped this result off the screen a
+       second after it appeared — the panel rebuilt, and the message
+       lived in a node the rebuild destroyed. Nothing needs redrawing:
+       the model is already updated and the next real interaction
+       picks up the market banner. */
     return;
   }
 
@@ -54361,6 +54389,22 @@ function bnzAddressPick(shId, ix){
   });
 }
 window.bnzAddressPick = bnzAddressPick;
+
+function bnzClearCityRecords(shId){
+  var sh=(S.shapes||[]).filter(function(x){ return x.id===shId; })[0];
+  if(!sh || !sh.bnz) return;
+  var b=sh.bnz;
+  delete b.nycData; delete b.bbl; delete b.bin; delete b.siteRef;
+  /* Values that came FROM the record go with it. Anything the user typed
+     is theirs and stays. */
+  ['espmType','actualSiteEui','actualSourceEui','energyStarScore','actualGhgT']
+    .forEach(function(k){ delete b[k]; });
+  b.address = '';
+  _bnzAddrDraft = null;
+  try{ if(typeof pushHist==='function') pushHist(); }catch(e){}
+  _bnzRefresh();
+}
+window.bnzClearCityRecords=bnzClearCityRecords;
 
 function bnzReconcileShow(shId){
   var sh = (S.shapes||[]).filter(function(x){ return x.id===shId; })[0];
@@ -57054,8 +57098,17 @@ function _bnzCaptureFocus(){
     /* selectionStart throws on number inputs in some browsers, so it is
        read defensively rather than assumed. */
     try{ st=a.selectionStart; en=a.selectionEnd; }catch(e){}
-    return { key:k, start:st, end:en, raw:a.value, scroll:host.scrollTop,
-             inner:(function(){ var p=a.closest? a.closest('[data-bnzscroll]'):null; return p? p.scrollTop:null; })() };
+    /* #bnz-modal is a fixed full-screen flex backdrop; it never scrolls.
+       The element that actually scrolls is the card inside it, which is
+       why saving host.scrollTop preserved nothing and every rebuild threw
+       the panel back to the top \u2014 the "it jumps off the screen" symptom.
+       Find the real scroller by walking up from the focused node. */
+    var sc=a.parentNode, scTop=0;
+    while(sc && sc!==host){
+      if(sc.scrollHeight > sc.clientHeight + 4){ scTop=sc.scrollTop; break; }
+      sc=sc.parentNode;
+    }
+    return { key:k, start:st, end:en, raw:a.value, scroll:scTop };
   }catch(e){ return null; }
 }
 
@@ -57063,9 +57116,17 @@ function _bnzRestoreFocus(f){
   if(!f) return;
   try{
     var host=document.getElementById('bnz-modal'); if(!host) return;
-    if(f.scroll!=null) host.scrollTop=f.scroll;
     var el=host.querySelector('[data-bnzk="'+f.key+'"]');
     if(!el) return;
+    /* Put the scroller back before focusing. focus() scrolls the element
+       into view, so restoring scroll afterwards would fight it. */
+    if(f.scroll){
+      var sc=el.parentNode;
+      while(sc && sc!==host){
+        if(sc.scrollHeight > sc.clientHeight + 4){ sc.scrollTop=f.scroll; break; }
+        sc=sc.parentNode;
+      }
+    }
     el.focus({preventScroll:true});
     /* Put back the exact text that was in the box, not the model's version
        of it. Half-typed numbers are the reason: "1." parses to 1, so a
