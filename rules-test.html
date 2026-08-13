@@ -1,0 +1,465 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Intake rules test</title>
+<style>
+  :root{
+    --paper:#0F1419; --panel:#161C23; --sunken:#0B0F13;
+    --rule:#262F39; --ink:#E4EAF0; --muted:#8B99A8; --faint:#5C6B7A;
+    --pass:#3FB98C; --fail:#E4634F; --wait:#C9A227; --accent:#4A8DB8;
+    --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+    --r:6px;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--paper);color:var(--ink);
+    font:14px/1.55 -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;
+    padding:28px 20px 80px}
+  .wrap{max-width:820px;margin:0 auto}
+  h1{font-size:19px;margin:0 0 4px;font-weight:600;letter-spacing:-.01em}
+  .sub{color:var(--muted);font-size:13px;margin:0 0 24px}
+  .panel{background:var(--panel);border:1px solid var(--rule);border-radius:var(--r);
+    padding:16px;margin-bottom:16px}
+  h2{font-size:10px;font-family:var(--mono);letter-spacing:.14em;text-transform:uppercase;
+    color:var(--faint);margin:0 0 12px;font-weight:600}
+  label{display:block;font-size:12px;color:var(--muted);margin:0 0 4px}
+  input{width:100%;padding:8px 10px;background:var(--sunken);border:1px solid var(--rule);
+    border-radius:4px;color:var(--ink);font-family:var(--mono);font-size:12.5px;margin-bottom:10px}
+  input:focus{outline:2px solid var(--accent);outline-offset:-1px;border-color:var(--accent)}
+  button{padding:9px 16px;border-radius:4px;border:1px solid var(--rule);
+    background:var(--sunken);color:var(--ink);font-size:13px;cursor:pointer;font-weight:500}
+  button:hover:not(:disabled){border-color:var(--accent)}
+  button.go{background:var(--accent);border-color:var(--accent);color:#fff}
+  button:disabled{opacity:.45;cursor:not-allowed}
+  .row{display:flex;gap:9px;align-items:center;flex-wrap:wrap}
+  .facts{font-family:var(--mono);font-size:12px}
+  .facts div{display:flex;gap:10px;padding:3px 0;border-bottom:1px solid var(--rule)}
+  .facts div:last-child{border-bottom:0}
+  .facts b{color:var(--muted);font-weight:400;min-width:170px;flex:none}
+  .facts span{word-break:break-all}
+  .y{color:var(--pass)} .n{color:var(--fail)} .q{color:var(--faint)}
+  .t{border-bottom:1px solid var(--rule);padding:11px 0}
+  .t:last-child{border-bottom:0}
+  .th{display:flex;gap:10px;align-items:baseline}
+  .tag{font-family:var(--mono);font-size:10px;letter-spacing:.1em;padding:2px 7px;border-radius:3px;
+    flex:none;font-weight:600}
+  .tag.pass{background:rgba(63,185,140,.14);color:var(--pass)}
+  .tag.fail{background:rgba(228,99,79,.14);color:var(--fail)}
+  .tag.wait{background:rgba(201,162,39,.14);color:var(--wait)}
+  .tn{font-weight:500;font-size:13px}
+  .td{color:var(--muted);font-size:12.5px;margin:3px 0 0 0;padding-left:0}
+  .td code{font-family:var(--mono);font-size:11.5px;color:var(--ink)}
+  .verdict{padding:14px 16px;border-radius:var(--r);font-size:13.5px;line-height:1.6;margin-bottom:16px}
+  .verdict.good{background:rgba(63,185,140,.1);border:1px solid rgba(63,185,140,.35)}
+  .verdict.bad{background:rgba(228,99,79,.1);border:1px solid rgba(228,99,79,.35)}
+  .verdict b{display:block;margin-bottom:3px}
+  .warn{font-size:12.5px;color:var(--muted);line-height:1.6;margin-top:10px}
+  .warn strong{color:var(--ink);font-weight:600}
+  #msg{font-size:12.5px;color:var(--fail);min-height:18px}
+  .hide{display:none}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Intake rules test</h1>
+  <p class="sub">Runs real writes against the deployed rules. Six checks: one that must be
+     allowed, five that must be refused.</p>
+
+  <div class="panel" id="authPanel">
+    <h2>Sign in</h2>
+    <label for="em">Email</label>
+    <input id="em" type="email" autocomplete="username" placeholder="malcom@concordenergyusa.com">
+    <label for="pw">Password</label>
+    <input id="pw" type="password" autocomplete="current-password">
+    <div class="row">
+      <button class="go" id="signin">Sign in</button>
+      <span id="msg"></span>
+    </div>
+  </div>
+
+  <div class="panel hide" id="runPanel">
+    <h2>Record</h2>
+    <label for="rid">Intake ID</label>
+    <input id="rid" value="ix_mshuyz6p_g1qglo">
+    <div class="row">
+      <button class="go" id="run">Run tests</button>
+      <button id="signout">Sign out</button>
+      <span id="msg2" style="font-size:12.5px;color:var(--muted)"></span>
+    </div>
+    <p class="warn"><strong>One test posts a real message</strong> reading “Rules test — please
+      ignore.” into this project's thread. It cannot be removed afterwards from a client account:
+      the rule allows appending one entry, not removing one. Delete it from the Firestore console
+      if you'd rather it weren't there.</p>
+  </div>
+
+  <div class="panel hide" id="subPanel">
+    <h2>Submission</h2>
+    <p class="warn">Walks the exact write sequence “Submit to Omega” performs, one step at a
+      time, so the step that fails is named instead of the whole flow reporting
+      <strong>Missing or insufficient permissions</strong>. Filing writes to two collections —
+      <code>intake_projects</code> and <code>projects</code> — and either can be the one
+      refusing. Everything it creates is deleted at the end.</p>
+    <div class="row">
+      <button class="go" id="runsub">Test a submission</button>
+    </div>
+  </div>
+
+  <div id="out"></div>
+</div>
+
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+<script src="/config.js"></script>
+<script>
+(function () {
+  'use strict';
+  var $ = function (s) { return document.querySelector(s); };
+  var db, auth;
+
+  try {
+    if (!firebase.apps.length) firebase.initializeApp(window.CLEARSKY_CONFIG.firebase);
+    db = firebase.firestore(); auth = firebase.auth();
+  } catch (e) {
+    $('#msg').textContent = 'Firebase did not initialise: ' + e.message
+      + ' — this page must be served from the same origin as intake.html so /config.js loads.';
+    return;
+  }
+
+  auth.onAuthStateChanged(function (u) {
+    $('#authPanel').classList.toggle('hide', !!u);
+    $('#runPanel').classList.toggle('hide', !u);
+    $('#subPanel').classList.toggle('hide', !u);
+    if (u) $('#msg2').textContent = 'as ' + u.email;
+  });
+
+  $('#signin').addEventListener('click', function () {
+    $('#msg').textContent = '';
+    auth.signInWithEmailAndPassword($('#em').value.trim(), $('#pw').value)
+      ['catch'](function (e) { $('#msg').textContent = e.message; });
+  });
+  $('#signout').addEventListener('click', function () {
+    auth.signOut(); $('#out').innerHTML = '';
+  });
+
+  function esc(s) {
+    return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) {
+      return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c];
+    });
+  }
+  function orgAlias(d) {
+    return d === 'fenecon.de' || d === 'fenecon.us' ? 'fenecon.com' : d;
+  }
+  function domainOf(e) {
+    e = String(e || '').toLowerCase();
+    return /.+@.+/.test(e) ? orgAlias(e.split('@')[1]) : '';
+  }
+
+  /* Each test is one real operation with a REQUIRED outcome. A negative test that
+     is refused for the wrong reason still reads as a pass, so every negative
+     changes exactly one thing and leaves the rest of the document alone. */
+  function tests(ref, rec, user) {
+    var stamp = new Date().toISOString();
+    var mine = {
+      id: 'm_test_' + Date.now().toString(36),
+      side: 'client', text: 'Rules test \u2014 please ignore.',
+      by: user.email, at: stamp
+    };
+    var theirs = {
+      id: 'm_test_' + Date.now().toString(36) + 'x',
+      side: 'staff', text: 'Rules test \u2014 forged staff message.',
+      by: user.email, at: stamp
+    };
+    var U = firebase.firestore.FieldValue.arrayUnion;
+
+    return [
+      { name: 'Read the record',
+        want: 'allow',
+        why: 'Confirms one of <code>myOrgRecord()</code>, <code>isCreator()</code> or ' +
+             '<code>sameCompanyAsCreator()</code> already matches. If this fails, nothing ' +
+             'below is meaningful.',
+        run: function () { return ref.get(); } },
+
+      { name: 'Change the quote',
+        want: 'deny',
+        why: 'The customer is the party being charged. <code>quoteUnchanged()</code> must ' +
+             'still refuse this.',
+        run: function () { return ref.update({ 'quote.total': 999999 }); } },
+
+      { name: 'Move the status to delivered',
+        want: 'deny',
+        why: 'A client must not be able to mark their own job finished. ' +
+             '<code>clientStatus()</code> still guards ordinary writes.',
+        run: function () { return ref.update({ status: 'delivered' }); } },
+
+      { name: 'Edit the internal notes',
+        want: 'deny',
+        why: 'The <code>admin</code> map is ClearSky\u2019s working space. ' +
+             '<code>adminUnchanged()</code> must refuse this.',
+        run: function () { return ref.update({ 'admin.internalNotes': 'rules test' }); } },
+
+      { name: 'Post a message marked as staff',
+        want: 'deny',
+        why: '<code>newMessageIsClients()</code> stops a customer forging a reply that ' +
+             'renders as yours. Note: on a record still in <code>draft</code>, ' +
+             '<code>saved</code> or <code>submitted</code> the ordinary client branch permits ' +
+             'this anyway, so a pass here only proves the messaging branch is tight on an ' +
+             'advanced record.',
+        run: function () {
+          return ref.update({ messages: U(theirs), notify: rec.notify || {}, updatedAt: stamp });
+        } },
+
+      { name: 'Post a message as the client',
+        want: 'allow',
+        why: 'The fix. Three keys, one appended entry, marked <code>side: "client"</code> \u2014 ' +
+             'exactly what intake.html sends.',
+        run: function () {
+          var n = {}; Object.keys(rec.notify || {}).forEach(function (k) { n[k] = rec.notify[k]; });
+          n.unreadForStaff = true;
+          return ref.update({ messages: U(mine), notify: n, updatedAt: stamp });
+        } }
+    ];
+  }
+
+  /* ---- submission test -------------------------------------------------
+     Filing an intake is not one write. It creates a record, moves it to
+     'submitted', and for a build it also opens a document in /projects —
+     which has its OWN rule, with no creator fallback: orgId must equal
+     userOrg() outright. A single "insufficient permissions" from the portal
+     cannot distinguish those, so each step runs and reports separately. */
+  $('#runsub').addEventListener('click', function () {
+    var btn = this; btn.disabled = true;
+    var out = $('#out'); out.innerHTML = '';
+    var u = auth.currentUser;
+    var org = domainOf(u.email);
+    var id = 'ix_rulestest_' + Date.now().toString(36);
+    var iref = db.collection('intake_projects').doc(id);
+    var pref = db.collection('projects').doc(id);
+    var stamp = new Date().toISOString();
+
+    var steps = [
+      { name: 'Create the intake as a draft',
+        want: 'allow',
+        why: 'The bare create rule: <code>orgId</code>, <code>intakeId</code>, ' +
+             '<code>createdBy.uid</code>, <code>createdBy.email</code> and a client status. ' +
+             'A failure here is the create rule itself \u2014 most likely the ' +
+             '<code>createdBy.email</code> pin.',
+        run: function () {
+          return iref.set({
+            intakeId: id, orgId: org, status: 'draft',
+            createdBy: { uid: u.uid, email: u.email },
+            customer: { contactName: 'Rules test', email: u.email },
+            project: { siteName: 'Rules test \u2014 safe to delete' },
+            createdAt: stamp, updatedAt: stamp
+          });
+        } },
+
+      { name: 'Create it with a capitalised email',
+        want: 'allow',
+        why: 'The same create with <code>createdBy.email</code> in different case. If this is ' +
+             'the only failure, the <code>.lower()</code> fix on the email pin is missing from ' +
+             'the deployed rules.',
+        run: function () {
+          var alt = id + '_case';
+          return db.collection('intake_projects').doc(alt).set({
+            intakeId: alt, orgId: org, status: 'draft',
+            createdBy: { uid: u.uid, email: u.email.toUpperCase() },
+            createdAt: stamp, updatedAt: stamp
+          }).then(function () {
+            return db.collection('intake_projects').doc(alt).delete()['catch'](function () {});
+          });
+        } },
+
+      { name: 'Move it to submitted',
+        want: 'allow',
+        why: 'What the Submit button actually does. Needs <code>mineToWork()</code> plus ' +
+             '<code>clientStatusMove()</code>.',
+        run: function () { return iref.update({ status: 'submitted', updatedAt: stamp }); } },
+
+      { name: 'Open the matching project',
+        want: 'allow',
+        why: 'The second write. <code>/projects</code> create requires ' +
+             '<code>orgId == userOrg()</code> with no creator fallback \u2014 so an account ' +
+             'whose domain does not match the tenant fails HERE while the intake itself ' +
+             'succeeded.',
+        run: function () {
+          return pref.set({
+            orgId: org, uid: u.uid, name: 'Rules test \u2014 safe to delete',
+            createdAt: stamp
+          });
+        } },
+
+      { name: 'Clean up',
+        want: 'allow',
+        why: 'Returns the record to draft and removes both documents. If this fails, delete ' +
+             '<code>' + id + '</code> by hand from the console.',
+        run: function () {
+          return iref.update({ status: 'draft', updatedAt: stamp })
+            .then(function () { return iref.delete(); })
+            .then(function () { return pref.delete()['catch'](function () {}); });
+        } }
+    ];
+
+    var body = document.createElement('div');
+    body.className = 'panel';
+    body.innerHTML = '<h2>Submission steps</h2>';
+    out.appendChild(body);
+    var results = [];
+
+    steps.reduce(function (chain, s) {
+      return chain.then(function () {
+        return s.run().then(function () { return null; }, function (e) { return e; });
+      }).then(function (err) {
+        var got = err ? 'deny' : 'allow';
+        var ok = got === s.want;
+        results.push(ok);
+        var row = document.createElement('div');
+        row.className = 't';
+        row.innerHTML =
+          '<div class="th"><span class="tag ' + (ok ? 'pass' : 'fail') + '">'
+          + (ok ? 'PASS' : 'FAIL') + '</span><span class="tn">' + esc(s.name) + '</span></div>'
+          + '<p class="td">Expected <b>' + s.want + '</b>, got <b>' + got + '</b>'
+          + (err ? ' \u2014 <code>' + esc(err.code || err.message) + '</code>' : '')
+          + '. ' + s.why + '</p>';
+        body.appendChild(row);
+      });
+    }, Promise.resolve()).then(function () {
+      var v = document.createElement('div');
+      var first = results.indexOf(false);
+      if (first === -1) {
+        v.className = 'verdict good';
+        v.innerHTML = '<b>Every step is permitted.</b>The rules allow this account to file. '
+          + 'If the portal still refuses, the payload it sends differs from this one \u2014 '
+          + 'check the browser console on the real submit for the collection name in the error.';
+      } else {
+        v.className = 'verdict bad';
+        v.innerHTML = '<b>Refused at: ' + esc(steps[first].name) + '.</b>'
+          + (first === 3
+             ? 'The intake filed fine and <code>/projects</code> is the blocker \u2014 that rule '
+             + 'compares <code>orgId</code> to the email domain with no creator fallback.'
+             : first === 1
+             ? 'Case folding on the <code>createdBy.email</code> pin is missing from the '
+             + 'deployed rules.'
+             : 'That is the write to fix; the steps above it succeeded.');
+      }
+      out.insertBefore(v, out.firstChild);
+      btn.disabled = false;
+    });
+  });
+
+  $('#run').addEventListener('click', function () {
+    var id = $('#rid').value.trim();
+    if (!id) return;
+    var btn = this; btn.disabled = true;
+    var out = $('#out'); out.innerHTML = '';
+    var user = auth.currentUser;
+    var ref = db.collection('intake_projects').doc(id);
+
+    ref.get().then(function (snap) {
+      if (!snap.exists) throw new Error('No record with that id (or read refused).');
+      var rec = snap.data();
+      var cby = rec.createdBy || {};
+      var myOrg = domainOf(user.email);
+      var recOrg = domainOf(cby.email);
+
+      /* The record's own facts first. These are the three fields that decide
+         everything below, and not having seen them is what made this hard to
+         diagnose from the outside. */
+      var facts = [
+        ['signed in as', user.email],
+        ['my uid', user.uid],
+        ['my org (userOrg)', myOrg],
+        ['record orgId', rec.orgId],
+        ['record status', rec.status],
+        ['createdBy.uid', cby.uid || '(absent)'],
+        ['createdBy.email', cby.email || '(absent)'],
+        ['messages on record', (rec.messages || []).length]
+      ];
+      var gates = [
+        ['myOrgRecord()', rec.orgId === myOrg],
+        ['isCreator()', cby.uid === user.uid],
+        ['sameCompanyAsCreator()', recOrg !== '' && recOrg === myOrg]
+      ];
+
+      var h = '<div class="panel"><h2>What the record says</h2><div class="facts">';
+      facts.forEach(function (f) {
+        h += '<div><b>' + esc(f[0]) + '</b><span>' + esc(f[1]) + '</span></div>';
+      });
+      gates.forEach(function (g) {
+        h += '<div><b>' + esc(g[0]) + '</b><span class="' + (g[1] ? 'y' : 'n') + '">'
+           + (g[1] ? 'true' : 'false') + '</span></div>';
+      });
+      h += '</div>';
+      if (!gates.some(function (g) { return g[1]; })) {
+        h += '<p class="warn"><strong>None of the three access gates match.</strong> If the read '
+          +  'above still worked, you are getting in as ClearSky staff, which a customer will '
+          +  'not be. Test again from the customer\u2019s own account.</p>';
+      }
+      if (!cby.email) {
+        h += '<p class="warn"><strong>createdBy.email is missing on this record.</strong> '
+          +  'The domain gate reads that field, so it cannot fire here \u2014 access falls back '
+          +  'to orgId and uid.</p>';
+      }
+      h += '</div>';
+      out.innerHTML = h;
+
+      var list = tests(ref, rec, user);
+      var results = [];
+      var body = document.createElement('div');
+      body.className = 'panel';
+      body.innerHTML = '<h2>Checks</h2>';
+      out.appendChild(body);
+
+      /* Sequential, not parallel: these all write to one document, and
+         concurrent updates would race each other into misleading failures. */
+      return list.reduce(function (chain, t) {
+        return chain.then(function () {
+          return t.run().then(function () { return null; },
+                              function (e) { return e; });
+        }).then(function (err) {
+          var got = err ? 'deny' : 'allow';
+          var ok = got === t.want;
+          results.push(ok);
+          var row = document.createElement('div');
+          row.className = 't';
+          row.innerHTML =
+            '<div class="th"><span class="tag ' + (ok ? 'pass' : 'fail') + '">'
+            + (ok ? 'PASS' : 'FAIL') + '</span><span class="tn">' + esc(t.name) + '</span></div>'
+            + '<p class="td">Expected <b>' + t.want + '</b>, got <b>' + got + '</b>'
+            + (err ? ' \u2014 <code>' + esc(err.code || err.message) + '</code>' : '')
+            + '. ' + t.why + '</p>';
+          body.appendChild(row);
+        });
+      }, Promise.resolve()).then(function () {
+        var pass = results.filter(Boolean).length;
+        var sendOk = results[5];
+        var v = document.createElement('div');
+        v.className = 'verdict ' + (pass === results.length ? 'good' : 'bad');
+        if (pass === results.length) {
+          v.innerHTML = '<b>All ' + pass + ' checks passed.</b>The messaging branch is live and '
+            + 'the guards around it still hold. Messages will send from this account in this '
+            + 'record\u2019s current state.';
+        } else if (!sendOk) {
+          v.innerHTML = '<b>The send is still refused.</b>The rules file has not taken effect, '
+            + 'or this account matches none of the three gates. Check the live rules text in '
+            + 'Firebase Console for <code>mineToWork</code> \u2014 if it is not there, the deploy '
+            + 'did not land.';
+        } else {
+          v.innerHTML = '<b>The send works, but ' + (results.length - pass)
+            + ' guard(s) did not hold.</b>Something that should be refused was allowed. '
+            + 'Read the failures above before shipping this.';
+        }
+        out.insertBefore(v, out.firstChild);
+        btn.disabled = false;
+      });
+    })['catch'](function (e) {
+      out.innerHTML = '<div class="verdict bad"><b>Could not start.</b>'
+        + esc(e.code || e.message) + '</div>';
+      btn.disabled = false;
+    });
+  });
+})();
+</script>
+</body>
+</html>
