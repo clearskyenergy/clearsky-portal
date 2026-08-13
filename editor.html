@@ -55229,7 +55229,9 @@ function openMarketplacePush(){
   if(!host){
     host=document.createElement('div'); host.id='mkt-modal';
     host.setAttribute('style','position:fixed;inset:0;background:rgba(6,12,22,.82);z-index:10000;display:flex;align-items:center;justify-content:center;padding:20px');
-    host.onclick=function(e){ if(e.target===host) host.remove(); };
+    /* A pending keystroke is still only in a timer at this point. Flush
+       before tearing the panel down or the last thing typed is lost. */
+    host.onclick=function(e){ if(e.target===host){ try{ _bnzFlush(); }catch(err){} host.remove(); } };
     document.body.appendChild(host);
   }
   host.innerHTML='<div style="background:#0F1D30;border:1px solid #1E3A5F;border-radius:12px;padding:26px;color:#94A3B8;font-size:12px">Reading your marketplace profile\u2026</div>';
@@ -55740,29 +55742,152 @@ function openBuildingPanel(){
 }
 window.openBuildingPanel = openBuildingPanel;
 
+/* ═══════════════════════════════════════════════════════════════════
+ *  TYPING IN THE BUILDING PANEL
+ *  ------------------------------------------------------------------
+ *  THE BUG: every field was bound oninput -> _bnzSet -> _bnzRefresh,
+ *  and _bnzRefresh does
+ *
+ *      h.innerHTML = _bnzInner();
+ *
+ *  which destroys and rebuilds every node in the panel -- including the
+ *  input the caret is sitting in. So the first keystroke wrote "6",
+ *  rebuilt the DOM, and the field you were typing into no longer
+ *  existed. Focus fell back to the body and the second keystroke went
+ *  nowhere. You could enter exactly one character per click.
+ *
+ *  It also meant an entry like "1250" pushed four undo steps, and a
+ *  number cleared to retype briefly read as 0 through the whole cost
+ *  and carbon model.
+ *
+ *  THE FIX has three parts:
+ *    1. Every control carries a stable key (data-bnzk). After a rebuild
+ *       the panel restores focus and caret to the control with the same
+ *       key, so a refresh is invisible to someone typing.
+ *    2. Typing writes to the model immediately but DEFERS the rebuild.
+ *       Derived figures settle when you pause rather than fighting you
+ *       for the caret on every character.
+ *    3. History is debounced to match, so a typed number is one undo
+ *       step rather than one per digit.
+ * ═══════════════════════════════════════════════════════════════════ */
+
+/* Which control has the caret, and where in the text it sits. */
+function _bnzCaptureFocus(){
+  try{
+    var a=document.activeElement;
+    if(!a) return null;
+    var host=document.getElementById('bnz-modal');
+    if(!host || !host.contains(a)) return null;
+    var k=a.getAttribute && a.getAttribute('data-bnzk');
+    if(!k) return null;
+    var st=null, en=null;
+    /* selectionStart throws on number inputs in some browsers, so it is
+       read defensively rather than assumed. */
+    try{ st=a.selectionStart; en=a.selectionEnd; }catch(e){}
+    return { key:k, start:st, end:en, raw:a.value, scroll:host.scrollTop,
+             inner:(function(){ var p=a.closest? a.closest('[data-bnzscroll]'):null; return p? p.scrollTop:null; })() };
+  }catch(e){ return null; }
+}
+
+function _bnzRestoreFocus(f){
+  if(!f) return;
+  try{
+    var host=document.getElementById('bnz-modal'); if(!host) return;
+    if(f.scroll!=null) host.scrollTop=f.scroll;
+    var el=host.querySelector('[data-bnzk="'+f.key+'"]');
+    if(!el) return;
+    el.focus({preventScroll:true});
+    /* Put back the exact text that was in the box, not the model's version
+       of it. Half-typed numbers are the reason: "1." parses to 1, so a
+       rebuild during a pause would redraw the field as "1" and swallow the
+       decimal point the user was in the middle of. While a field has the
+       caret, what is on screen belongs to the person typing; the model
+       catches up when they leave it. */
+    if(f.raw!=null && el.value!==f.raw){
+      try{ el.value=f.raw; }catch(e){}
+    }
+    /* Caret back where it was, or it jumps to the start mid-word — its
+       own kind of unusable. */
+    if(f.start!=null){
+      try{ el.setSelectionRange(f.start, f.end==null?f.start:f.end); }catch(e){}
+    }
+  }catch(e){}
+}
+
 function _bnzRefresh(){
-  var h=document.getElementById('bnz-modal'); if(h) h.innerHTML=_bnzInner();
+  var f=_bnzCaptureFocus();
+  var h=document.getElementById('bnz-modal');
+  if(h) h.innerHTML=_bnzInner();
+  _bnzRestoreFocus(f);
   try{ if(typeof updateCostEstimate==='function') updateCostEstimate(); }catch(e){}
 }
 window._bnzRefresh=_bnzRefresh;
 
+/* Deferred rebuild, used while someone is typing. */
+var _bnzRefreshT=null, _bnzHistT=null;
+function _bnzRefreshSoon(ms){
+  if(_bnzRefreshT) clearTimeout(_bnzRefreshT);
+  _bnzRefreshT=setTimeout(function(){ _bnzRefreshT=null; _bnzRefresh(); }, ms==null?450:ms);
+}
+function _bnzHistSoon(){
+  if(_bnzHistT) clearTimeout(_bnzHistT);
+  _bnzHistT=setTimeout(function(){
+    _bnzHistT=null;
+    try{ if(typeof pushHist==='function') pushHist(); }catch(e){}
+  }, 700);
+}
+/* Anything that closes or leaves the panel must not lose a pending edit. */
+function _bnzFlush(){
+  if(_bnzRefreshT){ clearTimeout(_bnzRefreshT); _bnzRefreshT=null; _bnzRefresh(); }
+  if(_bnzHistT){ clearTimeout(_bnzHistT); _bnzHistT=null;
+    try{ if(typeof pushHist==='function') pushHist(); }catch(e){} }
+}
+window._bnzFlush=_bnzFlush;
+
 /* Every mutation deep-clones before writing, then pushes history.
    The stack is nested; assigning by reference is the aliasing bug that
    already cost this project an undo system. */
-function _bnzSet(path, val){
+/* Write a value into the model. `mode` decides how the UI reacts:
+     'commit' (default) -- a select, checkbox or blur: rebuild now.
+     'live'             -- a keystroke: rebuild after a pause so the
+                           caret is not yanked out from under the user. */
+function _bnzSet(path, val, mode, isNum){
   var sh=(S.shapes||[]).filter(function(s){ return s.id===window._bnzShapeId; })[0];
   if(!sh) return;
   var b=JSON.parse(JSON.stringify(bnzGet(sh)));
   var seg=path.split('.'), o=b;
   for(var i=0;i<seg.length-1;i++){ if(o[seg[i]]==null) o[seg[i]]={}; o=o[seg[i]]; }
+  /* Numeric fields were storing the raw string off this.value, so a
+     cleared box put "" into the model and every downstream product
+     silently became 0. Coerce here, and leave a half-typed value such as
+     "-" or "1." alone until it parses — rewriting it mid-keystroke is
+     what makes a field feel like it is fighting you. */
+  if(isNum){
+    if(val==='' || val==null) val=null;
+    else{
+      var n=parseFloat(val);
+      if(isNaN(n)){ return; }
+      val=n;
+    }
+  }
   o[seg[seg.length-1]] = val;
   sh.bnz = b;
-  try{ if(typeof pushHist==='function') pushHist(); }catch(e){}
-  _bnzRefresh();
+  if(mode==='live'){ _bnzHistSoon(); _bnzRefreshSoon(); }
+  else{
+    try{ if(typeof pushHist==='function') pushHist(); }catch(e){}
+    _bnzRefresh();
+  }
 }
 window._bnzSet=_bnzSet;
 
-function _bnzWin(idx, val){
+/* Bound to oninput on text and number fields. */
+function _bnzLive(path, val, isNum){ _bnzSet(path, val, 'live', isNum); }
+window._bnzLive=_bnzLive;
+/* Bound to onchange/blur — settle immediately once the field is done. */
+function _bnzCommit(path, val, isNum){ _bnzSet(path, val, 'commit', isNum); }
+window._bnzCommit=_bnzCommit;
+
+function _bnzWin(idx, val, mode){
   var sh=(S.shapes||[]).filter(function(s){ return s.id===window._bnzShapeId; })[0];
   if(!sh) return;
   var b=JSON.parse(JSON.stringify(bnzGet(sh)));
@@ -55770,8 +55895,11 @@ function _bnzWin(idx, val){
   while(b.windows.length<=idx) b.windows.push({count:0});
   b.windows[idx] = Object.assign({}, b.windows[idx], { count: Math.max(0, parseInt(val,10)||0) });
   sh.bnz=b;
-  try{ if(typeof pushHist==='function') pushHist(); }catch(e){}
-  _bnzRefresh();
+  if(mode==='live'){ _bnzHistSoon(); _bnzRefreshSoon(); }
+  else{
+    try{ if(typeof pushHist==='function') pushHist(); }catch(e){}
+    _bnzRefresh();
+  }
 }
 window._bnzWin=_bnzWin;
 
@@ -55788,8 +55916,11 @@ function _bnzInner(){
              baseline:['#64748B','BASELINE'] };
   function badge(c){ var x=CONF[c]||CONF.estimated;
     return '<span style="font-size:7.5px;font-weight:800;letter-spacing:.3px;padding:1px 4px;border-radius:3px;background:'+x[0]+'22;color:'+x[0]+';border:1px solid '+x[0]+'55">'+x[1]+'</span>'; }
-  function num(path,val,step,w){ return '<input type="number" step="'+(step||1)+'" value="'+(val==null?'':val)+'" oninput="_bnzSet(\''+path+'\',this.value)" style="width:'+(w||62)+'px;background:#0B1626;border:1px solid #1E3A5F;color:#E2EEF9;border-radius:5px;padding:3px 6px;font-size:11px;text-align:right">'; }
-  function sel(path,list,cur){ var s='<select onchange="_bnzSet(\''+path+'\',this.value)" style="background:#0B1626;border:1px solid #1E3A5F;color:#E2EEF9;border-radius:5px;padding:4px 6px;font-size:11px;max-width:250px">';
+  /* data-bnzk is the key _bnzRestoreFocus uses to find this same field
+     again after the panel is rebuilt. oninput writes and defers; change
+     and blur settle it immediately. */
+  function num(path,val,step,w){ return '<input type="number" data-bnzk="'+path+'" step="'+(step||1)+'" value="'+(val==null?'':val)+'" oninput="_bnzLive(\''+path+'\',this.value,1)" onchange="_bnzCommit(\''+path+'\',this.value,1)" onblur="_bnzFlush()" style="width:'+(w||62)+'px;background:#0B1626;border:1px solid #1E3A5F;color:#E2EEF9;border-radius:5px;padding:3px 6px;font-size:11px;text-align:right">'; }
+  function sel(path,list,cur){ var s='<select data-bnzk="'+path+'" onchange="_bnzCommit(\''+path+'\',this.value)" style="background:#0B1626;border:1px solid #1E3A5F;color:#E2EEF9;border-radius:5px;padding:4px 6px;font-size:11px;max-width:250px">';
     for(var i=0;i<list.length;i++) s+='<option value="'+list[i].id+'"'+(list[i].id===cur?' selected':'')+'>'+esc(list[i].name)+'</option>';
     return s+'</select>'; }
   function kpi(l,v,s2,c){ return '<div style="background:#0B1626;border:1px solid #1E3A5F;border-radius:8px;padding:10px">'
@@ -55847,7 +55978,7 @@ function _bnzInner(){
       +'<td style="padding:5px 8px;color:#E2EEF9">Side '+(i+1)+' <span style="color:#64748B">('+e.face+')</span></td>'
       +'<td style="padding:5px 8px;text-align:right;color:#94A3B8">'+e.lengthFt.toFixed(0)+' ft</td>'
       +'<td style="padding:5px 8px;text-align:right;color:#94A3B8">'+f(e.wallSf)+' sf</td>'
-      +'<td style="padding:5px 8px;text-align:right"><input type="number" min="0" step="1" value="'+(e.winCount||0)+'" oninput="_bnzWin('+i+',this.value)" style="width:56px;background:#0B1626;border:1px solid #1E3A5F;color:#E2EEF9;border-radius:5px;padding:3px 6px;font-size:11px;text-align:right"></td>'
+      +'<td style="padding:5px 8px;text-align:right"><input type="number" data-bnzk="win.'+i+'" min="0" step="1" value="'+(e.winCount||0)+'" oninput="_bnzWin('+i+',this.value,\'live\')" onchange="_bnzWin('+i+',this.value)" onblur="_bnzFlush()" style="width:56px;background:#0B1626;border:1px solid #1E3A5F;color:#E2EEF9;border-radius:5px;padding:3px 6px;font-size:11px;text-align:right"></td>'
       +'<td style="padding:5px 8px;text-align:right;color:#94A3B8">'+f(e.glazingSf)+' sf</td>'
       +'<td style="padding:5px 8px;text-align:right;color:'+(e.wwr>0.4?'#FBBF24':'#94A3B8')+'">'+(e.wwr*100).toFixed(1)+'%</td>'
       +'</tr>';
@@ -55869,7 +56000,7 @@ function _bnzInner(){
      +'<button onclick="bnzReportDownload()" title="Export a self-contained HTML report: geometry, assembly stack with confidence, windows by elevation, thermal, energy, carbon, compliance and the assumptions that drive them." style="background:rgba(74,222,128,.14);border:1px solid rgba(74,222,128,.45);color:#86EFAC;font-size:10px;font-weight:700;padding:6px 10px;border-radius:6px;cursor:pointer;font-family:inherit">\u2913 Report</button>'
      +'<button onclick="omegaBuildingDownload()" title="Export this model as omega.building.v1 \u2014 geometry, assemblies, assumptions, energy, compliance and provenance. This is the handoff the digital twin consumes." style="background:rgba(167,139,250,.14);border:1px solid rgba(167,139,250,.45);color:#C4B5FD;font-size:10px;font-weight:700;padding:6px 10px;border-radius:6px;cursor:pointer;font-family:inherit">\u2913 Export for twin</button>'
      +'<button onclick="nycNetZeroReportDownload()" title="Export the city-facing investment case: capital required, net cost after the incentive stack, payback, cost per tonne abated, public value, and the dated plan to net zero. Self-contained HTML \u2014 opens and prints anywhere, no network needed." style="background:rgba(52,211,153,.14);border:1px solid rgba(52,211,153,.45);color:#6EE7B7;font-size:10px;font-weight:700;padding:6px 10px;border-radius:6px;cursor:pointer;font-family:inherit;margin-left:6px">\u2913 City net-zero case</button>'
-     +'<button onclick="var h=document.getElementById(\'bnz-modal\');if(h)h.remove()" style="background:none;border:none;color:#64748B;font-size:20px;cursor:pointer;line-height:1">\u00d7</button></div></div>'
+     +'<button onclick="try{_bnzFlush()}catch(e){};var h=document.getElementById(\'bnz-modal\');if(h)h.remove()" style="background:none;border:none;color:#64748B;font-size:20px;cursor:pointer;line-height:1">\u00d7</button></div></div>'
   +'<div style="padding:16px 20px">'
 
    /* Address first. Everything below is modelled; this is the join key that
@@ -55878,17 +56009,17 @@ function _bnzInner(){
 
    +'<div style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;margin-bottom:14px">'
     +'<div><div style="font-size:9px;color:#64748B;text-transform:uppercase">Name</div>'
-      +'<input value="'+esc(b.name)+'" oninput="_bnzSet(\'name\',this.value)" style="width:150px;background:#0B1626;border:1px solid #1E3A5F;color:#E2EEF9;border-radius:5px;padding:4px 6px;font-size:11px"></div>'
+      +'<input data-bnzk="name" value="'+esc(b.name)+'" oninput="_bnzLive(\'name\',this.value)" onchange="_bnzCommit(\'name\',this.value)" onblur="_bnzFlush()" style="width:150px;background:#0B1626;border:1px solid #1E3A5F;color:#E2EEF9;border-radius:5px;padding:4px 6px;font-size:11px"></div>'
     +'<div><div style="font-size:9px;color:#64748B;text-transform:uppercase">Delivery</div>'+sel('delivery',BNZ_DELIVERY,b.delivery)+'</div>'
     +'<div><div style="font-size:9px;color:#64748B;text-transform:uppercase">Property type</div>'
-      +'<select onchange="_bnzSet(\'propertyType\',this.value)" style="background:#0B1626;border:1px solid #1E3A5F;color:#E2EEF9;border-radius:5px;padding:4px 6px;font-size:11px">'
+      +'<select data-bnzk="propertyType" onchange="_bnzCommit(\'propertyType\',this.value)" style="background:#0B1626;border:1px solid #1E3A5F;color:#E2EEF9;border-radius:5px;padding:4px 6px;font-size:11px">'
       + Object.keys(BLD_ROM.t).map(function(k){ return '<option value="'+k+'"'+((b.propertyType||'office')===k?' selected':'')+'>'+esc(BLD_ROM.t[k].name)+'</option>'; }).join('')
       +'</select></div>'
     +'<div><div style="font-size:9px;color:#64748B;text-transform:uppercase">Stories</div>'+num('stories',b.stories,1,52)+'</div>'
     +'<div><div style="font-size:9px;color:#64748B;text-transform:uppercase">Floor to floor ft</div>'+num('f2f',b.f2f,0.5,62)+'</div>'
     +'<div><div style="font-size:9px;color:#64748B;text-transform:uppercase">Parapet ft</div>'+num('parapet',b.parapet,0.5,52)+'</div>'
     +'<label style="display:flex;align-items:center;gap:5px;font-size:11px;color:#E2EEF9;cursor:pointer;padding-bottom:4px">'
-      +'<input type="checkbox"'+(b.roofOn?' checked':'')+' onchange="_bnzSet(\'roofOn\',this.checked)" style="accent-color:#38BDF8"> Roof</label>'
+      +'<input type="checkbox" data-bnzk="roofOn"'+(b.roofOn?' checked':'')+' onchange="_bnzCommit(\'roofOn\',this.checked)" style="accent-color:#38BDF8"> Roof</label>'
    +'</div>'
 
    +'<div style="display:grid;grid-template-columns:repeat(5,1fr);gap:9px;margin-bottom:14px">'
@@ -55985,15 +56116,15 @@ function _bnzInner(){
        +'<div style="font-size:10px;font-weight:800;color:#64748B;letter-spacing:.5px;margin:16px 0 6px">COMPLIANCE</div>'
        +'<div style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;margin-bottom:10px">'
         +'<div><div style="font-size:9px;color:#64748B;text-transform:uppercase">Standard</div>'
-         +'<select onchange="_bnzSet(\'bpsJurisdiction\',this.value)" style="background:#0B1626;border:1px solid #1E3A5F;color:#E2EEF9;border-radius:5px;padding:4px 6px;font-size:11px">'
+         +'<select data-bnzk="bpsJurisdiction" onchange="_bnzCommit(\'bpsJurisdiction\',this.value)" style="background:#0B1626;border:1px solid #1E3A5F;color:#E2EEF9;border-radius:5px;padding:4px 6px;font-size:11px">'
          + BPS_TARGETS.jurisdictions.map(function(j){ return '<option value="'+j.id+'"'+(C.jurisdiction.id===j.id?' selected':'')+'>'+esc(j.name)+'</option>'; }).join('')
          +'</select></div>'
         +'<div><div style="font-size:9px;color:#64748B;text-transform:uppercase">Occupancy</div>'
-         +'<select onchange="_bnzSet(\'occGroup\',this.value)" style="background:#0B1626;border:1px solid #1E3A5F;color:#E2EEF9;border-radius:5px;padding:4px 6px;font-size:11px">'
+         +'<select data-bnzk="occGroup" onchange="_bnzCommit(\'occGroup\',this.value)" style="background:#0B1626;border:1px solid #1E3A5F;color:#E2EEF9;border-radius:5px;padding:4px 6px;font-size:11px">'
          + Object.keys(J.caps).map(function(k){ return '<option value="'+k+'"'+(C.occGroup===k?' selected':'')+'>'+k+'</option>'; }).join('')
          +'</select></div>'
         +'<div style="flex:1;min-width:230px"><div style="font-size:9px;color:#64748B;text-transform:uppercase">Compliance pathway</div>'
-         +'<select onchange="_bnzSet(\'altPathway\',this.value)" style="width:100%;background:#0B1626;border:1px solid #1E3A5F;color:#E2EEF9;border-radius:5px;padding:4px 6px;font-size:11px">'
+         +'<select data-bnzk="altPathway" onchange="_bnzCommit(\'altPathway\',this.value)" style="width:100%;background:#0B1626;border:1px solid #1E3A5F;color:#E2EEF9;border-radius:5px;padding:4px 6px;font-size:11px">'
          + J.alt_pathways.map(function(a){ return '<option value="'+a.id+'"'+(C.altPathway===a.id?' selected':'')+'>'+esc(a.name)+'</option>'; }).join('')
          +'</select></div>'
         +'<div><div style="font-size:9px;color:#64748B;text-transform:uppercase">$/kWh</div>'+num('rateElec',(b.rateElec!=null&&b.rateElec!=='')?b.rateElec:BNZ_RATES.elec,0.01,58)+'</div>'
@@ -59738,7 +59869,33 @@ window.CS_TENANTS = window.CS_TENANTS || {
     }catch(e){}
     try{
       var img=document.getElementById('tb-brand-logo');
-      if(img && b.logo){ img.src = b.logo; img.alt = b.name || 'Logo'; img.style.display='block'; }
+      if(img && b.logo){
+        /* SHOW IT ONLY ONCE IT LOADS.
+           The chip carries its own styling -- white background, padding,
+           rounded corners -- so revealing it at the same moment the src is
+           assigned means a logo that never arrives leaves a bare white pill
+           sitting in the tab strip, pushing every ribbon tab to the right.
+           That is exactly what a root-relative path like /tenant-logo.png
+           does when the file is opened over file:// (it resolves to the root
+           of the disk) or when the asset 404s on a deployment. Wait for the
+           load event, and stay hidden on error. */
+        img.alt = b.name || 'Logo';
+        img.style.display = 'none';
+        img.onload  = function(){
+          /* A broken image can still fire load in some browsers; a real one
+             always reports non-zero natural dimensions. */
+          if(this.naturalWidth > 0) this.style.display = 'block';
+        };
+        img.onerror = function(){
+          this.style.display = 'none';
+          try{ console.warn('[brand] logo did not load: '+this.getAttribute('src')
+            +' \u2014 tab strip chip hidden. Root-relative paths do not resolve over file://.'); }catch(e){}
+        };
+        img.src = b.logo;
+        /* If the src was already cached and decoded before the handler was
+           attached, load will not fire again. */
+        if(img.complete && img.naturalWidth > 0) img.style.display = 'block';
+      }
     }catch(e){}
     /* Update the browser tab title to the resolved tenant, so a shared editor.html
        shows the right brand per subdomain instead of a hardcoded default. */
