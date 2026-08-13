@@ -663,6 +663,50 @@ textarea{min-height:70px;resize:vertical}
     return { uid: null, email: '', displayName: '' };
   }
   var user = { uid: null, email: '', displayName: '' };
+  var persistenceOK = true;
+
+  /* Every write below is authenticated by the CURRENT token, not by the
+     `user` object captured at boot. Checking the live session first turns a
+     bare "Missing or insufficient permissions" — which reads like a rules
+     problem and sent us chasing rules for a day — into an accurate statement
+     of what actually happened. */
+  function requireAuth() {
+    var u = null;
+    try { u = (window.firebase && firebase.auth) ? firebase.auth().currentUser : null; }
+    catch (e) { u = null; }
+    if (!u) {
+      sessionLost();
+      return Promise.reject(new Error(
+        'Your session ended, so that could not be saved. Sign in again \u2014 '
+        + 'nothing you typed has been lost.'));
+    }
+    /* Force-refresh: a token revoked or expired server-side still looks valid
+       in memory, and the write would be refused with no explanation. */
+    return u.getIdToken(true).then(function () {
+      user = currentUser();
+      return u;
+    }, function () {
+      sessionLost();
+      throw new Error('Your sign-in expired. Sign in again to continue \u2014 '
+                      + 'nothing you typed has been lost.');
+    });
+  }
+
+  function sessionLost() {
+    try {
+      setMsg('Signed out \u2014 sign in again to save.');
+      var h = document.getElementById('needHint');
+      if (h) {
+        h.innerHTML = '';
+        h.appendChild(el('b', null, 'Signed out. '));
+        h.appendChild(document.createTextNode(
+          persistenceOK
+            ? 'Sign in again to save your work.'
+            : 'This browser will not keep you signed in \u2014 private browsing or '
+              + 'blocked storage. Try a normal window.'));
+      }
+    } catch (e) { /* never let the warning itself throw */ }
+  }
 
   /* ---------- brand ----------
    * Nothing here is baked in. A white-label tenant sees its own name, its own
@@ -1103,11 +1147,16 @@ textarea{min-height:70px;resize:vertical}
     var fn = rec.routing === 'self' ? OI.saveSelfServe : function (r) {
       return OI.store().save(r);
     };
-    return fn(rec, user.email).then(function () {
+    return requireAuth().then(function () {
+      return fn(rec, user.email);
+    }).then(function () {
       dirty = false; isExisting = true; syncRecordChrome();
       setMsg('Saved ' + new Date().toLocaleTimeString() + '.');
       refreshList();
-    }).catch(function (e) { setMsg('Could not save: ' + e.message); });
+    })['catch'](function (e) {
+      setMsg('Could not save: ' + ((e && e.message) || 'write refused'));
+      console.error('[intake] save failed:', e);
+    });
   }
   $('#btnSave').addEventListener('click', saveDraft);
 
@@ -1121,7 +1170,9 @@ textarea{min-height:70px;resize:vertical}
       return;
     }
     $('#btnSubmit').disabled = true;
-    OI.submit(rec, user.email).then(function () {
+    requireAuth().then(function () {
+      return OI.submit(rec, user.email);
+    }).then(function () {
       dirty = false;
       setMsg(svc('Submitted. {svc} will notify you here when the package is ready.'));
       syncRouteButtons(); refreshList(); renderNotice();
@@ -1869,6 +1920,13 @@ function esc(v) {
        record still saves — isAdmin() permits it — so it has to be visible,
        or ClearSky staff can file an intake into the wrong tenant and never
        notice. */
+    /* Resolve WHO is signed in before checking their identity against the
+       link. checkIdentity() reads user.email, and this assignment used to sit
+       three lines below the call — so `mine` was always the empty initial
+       value, the domain comparison could never fail, and the "this link is for
+       someone else, saving will be refused" bar never appeared for anyone. The
+       warning existed; it just ran before there was anything to warn about. */
+    user = currentUser();
     checkIdentity();
 
     OI.loadBrand(db).then(function () {
@@ -2035,15 +2093,45 @@ function esc(v) {
             'CLEARSKY_CONFIG.firebase is missing from config.js on this host.');
       return;
     }
-    firebase.auth().setPersistence(firebase.auth.Auth.Persistence.LOCAL)['catch'](function(){})
+    firebase.auth().setPersistence(firebase.auth.Auth.Persistence.LOCAL)['catch'](function(e){
+      /* Private browsing and a locked-down Safari both refuse persistent
+         storage. The session then lives only as long as the tab, which looks
+         like being randomly signed out. Worth saying so rather than leaving
+         the person to guess. */
+      console.warn('[intake] persistence unavailable, session will not survive a reload:', e);
+      persistenceOK = false;
+    })
       .then(function(){ return firebase.auth().getRedirectResult()['catch'](function(){}); })
       .then(function(){
         firebase.auth().onAuthStateChanged(function(u){
-          if (!u){ hideAuthCard(); authCard(); return; }
+          if (!u){
+            /* Signed out AFTER the app booted: the page is now a working
+               interface backed by no session, and every write it attempts
+               will be refused. Say so plainly instead of letting the next
+               click fail silently. */
+            if (booted) sessionLost();
+            hideAuthCard(); authCard(); return;
+          }
           hideAuthCard();
-          if (booted) return;
-          booted = true;
-          start();
+          if (!booted){
+            booted = true;
+            start();
+            return;
+          }
+          /* ALREADY BOOTED. This used to `return` here, which meant a
+             re-authentication never refreshed `user` — the page kept the uid
+             captured at boot, and every subsequent write carried a
+             createdBy.uid that no longer matched request.auth.uid. The rule
+             compares those two, so the record could never be created again
+             and no amount of retrying helped. */
+          if (user && user.uid && u.uid !== user.uid){
+            /* A DIFFERENT account. Records already loaded belong to the old
+               one, so reload rather than splice two identities together. */
+            location.reload();
+            return;
+          }
+          user = currentUser();
+          if (typeof syncActionBar === 'function') syncActionBar();
         });
       });
   }
