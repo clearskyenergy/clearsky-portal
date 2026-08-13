@@ -2008,9 +2008,19 @@ function esc(v) {
       var p = document.getElementById('ixPass').value || '';
       if (!e || !p){ err('Enter your email and password.'); return; }
       err(''); busy(true);
-      firebase.auth().signInWithEmailAndPassword(e, p)['catch'](function(x){
+      firebase.auth().signInWithEmailAndPassword(e, p).then(function(){
+        /* Success. onAuthStateChanged removes the card; if it somehow does
+           not, the button must not be left reading "Signing in..." forever. */
+        busy(false);
+        console.log('[intake] sign-in OK for', e);
+      })['catch'](function(x){
         busy(false);
         var c = x && x.code;
+        /* The code goes to the console every time. Without it a rejected
+           sign-in and a browser that cannot persist a session look identical
+           from the outside, and both present as "it keeps asking me to log
+           in". */
+        console.error('[intake] sign-in failed:', c, x && x.message);
         if (c === 'auth/wrong-password' || c === 'auth/invalid-credential' || c === 'auth/user-not-found'){
           err('Incorrect email or password.');
           document.getElementById('ixReset').innerHTML =
@@ -2022,7 +2032,8 @@ function esc(v) {
             })['catch'](function(){ err('Could not send a reset email.'); });
           });
         } else if (c === 'auth/too-many-requests'){ err('Too many attempts. Try again shortly.'); }
-        else { err((x && x.message) || 'Sign-in failed.'); }
+        else if (c === 'auth/network-request-failed'){ err('No connection to the sign-in server.'); }
+        else { err(((x && x.message) || 'Sign-in failed.') + ' [' + (c || 'no code') + ']'); }
       });
     });
     document.getElementById('ixPass').addEventListener('keydown', function(ev){
@@ -2105,12 +2116,16 @@ function esc(v) {
       .then(function(){
         firebase.auth().onAuthStateChanged(function(u){
           if (!u){
-            /* Signed out AFTER the app booted: the page is now a working
-               interface backed by no session, and every write it attempts
-               will be refused. Say so plainly instead of letting the next
-               click fail silently. */
+            /* Do NOT hideAuthCard() then authCard() here. hideAuthCard()
+               removes the node and authCard() builds a fresh one, so every
+               auth event wiped whatever the person had typed AND wiped the
+               #ixErr line explaining why the last attempt failed. The result
+               was a pristine sign-in card with no error on it — which reads
+               as "it just keeps asking me to log in" rather than "your
+               password was rejected". authCard() already returns the existing
+               card if one is present, so calling it alone is correct. */
             if (booted) sessionLost();
-            hideAuthCard(); authCard(); return;
+            authCard(); return;
           }
           hideAuthCard();
           if (!booted){
