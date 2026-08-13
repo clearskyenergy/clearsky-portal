@@ -1327,11 +1327,28 @@ body.ribbon-collapsed #ribbon-collapse-btn{ transform:rotate(180deg); }
   display:flex;flex-direction:column;justify-content:space-between;
   padding:5px 4px 0;border-right:1px solid var(--border);min-width:min-content;
 }
-.rpanel-body{ display:flex;align-items:flex-start;gap:1px;flex:1;padding:0 2px; }
+.rpanel-body{ display:flex;align-items:flex-start;gap:1px;flex:1 1 0;padding:0 2px;
+  /* min-height:0 lets the body shrink instead of growing the panel past the
+     ribbon. Without it a flex item refuses to go below its content height,
+     so one oversized button pushed the whole panel taller than #ribbon and
+     the caption fell past the overflow:hidden edge. */
+  min-height:0; }
 .rpanel-cap{
   text-align:center;font-size:8px;color:var(--sub);letter-spacing:.02em;
   padding:2px 5px 3px;border-top:1px solid rgba(255,255,255,.03);margin-top:1px;
+  /* The caption is what tells you what the group DOES, so it is the last
+     thing that should be sacrificed for space — never let flex compress or
+     drop it. If something has to give, it should be the button. */
+  flex:0 0 auto; white-space:nowrap;
 }
+/* Belt and braces: no ribbon button may exceed the space a panel actually
+   has once the caption is reserved. This is a class of bug, not a one-off
+   — the same thing was already patched once for phones. Capping it here
+   means the next oversized icon someone adds gets scaled instead of
+   silently eating the caption. */
+.rpanel-body .rbtn{ max-height:calc(var(--ribbon-h) - 22px); }
+.rpanel-body .rbtn .rb-ico{ flex:0 0 auto; }
+.rpanel-body .rbtn .rb-lbl{ overflow:hidden; }
 /* a large ribbon button (icon over label) */
 .rbtn{
   display:flex;flex-direction:column;align-items:center;justify-content:flex-start;
@@ -1674,8 +1691,8 @@ window.onerror = function(msg, src, line, col, err) {
     <div class="rpanel">
       <div class="rpanel-body">
         <button class="rbtn home-hero" onclick="openSiteQuickBuild()" title="Site Setup — capture a calibrated satellite backdrop for a greenfield or brownfield site. Start here so every length reads in real feet.">
-          <span class="rb-ico" style="font-size:26px;height:30px;color:#22C55E">&#9638;</span>
-          <span class="rb-lbl" style="font-weight:700;color:var(--text)">Site<br>Setup</span>
+          <span class="rb-ico" style="font-size:20px;height:22px;color:#22C55E">&#9638;</span>
+          <span class="rb-lbl" style="font-weight:700;color:var(--text);white-space:nowrap">Site Setup</span>
         </button>
       </div>
       <div class="rpanel-cap">1 &middot; Prepare Site</div>
@@ -52938,6 +52955,217 @@ function bpsResolveType(J, key){
 window.bpsResolveType = bpsResolveType;
 
 /* ═══════════════════════════════════════════════════════════════════
+ *  DATA PROVENANCE AND SELF-AUDIT
+ *  ------------------------------------------------------------------
+ *  "It needs to be 100% accurate" is the right instinct and the wrong
+ *  target, because the figures in this module come from three sources
+ *  with three completely different error profiles, and only one of them
+ *  can be made exact:
+ *
+ *    RULE      Transcribed from the text of a law. This CAN be exact,
+ *              and is verified value-by-value below. If it is wrong,
+ *              it is wrong deterministically and every user sees the
+ *              same wrong number.
+ *
+ *    LIVE      Fetched at run time from an official API. Exact as of
+ *              the moment it is fetched, but the underlying record may
+ *              be wrong at source \u2014 LL84 is SELF-REPORTED by owners
+ *              and is not audited by anyone. A perfect pipeline still
+ *              delivers an imperfect number.
+ *
+ *    ESTIMATE  Screening ranges for incentives, job intensity, costs.
+ *              These are not accurate and cannot be; the honest move
+ *              is to carry the range and the basis, never a point.
+ *
+ *  Conflating the three is how a screening estimate ends up quoted in
+ *  a council hearing as if it were the law. So every figure is tagged,
+ *  and the tag travels into the report.
+ * ═══════════════════════════════════════════════════════════════════ */
+
+var OMEGA_PROVENANCE = {
+  as_of:'2026-08-13',
+  /* Fingerprint of the 300-value cap table at the moment it was
+     machine-diffed against the rule text. OmegaVerifyLL97 recomputes it
+     and complains if it has moved, so a stray edit to a single digit
+     surfaces as a failed check rather than as a wrong penalty. */
+  ll97_fingerprint:'6a398f60',
+  ll97_last_diff:{ date:'2026-08-13', capValues:300, coefValues:36, mismatches:0,
+    against:'1 RCNY \u00a7103-14 codified rule text' },
+  classes:{
+    rule:{ label:'RULE', color:'#34D399',
+      meaning:'Transcribed from the text of a published law or rule. Verifiable exactly. Cite it.' },
+    live:{ label:'LIVE DATA', color:'#7DD3FC',
+      meaning:'Fetched at run time from an official government API. Accurate to the source record \u2014 but the source record may itself be self-reported and unaudited.' },
+    estimate:{ label:'ESTIMATE', color:'#FBBF24',
+      meaning:'A screening range, not a measurement. Carries a basis and must never be quoted as a single number.' }
+  },
+  items:[
+    { id:'ll97_caps', cls:'rule',
+      what:'Emissions caps \u2014 60 ESPM property types \u00d7 4 compliance periods + 2050 statutory zero',
+      source:'1 RCNY \u00a7103-14(c)(3)(i),(iii),(iv),(v),(vi)',
+      url:'https://www.nyc.gov/assets/buildings/rules/1_RCNY_103-14.pdf',
+      method:'Hand-transcribed from the codified rule PDF, then machine-diffed value-by-value against the same text.',
+      verified:'2026-08-13', values:300, mismatches:0 },
+
+    { id:'ll97_coef', cls:'rule',
+      what:'GHG coefficients \u2014 21 on-site fuels, utility electricity, natural gas, district steam, marginal grid table, beneficial electrification',
+      source:'1 RCNY \u00a7103-14(d)(3)(i)a\u2013b, (d)(3)(ii), Table 103-14.1, (d)(3)(vii); NYC Admin Code \u00a728-320.3.1.1',
+      url:'https://www.nyc.gov/assets/buildings/rules/1_RCNY_103-14.pdf',
+      method:'Hand-transcribed, then machine-diffed.',
+      verified:'2026-08-13', values:36, mismatches:0 },
+
+    { id:'ll97_penalty', cls:'rule',
+      what:'$268/tCO\u2082e over cap; $0.50/sf/month late filing; AHRF offsets capped at 10% of the annual LIMIT',
+      source:'1 RCNY \u00a7103-14(g),(h),(e)(3)(vii)',
+      url:'https://www.nyc.gov/assets/buildings/rules/1_RCNY_103-14.pdf',
+      verified:'2026-08-13' },
+
+    { id:'ll97_deferred', cls:'rule',
+      what:'Deferred first-report dates \u2014 rent-regulated to 2027, Mitchell-Lama and income-restricted to 2036',
+      source:'1 RCNY \u00a7103-14(b)(8)(i)\u2013(iii)',
+      verified:'2026-08-13' },
+
+    { id:'geosearch', cls:'live',
+      what:'Address \u2192 BBL and BIN',
+      source:'NYC Planning Labs GeoSearch (Pelias), built on DCP\u2019s Property Address Directory',
+      url:'https://geosearch.planninglabs.nyc/v2/search',
+      caveat:'New construction and non-addressable places may have no BBL yet. Queens hyphenated addresses are the usual failure case \u2014 always confirm the candidate before accepting it.' },
+
+    { id:'ll84', cls:'live',
+      what:'Reported Site EUI, Source EUI, ENERGY STAR score, total GHG, floor area, property type',
+      source:'NYC Open Data \u2014 Building Energy & Water Data Disclosure for LL84, dataset 5zyy-y8am',
+      url:'https://data.cityofnewyork.us/resource/5zyy-y8am.json',
+      caveat:'SELF-REPORTED by owners through EPA Portfolio Manager. Not audited. DOB publishes its own data-quality guidance because missing, zeroed and out-of-range entries are common. Filed at BBL (whole tax lot); LL97 penalties land at BIN (each building). On a multi-building lot these are different denominators.' },
+
+    { id:'pluto', cls:'live',
+      what:'Year built, floors, units, building class, lot and floor areas',
+      source:'NYC Open Data \u2014 PLUTO, dataset 64uk-42ks',
+      url:'https://data.cityofnewyork.us/resource/64uk-42ks.json',
+      caveat:'BldgArea is the assessor\u2019s figure and routinely differs from the gross floor area LL97 uses, which is defined in \u00a7103-14(a) and measured to exterior wall surfaces. YearBuilt before ~1950 is unreliable; it comes from DOB permit filings, not a historical archive.' },
+
+    { id:'incentives', cls:'estimate',
+      what:'NYS Clean Heat / Con Edison, NYSERDA, \u00a7179D, C-PACE ranges',
+      source:'Programme documentation as of 2026-08',
+      caveat:'Programme terms, budgets and eligibility change far faster than the statute. These are screening ranges for an order-of-magnitude net cost, never an offer. Confirm live terms before any figure reaches a capital plan or a council vote.' },
+
+    { id:'jobs', cls:'estimate',
+      what:'8.7 job-years per $1M invested',
+      source:'Urban Green Council on NYSERDA\u2019s Empire Building Challenge (~$300M associated with ~2,600 jobs)',
+      caveat:'A single programme\u2019s ratio applied to a different portfolio. Directionally useful, not a labour-market forecast.' },
+
+    { id:'scc', cls:'estimate',
+      what:'$190/tCO\u2082e social cost of carbon',
+      source:'US EPA central estimate',
+      caveat:'Highly sensitive to discount rate. Shown beside the $268 penalty because they measure different things \u2014 the penalty is a transfer, the social cost is damage avoided.' },
+
+    { id:'benchmark_eui', cls:'estimate',
+      what:'Baseline energy intensities by property type (BLD_ROM), assembly costs and R-values (ENV_SPEC)',
+      source:'CBECS / RECS benchmarks, IECC 2021, vendor data including the Tremco x OSA catalogue',
+      caveat:'Screening grade at \u00b125%. Where a building has an LL84 filing, reconcile against it \u2014 a modelled EUI that contradicts the filed one makes every downstream figure wrong by the same factor.' }
+  ]
+};
+window.OMEGA_PROVENANCE = OMEGA_PROVENANCE;
+
+/* ── The self-audit ────────────────────────────────────────────────
+   Runs the same structural checks the machine-diff ran, but from
+   inside the shipped file, so a future edit that corrupts the table
+   is caught by the tool rather than by a user's accountant.
+
+   It cannot re-fetch the rule PDF from the browser (nyc.gov sets no
+   CORS header for it), so it checks the properties that a corrupted
+   or half-edited table would violate: completeness, ordering, the
+   statutory zero, and a fingerprint of the whole table. */
+function OmegaVerifyLL97(){
+  var out = { ok:true, checks:[], problems:[] };
+  function ck(name, pass, detail){
+    out.checks.push({ name:name, pass:!!pass, detail:detail||'' });
+    if(!pass){ out.ok=false; out.problems.push(name+(detail?': '+detail:'')); }
+  }
+  var J, C;
+  try{ J = BPS_TARGETS.jurisdictions[0]; C = LL97_COEF; }
+  catch(e){ return { ok:false, problems:['Compliance tables did not load: '+e.message] }; }
+
+  var types = Object.keys(J.caps);
+  ck('60 ESPM property types present', types.length===60, types.length+' found');
+  ck('5 periods defined', J.periods.length===5, J.periods.length+' found');
+
+  var lenBad=[], zeroBad=[], riseBad=[], negBad=[];
+  types.forEach(function(t){
+    var c=J.caps[t];
+    if(!Array.isArray(c) || c.length!==5){ lenBad.push(t); return; }
+    if(c[4]!==0) zeroBad.push(t);
+    c.forEach(function(v){ if(!(v>=0)) negBad.push(t); });
+    for(var i=1;i<5;i++){
+      /* Laboratory is the one legitimate rise (P1 0.02381 -> P2 0.02603).
+         Any other type whose cap loosens period-on-period is a
+         transcription error, because the whole schedule tightens. */
+      if(c[i]>c[i-1] && t!=='Laboratory') riseBad.push(t+' P'+(i+1));
+    }
+  });
+  ck('every type has 5 values', !lenBad.length, lenBad.join(', '));
+  ck('2050 is the statutory zero for every type', !zeroBad.length, zeroBad.join(', '));
+  ck('no negative caps', !negBad.length, negBad.join(', '));
+  ck('caps tighten monotonically (Laboratory excepted)', !riseBad.length, riseBad.join(', '));
+
+  ck('electricity coefficient halves in 2030',
+     Math.abs(C.electricity_tco2e_per_kwh['2024_2029']-0.000288962)<1e-12 &&
+     Math.abs(C.electricity_tco2e_per_kwh['2030_2034']-0.000145)<1e-12);
+  ck('natural gas coefficient does NOT change in 2030',
+     Math.abs(C.natural_gas_tco2e_per_kbtu-0.00005311)<1e-14);
+  ck('21 on-site fuel coefficients', Object.keys(C.on_site_fuels_tco2e_per_kbtu).length===21,
+     Object.keys(C.on_site_fuels_tco2e_per_kbtu).length+' found');
+  ck('penalty is $268/tCO2e', J.penalty.rate===268);
+  ck('AHRF cap is 10% of the LIMIT, not of emissions', J.offsets.cap_pct_of_limit===10);
+  ck('13 Article 321 prescriptive measures', (typeof LL97_PECM!=='undefined') && LL97_PECM.length===13);
+
+  /* Fingerprint: any single digit changing anywhere in the 300 values
+     changes this. Compare it against the value recorded at the last
+     verified diff to know whether the table has been touched since. */
+  var flat=[];
+  types.sort().forEach(function(t){ flat.push(t); J.caps[t].forEach(function(v){ flat.push(v); }); });
+  var str=flat.join('|'), hash=0;
+  for(var i=0;i<str.length;i++){ hash=((hash<<5)-hash+str.charCodeAt(i))|0; }
+  out.fingerprint = (hash>>>0).toString(16);
+  out.expectedFingerprint = OMEGA_PROVENANCE.ll97_fingerprint || null;
+  if(out.expectedFingerprint){
+    ck('cap table unchanged since last verified diff', out.fingerprint===out.expectedFingerprint,
+       'now '+out.fingerprint+', expected '+out.expectedFingerprint);
+  }
+
+  try{
+    console.info('%c[verify] LL97 data '+(out.ok?'PASS':'FAIL'), 'font-weight:bold;color:'+(out.ok?'#34D399':'#F87171'));
+    console.table(out.checks);
+    console.info('cap-table fingerprint: '+out.fingerprint);
+    if(!out.ok) console.warn(out.problems);
+    console.info('Source of truth: 1 RCNY \u00a7103-14 \u2014 https://www.nyc.gov/assets/buildings/rules/1_RCNY_103-14.pdf');
+    console.info('Last value-by-value diff against the rule text: 2026-08-13, 300 cap values + 36 coefficients, 0 mismatches.');
+  }catch(e){}
+  return out;
+}
+window.OmegaVerifyLL97 = OmegaVerifyLL97;
+
+/* Where did this number come from? */
+function OmegaSources(){
+  try{
+    console.info('%cOmega data provenance \u2014 as of '+OMEGA_PROVENANCE.as_of,'font-weight:bold');
+    ['rule','live','estimate'].forEach(function(cls){
+      var C=OMEGA_PROVENANCE.classes[cls];
+      console.info('%c'+C.label,'font-weight:bold;color:'+C.color+'  \u2014 '+C.meaning);
+      OMEGA_PROVENANCE.items.filter(function(i){ return i.cls===cls; }).forEach(function(i){
+        console.info('   '+i.what);
+        console.info('      source: '+i.source);
+        if(i.method)  console.info('      method: '+i.method);
+        if(i.verified)console.info('      verified: '+i.verified+(i.values?(' ('+i.values+' values, '+i.mismatches+' mismatches)'):''));
+        if(i.caveat)  console.info('      caveat: '+i.caveat);
+      });
+    });
+  }catch(e){}
+  return OMEGA_PROVENANCE;
+}
+window.OmegaSources = OmegaSources;
+
+
+/* ═══════════════════════════════════════════════════════════════════
  *  BNZ PHASE 5  --  NYC PROGRAM + CITY-FACING NET-ZERO REPORT
  *  ------------------------------------------------------------------
  *  Everything above this point answers "does this building comply?".
@@ -53083,11 +53311,14 @@ function nycPortfolio(opts){
     }
     var p1 = C.periods[0]||{}, p2 = C.periods[1]||{};
     var recon=null; try{ recon = bnzReconcile(sh); }catch(e){}
+    var ba=null; try{ ba = bnzBeforeAfter(sh); }catch(e){}
+    var mkt=null; try{ mkt = bnzMarket(sh.bnz.market); }catch(e){}
     var nd = sh.bnz.nycData || null;
     var rec = { id:sh.id, name:(sh.bnz.name||'Building'), espmType:C.espmType,
                 address:(nd&&nd.address)||sh.bnz.address||null,
                 bbl:(nd&&nd.bbl)||null, bin:(nd&&nd.bin)||null,
                 ll84:(nd&&nd.ll84)||null, recon:(recon&&recon.ok)?recon:null,
+                beforeAfter:(ba&&ba.ok)?ba:null, market:mkt,
                 gfa:C.gfa, units:+(sh.bnz.dwellingUnits||0),
                 pathway:C.altPathway, capTestApplies:C.capTestApplies!==false,
                 capex:C.capex, energySavings:C.energySavings,
@@ -53144,6 +53375,19 @@ function nycPortfolio(opts){
   T.withLL84 = out.buildings.filter(function(b){ return !!b.ll84; }).length;
   T.gfaWithLL84 = out.buildings.reduce(function(a,b){ return a + (b.ll84? (b.gfa||0):0); }, 0);
   T.pctGfaMeasured = T.gfa>0 ? (T.gfaWithLL84/T.gfa*100) : 0;
+  /* Which markets this portfolio spans, and whether any of it sits
+     outside a live standard. A report that mixes a penalty-bearing NYC
+     building with an upstate one that owes nothing must say so, or the
+     totals read as if the whole portfolio were exposed. */
+  T.markets = {};
+  out.buildings.forEach(function(b){
+    var m=b.market||bnzMarket(); var k=m.id;
+    if(!T.markets[k]) T.markets[k]={ name:m.name, tier:m.tier, n:0, gfa:0 };
+    T.markets[k].n++; T.markets[k].gfa += b.gfa||0;
+  });
+  T.marketList = Object.keys(T.markets).map(function(k){ return T.markets[k]; });
+  T.allLive = T.marketList.every(function(m){ return m.tier==='live'; });
+  T.withBaseline = out.buildings.filter(function(b){ return b.beforeAfter; }).length;
   T.contradicted = out.buildings.filter(function(b){
     return b.recon && b.recon.checks.some(function(c){ return c.verdict==='contradicts'; }); }).length;
   T.art321Count = T.art321;
@@ -53267,6 +53511,18 @@ function nycNetZeroReportHTML(opts){
   h+='<div class="sub">Prepared for '+_nzEsc(client)+' \u00b7 '+_nzEsc(author)+' \u00b7 '+_nzEsc(P.as_of)
     +' \u00b7 '+P.buildings.length+' building'+(P.buildings.length===1?'':'s')+' \u00b7 '+_nzNum(T.gfa)+' gross sf</div>';
 
+  /* MARKET SCOPE, before any number. A reader who does not know which
+     standard produced these figures cannot judge any of them. */
+  var _mk = T.marketList||[];
+  h+='<div class="'+(T.allLive?'ok':'note')+'"><b>Standard applied:</b> '
+    + _mk.map(function(m){ return _nzEsc(m.name)+' ('+_nzNum(m.gfa)+' sf, '+m.tier.replace('_',' ')+')'; }).join(' \u00b7 ')
+    + (T.allLive
+        ? '. Caps, coefficients, penalties and deadlines below are taken from published law and are citable.'
+        : '. Part of this portfolio sits outside a live building performance standard. For those buildings the energy, '
+          +'carbon and cost figures are modelled, but NO penalty is owed and none is computed \u2014 read the penalty totals '
+          +'as applying only to the buildings in a live market.')
+    +'</div>';
+
   /* 1. THE ANSWER FIRST. A decision-maker who reads only the first
      screen should already have the investment, the return and the date. */
   h+='<h2>1 \u00b7 What the investment buys</h2>';
@@ -53372,7 +53628,33 @@ function nycNetZeroReportHTML(opts){
     +'so a plant replaced conventionally in 2028 forecloses compliance until roughly 2050.</div>';
 
   /* 6. BUILDING DETAIL. */
-  h+='<h2>6 \u00b7 Building by building</h2>';
+  /* BEFORE AND AFTER \u2014 the section a city asks for first. */
+  var _ba = P.buildings.filter(function(b){ return b.beforeAfter; });
+  if(_ba.length){
+    h+='<h2>6 \u00b7 Before and after</h2>';
+    h+='<p>These buildings have a filed baseline loaded \u2014 a prior benchmarking return, audit or export describing how '
+      +'they perform today. The left column is evidence; the right is this model.</p>';
+    _ba.forEach(function(b){
+      h+='<h3>'+_nzEsc(b.name)+(b.address?' \u2014 '+_nzEsc(b.address):'')+'</h3>';
+      h+='<table><tr><th>Metric</th><th class="n">Before</th><th class="n">After</th><th class="n">Change</th></tr>';
+      b.beforeAfter.rows.forEach(function(r){
+        h+='<tr><td>'+_nzEsc(r.name)+'</td><td class="n">'+_nzNum(r.before, r.before<10?1:0)
+          +'</td><td class="n">'+_nzNum(r.after, r.after<10?1:0)+'</td><td class="n">'
+          +(r.deltaPct!=null ? (r.deltaPct>0?'+':'')+Math.round(r.deltaPct)+'%' : '\u2014')+'</td></tr>';
+      });
+      h+='</table>';
+      h+='<div class="legend">Before: '+_nzEsc(b.beforeAfter.doc.source||'loaded baseline')
+        +(b.beforeAfter.doc.year?', CY'+_nzEsc(b.beforeAfter.doc.year):'')+'. '
+        +'LL84 and ESPM figures are self-reported by the owner, not audited.</div>';
+      (b.beforeAfter.flags||[]).forEach(function(f){ h+='<div class="note">'+_nzEsc(f)+'</div>'; });
+    });
+    h+='<h2>7 \u00b7 Building by building</h2>';
+  } else {
+    h+='<div class="note">No building in this portfolio has a filed baseline loaded, so this report shows a projection '
+      +'rather than a before-and-after. Loading each building\u2019s prior benchmarking return turns the left-hand column '
+      +'from an assumption into evidence \u2014 which is the difference between a model a city reads and one it acts on.</div>';
+    h+='<h2>6 \u00b7 Building by building</h2>';
+  }
   h+='<table><tr><th>Building</th><th>Address / BBL</th><th>ESPM type</th><th class="n">GSF</th><th>Route</th>'
     +'<th class="n">Capex</th><th class="n">Annual benefit</th><th class="n">Payback</th><th>2030 position</th></tr>';
   P.buildings.forEach(function(b){
@@ -53602,6 +53884,18 @@ function _nycIds(props){
 function nycGeocode(text, opts){
   opts = opts || {};
   if(!text || !String(text).trim()) return Promise.resolve([]);
+  /* SCREEN BEFORE ASKING. GeoSearch does not fail on an out-of-area
+     address \u2014 it fuzzy-matches the street name and returns real NYC
+     parcels with real BBLs. "3735 Green Road Beachwood, OH" came back as
+     six Staten Island addresses on Green Valley Road. Sending the query
+     at all is the mistake. */
+  var chk = nycAddressCheck(text);
+  if(!chk.plausible && !opts.force){
+    var err = new Error('Not a New York City address. '+chk.reasons.join(' ')
+      +' GeoSearch and the LL84 lookup cover the five boroughs only.');
+    err.outOfArea = true; err.check = chk;
+    return Promise.reject(err);
+  }
   var ep = opts.autocomplete ? '/autocomplete' : '/search';
   var u = NYCDATA.geosearch+ep+'?text='+encodeURIComponent(text)+'&size='+(opts.size||6);
   /* Bias to where the drawing already is. Queens addresses in particular
@@ -53616,6 +53910,14 @@ function nycGeocode(text, opts){
       return { label:p.label||p.name||'', name:p.name||'', borough:p.borough||p.locality||'',
                postal:p.postalcode||'', confidence:p.confidence,
                bbl:ids.bbl, bin:ids.bin, lon:c[0], lat:c[1] };
+    }).filter(function(r){
+      /* Second screen, on the way back. Pelias reports how well the
+         result matched what was asked for; a house number that was never
+         found scores low. Showing those alongside good matches invites
+         someone to pick one, and a wrong BBL silently imports another
+         building's energy filing. */
+      if(r.confidence!=null && r.confidence < 0.5) return false;
+      return true;
     });
   });
 }
@@ -53914,6 +54216,25 @@ function bnzAddressLookup(shId){
     if(ms){ lat = ms.lat!=null?ms.lat:(ms.center&&ms.center.lat); lon = ms.lng!=null?ms.lng:(ms.center&&ms.center.lng); }
   }catch(e){}
 
+  /* SEEDED SITES FIRST. A building the programme already knows should
+     never depend on a geocoder \u2014 and for anything outside NYC the
+     geocoder has nothing to offer anyway. */
+  var seed = (typeof omegaSiteFind==='function') ? omegaSiteFind(text) : null;
+  if(seed){
+    var res = bnzApplySite(sh, seed);
+    var sh2 = '<div style="color:#6EE7B7;font-weight:600">'+_nzEsc(seed.name)+'</div>'
+      +'<div style="color:#CBD5E1">'+_nzEsc(seed.address)+'</div>';
+    if(res.applied.length) sh2 += '<div style="margin-top:5px;color:#9FB3C8">Applied:<br>\u00b7 '+res.applied.map(_nzEsc).join('<br>\u00b7 ')+'</div>';
+    if(res.skipped.length) sh2 += '<div style="margin-top:4px;color:#7A8CA0">Kept your values:<br>\u00b7 '+res.skipped.map(_nzEsc).join('<br>\u00b7 ')+'</div>';
+    if(res.gaps.length)    sh2 += '<div style="margin-top:5px;color:#FBBF24">What is NOT known:<br>\u00b7 '+res.gaps.map(_nzEsc).join('<br>\u00b7 ')+'</div>';
+    sh2 += '<div style="margin-top:5px"><span onclick="omegaSiteCard(\''+seed.id+'\')" '
+      +'style="color:#7DD3FC;text-decoration:underline;cursor:pointer">Full site record</span></div>';
+    out.innerHTML = sh2;
+    try{ if(typeof pushHist==='function') pushHist(); }catch(e){}
+    setTimeout(function(){ try{ _bnzRefresh(); }catch(e){} }, 900);
+    return;
+  }
+
   nycGeocode(text, { lat:lat, lon:lon, size:6 }).then(function(cands){
     if(!cands.length){ out.innerHTML = '<span style="color:#FBBF24">No NYC address matched. GeoSearch covers New York City only.</span>'; return; }
     var h = '<div style="color:#9FB3C8;margin-bottom:4px">'+cands.length+' match'+(cands.length===1?'':'es')+' \u2014 pick the right one:</div>';
@@ -53925,10 +54246,93 @@ function bnzAddressLookup(shId){
     });
     out.innerHTML = h;
   }).catch(function(e){
+    if(e && e.outOfArea){
+      /* Say plainly that this is a coverage limit, not a failure, and
+         point at what the tool CAN still do for the building. */
+      out.innerHTML = '<div style="color:#FBBF24;font-weight:600">Outside the address lookup\u2019s coverage</div>'
+        +'<div style="color:#CBD5E1;margin-top:3px">'+_nzEsc(e.message)+'</div>'
+        +'<div style="color:#9FB3C8;margin-top:6px">The building can still be modelled in full \u2014 geometry, envelope, '
+        +'energy, carbon and cost all work anywhere. What is unavailable here is the address\u2192BBL join and the filed '
+        +'benchmarking data behind it, because only New York City publishes building-level energy at that granularity.</div>'
+        +'<div style="color:#9FB3C8;margin-top:6px">Set the market to a general-assumptions tier, and upload a utility bill '
+        +'summary or audit as the baseline to get a before-and-after.</div>';
+      return;
+    }
     out.innerHTML = '<span style="color:#F87171">Lookup failed: '+_nzEsc(e.message)+'</span>';
   });
 }
 window.bnzAddressLookup = bnzAddressLookup;
+
+/* The full seeded record, with a source against every line. */
+function omegaSiteCard(id){
+  var s = (OMEGA_SITES.sites||[]).filter(function(x){ return x.id===id; })[0];
+  if(!s) return;
+  var esc=_nzEsc;
+  var old=document.getElementById('omega-site'); if(old) old.remove();
+  var d=document.createElement('div'); d.id='omega-site';
+  d.setAttribute('style','position:fixed;inset:0;background:rgba(6,12,22,.75);z-index:10050;display:flex;'
+    +'align-items:center;justify-content:center;padding:24px');
+  d.onclick=function(e){ if(e.target===d) d.remove(); };
+  function sec(t){ return '<div style="font-size:9px;color:#64748B;text-transform:uppercase;letter-spacing:.5px;'
+    +'margin:14px 0 5px">'+esc(t)+'</div>'; }
+  var h='';
+  h+=sec('Known facts');
+  h+='<table style="width:100%;font-size:11px;border-collapse:collapse">';
+  (s.facts||[]).forEach(function(f){
+    h+='<tr style="border-bottom:1px solid rgba(255,255,255,.07)"><td style="padding:4px 8px 4px 0;color:#CBD5E1">'
+      +esc(f.label)+'</td><td style="padding:4px 8px 4px 0;color:#E2EEF9;font-weight:600">'+esc(f.v)
+      +'</td><td style="padding:4px 0;color:#7A8CA0;font-size:10px">'+esc(f.src)+'</td></tr>';
+  });
+  h+='</table>';
+  if(s.certifications&&s.certifications.length){
+    h+=sec('Certification');
+    s.certifications.forEach(function(c){
+      h+='<div style="font-size:11px;color:#CBD5E1;margin-bottom:4px"><b>'+esc(c.name)+'</b>'
+        +(c.year?' ('+c.year+')':'')+'<br><span style="color:#94A3B8">'+esc(c.detail||'')+'</span>'
+        +'<br><span style="color:#7A8CA0;font-size:10px">'+esc(c.src||'')+'</span></div>';
+    });
+  }
+  if(s.envelope&&s.envelope.length){
+    h+=sec('Envelope as built');
+    s.envelope.forEach(function(e){
+      h+='<div style="font-size:11px;color:#CBD5E1;margin-bottom:6px;border-left:2px solid #1E3A5F;padding-left:9px">'
+        +'<b>'+esc(e.layer)+'</b> \u2014 '+esc(e.system)
+        +'<br><span style="color:#94A3B8">'+esc(e.note||'')+'</span>'
+        +'<br><span style="color:#7A8CA0;font-size:10px">'+esc(e.src||'')+'</span></div>';
+    });
+  }
+  if(s.utilities){
+    h+=sec('Utilities');
+    h+='<div style="font-size:11px;color:#CBD5E1">Electric: '+esc(s.utilities.electric||'\u2014')
+      +'<br>Gas: '+esc(s.utilities.gas||'\u2014')
+      +'<br><span style="color:#94A3B8">'+esc(s.utilities.note||'')+'</span></div>';
+  }
+  if(s.team&&s.team.length){
+    h+=sec('Project team');
+    h+='<div style="font-size:11px;color:#CBD5E1">'
+      +s.team.map(function(t){ return esc(t.role)+': '+esc(t.who); }).join('<br>')+'</div>';
+  }
+  if(s.gaps&&s.gaps.length){
+    h+='<div style="margin-top:14px;background:rgba(251,191,36,.08);border-left:3px solid #FBBF24;'
+      +'border-radius:0 6px 6px 0;padding:9px 12px">'
+      +'<div style="font-size:9px;color:#FBBF24;text-transform:uppercase;letter-spacing:.5px;font-weight:700;'
+      +'margin-bottom:4px">What is not known</div>'
+      +'<div style="font-size:11px;color:#FDE68A;line-height:1.6">\u00b7 '+s.gaps.map(esc).join('<br>\u00b7 ')+'</div></div>';
+  }
+  d.innerHTML='<div style="background:#0F1D30;border:1px solid #1E3A5F;border-radius:12px;max-width:640px;width:100%;'
+    +'max-height:88vh;overflow:auto;box-shadow:0 20px 60px rgba(0,0,0,.6)">'
+    +'<div style="padding:14px 18px;border-bottom:1px solid #1E3A5F;display:flex;align-items:center;'
+      +'justify-content:space-between;position:sticky;top:0;background:#0F1D30">'
+      +'<div><div style="font-size:14px;font-weight:800;color:#E2EEF9">'+esc(s.name)+'</div>'
+      +'<div style="font-size:10.5px;color:#94A3B8">'+esc(s.address)+'</div></div>'
+      +'<button onclick="var x=document.getElementById(\'omega-site\');if(x)x.remove()" '
+      +'style="background:none;border:none;color:#64748B;font-size:20px;cursor:pointer;line-height:1">\u00d7</button></div>'
+    +'<div style="padding:4px 18px 18px">'
+      +'<div style="font-size:11px;color:#94A3B8;line-height:1.6;margin-top:10px">'+esc(s.note||'')+'</div>'
+      +h+'</div></div>';
+  document.body.appendChild(d);
+}
+window.omegaSiteCard = omegaSiteCard;
 
 function bnzAddressPick(shId, ix){
   var sh = (S.shapes||[]).filter(function(x){ return x.id===shId; })[0];
@@ -53980,6 +54384,872 @@ function bnzReconcileShow(shId){
   out.innerHTML = h;
 }
 window.bnzReconcileShow = bnzReconcileShow;
+
+/* ═══════════════════════════════════════════════════════════════════
+ *  BNZ PHASE 7  --  CHEAT SHEET, MARKET TIERS, BASELINE COMPARISON
+ *  ------------------------------------------------------------------
+ *  Three problems this stage solves, all about being usable by someone
+ *  who is not the person who built the model:
+ *
+ *  1. THE FIELDS DO NOT EXPLAIN THEMSELVES. "Parapet ft", "Occupancy",
+ *     "Compliance pathway" are obvious to an engineer and opaque to the
+ *     owner, the housing officer, or the council staffer who has to act
+ *     on the output. A wrong ESPM property type silently changes the
+ *     penalty by 3x, so a field nobody understands is a field that
+ *     produces confident wrong numbers.
+ *
+ *  2. THE TOOL LOOKS UNIVERSAL AND IS NOT. Everything loaded here is
+ *     New York: LL97 caps, NYC coefficients, LL84 lookup, NYSERDA and
+ *     Con Edison incentives. Presenting that to a Denver or Boston
+ *     building without saying so is the most dangerous thing this
+ *     module could do, because the numbers LOOK right. So markets are
+ *     explicitly tiered, and the tier is shown in the panel and carried
+ *     into the report.
+ *
+ *  3. NOBODY BELIEVES A MODEL WITHOUT A BEFORE. A city asked to invest
+ *     wants to see what the building was, not only what it will be. So
+ *     a prior benchmarking return, audit or ESPM export can be loaded
+ *     and the report shows the two side by side.
+ * ═══════════════════════════════════════════════════════════════════ */
+
+/* ── The cheat sheet ───────────────────────────────────────────────
+   Each entry answers four questions in the order a confused person
+   asks them: what is this, why does it matter, where does the number
+   come from, and what goes wrong. The "gotcha" line is the one that
+   earns the feature \u2014 it is where the expensive mistakes live. */
+var BNZ_HELP = {
+  'name':{ t:'Building name',
+    what:'A label for this building inside the project. It has no effect on any calculation.',
+    why:'It is what appears in the building-by-building table of the city report, so use the name the reader will recognise \u2014 the street address or the common name, not "Building 1".' },
+
+  'delivery':{ t:'Delivery',
+    what:'How the work reaches the building: new construction, deep retrofit, or a lighter scope.',
+    why:'It sets the assumed starting condition. A deep retrofit is priced against an existing envelope; new construction is priced against nothing.',
+    gotcha:'New construction in NYC is governed by Local Law 154 and NYCECC 2025, which bar on-site fossil combustion. If you model new construction with a gas system, the design will not be approvable regardless of what the carbon numbers say.' },
+
+  'propertyType':{ t:'Property type',
+    what:'The building use. Feeds the benchmark energy intensity and, in New York, maps to the ENERGY STAR Portfolio Manager type that sets the LL97 cap.',
+    why:'This is the single highest-leverage field in the panel. Caps vary by more than 5x across types.',
+    src:'Benchmark EUI from BLD_ROM; cap from 1 RCNY 103-14.',
+    gotcha:'Getting this wrong is not a rounding error. A restaurant modelled as an office understates its 2024\u201329 cap by roughly a third; a warehouse modelled as an office overstates it by nearly half. ESPM "Other" and "Mixed Use" may NOT be assigned to any part of a covered building \u2014 pick the real use.' },
+
+  'stories':{ t:'Stories',
+    what:'Number of occupied floors above grade.',
+    why:'Stories times floor-to-floor gives building height, which sets the wall area \u2014 and the envelope is priced per square foot of WALL, not floor.',
+    gotcha:'A tall narrow building carries far more wall for the same floor area than a squat one, so it costs more to clad and loses more heat. Getting stories wrong moves the envelope cost more than most people expect.' },
+
+  'f2f':{ t:'Floor to floor (ft)',
+    what:'Vertical distance from one floor slab to the next, not the ceiling height.',
+    why:'Drives building height and therefore gross wall area.',
+    src:'Typical: 10\u201312 ft residential, 13\u201315 ft office, 16\u201324 ft industrial or lab.',
+    gotcha:'People often enter the ceiling height, which is 1\u20133 ft less. That undercounts wall area on every floor and quietly understates both the envelope cost and the heat loss.' },
+
+  'parapet':{ t:'Parapet (ft)',
+    what:'The wall that continues above the roof line.',
+    why:'It is real wall area to clad and a real thermal bridge, but it encloses no floor area \u2014 so it adds cost and heat loss without adding anything to divide them by.',
+    src:'Typical 2\u20134 ft; taller where roof equipment is screened.' },
+
+  'roofOn':{ t:'Roof included',
+    what:'Whether the roof assembly is part of this scope.',
+    why:'Turn it off when the roof was recently replaced or sits outside the project boundary, so its cost and R-value are not double-counted.' },
+
+  /* ── Assemblies ── */
+  'assemblies.wall':{ t:'Opaque wall assembly',
+    what:'The wall build-up, excluding windows.',
+    why:'Sets the wall U-value and the cost per square foot of wall.',
+    gotcha:'Priced per square foot of WALL, not floor. This is the distinction that catches almost everyone: two buildings with the same floor area can differ by 40% in cladding cost purely on shape.' },
+
+  'assemblies.window':{ t:'Fenestration',
+    what:'The glazing system \u2014 U-value for heat loss, SHGC for solar heat gain.',
+    why:'Glazing is usually the weakest part of the envelope by an order of magnitude. A code wall is around R-20; a good window is around R-3.',
+    gotcha:'Lower SHGC cuts summer cooling but also cuts free winter heat. In a heating-dominated climate like New York (CZ 4A\u20136A) a very low SHGC on a south face can make the building worse, not better.' },
+
+  'assemblies.roof':{ t:'Roof assembly',
+    what:'The roof build-up including insulation and membrane.',
+    why:'The roof is typically the largest single uninterrupted surface and the cheapest place to add R-value.',
+    gotcha:'Items marked PLACEHOLDER carry no verified R-value or cost \u2014 they are a slot waiting for a vendor number. Do not let a placeholder reach a budget.' },
+
+  'assemblies.hvac':{ t:'HVAC / DHW',
+    what:'Heating, cooling and domestic hot water plant.',
+    why:'This is where fuel switching happens, and fuel switching is where the carbon is. A heat pump at COP 2.8 delivers the same heat for roughly a third of the site energy of resistance, on an electricity coefficient that halves in 2030.',
+    gotcha:'The carbon case and the bill case can point opposite ways. At current NYC rates, gas-to-heat-pump often lengthens simple payback even as it cuts emissions sharply \u2014 which is exactly why the incentive stack and the penalty avoided both belong in the same view.' },
+
+  'winCount':{ t:'Windows per elevation',
+    what:'Count of window units on that face, at the unit opening size set above.',
+    why:'Window-to-wall ratio and orientation drive solar gain. The same glazing area does very different things on a south wall than a north one.',
+    gotcha:'Enter windows per FACE, not per floor. Under-counting glazing makes the envelope look better than it is and understates both cooling load and cost.' },
+
+  /* ── Compliance ── */
+  'bpsJurisdiction':{ t:'Standard',
+    what:'Which building performance standard this building is tested against.',
+    why:'Sets the caps, the fuel coefficients, the penalty rate and the filing calendar.',
+    gotcha:'Only NYC Local Law 97 is loaded with published, verified data. Everything else is either a general assumption set or not yet released \u2014 see the market tier badge in the panel.' },
+
+  'occGroup':{ t:'ESPM property type (occupancy)',
+    what:'The ENERGY STAR Portfolio Manager property type that determines the emissions cap.',
+    why:'LL97 sets a different cap for each of 60 ESPM types across four compliance periods.',
+    src:'1 RCNY 103-14(c)(3).',
+    gotcha:'The 2022 rule REPLACED the original 10 Building Code occupancy groups with these 60 ESPM types. If your saved project still shows a letter code (B, R-2, S), it is being mapped for you \u2014 confirm the real ESPM type before anything is filed.' },
+
+  'altPathway':{ t:'Compliance pathway',
+    what:'Which route through the law this building takes.',
+    why:'Article 320 is the annual cap test. Article 321 replaces the cap test with a one-time measures report for rent-regulated, HDFC, project-based-assisted and houses of worship. The other routes keep the cap and change what may be deducted or what the penalty is.',
+    gotcha:'This is the field most likely to produce a scary number that is not owed. An Article 321 building has NO annual cap penalty however large the emissions column reads. Reporting a fine against rent-regulated stock that does not owe one is the worst error this tool can make \u2014 check eligibility before you show a penalty to an owner.' },
+
+  'rateElec':{ t:'$/kWh',
+    what:'All-in delivered electricity price including demand and delivery charges, not the supply rate alone.',
+    why:'Drives every dollar of energy saving, and therefore payback.',
+    src:'NYC commercial all-in typically $0.20\u2013$0.28/kWh; upstate NY lower.',
+    gotcha:'Using the supply-only rate off a bill can halve the apparent saving. Take total annual spend divided by total annual kWh.' },
+
+  'rateGas':{ t:'$/therm',
+    what:'All-in delivered gas price per therm.',
+    why:'Sets the value of the gas that electrification displaces.',
+    src:'NYC commercial typically $1.10\u2013$1.60/therm.',
+    gotcha:'Gas is cheap per unit of energy and carbon-heavy per unit of energy, and its LL97 coefficient does not fall in 2030 while electricity nearly halves. A gas building gets worse against the cap every year without changing a thing.' },
+
+  /* ── Outputs ── */
+  'out.baselineEui':{ t:'Baseline EUI',
+    what:'Modelled site energy use intensity before the scope, in kBtu per square foot per year.',
+    why:'The reference every saving is measured against.',
+    gotcha:'This is MODELLED. If the building has an LL84 filing, resolve its address and reconcile \u2014 a modelled EUI half the filed one makes every penalty, payback and cost-per-tonne downstream wrong by the same factor.' },
+
+  'out.firstNonCompliant':{ t:'First non-compliant period',
+    what:'The first compliance period in which the proposed building exceeds its cap.',
+    why:'This is the deadline that actually governs the project programme.',
+    gotcha:'Compliant today and non-compliant in 2030 is the normal case, not the exception \u2014 under 10% of NYC buildings exceeded the 2024\u201329 cap but around 57% are projected to exceed the 2030\u201334 cap. A building that waits until 2029 to act has no time left to act in.' },
+
+  'out.penalty':{ t:'Penalty exposure',
+    what:'Annual fine at $268 per tonne of CO\u2082e over the cap.',
+    why:'It recurs every year, has no ceiling, and buys nothing.',
+    gotcha:'Shown for the CURRENT period only. The 2030 column is usually the larger number and the one worth acting on.' },
+
+  'out.payback':{ t:'Simple payback',
+    what:'Capital cost divided by annual benefit, undiscounted.',
+    why:'A quick screen, and the number most owners ask for first.',
+    gotcha:'Simple payback systematically undervalues decarbonisation because it counts only energy bill savings against first cost. It ignores penalties avoided, incentives, asset life, resilience, health and the fact that the equipment had to be replaced anyway. Use it to screen, never to decide.' },
+
+  'baselineDoc':{ t:'Baseline report',
+    what:'A prior benchmarking return, energy audit or ESPM export describing how the building performs today.',
+    why:'It turns the output from a projection into a before-and-after that a city or a board can act on.',
+    src:'Accepts LL84 CSV, ESPM export, omega.building.v1 JSON, or a plain summary you type in.' }
+};
+window.BNZ_HELP = BNZ_HELP;
+
+/* The marker. Deliberately a question mark rather than a warning
+   triangle: the panel already uses amber and red for real problems,
+   and a screen full of warning icons trains people to ignore the ones
+   that matter. */
+function bnzHelpMark(key){
+  if(!BNZ_HELP[key]) return '';
+  return '<span onclick="bnzHelpShow(\''+key+'\');event.stopPropagation()" title="What is this?" '
+    +'style="display:inline-flex;align-items:center;justify-content:center;width:13px;height:13px;'
+    +'margin-left:4px;border-radius:50%;background:rgba(56,189,248,.16);border:1px solid rgba(56,189,248,.45);'
+    +'color:#7DD3FC;font-size:9px;font-weight:700;cursor:pointer;vertical-align:middle;line-height:1;'
+    +'font-family:inherit;text-transform:none">?</span>';
+}
+window.bnzHelpMark = bnzHelpMark;
+window._hm = bnzHelpMark;   /* short alias, used inline in the panel */
+
+function bnzHelpShow(key){
+  var h = BNZ_HELP[key]; if(!h) return;
+  var esc = (typeof _nzEsc==='function') ? _nzEsc : function(s){ return String(s==null?'':s); };
+  var old = document.getElementById('bnz-help'); if(old) old.remove();
+  var d = document.createElement('div');
+  d.id = 'bnz-help';
+  d.setAttribute('style','position:fixed;inset:0;background:rgba(6,12,22,.72);z-index:10050;display:flex;'
+    +'align-items:center;justify-content:center;padding:24px');
+  d.onclick = function(e){ if(e.target===d) d.remove(); };
+  var body = ''
+    + '<div style="font-size:12px;color:#CBD5E1;line-height:1.65">'+esc(h.what)+'</div>'
+    + (h.why? '<div style="margin-top:10px"><div style="font-size:9px;color:#64748B;text-transform:uppercase;letter-spacing:.5px;margin-bottom:3px">Why it matters</div>'
+        +'<div style="font-size:12px;color:#CBD5E1;line-height:1.65">'+esc(h.why)+'</div></div>' : '')
+    + (h.src? '<div style="margin-top:10px"><div style="font-size:9px;color:#64748B;text-transform:uppercase;letter-spacing:.5px;margin-bottom:3px">Where the number comes from</div>'
+        +'<div style="font-size:12px;color:#94A3B8;line-height:1.65">'+esc(h.src)+'</div></div>' : '')
+    + (h.gotcha? '<div style="margin-top:12px;background:rgba(251,191,36,.08);border-left:3px solid #FBBF24;'
+        +'border-radius:0 6px 6px 0;padding:9px 12px"><div style="font-size:9px;color:#FBBF24;text-transform:uppercase;'
+        +'letter-spacing:.5px;font-weight:700;margin-bottom:3px">Common mistake</div>'
+        +'<div style="font-size:12px;color:#FDE68A;line-height:1.65">'+esc(h.gotcha)+'</div></div>' : '');
+  d.innerHTML = '<div style="background:#0F1D30;border:1px solid #1E3A5F;border-radius:12px;max-width:520px;width:100%;'
+    +'box-shadow:0 20px 60px rgba(0,0,0,.6)">'
+    +'<div style="padding:14px 18px;border-bottom:1px solid #1E3A5F;display:flex;align-items:center;justify-content:space-between">'
+      +'<div style="font-size:14px;font-weight:800;color:#E2EEF9">'+esc(h.t)+'</div>'
+      +'<button onclick="var x=document.getElementById(\'bnz-help\');if(x)x.remove()" '
+      +'style="background:none;border:none;color:#64748B;font-size:20px;cursor:pointer;line-height:1">\u00d7</button></div>'
+    +'<div style="padding:14px 18px">'+body+'</div></div>';
+  document.body.appendChild(d);
+}
+window.bnzHelpShow = bnzHelpShow;
+
+/* ── Market tiers ──────────────────────────────────────────────────
+   Three honest states, never blurred:
+     live         \u2014 published law loaded and verified, penalties real
+     general      \u2014 no enforceable standard loaded; screening only
+     coming_soon  \u2014 named so people can plan, explicitly not modelled
+   A market's tier governs what the panel shows and what the report is
+   allowed to claim. */
+var BNZ_MARKETS = {
+  as_of:'2026-08-13',
+  active:'nyc_ll97',
+  tiers:{
+    live:{ label:'LIVE', color:'#34D399',
+      note:'Published standard loaded from the rule text. Caps, coefficients, penalties and deadlines are real and citable.' },
+    general:{ label:'GENERAL ASSUMPTIONS', color:'#FBBF24',
+      note:'No enforceable building performance standard is loaded for this market. Energy and cost are modelled from benchmarks and code minimums; there is no penalty column because there is no penalty. Screening only.' },
+    coming_soon:{ label:'COMING SOON', color:'#94A3B8',
+      note:'Identified and scoped, not yet loaded. Nothing is modelled against this standard.' }
+  },
+  markets:[
+    { id:'nyc_ll97', tier:'live', name:'New York City \u2014 Local Law 97',
+      geo:'Five boroughs', threshold:'Over 25,000 gsf',
+      standard:'NYC Admin Code Art. 320/321; 1 RCNY 103-14',
+      penalty:'$268 / tCO\u2082e over cap, annually, no ceiling',
+      dataLoaded:['60 ESPM property-type caps \u00d7 4 published periods + 2050 statutory zero',
+                  '23 fuel and electricity GHG coefficients, both periods',
+                  'Article 321 prescriptive measures (13 PECMs)',
+                  'AHRF offsets, beneficial electrification credit and banking',
+                  'Deferred first-report dates for Mitchell-Lama and income-restricted',
+                  'LL84 / LL87 / LL88 / LL33 / LL154 / NYCECC 2025 stack',
+                  'Live address \u2192 BBL \u2192 LL84 benchmarking and PLUTO lookup',
+                  'NYSERDA, NYS Clean Heat / Con Edison, \u00a7179D, C-PACE incentive stack'],
+      programs:['NYSERDA Carbon Neutral Buildings Roadmap','NYC Accelerator','NYSERDA RetrofitNY',
+                'Buildings of Excellence','Empire Building Challenge','NYC Affordable Housing Reinvestment Fund'] },
+
+    { id:'nys_general', tier:'general', name:'New York State \u2014 outside NYC',
+      geo:'Statewide',
+      standard:'Climate Act (CLCPA): 40% GHG reduction by 2030, 85% by 2050, economy-wide',
+      penalty:'No statewide building performance standard in force. NYSERDA\u2019s Carbon Neutral Buildings Roadmap RECOMMENDS a statewide benchmarking requirement leading to a BPS for buildings over 25,000 sf, enacted now and effective 2030 \u2014 a recommendation, not law.',
+      dataLoaded:['Climate Act targets and the Roadmap policy phase-in timeline',
+                  'NYSERDA statewide incentive programmes',
+                  'Benchmark EUI and code-minimum assemblies',
+                  'CLIMATE reference stations for NY climate zones'],
+      programs:['NYSERDA Carbon Neutral Buildings Roadmap','RetrofitNY','Buildings of Excellence',
+                'NY-Sun','NYS Clean Heat','EmPower+','Clean Green Schools','Large-Scale Thermal'],
+      note:'Buildings here are modelled for energy, carbon and cost, and against the Climate Act trajectory \u2014 but no penalty is computed, because none exists. Local stretch codes (NYStretch) and municipal policies such as Ithaca\u2019s Green Building Policy may apply on top.' },
+
+    { id:'us_general', tier:'general', name:'United States \u2014 no building performance standard',
+      geo:'Anywhere without a BPS in force (includes Ohio)',
+      standard:'None in force. Energy code applies to new work \u2014 typically IECC or ASHRAE 90.1 as adopted by the state \u2014 but there is no ongoing emissions or energy cap on an existing building.',
+      penalty:'None. No cap, no fine, no filing.',
+      dataLoaded:['Benchmark energy intensities by property type (BLD_ROM)',
+                  'CLIMATE reference stations \u2014 58 US locations, HDD/CDD and design conditions',
+                  'IECC 2021 prescriptive minimums (CODE_MIN)',
+                  'Assembly and HVAC catalogues with costs',
+                  'Federal incentives: \u00a7179D deduction, investment tax credit'],
+      programs:['Federal \u00a7179D','Federal ITC','Utility efficiency programmes (varies by territory)',
+                'ENERGY STAR Portfolio Manager (voluntary benchmarking)','LEED / Passive House certification'],
+      note:'The building is modelled in full \u2014 geometry, envelope, energy, carbon and cost \u2014 and the carbon trajectory '
+          +'is shown against the grid it actually sits on. What is absent is a compliance test, because there is nothing to '
+          +'comply with. Treat the carbon column as the investment case, not as exposure. Voluntary benchmarking through '
+          +'ENERGY STAR Portfolio Manager is the usual way to establish a defensible baseline where no mandate exists.' },
+
+    { id:'boston_berdo',  tier:'coming_soon', name:'Boston \u2014 BERDO 2.0',        geo:'Boston, MA',           threshold:'Over 20,000 sf or 15+ units' },
+    { id:'dc_beps',       tier:'coming_soon', name:'Washington DC \u2014 BEPS',      geo:'District of Columbia', threshold:'Over 10,000 sf' },
+    { id:'cambridge',     tier:'coming_soon', name:'Cambridge \u2014 BEUDO',         geo:'Cambridge, MA',        threshold:'Over 25,000 sf' },
+    { id:'denver',        tier:'coming_soon', name:'Denver \u2014 Energize Denver',  geo:'Denver, CO',           threshold:'Over 25,000 sf' },
+    { id:'seattle',       tier:'coming_soon', name:'Seattle \u2014 Building Emissions Performance Standard', geo:'Seattle, WA', threshold:'Over 20,000 sf' },
+    { id:'wa_ceea',       tier:'coming_soon', name:'Washington State \u2014 Clean Buildings Act',            geo:'Washington State', threshold:'Over 20,000 sf' },
+    { id:'md_beps',       tier:'coming_soon', name:'Maryland \u2014 Building Energy Performance Standards',  geo:'Maryland',     threshold:'Over 35,000 sf' },
+    { id:'montgomery',    tier:'coming_soon', name:'Montgomery County \u2014 BEPS',  geo:'Montgomery County, MD', threshold:'Over 25,000 sf' },
+    { id:'stlouis',       tier:'coming_soon', name:'St. Louis \u2014 BEPS',          geo:'St. Louis, MO',        threshold:'Over 50,000 sf' },
+    { id:'chula_ca',      tier:'coming_soon', name:'California \u2014 AB 802 / local BPS', geo:'California',     threshold:'Varies' },
+    { id:'nj',            tier:'coming_soon', name:'New Jersey \u2014 benchmarking + proposed BPS', geo:'New Jersey', threshold:'Over 25,000 sf' }
+  ]
+};
+window.BNZ_MARKETS = BNZ_MARKETS;
+
+function bnzMarket(id){
+  id = id || BNZ_MARKETS.active;
+  return BNZ_MARKETS.markets.filter(function(m){ return m.id===id; })[0] || BNZ_MARKETS.markets[0];
+}
+window.bnzMarket = bnzMarket;
+
+/* ═══════════════════════════════════════════════════════════════════
+ *  BNZ PHASE 8  --  SEEDED SITES + OUT-OF-AREA GUARD
+ *  ------------------------------------------------------------------
+ *  THE BUG THIS FIXES FIRST. GeoSearch is the NYC Property Address
+ *  Directory and nothing else. Given "3735 Green Road Beachwood, OH"
+ *  it does not fail \u2014 it fuzzy-matches "Green Road" and confidently
+ *  returns six Staten Island addresses on GREEN VALLEY ROAD, each with
+ *  a real BBL and BIN. Picking any of them would have stapled a
+ *  stranger's LL84 benchmarking filing onto an Ohio headquarters and
+ *  then reported LL97 penalties against it.
+ *
+ *  A geocoder that returns wrong answers confidently is worse than one
+ *  that returns none, because the wrong answers look like work. So the
+ *  address is screened BEFORE the request goes out, and results are
+ *  screened again on the way back.
+ *
+ *  Second: seeded sites. Some buildings matter enough to a programme to
+ *  carry known facts \u2014 a client headquarters used as the reference case
+ *  for a trial. Those are held here with a source against every field,
+ *  because a seeded number that cannot be sourced is just a hardcoded
+ *  guess wearing a badge.
+ * ═══════════════════════════════════════════════════════════════════ */
+
+/* ── Out-of-area screening ─────────────────────────────────────────
+   Cheap, local, and wrong in the safe direction: when in doubt it lets
+   the query through to GeoSearch rather than blocking a real NYC
+   address. What it must never do is let an obviously non-NYC address
+   come back with NYC parcels attached. */
+var NYC_ZIP_RANGES = [
+  [10001,10292],   /* Manhattan */
+  [10301,10314],   /* Staten Island */
+  [10451,10475],   /* Bronx */
+  [11004,11109],   /* Queens (western) */
+  [11201,11256],   /* Brooklyn */
+  [11351,11697]    /* Queens (eastern) + Rockaways */
+];
+var NYC_PLACE_WORDS = /\b(new\s*york|nyc|manhattan|brooklyn|queens|bronx|staten\s*island|harlem|astoria|flushing|jamaica|bushwick|williamsburg|riverdale|long\s*island\s*city|lic)\b/i;
+var US_STATE_TOKEN  = /\b(A[LKZR]|C[AOT]|DE|FL|GA|HI|I[ADLN]|K[SY]|LA|M[ADEINOST]|N[CDEHJMV]|O[HKR]|P[AR]|RI|S[CD]|T[NX]|UT|V[AT]|W[AIVY]|DC)\b/i;
+
+function nycAddressCheck(text){
+  var t = String(text||'');
+  var out = { plausible:true, reasons:[], zip:null, state:null };
+
+  var zm = t.match(/\b(\d{5})(?:-\d{4})?\b/);
+  if(zm){
+    var z = parseInt(zm[1],10);
+    out.zip = zm[1];
+    var inNyc = NYC_ZIP_RANGES.some(function(r){ return z>=r[0] && z<=r[1]; });
+    if(!inNyc){ out.plausible=false; out.reasons.push('ZIP '+zm[1]+' is not a New York City ZIP code.'); }
+  }
+
+  /* A state token other than NY is decisive. Checked case-insensitively
+     but only as a whole word, so "OR" inside a street name does not
+     trip it. */
+  var sm = t.match(US_STATE_TOKEN);
+  if(sm){
+    var st = sm[1].toUpperCase();
+    out.state = st;
+    if(st!=='NY'){ out.plausible=false; out.reasons.push('Address names '+st+', outside New York.'); }
+  }
+  if(/\bnew\s+jersey\b|\bconnecticut\b|\bohio\b|\bpennsylvania\b|\bmassachusetts\b/i.test(t)){
+    out.plausible=false; out.reasons.push('Address names a state outside New York.');
+  }
+
+  /* An in-state but out-of-city New York address: has NY, has a ZIP that
+     failed the range test, or names a known upstate place. */
+  if(out.state==='NY' && out.zip && !out.plausible)
+    out.reasons.push('New York State, but outside the five boroughs \u2014 GeoSearch and LL84 cover New York City only.');
+
+  out.mentionsNyc = NYC_PLACE_WORDS.test(t);
+  return out;
+}
+window.nycAddressCheck = nycAddressCheck;
+
+/* ── Seeded sites ──────────────────────────────────────────────────
+   Facts held locally for buildings a programme cares about. Every field
+   carries where it came from, and anything not publicly documented is
+   simply absent rather than filled with a plausible-looking number.
+
+   Note what is NOT here: energy use. Ohio has no benchmarking mandate,
+   so no filed energy data for this building exists publicly the way an
+   LL84 return does in New York. Energy has to come from the model, a
+   utility bill, or an uploaded baseline \u2014 and the panel says so rather
+   than quietly leaving the reader to assume it was measured. */
+var OMEGA_SITES = {
+  as_of:'2026-08-13',
+  sites:[
+    {
+      id:'tremco_hq',
+      name:'Tremco Incorporated \u2014 Corporate Headquarters',
+      match:[ '3735 green road beachwood', '3735 green rd beachwood', '3735 green road',
+              '3735 green rd', 'tremco hq', 'tremco headquarters', 'tremco corporate' ],
+      address:'3735 Green Road, Beachwood, OH 44122',
+      street:'3735 Green Road', city:'Beachwood', state:'OH', zip:'44122',
+      county:'Cuyahoga', market:'us_general',
+      lat:41.4718, lon:-81.5062, coordPrecision:'approximate \u2014 street level, confirm on the map',
+      owner:'Tremco CPG Inc. (RPM International)',
+      /* Every seeded field, with its source. */
+      facts:[
+        { k:'gfaSf',        v:46200,  label:'Gross floor area',      src:'Dryvit case study \u2014 "46,200 sq ft facility"' },
+        { k:'yearBuilt',    v:1971,   label:'Year built',            src:'Described as 1970s-era and "40-year-old" at the 2010\u201311 renovation' },
+        { k:'yearRenovated',v:2011,   label:'Major renovation',      src:'Foundation-to-roof renovation began June 2010, dedicated 17 June 2011' },
+        { k:'propertyType', v:'Office', label:'Property type',       src:'Corporate headquarters office' },
+        { k:'climateStation', v:'Cleveland OH', label:'Climate reference', src:'Nearest CLIMATE station; ASHRAE climate zone 5A' }
+      ],
+      certifications:[
+        { name:'LEED Gold (LEED-NC)', year:2012, detail:'72 points. Certified as new construction rather than renovation because the scope was so extensive.',
+          src:'USGBC via Tremco press release, February 2012' }
+      ],
+      /* The envelope is the interesting part for this tool: it is a
+         building made of the vendor's own products, which makes it the
+         natural reference case for the ENV_SPEC catalogue. */
+      envelope:[
+        { layer:'Opaque wall', system:'Dryvit Outsulation Plus MD with custom TerraNeo finish',
+          note:'Exterior insulation and finish system installed over the original 1970s fa\u00e7ade.',
+          src:'Dryvit case study; applicator Saylors Inc.' },
+        { layer:'Roof', system:'Vegetated (green) roof',
+          note:'Four-zone vegetated roof assembly. Depth, growing medium and R-contribution not published \u2014 needs a Tremco number before it drives cost or thermal performance.',
+          src:'Greenroofs.com project record; Tournesol Siteworks' },
+        { layer:'Fenestration', system:'Kawneer curtain wall and glazing',
+          note:'Supplied and installed with Carroll Glass. U-value and SHGC not published \u2014 confirm the specific product line.',
+          src:'O&S Associates project record' }
+      ],
+      team:[
+        { role:'Owner',      who:'Tremco CPG Inc. / RPM International' },
+        { role:'Architect',  who:'O&S Associates, Inc. (Columbus, OH)' },
+        { role:'General contractor', who:'WTI Inc. (Weatherproofing Technologies, a Tremco subsidiary)' }
+      ],
+      utilities:{ electric:'The Illuminating Company (FirstEnergy)', gas:'Dominion Energy Ohio',
+                  note:'Ohio retail choice applies \u2014 the supply rate may sit with a third-party supplier while delivery stays with the utility. Take the all-in rate off a bill.' },
+      /* What the reader must not assume. */
+      gaps:[ 'No filed energy disclosure exists. Ohio has no benchmarking mandate, so there is no LL84-equivalent Site EUI, ENERGY STAR score or emissions figure to pull. Energy must come from a utility bill, an audit, or the model.',
+             'Roof, wall and glazing R-values and U-values are not published for this building. The assemblies are named; the numbers are not.',
+             'Coordinates are street-level approximate. Lock the map before relying on any geometry.' ],
+      note:'Seeded as the reference case for this trial. Building facts are from public sources with citations attached; nothing here is a filed energy disclosure.'
+    }
+  ]
+};
+window.OMEGA_SITES = OMEGA_SITES;
+
+function omegaSiteFind(text){
+  var t = String(text||'').toLowerCase().replace(/[.,]/g,' ').replace(/\s+/g,' ').trim();
+  if(!t) return null;
+  for(var i=0;i<OMEGA_SITES.sites.length;i++){
+    var s = OMEGA_SITES.sites[i];
+    for(var j=0;j<s.match.length;j++){
+      if(t.indexOf(s.match[j])>=0) return s;
+    }
+  }
+  return null;
+}
+window.omegaSiteFind = omegaSiteFind;
+
+/* Apply a seeded site to a building. Same posture as the LL84 path: it
+   is a better default, not a mandate, so nothing the user set by hand
+   is overwritten. */
+function bnzApplySite(sh, site, opts){
+  opts = opts || {};
+  if(!sh || !site) return { applied:[], skipped:[] };
+  var b = bnzGet(sh), applied = [], skipped = [];
+  b.siteRef = { id:site.id, name:site.name, address:site.address, loaded:new Date().toISOString().slice(0,10),
+                lat:site.lat, lon:site.lon, gaps:site.gaps||[], facts:site.facts||[],
+                certifications:site.certifications||[], envelope:site.envelope||[],
+                team:site.team||[], utilities:site.utilities||null, note:site.note||'' };
+  b.address = b.address || site.address;
+  if(!b.market || opts.setMarket!==false) b.market = site.market || b.market;
+
+  (site.facts||[]).forEach(function(f){
+    if(f.v==null || f.v==='') return;
+    if(b[f.k]!=null && b[f.k]!=='' && !opts.overwrite){ skipped.push(f.label+' \u2014 you already set '+b[f.k]); return; }
+    b[f.k] = f.v;
+    applied.push(f.label+' = '+f.v+'  ('+f.src+')');
+  });
+  /* gfaSf is the model's override key, not a fact key. */
+  var g = (site.facts||[]).filter(function(f){ return f.k==='gfaSf'; })[0];
+  if(g && (b.gfaOverrideSf==null || b.gfaOverrideSf==='' || opts.overwrite)) b.gfaOverrideSf = g.v;
+
+  return { applied:applied, skipped:skipped, gaps:site.gaps||[] };
+}
+window.bnzApplySite = bnzApplySite;
+
+
+/* ── Baseline report ingestion ─────────────────────────────────────
+   "Show me what it was and what it will be" is the only framing that
+   works in a room where money is decided. A projection alone invites
+   the question "compared to what?"; a before-and-after answers it.
+
+   Four input shapes are accepted because that is what people actually
+   have on hand. Every one is parsed defensively \u2014 a file that cannot be
+   understood reports what it could not find rather than silently
+   loading zeros, because a baseline of zero makes any scope look like
+   a triumph. */
+var BNZ_BASELINE_KINDS = [
+  { id:'ll84',   name:'LL84 benchmarking export (CSV)',   note:'Straight from ENERGY STAR Portfolio Manager or the NYC Open Data download.' },
+  { id:'espm',   name:'ESPM property report (CSV)',        note:'The "Performance Highlights" or custom report export.' },
+  { id:'omega',  name:'Previous omega.building.v1 (JSON)', note:'An earlier run of this model \u2014 gives the cleanest comparison.' },
+  { id:'manual', name:'Typed in by hand',                  note:'From an audit PDF or a utility bill summary.' }
+];
+window.BNZ_BASELINE_KINDS = BNZ_BASELINE_KINDS;
+
+/* Pull the handful of numbers that matter out of whatever arrived.
+   Deliberately narrow: EUI, GHG, floor area, energy by fuel, year, and
+   a score. Everything else in a benchmarking export is noise for this
+   purpose. */
+function bnzParseBaseline(text, filename){
+  var out = { ok:false, kind:null, filename:filename||'', fields:{}, unmatched:[], raw:null };
+  if(!text || !String(text).trim()){ out.unmatched.push('File was empty.'); return out; }
+  var t = String(text);
+
+  /* JSON first \u2014 either an omega export or an ESPM JSON. */
+  if(/^\s*[\{\[]/.test(t)){
+    try{
+      var j = JSON.parse(t);
+      out.raw = j;
+      var b = j.building || j.bnz || j;
+      var en = b.energy || j.energy || {};
+      var cm = b.compliance || j.compliance || {};
+      out.kind = 'omega';
+      out.fields = {
+        gfaSf:      _bnum(b.gfaSf || b.gfa || (b.geometry&&b.geometry.gfaSf)),
+        siteEui:    _bnum(en.euiSite || en.baselineEui || b.siteEui),
+        ghgT:       _bnum((cm.periods&&cm.periods[0]&&cm.periods[0].tBaseline) || b.ghgT || en.ghgT),
+        elecKwh:    _bnum(en.elecKwh),
+        gasTherm:   _bnum(en.gasTherm),
+        year:       _bnum(b.year || j.year || (j.meta&&j.meta.year)),
+        propertyType: b.espmType || b.propertyType || null,
+        source:     'omega.building.v1 export'
+      };
+      out.ok = Object.keys(out.fields).some(function(k){ return out.fields[k]>0; });
+      if(!out.ok) out.unmatched.push('JSON parsed but no energy, area or emissions figures were found in it.');
+      return out;
+    }catch(e){ out.unmatched.push('Looked like JSON but would not parse: '+e.message); }
+  }
+
+  /* Otherwise treat it as delimited text. Header matching is by pattern
+     rather than exact name because ESPM column titles differ between
+     report templates and vintages. */
+  var lines = t.split(/\r?\n/).filter(function(l){ return l.trim(); });
+  if(lines.length < 2){ out.unmatched.push('Not enough rows to read as a table.'); return out; }
+  var delim = (lines[0].split('\t').length > lines[0].split(',').length) ? '\t' : ',';
+  var head = _bsplit(lines[0], delim).map(function(h){ return h.replace(/^["']|["']$/g,'').trim(); });
+  var row  = _bsplit(lines[1], delim).map(function(c){ return c.replace(/^["']|["']$/g,'').trim(); });
+
+  function grab(pats){
+    for(var p=0;p<pats.length;p++){
+      for(var i=0;i<head.length;i++){
+        if(pats[p].test(head[i])){
+          var v = _bnum(row[i]);
+          if(v!=null) return v;
+        }
+      }
+    }
+    return null;
+  }
+  function grabText(pats){
+    for(var p=0;p<pats.length;p++)
+      for(var i=0;i<head.length;i++)
+        if(pats[p].test(head[i]) && row[i]) return row[i];
+    return null;
+  }
+
+  out.kind = /portfolio\s*manager|energy\s*star/i.test(t) ? 'espm' : 'll84';
+  out.fields = {
+    gfaSf:    grab([/property\s*gfa/i, /gross\s*floor\s*area/i, /floor\s*area/i]),
+    siteEui:  grab([/site\s*eui/i, /site\s*energy\s*use\s*intensity/i]),
+    sourceEui:grab([/source\s*eui/i]),
+    ghgT:     grab([/total\s*ghg/i, /ghg\s*emissions.*metric/i, /greenhouse/i]),
+    score:    grab([/energy\s*star\s*score/i, /^score$/i]),
+    elecKwh:  grab([/electricity.*kwh/i, /elec.*kwh/i]),
+    gasTherm: grab([/natural\s*gas.*therm/i, /gas.*therm/i]),
+    gasKbtu:  grab([/natural\s*gas.*kbtu/i]),
+    year:     grab([/calendar\s*year/i, /^year$/i, /reporting\s*year/i, /data\s*year/i]),
+    propertyType: grabText([/property\s*type/i, /largest.*use/i]),
+    address:  grabText([/address/i, /property\s*name/i]),
+    source:   (out.kind==='espm' ? 'ENERGY STAR Portfolio Manager export' : 'LL84 benchmarking export')
+  };
+  ['gfaSf','siteEui','ghgT'].forEach(function(k){
+    if(out.fields[k]==null) out.unmatched.push('Could not find '+k+' \u2014 no column matched.');
+  });
+  out.ok = (out.fields.siteEui>0 || out.fields.ghgT>0 || out.fields.gfaSf>0);
+  return out;
+}
+window.bnzParseBaseline = bnzParseBaseline;
+
+function _bnum(v){
+  if(v==null || v==='') return null;
+  if(typeof v==='number') return isFinite(v)?v:null;
+  var s = String(v).trim();
+  if(/^(not available|n\/a|na|-|--)$/i.test(s)) return null;
+  var n = parseFloat(s.replace(/[$,\s]/g,''));
+  return isNaN(n) ? null : n;
+}
+/* Split respecting quoted fields \u2014 ESPM property names routinely contain
+   commas, and a naive split shifts every column after them by one. */
+function _bsplit(line, d){
+  var out=[], cur='', q=false;
+  for(var i=0;i<line.length;i++){
+    var c=line[i];
+    if(c==='"'){ q=!q; continue; }
+    if(c===d && !q){ out.push(cur); cur=''; continue; }
+    cur+=c;
+  }
+  out.push(cur);
+  return out;
+}
+
+/* Attach a parsed baseline to a building. */
+function bnzSetBaseline(sh, parsed){
+  if(!sh || !parsed) return;
+  var b = bnzGet(sh);
+  b.baselineDoc = {
+    loaded: new Date().toISOString().slice(0,10),
+    filename: parsed.filename, kind: parsed.kind,
+    source: parsed.fields.source, year: parsed.fields.year,
+    gfaSf: parsed.fields.gfaSf, siteEui: parsed.fields.siteEui,
+    sourceEui: parsed.fields.sourceEui, ghgT: parsed.fields.ghgT,
+    score: parsed.fields.score, elecKwh: parsed.fields.elecKwh,
+    gasTherm: parsed.fields.gasTherm, propertyType: parsed.fields.propertyType,
+    address: parsed.fields.address, unmatched: parsed.unmatched||[]
+  };
+}
+window.bnzSetBaseline = bnzSetBaseline;
+
+/* ── Before and after ──────────────────────────────────────────────
+   Compares the LOADED baseline (what the building actually was) against
+   the modelled proposed case. This is a different and stronger claim
+   than the model's own internal baseline, because the left-hand column
+   is evidence rather than an assumption. */
+function bnzBeforeAfter(sh){
+  var b = bnzGet(sh), out = { ok:false, rows:[], flags:[] };
+  var D = b.baselineDoc;
+  if(!D){ out.flags.push('No baseline report loaded. Upload a prior benchmarking return, audit or ESPM export to show a before-and-after.'); return out; }
+  var E=null, C=null;
+  try{ E = bnzEnergy(sh); }catch(e){}
+  try{ C = bnzCompliance(sh); }catch(e){}
+  if(!E || !E.ok){ out.flags.push('Energy model incomplete \u2014 nothing to compare the baseline against yet.'); return out; }
+
+  var gfa = (C&&C.gfa) || D.gfaSf || 0;
+  function row(name, before, after, unit, betterIsLower){
+    if(before==null || after==null) return;
+    var d = (before>0) ? (after-before)/before*100 : null;
+    out.rows.push({ name:name, before:before, after:after, unit:unit,
+                    deltaPct:d, better:(betterIsLower!==false) });
+  }
+
+  var propEui = (E.proposed && E.proposed.euiSite) != null ? E.proposed.euiSite : null;
+  row('Site EUI', D.siteEui, propEui, 'kBtu/sf/yr');
+
+  var propGhg = (C && C.periods && C.periods[0]) ? C.periods[0].tProposed : null;
+  row('Annual emissions', D.ghgT, propGhg, 'tCO\u2082e/yr');
+
+  if(D.ghgT!=null && propGhg!=null && gfa>0)
+    row('Emissions intensity', D.ghgT/gfa*1000, propGhg/gfa*1000, 'kgCO\u2082e/sf/yr');
+
+  if(D.elecKwh!=null && E.proposed && E.proposed.elecKwh!=null)
+    row('Electricity', D.elecKwh, E.proposed.elecKwh, 'kWh/yr', false);
+  if(D.gasTherm!=null && E.proposed && E.proposed.gasTherm!=null)
+    row('Natural gas', D.gasTherm, E.proposed.gasTherm, 'therm/yr');
+
+  /* A filed floor area that disagrees with the drawn geometry is worth
+     surfacing loudly: every intensity on both sides is divided by it,
+     so a 30% area error moves every row by 30%. */
+  if(D.gfaSf>0 && gfa>0){
+    var ad = Math.abs(gfa - D.gfaSf)/D.gfaSf;
+    if(ad > 0.10)
+      out.flags.push('Floor area disagrees: the baseline report says '+Math.round(D.gfaSf).toLocaleString()
+        +' sf, the model has '+Math.round(gfa).toLocaleString()+' sf ('+(gfa>D.gfaSf?'+':'')+Math.round((gfa-D.gfaSf)/D.gfaSf*100)
+        +'%). Every intensity on both sides is divided by this number \u2014 reconcile it before presenting the comparison.');
+  }
+  if(D.propertyType && C && C.espmType && D.propertyType.toLowerCase().indexOf(C.espmType.toLowerCase().slice(0,8))<0)
+    out.flags.push('The baseline report was filed as "'+D.propertyType+'" but the model is set to "'+C.espmType+'". The cap comes from the property type, so confirm which is right.');
+
+  out.ok = out.rows.length>0;
+  if(!out.ok) out.flags.push('Baseline loaded but nothing comparable was found in it \u2014 no Site EUI or emissions figure.');
+  out.doc = D;
+  return out;
+}
+window.bnzBeforeAfter = bnzBeforeAfter;
+
+/* ── Market banner + baseline upload panel ─────────────────────────
+   Sits at the top of the Building panel, above everything modelled, so
+   the first thing anyone reads is which market they are in and what
+   that entitles them to believe. */
+function bnzMarketPanelHTML(sh){
+  var b = bnzGet(sh);
+  var esc = (typeof _nzEsc==='function') ? _nzEsc : function(s){ return String(s==null?'':s); };
+  var mid = b.market || BNZ_MARKETS.active;
+  var M = bnzMarket(mid), T = BNZ_MARKETS.tiers[M.tier];
+  var D = b.baselineDoc;
+
+  var live = BNZ_MARKETS.markets.filter(function(m){ return m.tier==='live'; });
+  var gen  = BNZ_MARKETS.markets.filter(function(m){ return m.tier==='general'; });
+  var soon = BNZ_MARKETS.markets.filter(function(m){ return m.tier==='coming_soon'; });
+
+  function opts(list){
+    return list.map(function(m){
+      return '<option value="'+m.id+'"'+(m.id===mid?' selected':'')+(m.tier==='coming_soon'?' disabled':'')+'>'
+        +esc(m.name)+(m.tier==='coming_soon'?' \u2014 coming soon':'')+'</option>'; }).join('');
+  }
+
+  var h = '<div style="border:1px solid '+T.color+'40;border-radius:8px;padding:11px 13px;margin-bottom:12px;'
+    +'background:linear-gradient(90deg,'+T.color+'12,transparent)">';
+
+  /* Row 1: which market, and what tier it is. */
+  h += '<div style="display:flex;align-items:center;gap:9px;flex-wrap:wrap">'
+    +'<span style="font-size:8.5px;font-weight:800;letter-spacing:.7px;color:'+T.color+';'
+      +'border:1px solid '+T.color+'70;border-radius:4px;padding:2px 7px">'+T.label+'</span>'
+    +'<select data-bnzk="market" onchange="_bnzCommit(\'market\',this.value)" '
+      +'style="flex:1;min-width:230px;background:#0B1626;border:1px solid #1E3A5F;color:#E2EEF9;'
+      +'border-radius:5px;padding:5px 7px;font-size:11.5px;font-family:inherit">'
+    +'<optgroup label="Live \u2014 published standard loaded">'+opts(live)+'</optgroup>'
+    +'<optgroup label="General assumptions \u2014 no standard in force">'+opts(gen)+'</optgroup>'
+    +'<optgroup label="Coming soon \u2014 not modelled">'+opts(soon)+'</optgroup>'
+    +'</select>'
+    +'<span onclick="bnzMarketInfo()" style="font-size:10px;color:#7DD3FC;cursor:pointer;text-decoration:underline">'
+      +'what\u2019s loaded?</span>'
+    +'</div>';
+
+  h += '<div style="font-size:10.5px;color:#94A3B8;line-height:1.6;margin-top:7px">'+esc(T.note)+'</div>';
+  if(M.tier==='general' && M.note)
+    h += '<div style="font-size:10.5px;color:#FDE68A;line-height:1.6;margin-top:5px">'+esc(M.note)+'</div>';
+
+  /* Row 2: the baseline. */
+  h += '<div style="margin-top:10px;padding-top:9px;border-top:1px solid rgba(255,255,255,.08)">'
+    +'<div style="font-size:9px;color:#64748B;text-transform:uppercase;letter-spacing:.5px;margin-bottom:5px">'
+      +'Baseline report \u2014 before and after'+bnzHelpMark('baselineDoc')+'</div>';
+
+  if(D){
+    h += '<div style="font-size:10.5px;color:#CBD5E1;line-height:1.7">'
+      +'<span style="color:#6EE7B7">\u2713</span> '+esc(D.filename||'baseline')
+      +(D.year?' \u00b7 CY'+esc(D.year):'')+' \u00b7 '+esc(D.source||D.kind||'')+'<br>'
+      +(D.siteEui!=null?'Site EUI <b>'+D.siteEui+'</b> kBtu/sf':'')
+      +(D.ghgT!=null?' \u00b7 GHG <b>'+Math.round(D.ghgT).toLocaleString()+'</b> t':'')
+      +(D.gfaSf!=null?' \u00b7 '+Math.round(D.gfaSf).toLocaleString()+' sf':'')
+      +(D.score!=null?' \u00b7 ENERGY STAR <b>'+D.score+'</b>':'')
+      +'</div>';
+    if(D.unmatched && D.unmatched.length)
+      h += '<div style="font-size:10px;color:#FBBF24;margin-top:4px">'+D.unmatched.map(esc).join('<br>')+'</div>';
+    h += '<div style="margin-top:6px;display:flex;gap:6px">'
+      +'<button onclick="bnzBeforeAfterShow(\''+sh.id+'\')" style="background:rgba(52,211,153,.14);'
+        +'border:1px solid rgba(52,211,153,.45);color:#6EE7B7;font-size:10px;font-weight:700;padding:5px 9px;'
+        +'border-radius:5px;cursor:pointer;font-family:inherit">Show before / after</button>'
+      +'<button onclick="_bnzCommit(\'baselineDoc\',null)" style="background:none;border:1px solid #334155;'
+        +'color:#94A3B8;font-size:10px;padding:5px 9px;border-radius:5px;cursor:pointer;font-family:inherit">Remove</button>'
+      +'</div><div id="bnz-ba-out" style="margin-top:7px"></div>';
+  } else {
+    h += '<div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">'
+      +'<input type="file" id="bnz-base-file" accept=".csv,.tsv,.txt,.json" style="display:none" '
+        +'onchange="bnzBaselineUpload(\''+sh.id+'\',event)">'
+      +'<button onclick="document.getElementById(\'bnz-base-file\').click()" '
+        +'style="background:rgba(56,189,248,.14);border:1px solid rgba(56,189,248,.45);color:#7DD3FC;'
+        +'font-size:10px;font-weight:700;padding:5px 10px;border-radius:5px;cursor:pointer;font-family:inherit">'
+        +'\u2912 Upload baseline</button>'
+      +'<span style="font-size:10px;color:#64748B">LL84 or ESPM export (CSV), or a previous omega.building.v1 (JSON)</span>'
+      +'</div>'
+      +'<div id="bnz-base-out" style="margin-top:6px;font-size:10.5px;color:#94A3B8"></div>';
+    if(b.nycData && b.nycData.ll84)
+      h += '<div style="font-size:10px;color:#6EE7B7;margin-top:5px">This building already has an LL84 filing attached '
+        +'from its address lookup \u2014 that can serve as the baseline. '
+        +'<span onclick="bnzBaselineFromLL84(\''+sh.id+'\')" style="text-decoration:underline;cursor:pointer">Use it</span>.</div>';
+  }
+  h += '</div></div>';
+  return h;
+}
+window.bnzMarketPanelHTML = bnzMarketPanelHTML;
+
+function bnzBaselineUpload(shId, ev){
+  var sh = (S.shapes||[]).filter(function(x){ return x.id===shId; })[0];
+  var out = document.getElementById('bnz-base-out');
+  var f = ev && ev.target && ev.target.files && ev.target.files[0];
+  if(!sh || !f){ return; }
+  if(out) out.textContent = 'Reading '+f.name+'\u2026';
+  var r = new FileReader();
+  r.onload = function(){
+    var p = bnzParseBaseline(r.result, f.name);
+    if(!p.ok){
+      if(out) out.innerHTML = '<span style="color:#F87171">Could not read a baseline out of that file.</span><br>'
+        + (p.unmatched||[]).map(_nzEsc).join('<br>');
+      return;
+    }
+    bnzSetBaseline(sh, p);
+    try{ if(typeof pushHist==='function') pushHist(); }catch(e){}
+    _bnzRefresh();
+  };
+  r.onerror = function(){ if(out) out.innerHTML = '<span style="color:#F87171">File could not be read.</span>'; };
+  r.readAsText(f);
+}
+window.bnzBaselineUpload = bnzBaselineUpload;
+
+/* The address lookup already pulled the building's own filed data. Using
+   it as the baseline is strictly better than a typed number, so it is
+   offered rather than requiring the user to go and download the same
+   figures they already have on screen. */
+function bnzBaselineFromLL84(shId){
+  var sh = (S.shapes||[]).filter(function(x){ return x.id===shId; })[0];
+  if(!sh) return;
+  var L = sh.bnz && sh.bnz.nycData && sh.bnz.nycData.ll84;
+  if(!L) return;
+  bnzSetBaseline(sh, { filename:'LL84 filing, BBL '+(sh.bnz.nycData.bbl||''), kind:'ll84', unmatched:[],
+    fields:{ gfaSf:L.gfaSf, siteEui:L.siteEui, sourceEui:L.sourceEui, ghgT:L.ghgTotal,
+             score:L.energyStarScore, elecKwh:L.elecKwh, year:L.year,
+             propertyType:L.propertyType, address:sh.bnz.nycData.address,
+             source:'LL84 benchmarking, self-reported via ENERGY STAR Portfolio Manager' } });
+  try{ if(typeof pushHist==='function') pushHist(); }catch(e){}
+  _bnzRefresh();
+}
+window.bnzBaselineFromLL84 = bnzBaselineFromLL84;
+
+function bnzBeforeAfterShow(shId){
+  var sh = (S.shapes||[]).filter(function(x){ return x.id===shId; })[0];
+  var out = document.getElementById('bnz-ba-out');
+  if(!sh || !out) return;
+  var R = bnzBeforeAfter(sh);
+  if(!R.ok){ out.innerHTML = '<span style="color:#FBBF24;font-size:10.5px">'+_nzEsc(R.flags[0]||'Nothing to compare.')+'</span>'; return; }
+  var h = '<table style="width:100%;font-size:10.5px;border-collapse:collapse">'
+    +'<tr style="color:#64748B;text-transform:uppercase;font-size:9px">'
+    +'<th style="text-align:left;padding:3px 0">Metric</th><th style="text-align:right">Before</th>'
+    +'<th style="text-align:right">After</th><th style="text-align:right">Change</th></tr>';
+  R.rows.forEach(function(r){
+    var good = r.deltaPct!=null && ((r.better && r.deltaPct<0) || (!r.better && r.deltaPct>0));
+    h += '<tr style="border-top:1px solid rgba(255,255,255,.07)">'
+      +'<td style="padding:4px 0;color:#CBD5E1">'+_nzEsc(r.name)+'</td>'
+      +'<td style="text-align:right;color:#94A3B8">'+_nzNum(r.before, r.before<10?1:0)+'</td>'
+      +'<td style="text-align:right;color:#E2EEF9">'+_nzNum(r.after, r.after<10?1:0)+'</td>'
+      +'<td style="text-align:right;color:'+(good?'#6EE7B7':'#FBBF24')+'">'
+        +(r.deltaPct!=null ? (r.deltaPct>0?'+':'')+Math.round(r.deltaPct)+'%' : '\u2014')+'</td></tr>';
+  });
+  h += '</table>';
+  R.flags.forEach(function(f){ h += '<div style="color:#FBBF24;font-size:10px;margin-top:5px">'+_nzEsc(f)+'</div>'; });
+  h += '<div style="color:#64748B;font-size:9.5px;margin-top:5px">Before = '+_nzEsc(R.doc.source||R.doc.kind||'loaded baseline')
+    +(R.doc.year?' (CY'+_nzEsc(R.doc.year)+')':'')+'. After = this model. LL84 figures are self-reported.</div>';
+  out.innerHTML = h;
+}
+window.bnzBeforeAfterShow = bnzBeforeAfterShow;
+
+/* "What's loaded?" \u2014 the full market picture in one place, so nobody has
+   to guess whether their city is supported. */
+function bnzMarketInfo(){
+  var esc = _nzEsc;
+  var old = document.getElementById('bnz-mkt'); if(old) old.remove();
+  var d = document.createElement('div');
+  d.id='bnz-mkt';
+  d.setAttribute('style','position:fixed;inset:0;background:rgba(6,12,22,.75);z-index:10050;display:flex;'
+    +'align-items:center;justify-content:center;padding:24px');
+  d.onclick=function(e){ if(e.target===d) d.remove(); };
+  function block(tier){
+    var T = BNZ_MARKETS.tiers[tier];
+    var list = BNZ_MARKETS.markets.filter(function(m){ return m.tier===tier; });
+    var h = '<div style="margin-top:14px">'
+      +'<span style="font-size:8.5px;font-weight:800;letter-spacing:.7px;color:'+T.color+';'
+      +'border:1px solid '+T.color+'70;border-radius:4px;padding:2px 7px">'+T.label+'</span>'
+      +'<div style="font-size:11px;color:#94A3B8;line-height:1.6;margin:6px 0 8px">'+esc(T.note)+'</div>';
+    list.forEach(function(m){
+      h += '<div style="border-left:2px solid '+T.color+'55;padding:0 0 0 10px;margin-bottom:10px">'
+        +'<div style="font-size:12px;font-weight:700;color:#E2EEF9">'+esc(m.name)+'</div>'
+        +'<div style="font-size:10.5px;color:#94A3B8">'+esc(m.geo||'')+(m.threshold?' \u00b7 '+esc(m.threshold):'')+'</div>'
+        +(m.standard?'<div style="font-size:10.5px;color:#CBD5E1;margin-top:3px">'+esc(m.standard)+'</div>':'')
+        +(m.penalty?'<div style="font-size:10.5px;color:#FDE68A;margin-top:3px">'+esc(m.penalty)+'</div>':'')
+        +(m.dataLoaded?'<div style="font-size:10px;color:#7DD3FC;margin-top:4px">Loaded: '
+            +m.dataLoaded.map(esc).join(' \u00b7 ')+'</div>':'')
+        +(m.programs?'<div style="font-size:10px;color:#94A3B8;margin-top:3px">Programmes: '
+            +m.programs.map(esc).join(', ')+'</div>':'')
+        +'</div>';
+    });
+    return h+'</div>';
+  }
+  d.innerHTML = '<div style="background:#0F1D30;border:1px solid #1E3A5F;border-radius:12px;max-width:680px;width:100%;'
+    +'max-height:88vh;overflow:auto;box-shadow:0 20px 60px rgba(0,0,0,.6)">'
+    +'<div style="padding:14px 18px;border-bottom:1px solid #1E3A5F;display:flex;align-items:center;justify-content:space-between;'
+      +'position:sticky;top:0;background:#0F1D30">'
+      +'<div><div style="font-size:14px;font-weight:800;color:#E2EEF9">Markets and what is loaded</div>'
+      +'<div style="font-size:10px;color:#64748B">As of '+esc(BNZ_MARKETS.as_of)+'</div></div>'
+      +'<button onclick="var x=document.getElementById(\'bnz-mkt\');if(x)x.remove()" '
+      +'style="background:none;border:none;color:#64748B;font-size:20px;cursor:pointer;line-height:1">\u00d7</button></div>'
+    +'<div style="padding:6px 18px 18px">'
+      +'<div style="font-size:11.5px;color:#CBD5E1;line-height:1.65;margin-top:10px">'
+      +'This module was built for New York. The compliance engine, the emissions coefficients, the address lookup and the '
+      +'incentive stack are all New York data. Buildings outside a live market can still be modelled for energy, carbon and '
+      +'cost \u2014 but no penalty is computed, because none is loaded, and a number that looks like a fine when none exists is '
+      +'worse than no number at all.</div>'
+    + block('live') + block('general') + block('coming_soon')
+    + '</div></div>';
+  document.body.appendChild(d);
+}
+window.bnzMarketInfo = bnzMarketInfo;
+
 
 
 
@@ -56005,19 +57275,22 @@ function _bnzInner(){
 
    /* Address first. Everything below is modelled; this is the join key that
       lets the model be checked against what the building actually filed. */
+   /* Which market, and what that entitles the reader to believe. Sits
+      above everything modelled because it governs all of it. */
+   +(function(){ try{ return bnzMarketPanelHTML(sh); }catch(e){ return ''; } })()
    +(function(){ try{ return bnzAddressPanelHTML(sh); }catch(e){ return ''; } })()
 
    +'<div style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;margin-bottom:14px">'
-    +'<div><div style="font-size:9px;color:#64748B;text-transform:uppercase">Name</div>'
+    +'<div><div style="font-size:9px;color:#64748B;text-transform:uppercase">Name'+_hm('name')+'</div>'
       +'<input data-bnzk="name" value="'+esc(b.name)+'" oninput="_bnzLive(\'name\',this.value)" onchange="_bnzCommit(\'name\',this.value)" onblur="_bnzFlush()" style="width:150px;background:#0B1626;border:1px solid #1E3A5F;color:#E2EEF9;border-radius:5px;padding:4px 6px;font-size:11px"></div>'
-    +'<div><div style="font-size:9px;color:#64748B;text-transform:uppercase">Delivery</div>'+sel('delivery',BNZ_DELIVERY,b.delivery)+'</div>'
-    +'<div><div style="font-size:9px;color:#64748B;text-transform:uppercase">Property type</div>'
+    +'<div><div style="font-size:9px;color:#64748B;text-transform:uppercase">Delivery'+_hm('delivery')+'</div>'+sel('delivery',BNZ_DELIVERY,b.delivery)+'</div>'
+    +'<div><div style="font-size:9px;color:#64748B;text-transform:uppercase">Property type'+_hm('propertyType')+'</div>'
       +'<select data-bnzk="propertyType" onchange="_bnzCommit(\'propertyType\',this.value)" style="background:#0B1626;border:1px solid #1E3A5F;color:#E2EEF9;border-radius:5px;padding:4px 6px;font-size:11px">'
       + Object.keys(BLD_ROM.t).map(function(k){ return '<option value="'+k+'"'+((b.propertyType||'office')===k?' selected':'')+'>'+esc(BLD_ROM.t[k].name)+'</option>'; }).join('')
       +'</select></div>'
-    +'<div><div style="font-size:9px;color:#64748B;text-transform:uppercase">Stories</div>'+num('stories',b.stories,1,52)+'</div>'
-    +'<div><div style="font-size:9px;color:#64748B;text-transform:uppercase">Floor to floor ft</div>'+num('f2f',b.f2f,0.5,62)+'</div>'
-    +'<div><div style="font-size:9px;color:#64748B;text-transform:uppercase">Parapet ft</div>'+num('parapet',b.parapet,0.5,52)+'</div>'
+    +'<div><div style="font-size:9px;color:#64748B;text-transform:uppercase">Stories'+_hm('stories')+'</div>'+num('stories',b.stories,1,52)+'</div>'
+    +'<div><div style="font-size:9px;color:#64748B;text-transform:uppercase">Floor to floor ft'+_hm('f2f')+'</div>'+num('f2f',b.f2f,0.5,62)+'</div>'
+    +'<div><div style="font-size:9px;color:#64748B;text-transform:uppercase">Parapet ft'+_hm('parapet')+'</div>'+num('parapet',b.parapet,0.5,52)+'</div>'
     +'<label style="display:flex;align-items:center;gap:5px;font-size:11px;color:#E2EEF9;cursor:pointer;padding-bottom:4px">'
       +'<input type="checkbox" data-bnzk="roofOn"'+(b.roofOn?' checked':'')+' onchange="_bnzCommit(\'roofOn\',this.checked)" style="accent-color:#38BDF8"> Roof</label>'
    +'</div>'
@@ -56115,20 +57388,20 @@ function _bnzInner(){
        return ''
        +'<div style="font-size:10px;font-weight:800;color:#64748B;letter-spacing:.5px;margin:16px 0 6px">COMPLIANCE</div>'
        +'<div style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;margin-bottom:10px">'
-        +'<div><div style="font-size:9px;color:#64748B;text-transform:uppercase">Standard</div>'
+        +'<div><div style="font-size:9px;color:#64748B;text-transform:uppercase">Standard'+_hm('bpsJurisdiction')+'</div>'
          +'<select data-bnzk="bpsJurisdiction" onchange="_bnzCommit(\'bpsJurisdiction\',this.value)" style="background:#0B1626;border:1px solid #1E3A5F;color:#E2EEF9;border-radius:5px;padding:4px 6px;font-size:11px">'
          + BPS_TARGETS.jurisdictions.map(function(j){ return '<option value="'+j.id+'"'+(C.jurisdiction.id===j.id?' selected':'')+'>'+esc(j.name)+'</option>'; }).join('')
          +'</select></div>'
-        +'<div><div style="font-size:9px;color:#64748B;text-transform:uppercase">Occupancy</div>'
+        +'<div><div style="font-size:9px;color:#64748B;text-transform:uppercase">Occupancy'+_hm('occGroup')+'</div>'
          +'<select data-bnzk="occGroup" onchange="_bnzCommit(\'occGroup\',this.value)" style="background:#0B1626;border:1px solid #1E3A5F;color:#E2EEF9;border-radius:5px;padding:4px 6px;font-size:11px">'
          + Object.keys(J.caps).map(function(k){ return '<option value="'+k+'"'+(C.occGroup===k?' selected':'')+'>'+k+'</option>'; }).join('')
          +'</select></div>'
-        +'<div style="flex:1;min-width:230px"><div style="font-size:9px;color:#64748B;text-transform:uppercase">Compliance pathway</div>'
+        +'<div style="flex:1;min-width:230px"><div style="font-size:9px;color:#64748B;text-transform:uppercase">Compliance pathway'+_hm('altPathway')+'</div>'
          +'<select data-bnzk="altPathway" onchange="_bnzCommit(\'altPathway\',this.value)" style="width:100%;background:#0B1626;border:1px solid #1E3A5F;color:#E2EEF9;border-radius:5px;padding:4px 6px;font-size:11px">'
          + J.alt_pathways.map(function(a){ return '<option value="'+a.id+'"'+(C.altPathway===a.id?' selected':'')+'>'+esc(a.name)+'</option>'; }).join('')
          +'</select></div>'
-        +'<div><div style="font-size:9px;color:#64748B;text-transform:uppercase">$/kWh</div>'+num('rateElec',(b.rateElec!=null&&b.rateElec!=='')?b.rateElec:BNZ_RATES.elec,0.01,58)+'</div>'
-        +'<div><div style="font-size:9px;color:#64748B;text-transform:uppercase">$/therm</div>'+num('rateGas',(b.rateGas!=null&&b.rateGas!=='')?b.rateGas:BNZ_RATES.gas,0.05,58)+'</div>'
+        +'<div><div style="font-size:9px;color:#64748B;text-transform:uppercase">$/kWh'+_hm('rateElec')+'</div>'+num('rateElec',(b.rateElec!=null&&b.rateElec!=='')?b.rateElec:BNZ_RATES.elec,0.01,58)+'</div>'
+        +'<div><div style="font-size:9px;color:#64748B;text-transform:uppercase">$/therm'+_hm('rateGas')+'</div>'+num('rateGas',(b.rateGas!=null&&b.rateGas!=='')?b.rateGas:BNZ_RATES.gas,0.05,58)+'</div>'
        +'</div>'
        + (C.altPathwayDef && C.altPathwayDef.note ? '<div style="font-size:10px;color:#94A3B8;margin-bottom:8px;line-height:1.6">'+esc(C.altPathwayDef.note)+'</div>' : '')
        +'<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:9px;margin-bottom:10px">'
