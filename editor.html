@@ -54206,6 +54206,14 @@ function bnzAddressPanelHTML(sh){
         +'<div>Built '+(P.yearBuilt||'\u2014')+' \u00b7 '+(P.numFloors||'\u2014')+' floors \u00b7 '
         +(P.unitsRes!=null?P.unitsRes+' res units':'\u2014')+' \u00b7 class '+esc(P.bldgClass||'\u2014')+'</div>';
     }
+    /* Geometry sanity, shown wherever a known floor area exists. */
+    try{
+      var _gc = bnzGeometryCheck(sh);
+      if(_gc.ok && _gc.flags.length)
+        h += '<div style="margin-top:7px;background:rgba(251,191,36,.09);border-left:3px solid #FBBF24;'
+          +'border-radius:0 5px 5px 0;padding:7px 10px;font-size:10.5px;color:#FDE68A;line-height:1.6">'
+          +_gc.flags.map(_nzEsc).join('<br>')+'</div>';
+    }catch(e){}
     h += '<button onclick="bnzReconcileShow(\''+sh.id+'\')" style="margin-top:7px;background:rgba(147,197,253,.14);border:1px solid rgba(147,197,253,.4);color:#93C5FD;font-size:10px;font-weight:700;padding:5px 9px;border-radius:5px;cursor:pointer;font-family:inherit">Reconcile model vs filed</button>'
       /* A wrong match must be undoable. Before the out-of-area guard
          existed it was possible to attach a Staten Island lot to an Ohio
@@ -54799,54 +54807,129 @@ var OMEGA_SITES = {
       id:'tremco_hq',
       name:'Tremco Incorporated \u2014 Corporate Headquarters',
       match:[ '3735 green road beachwood', '3735 green rd beachwood', '3735 green road',
-              '3735 green rd', 'tremco hq', 'tremco headquarters', 'tremco corporate' ],
+              '3735 green rd', 'tremco hq', 'tremco headquarters', 'tremco corporate',
+              '742-22-006', '74222006' ],
       address:'3735 Green Road, Beachwood, OH 44122',
       street:'3735 Green Road', city:'Beachwood', state:'OH', zip:'44122',
       county:'Cuyahoga', market:'us_general',
       lat:41.4718, lon:-81.5062, coordPrecision:'approximate \u2014 street level, confirm on the map',
       owner:'Tremco CPG Inc. (RPM International)',
-      /* Every seeded field, with its source. */
+      /* Parcel identity \u2014 the Ohio equivalent of a BBL. This is what a
+         county record is keyed on, and what any future Cuyahoga County
+         lookup would join against. */
+      parcel:{ apn:'742-22-006', county:'Cuyahoga', zoning:'U-8', landUse:'Office building',
+               lot:'2', legal:'SL 2 FF 165.00 D 385.65 1.45EST AC 2004S/R',
+               lotAcres:1.29, lotSf:56192, taxYear:2025, assessedYear:2025,
+               floodZone:'B and X \u2014 moderate hazard, between the 100-year and 500-year flood limits',
+               market:'Cleveland', submarket:'Chagrin Corridor', cbsa:'Cleveland-Elyria, OH',
+               censusTract:'131105',
+               src:'Cuyahoga County tax records via LoopNet property record, tax year 2025' },
       facts:[
-        { k:'gfaSf',        v:46200,  label:'Gross floor area',      src:'Dryvit case study \u2014 "46,200 sq ft facility"' },
-        { k:'yearBuilt',    v:1971,   label:'Year built',            src:'Described as 1970s-era and "40-year-old" at the 2010\u201311 renovation' },
-        { k:'yearRenovated',v:2011,   label:'Major renovation',      src:'Foundation-to-roof renovation began June 2010, dedicated 17 June 2011' },
-        { k:'propertyType', v:'Office', label:'Property type',       src:'Corporate headquarters office' },
+        { k:'gfaSf',        v:46200,  label:'Gross floor area',      src:'Cuyahoga County tax record, total size 46,200 SF \u2014 independently matched by the Dryvit case study' },
+        { k:'yearBuilt',    v:1971,   label:'Year built',            src:'1970s-era; described as 40 years old at the 2010\u201311 renovation' },
+        { k:'yearRenovated',v:2011,   label:'Major renovation',      src:'Construction June\u2013October 2010, PV and vegetated roof spring 2011, dedicated 17 June 2011' },
+        { k:'propertyType', v:'Office', label:'Property type',       src:'County land use: Office building' },
         { k:'climateStation', v:'Cleveland OH', label:'Climate reference', src:'Nearest CLIMATE station; ASHRAE climate zone 5A' }
       ],
+      /* STORIES IS NOT IN THE COUNTY RECORD. It is the one number the
+         user asked for that no source states, so it is carried as a
+         bounded unknown rather than a number. Lot coverage rules out one
+         storey: 46,200 sf on a 56,192 sf lot would be 82% coverage with
+         nowhere for parking or setbacks. Two to four storeys all sit in a
+         plausible 21\u201341% band, and picking one of them would be a guess
+         wearing the same badge as the sourced figures. */
+      unknowns:{
+        stories:{ label:'Number of storeys', bound:'2 to 4',
+          reasoning:'Not published in the Cuyahoga County record or any project write-up. '
+            +'One storey is ruled out on lot coverage (46,200 sf on a 1.29 ac lot is 82% of the site). '
+            +'Two storeys gives 41% coverage, three gives 27%, four gives 21% \u2014 all plausible for a suburban office. '
+            +'Count floors on the satellite view or a fa\u00e7ade photo and set it by hand.',
+          affects:'Storeys \u00d7 floor-to-floor sets building height, which sets gross wall area \u2014 and the envelope is priced per square foot of wall. Getting this wrong moves the cladding cost and the heat loss proportionally.' }
+      },
       certifications:[
         { name:'LEED Gold (LEED-NC)', year:2012, detail:'72 points. Certified as new construction rather than renovation because the scope was so extensive.',
           src:'USGBC via Tremco press release, February 2012' }
       ],
-      /* The envelope is the interesting part for this tool: it is a
-         building made of the vendor's own products, which makes it the
-         natural reference case for the ENV_SPEC catalogue. */
       envelope:[
         { layer:'Opaque wall', system:'Dryvit Outsulation Plus MD with custom TerraNeo finish',
-          note:'Exterior insulation and finish system installed over the original 1970s fa\u00e7ade.',
+          note:'EIFS with continuous insulation and an air- and water-resistive barrier, installed directly OVER the existing 1970s cladding \u2014 no tear-off. That is the relevant precedent for retrofit costing: the assembly is an overlay, not a replacement.',
           src:'Dryvit case study; applicator Saylors Inc.' },
-        { layer:'Roof', system:'Vegetated (green) roof',
-          note:'Four-zone vegetated roof assembly. Depth, growing medium and R-contribution not published \u2014 needs a Tremco number before it drives cost or thermal performance.',
-          src:'Greenroofs.com project record; Tournesol Siteworks' },
+        { layer:'Roof', system:'Vegetated roof, four planting zones',
+          note:'Roughly 16,000 plants across 46 species. Depth, growing medium and R-contribution are not published \u2014 this is the number to get from Tremco before it drives cost or thermal performance.',
+          src:'Greenroofs.com project record; Beachwood Patch, June 2011' },
         { layer:'Fenestration', system:'Kawneer curtain wall and glazing',
-          note:'Supplied and installed with Carroll Glass. U-value and SHGC not published \u2014 confirm the specific product line.',
+          note:'Supplied and installed with Carroll Glass. U-value and SHGC not published \u2014 confirm the product line.',
           src:'O&S Associates project record' }
+      ],
+      onsiteGeneration:[
+        { system:'Rooftop photovoltaic array', note:'Installed spring 2011. Capacity not published.',
+          src:'Roofing Contractor, "Walking the Talk"' },
+        { system:'Wind turbine', note:'Installed as part of the 2011 renovation. Rating and type not published.',
+          src:'Beachwood Patch, June 2011' }
       ],
       team:[
         { role:'Owner',      who:'Tremco CPG Inc. / RPM International' },
         { role:'Architect',  who:'O&S Associates, Inc. (Columbus, OH)' },
-        { role:'General contractor', who:'WTI Inc. (Weatherproofing Technologies, a Tremco subsidiary)' }
+        { role:'General contractor', who:'Tremco acted as its own GC \u2014 licensed in all 50 states \u2014 working with about 160 contractors and manufacturers' },
+        { role:'Roofing',    who:'Warren Roofing (local) with Crawford Roofing, Inc.' }
       ],
       utilities:{ electric:'The Illuminating Company (FirstEnergy)', gas:'Dominion Energy Ohio',
-                  note:'Ohio retail choice applies \u2014 the supply rate may sit with a third-party supplier while delivery stays with the utility. Take the all-in rate off a bill.' },
-      /* What the reader must not assume. */
-      gaps:[ 'No filed energy disclosure exists. Ohio has no benchmarking mandate, so there is no LL84-equivalent Site EUI, ENERGY STAR score or emissions figure to pull. Energy must come from a utility bill, an audit, or the model.',
-             'Roof, wall and glazing R-values and U-values are not published for this building. The assemblies are named; the numbers are not.',
+                  note:'Ohio retail choice applies \u2014 supply may sit with a third-party supplier while delivery stays with the utility. Take the all-in rate off a bill.' },
+      gaps:[ 'Storeys are not in any source. See the bounded estimate above and set it by hand \u2014 it drives wall area and therefore envelope cost.',
+             'No filed energy disclosure exists. Ohio has no benchmarking mandate, so there is no LL84-equivalent Site EUI, ENERGY STAR score or emissions figure. Energy must come from a utility bill, an audit, or the model.',
+             'The county record itself disagrees on lot size: the summary says 1.29 acres, the legal description says 1.45 estimated acres \u2014 12% apart. Neither drives the building model, but do not quote either as exact.',
+             'Roof, wall and glazing R- and U-values are not published for this building. The assemblies are named; the numbers are not.',
+             'PV capacity and wind turbine rating are not published.',
              'Coordinates are street-level approximate. Lock the map before relying on any geometry.' ],
-      note:'Seeded as the reference case for this trial. Building facts are from public sources with citations attached; nothing here is a filed energy disclosure.'
+      note:'Seeded as the reference case for this trial. Identity and size come from the Cuyahoga County tax record; construction detail from the project write-ups. Every field carries its source, and what is unknown is named rather than filled in.'
     }
   ]
 };
 window.OMEGA_SITES = OMEGA_SITES;
+
+/* ── Geometry cross-check ──────────────────────────────────────────
+   Gross floor area, footprint and storeys are three numbers that cannot
+   independently be true: GFA should be roughly footprint \u00d7 storeys. The
+   model takes footprint from the drawn shape and storeys from a box, and
+   nothing ever compared the product against a known GFA.
+
+   That gap is exactly what bites on this building. The county record says
+   46,200 sf. A footprint of 12,745 sf at one storey gives 12,745 sf \u2014 a
+   72% shortfall \u2014 and every downstream figure (wall area, envelope cost,
+   EUI, emissions, cost per tonne) inherits it silently, because each one
+   individually looks reasonable.
+
+   Reported separately from the LL84 reconciliation because it needs no
+   filed energy data \u2014 it works anywhere, on geometry alone. */
+function bnzGeometryCheck(sh){
+  var b = bnzGet(sh), out = { ok:false, flags:[], rows:[] };
+  var G=null; try{ G = bnzGeometry(sh); }catch(e){}
+  var footprint = (G && G.footprintSf) || (G && G.areaSf) || null;
+  var stories   = +(b.stories||0) || null;
+  /* A known GFA is one that came from somewhere other than this model:
+     a county record, a filed return, or the user. */
+  var knownGfa = b.gfaOverrideSf || (b.nycData && b.nycData.ll84 && b.nycData.ll84.gfaSf) || null;
+  if(!footprint || !stories || !knownGfa) return out;
+
+  var modelled = footprint * stories;
+  var impliedStories = knownGfa / footprint;
+  var d = (modelled - knownGfa) / knownGfa;
+  out.ok = true;
+  out.footprint = footprint; out.stories = stories; out.knownGfa = knownGfa;
+  out.modelledGfa = modelled; out.impliedStories = impliedStories; out.deltaPct = d*100;
+
+  if(Math.abs(d) > 0.15){
+    out.flags.push('Footprint \u00d7 storeys does not reach the known floor area. '
+      + Math.round(footprint).toLocaleString()+' sf \u00d7 '+stories+' storey'+(stories===1?'':'s')+' = '
+      + Math.round(modelled).toLocaleString()+' sf, but the record says '
+      + Math.round(knownGfa).toLocaleString()+' sf ('+(d>0?'+':'')+Math.round(d*100)+'%). '
+      + 'Either the drawn outline is not the whole building, or the storey count is wrong \u2014 '
+      + Math.round(knownGfa)+' sf over this footprint implies about '+impliedStories.toFixed(1)+' storeys. '
+      + 'Wall area, envelope cost, EUI and emissions all scale off this, so fix it before anything downstream is used.');
+  }
+  return out;
+}
+window.bnzGeometryCheck = bnzGeometryCheck;
 
 function omegaSiteFind(text){
   var t = String(text||'').toLowerCase().replace(/[.,]/g,' ').replace(/\s+/g,' ').trim();
