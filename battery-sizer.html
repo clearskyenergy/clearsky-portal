@@ -386,9 +386,25 @@ body.nohelp .hb{display:none}
   <div class="card">
     <div class="card-h" data-help="sRate"><span class="n">2</span> Rate</div>
     <div class="card-b">
+      <div class="f"><label class="fl" data-help="rateStruct">Demand is billed as</label>
+        <select id="rateStruct" onchange="rateStructUI()">
+          <option value="kw" selected>$ per kW of peak demand</option>
+          <option value="sub">Subscribed kW blocks (PG&amp;E BEV, SDG&amp;E EV-HP)</option>
+        </select>
+      </div>
       <div class="row" id="rateRow">
         <div><label class="fl" data-help="dRate">Demand charge $/kW-mo</label><input type="number" id="dRate" value="18.50" step="0.25"></div>
         <div><label class="fl" data-help="eRate">Energy $/kWh</label><input type="number" id="eRate" value="0.075" step="0.005"></div>
+      </div>
+      <div id="subRow" style="display:none">
+        <div class="row3">
+          <div><label class="fl">Block size kW</label><input type="number" id="subBlock" value="50" min="1" step="5"></div>
+          <div><label class="fl">$ per block/mo</label><input type="number" id="subPrice" value="95.56" step="0.01"></div>
+          <div><label class="fl">Floor kW</label><input type="number" id="subMin" value="100" min="0" step="10"></div>
+        </div>
+        <div class="hint" data-help="subHint">A subscription is a step function, not a slope. Shaving 40 kW off a 503 kW peak saves
+          nothing unless it crosses a block boundary, and nothing at all below the floor. Enter the block price from the current
+          tariff sheet &mdash; these escalate, and a stale number is the whole error.</div>
       </div>
       <label class="chk" style="margin:0 0 8px"><input type="checkbox" id="curRate" checked>
         <span>Price every month at the newest rate on the packet</span></label>
@@ -421,16 +437,61 @@ body.nohelp .hb{display:none}
         <div><label class="fl" data-help="cKwh">Cost $/kWh installed</label><input type="number" id="cKwh" value="450" step="10"></div>
         <div><label class="fl" data-help="cKw">Cost $/kW installed</label><input type="number" id="cKw" value="0" step="10"></div>
       </div>
+      <div class="row">
+        <div><label class="fl" data-help="incent">Cash incentive $</label><input type="number" id="incent" value="0" step="1000"></div>
+        <div><label class="fl" data-help="incHair">Incentive haircut %</label><input type="number" id="incHair" value="0" min="0" max="100" step="10"></div>
+      </div>
       <div class="row3">
         <div><label class="fl" data-help="itc">ITC %</label><input type="number" id="itc" value="30" min="0" max="70" step="5"></div>
         <div><label class="fl" data-help="om">O&amp;M $/kW-yr</label><input type="number" id="om" value="10" min="0" step="1"></div>
         <div><label class="fl" data-help="term">Term yrs</label><input type="number" id="term" value="10" min="1" max="25" step="1"></div>
       </div>
       <div class="row">
+        <div><label class="fl" data-help="escal">Utility escalation %/yr</label><input type="number" id="escal" value="3.0" min="-5" max="15" step="0.5"></div>
         <div><label class="fl" data-help="disc">Discount %</label><input type="number" id="disc" value="8" min="0" max="25" step="0.5"></div>
+      </div>
+      <div class="row">
         <div><label class="fl" data-help="obj">Objective</label>
           <select id="obj"><option value="npv">Max NPV</option><option value="pay">Fastest payback</option><option value="sav">Max savings</option></select>
         </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 4. PROPOSAL AUDIT -->
+  <div class="card">
+    <div class="card-h" data-help="sAudit"><span class="n">4</span> Audit someone else&rsquo;s model</div>
+    <div class="card-b">
+      <div class="hint" style="padding-top:0">Paste the headline numbers off a vendor proposal. Every claim gets checked against
+        what the hardware can physically do and against the same energy budget &mdash; a battery cannot spend the same kWh twice.</div>
+      <div class="row">
+        <div><label class="fl">Claimed battery kW</label><input type="number" id="aKw" value="" placeholder="503"></div>
+        <div><label class="fl">Claimed battery kWh</label><input type="number" id="aKwh" value="" placeholder="1004"></div>
+      </div>
+      <div class="row">
+        <div><label class="fl">Claimed demand savings $/yr</label><input type="number" id="aDem" value="" placeholder="120720"></div>
+        <div><label class="fl">Claimed arbitrage $/yr</label><input type="number" id="aArb" value="" placeholder="89864"></div>
+      </div>
+      <div class="row3">
+        <div><label class="fl">On-peak $/kWh</label><input type="number" id="aOn" value="0.52" step="0.01"></div>
+        <div><label class="fl">Off-peak $/kWh</label><input type="number" id="aOff" value="0.12" step="0.01"></div>
+        <div><label class="fl">Cycles/day</label><input type="number" id="aCyc" value="1" min="0.25" max="3" step="0.25"></div>
+      </div>
+      <div class="hint" style="padding:8px 0 4px"><b>Subscription check:</b> if the site sits on a PG&amp;E BEV or SDG&amp;E EV-HP
+        rate, switch step 2 to subscribed blocks before auditing. A 503 kW shave off a 600 kW peak is 10 blocks of 50 kW
+        &mdash; real money, but roughly a tenth of what the same shave is worth on a $20/kW demand charge.</div>
+      <div class="row3">
+        <div><label class="fl">Gross CAPEX $</label><input type="number" id="aCap" value="" placeholder="435000"></div>
+        <div><label class="fl">Incentive $</label><input type="number" id="aInc" value="" placeholder="300000"></div>
+        <div><label class="fl">Their discount %</label><input type="number" id="aDisc" value="0" step="0.5"></div>
+      </div>
+      <div class="row">
+        <div><label class="fl">Site peak kW</label><input type="number" id="aPeak" value="" placeholder="600"></div>
+        <div><label class="fl">Daily site kWh</label><input type="number" id="aDay" value="" placeholder="1536"></div>
+      </div>
+      <div style="display:flex;gap:6px;margin-top:8px">
+        <button class="btn btn-out btn-sm" style="flex:1" onclick="auditExample()">Load the EVSE example</button>
+        <button class="btn btn-pri btn-sm" style="flex:1" onclick="auditRun()">Audit it</button>
       </div>
     </div>
   </div>
@@ -518,6 +579,17 @@ var HELP = {
  'The load the site never drops below <b>inside the on-peak window</b>, as a percentage of the on-peak maximum.<p>This drives the answer more than anything else on the page. A plant that never falls below 60% of peak is flat: the excess above a shave target lasts hours, so the battery needs kWh. A site at 20% is spiky: the excess is minutes, and kW is nearly free.</p><p>When a time-of-day tariff is read off the bill the on-peak kWh give you the average in that window, which brackets this number but does not pin it. Interval data pins it. Until then, run the sizing at your assumption and at the flat-top downside in the underwriting panel, and quote the gap honestly.</p>'],
 'evtMo':['Peak events per month',
  'No longer used. The curve is built for the worst day inside the on-peak window, because the battery has to hold the target on every one of those days \u2014 the month\u0027s peak can land on any of them.'],
+
+'rateStruct':['How demand is billed',
+ 'Two structures, two completely different batteries.<p><b>$ per kW</b> is a slope: every kW you shave is worth the same, so savings scale smoothly with power.</p><p><b>Subscribed blocks</b> is a staircase. PG&#39;s BEV rates and SDG&E&#39;s EV-HP replaced the demand charge with a reserved block of capacity - 50 kW blocks on BEV2, 25 kW on EV-HP. Shaving 40 kW off a 503 kW peak saves nothing at all unless it crosses a boundary, and the subscription never falls below the floor. Batteries still pay on these rates, but they pay in steps, and a model built on a slope will overstate the saving badly.</p>'],
+'incent':['Cash incentive',
+ 'A rebate or grant applied against CAPEX - SGIP in California, and its equivalents elsewhere.<p>Enter the gross award here and use the haircut beside it to say how much of it an underwriter should count.</p>'],
+'incHair':['Incentive haircut',
+ 'The share of the incentive to discount for the underwriting case.<p>A reservation that has not been awarded, or an award that cannot be assigned to the financing party, is not equity yet. At 100% the model shows what the project looks like if the incentive never arrives - which is the case a credit committee will ask for.</p>'],
+'escal':['Utility escalation',
+ 'Annual increase in the demand and energy rates the savings are measured against.<p>Savings escalate with the tariff while the payment usually does not, so this is what makes later years carry the deal. It cuts the other way too: escalating a number that was wrong in year one only compounds the error.</p><p>3% is a common default. On this Eversource meter the all-in demand rate moved 11% in a single year.</p>'],
+'sAudit':['Step 4: audit a proposal',
+ 'For checking someone else&#39;s numbers - a vendor, a competitor, or your own model from six months ago.<p>It tests each claimed savings line against a physical ceiling, then tests both lines against the one energy budget they share. It needs no bills and no interval data, because the checks are arithmetic on the claims themselves.</p>'],
 
 /* --- step 2: rate --- */
 'sRate':['Step 2: the tariff',
@@ -2425,6 +2497,21 @@ function shaveMonth(c, peak, kW, Emax, worst){
 
 function billRate(m){ return isFinite(m.useRate) ? m.useRate : m.rate; }
 
+/* What one month of demand actually costs at a given peak.
+   A per-kW charge is a slope; a subscription is a staircase. Modelling a
+   staircase as a slope is how a proposal claims savings for kW that never
+   crossed a block boundary. */
+function subMode(){ var e = $('rateStruct'); return !!(e && e.value === 'sub'); }
+function demandCost(kw, m){
+  if(subMode()){
+    var blk = nv('subBlock',50), price = nv('subPrice',95.56), floor = nv('subMin',100);
+    var need = Math.max(kw, floor);
+    var blocks = Math.ceil(need/blk);
+    return blocks*price;
+  }
+  return Math.max(0, kw - ((m && m.adj) || 0)) * billRate(m);
+}
+
 function runBills(bills){
   var durs = durations(), i, j;
   var baseFrac = nv('baseFrac',60)/100;
@@ -2452,7 +2539,7 @@ function runBills(bills){
   for(i=0;i<bills.length;i++) basePeaks.push(bills[i].peak);
   var baseBilled = applyRatchet(basePeaks, ratchet);
   var baseCost = 0;
-  for(i=0;i<bills.length;i++) baseCost += Math.max(0, baseBilled[i]-bills[i].adj)*billRate(bills[i]);
+  for(i=0;i<bills.length;i++) baseCost += demandCost(baseBilled[i], bills[i]);
 
   var cands = [], STEPS = 44;
   for(i=1;i<=STEPS;i++) cands.push(maxPeak*(0.015 + (0.70-0.015)*(i-1)/(STEPS-1)));
@@ -2483,8 +2570,8 @@ function runBills(bills){
       var billed90 = applyRatchet(p90peaks, ratchet);
       var cost = 0, cost90 = 0;
       for(j=0;j<bills.length;j++){
-        cost   += Math.max(0, billed[j]  -bills[j].adj)*billRate(bills[j]);
-        cost90 += Math.max(0, billed90[j]-bills[j].adj)*billRate(bills[j]);
+        cost   += demandCost(billed[j],   bills[j]);
+        cost90 += demandCost(billed90[j], bills[j]);
       }
       var scale = 12/bills.length;
       var e = econ(kW, Emax, (baseCost-cost)*scale, (loss-arb)*scale);
@@ -2640,26 +2727,50 @@ function applyRatchet(peaks, pct){
 /* ============================================================
    ECONOMICS
    ============================================================ */
+function irr(cf){
+  /* cf[0] is negative; bisection is plenty for a 10-25 year strip */
+  var lo = -0.9, hi = 3, i, k, mid, v;
+  function npvAt(r){ var s = 0, t; for(t=0;t<cf.length;t++) s += cf[t]/Math.pow(1+r,t); return s; }
+  if(npvAt(lo) < 0 || npvAt(hi) > 0) return null;
+  for(i=0;i<200;i++){ mid = (lo+hi)/2; v = npvAt(mid); if(v > 0) lo = mid; else hi = mid; }
+  return (lo+hi)/2;
+}
+
 function econ(kW, kWhUsable, annSav, lossCost){
   var dod = nv('dod',90)/100;
   var name = kWhUsable/dod;
   var capex = name*nv('cKwh',450) + kW*nv('cKw',0);
-  var net = capex*(1 - nv('itc',30)/100);
+  var itc = nv('itc',30)/100;
+  /* A contingent incentive is not equity until it is awarded. The haircut is
+     what an underwriter applies to a reservation that has not closed. */
+  var incGross = nv('incent',0);
+  var incNet = incGross*(1 - nv('incHair',0)/100);
+  var net = capex*(1-itc) - incNet;
+  if(net < 0) net = 0;
   var om = kW*nv('om',10);
-  var yr1 = annSav - lossCost - om;
   var term = Math.round(nv('term',10));
   var disc = nv('disc',8)/100;
   var fade = nv('fade',2)/100;
-  var npv = -net, i;
+  var esc = nv('escal',3)/100;
+
+  var cf = [-net], i, npv = -net, cum = -net, payback = Infinity, yr1 = 0;
   for(i=1;i<=term;i++){
-    var cf = (annSav*Math.pow(1-fade,i-1)) - lossCost - om;
-    npv += cf/Math.pow(1+disc,i);
+    var e = Math.pow(1+esc, i-1);
+    var sav = annSav*Math.pow(1-fade, i-1)*e;
+    var c = sav - lossCost*e - om*e;
+    if(i === 1) yr1 = c;
+    cf.push(c);
+    npv += c/Math.pow(1+disc, i);
+    if(cum < 0 && cum + c >= 0) payback = i - 1 + (-cum)/c;
+    cum += c;
   }
+  var r = irr(cf);
   return {
     kW:kW, kWh:kWhUsable, nameplate:name, capex:capex, net:net, om:om,
+    incGross:incGross, incNet:incNet,
     annSav:annSav, lossCost:lossCost, yr1:yr1,
-    payback: yr1>0 ? net/yr1 : Infinity,
-    npv:npv, roi: net>0 ? (yr1/net*100) : 0
+    payback: payback, npv:npv, irr:r,
+    roi: net>0 ? (yr1/net*100) : 0
   };
 }
 
@@ -2821,7 +2932,7 @@ function render(){
   h += '<div class="kpis" style="border:1px solid var(--border);border-radius:4px;overflow:hidden">'
     +  kpi('Annual savings', money(b.annSav), '', money(REC.yr1)+' net of O&amp;M and losses', true, 'rSav')
     +  kpi('Simple payback', isFinite(REC.payback)?fmt(REC.payback,1):'--', isFinite(REC.payback)?'yrs':'', money(REC.net)+' net cost after ITC', false, 'rPay')
-    +  kpi(nv('term',10)+'-yr NPV', money(REC.npv), '', 'at '+fmt(nv('disc',8),1)+'% discount', false, 'rNpv')
+    +  kpi(nv('term',10)+'-yr NPV', money(REC.npv), '', (REC.irr!=null?fmt(REC.irr*100,1)+'% IRR \u00b7 ':'')+'at '+fmt(nv('disc',8),1)+'% discount', false, 'rNpv')
     +  kpi('Deepest cut', fmt(maxCut), 'kW', (cutMon?cutMon+' \u00b7 ':'')+fmt(pctShave,1)+'% of site peak', false, 'rCut')
     +  '</div>';
 
@@ -2855,7 +2966,7 @@ function render(){
     var m = R.months[i];
     var rate = (R.mode==='bill') ? m.rate : R.dRate;
     var adj = m.adj || 0;
-    var cb = Math.max(0,R.baseBilled[i]-adj)*rate, cn = Math.max(0,billedAfter[i]-adj)*rate, sv = cb-cn;
+    var cb = demandCost(R.baseBilled[i], m), cn = demandCost(billedAfter[i], m), sv = cb-cn;
     tB+=cb; tN+=cn; tS+=sv;
     h += '<tr><td class="tx">'+m.label+'</td>'
       +  '<td class="num">'+fmt(m.peak)+'</td>'
@@ -3083,6 +3194,160 @@ function energyNeeded(m, T){
   }
   if(evt>mx) mx=evt;
   return mx;
+}
+
+/* ============================================================
+   PROPOSAL AUDIT
+   ------------------------------------------------------------
+   Every check here is arithmetic against a physical ceiling. None of it
+   needs to know the vendor, the chemistry, or the site - only that a
+   battery has one energy budget and can spend it once.
+   ============================================================ */
+function auditExample(){
+  var v = { aKw:503, aKwh:1004, aDem:120720, aArb:89864, aOn:0.52, aOff:0.12,
+            aCyc:1, aCap:435000, aInc:300000, aDisc:0, aPeak:600, aDay:1536 };
+  for(var k in v) if(v.hasOwnProperty(k) && $(k)) $(k).value = v[k];
+  if($('dRate')) $('dRate').value = 20;
+  auditRun();
+}
+
+function auditRun(){
+  var kW = nv('aKw',0), kWh = nv('aKwh',0);
+  if(!(kW > 0) || !(kWh > 0)){ alert('Enter the claimed battery kW and kWh.'); return; }
+  var demClaim = nv('aDem',0), arbClaim = nv('aArb',0);
+  var on = nv('aOn',0.52), off = nv('aOff',0.12), cyc = nv('aCyc',1);
+  var cap = nv('aCap',0), inc = nv('aInc',0), theirDisc = nv('aDisc',0);
+  var peak = nv('aPeak',0), dayKwh = nv('aDay',0);
+  var rte = nv('rte',88)/100, dod = nv('dod',90)/100;
+  var dRate = nv('dRate',18.5);
+  var usable = kWh*dod;
+  var rows = [], flags = 0;
+
+  function row(name, claim, ceiling, note){
+    var bad = (claim > ceiling*1.02);
+    if(bad) flags++;
+    rows.push({ name:name, claim:claim, ceil:ceiling, bad:bad, note:note });
+  }
+
+  /* 1. demand savings ceiling: full rated power shaved in all 12 months */
+  var demCeil = subMode()
+      ? (Math.ceil(Math.max(peak,nv('subMin',100))/nv('subBlock',50))
+         - Math.ceil(Math.max(peak-kW,nv('subMin',100))/nv('subBlock',50)))*nv('subPrice',95.56)*12
+      : kW*dRate*12;
+  row('Demand savings', demClaim, demCeil,
+      subMode()
+        ? 'Blocks the shave actually crosses, twelve months. Below the floor the subscription does not fall further.'
+        : 'Rated power shaved in every one of twelve months, with no month where the peak lands outside the window and no energy limit. Nothing real reaches this.');
+
+  /* 2. arbitrage ceiling: full usable energy, every day, at the full spread */
+  var arbCeil = usable*cyc*365*(on-off)*rte;
+  row('Energy arbitrage', arbClaim, arbCeil,
+      fmt(usable) + ' kWh usable x ' + fmt(cyc,2) + ' cycle/day x 365 x ' + money(on-off,2)
+      + ' spread x ' + fmt(rte*100) + '% round trip. Assumes the spread is available every single day.');
+
+  /* 3. the budget both claims are drawing on */
+  var demHrs = 2;
+  var demNeed = kW*demHrs;                 /* kWh/day to hold a full-power shave */
+  var arbNeed = arbClaim > 0 && (on-off) > 0 ? arbClaim/365/((on-off)*rte) : 0;
+  var budget = usable*cyc;
+  var combined = demNeed + arbNeed;
+  var conflict = combined > budget*1.02;
+  if(conflict) flags++;
+
+  /* 4. can the battery even carry the site? */
+  var carry = (peak > 0 && kW >= peak*0.9 && dayKwh > 0) ? (dayKwh > usable*cyc) : false;
+
+  var h = '';
+  h += '<div class="card-b tight"><div class="spec"><div class="lbl">Proposal audit</div>'
+    +  '<div class="big">' + (flags ? flags + ' <em>claim' + (flags>1?'s':'') + ' exceed physical limits</em>'
+                                    : 'No <em>claim exceeds its ceiling</em>') + '</div>'
+    +  '<div class="sub">' + fmt(kW) + ' kW / ' + fmt(kWh) + ' kWh &middot; ' + fmt(usable) + ' kWh usable at '
+    +  fmt(dod*100) + '% DoD &middot; ' + fmt(kWh/kW,1) + ' h duration</div></div>';
+
+  h += '<div class="scrollx" style="margin:0 -14px"><table class="t"><thead><tr>'
+    +  '<th>Value stream</th><th class="num">Claimed</th><th class="num">Physical ceiling</th><th class="num">% of ceiling</th>'
+    +  '</tr></thead><tbody>';
+  var i;
+  for(i=0;i<rows.length;i++){
+    var r = rows[i];
+    var pct = r.ceil > 0 ? r.claim/r.ceil*100 : 0;
+    h += '<tr><td class="tx">' + r.name + '<div style="font-size:11px;color:var(--sub);white-space:normal;max-width:340px">'
+      +  r.note + '</div></td>'
+      +  '<td class="num">' + money(r.claim) + '</td><td class="num">' + money(r.ceil) + '</td>'
+      +  '<td class="num" style="font-weight:600;color:' + (r.bad ? 'var(--red)' : 'var(--teal-dk)') + '">'
+      +  fmt(pct) + '%' + (r.bad ? ' <span class="pill r">over</span>' : '') + '</td></tr>';
+  }
+  h += '</tbody></table></div>';
+
+  /* --- the co-optimization test --- */
+  h += '<div style="height:14px"></div>';
+  h += '<div class="card-h" style="border-top:1px solid var(--border2);margin:0 -14px;padding-left:14px">One battery, one energy budget</div>';
+  h += '<div class="scrollx" style="margin:0 -14px"><table class="t"><thead><tr>'
+    +  '<th>Daily energy</th><th class="num">kWh</th><th class="num">Share of budget</th></tr></thead><tbody>';
+  h += '<tr><td class="tx">Available (' + fmt(usable) + ' usable x ' + fmt(cyc,2) + ' cycle)</td>'
+    +  '<td class="num">' + fmt(budget) + '</td><td class="num">100%</td></tr>';
+  h += '<tr><td class="tx">Needed to hold the demand shave<div style="font-size:11px;color:var(--sub)">'
+    +  fmt(kW) + ' kW for ' + demHrs + ' h &mdash; and that is a short peak</div></td>'
+    +  '<td class="num">' + fmt(demNeed) + '</td><td class="num">' + fmt(budget?demNeed/budget*100:0) + '%</td></tr>';
+  h += '<tr><td class="tx">Needed to earn the arbitrage claim</td>'
+    +  '<td class="num">' + fmt(arbNeed) + '</td><td class="num">' + fmt(budget?arbNeed/budget*100:0) + '%</td></tr>';
+  h += '<tr class="tot"><td class="tx">Both at once</td><td class="num">' + fmt(combined) + '</td>'
+    +  '<td class="num" style="color:' + (conflict?'var(--red)':'var(--teal-dk)') + '">'
+    +  fmt(budget?combined/budget*100:0) + '%</td></tr>';
+  h += '</tbody></table></div>';
+
+  if(conflict){
+    h += '<div class="note bad"><b>The two savings lines are spending the same kWh.</b> Holding the demand shave and running '
+      +  'the arbitrage cycle both draw on ' + fmt(budget) + ' kWh a day, and together they need ' + fmt(combined) + '. '
+      +  'Discharging into the on-peak window to capture the spread leaves the battery at a lower state of charge for the peak '
+      +  'it is supposed to shave &mdash; the same hours, the same energy. Add them together and the model books '
+      +  money(demClaim+arbClaim) + '/yr for a machine that can deliver one or the other, not both. '
+      +  'This is the single most common error in storage proposals, and the first thing a technical underwriter tests.</div>';
+  }
+  if(carry){
+    h += '<div class="note bad"><b>The battery cannot carry the site.</b> It is rated to shave nearly the whole '
+      +  fmt(peak) + ' kW peak, but the site pulls ' + fmt(dayKwh) + ' kWh a day against a usable budget of '
+      +  fmt(budget) + ' kWh. Even ignoring demand entirely, the energy is not there.</div>';
+  }
+
+  /* --- finance --- */
+  var netCap = cap - inc;
+  var claimTotal = demClaim + arbClaim;
+  h += '<div style="height:14px"></div>';
+  h += '<div class="card-h" style="border-top:1px solid var(--border2);margin:0 -14px;padding-left:14px">How the finance reads</div>';
+  var fin = [];
+  if(theirDisc < 1) fin.push('<b>The discount rate is ' + fmt(theirDisc,1) + '%.</b> At zero, &ldquo;net present value&rdquo; is '
+    + 'just the undiscounted sum of ten years of cash flow with a new label on it. No capital provider underwrites at zero. '
+    + 'Rerun at their actual cost of capital and the headline falls hard.');
+  if(cap > 0 && inc/cap > 0.4) fin.push('<b>Incentives carry ' + fmt(inc/cap*100) + '% of the CAPEX</b> ('
+    + money(inc) + ' of ' + money(cap) + '). Until that is awarded and assignable, the fundable basis is '
+    + money(cap) + ', not ' + money(netCap) + '. Ask what happens to the payback if the reservation is not honoured: '
+    + (claimTotal > 0 ? 'it goes from ' + fmt(netCap/claimTotal,1) + ' to ' + fmt(cap/claimTotal,1) + ' years '
+       + 'on their own savings numbers, before any of the corrections above.' : 'it moves out by the full incentive.'));
+  fin.push('<b>No degradation is visible in the cash flow.</b> A battery cycled daily loses capacity. If year 10 saves what '
+    + 'year 1 saves, the model is missing 2-3% a year of fade and the tail of the NPV is overstated.');
+  if(demClaim > 0) fin.push('<b>Check the tariff before the savings.</b> On a subscription rate the demand line is a staircase '
+    + 'and the value collapses; on a rate with an EV demand-charge holiday it may be zero for years. The demand saving is '
+    + 'usually the largest number in a storage proposal and the least often checked against the actual rate schedule.');
+  h += '<div class="note bad" style="margin-top:12px"><ul style="margin:0 0 0 18px;padding:0">';
+  for(i=0;i<fin.length;i++) h += '<li style="margin-bottom:8px">' + fin[i] + '</li>';
+  h += '</ul></div>';
+
+  h += '<div class="hint">This audit is arithmetic on the numbers entered, not a site model. To replace a claim rather than '
+    + 'just puncture it, load the bills and size it properly in steps 1-3.</div></div>';
+
+  $('out').innerHTML = h;
+  $('results').className = 'on';
+  var pr = $('prog'); if(pr) pr.style.display = 'none';
+  wireHelp($('out'));
+  var ob = $('out');
+  if(ob && ob.scrollIntoView) ob.scrollIntoView({ behavior:'smooth', block:'start' });
+}
+
+function rateStructUI(){
+  var sub = subMode();
+  $('subRow').style.display = sub ? '' : 'none';
+  $('rateRow').style.display = sub ? 'none' : '';
 }
 
 /* ============================================================
