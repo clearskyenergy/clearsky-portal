@@ -173,6 +173,11 @@ textarea{min-height:70px;resize:vertical}
 .btn.primary{background:var(--accent);border-color:var(--accent);color:#fff}
 .btn.primary:hover{filter:brightness(1.07)}
 .btn.primary:disabled{opacity:.45;cursor:not-allowed;filter:none}
+/* Not-yet-valid is a different state from not-allowed: the button stays
+   clickable so it can say what is missing. */
+.btn.primary.pending{opacity:.55;box-shadow:none}
+#needHint{font-size:12.5px;color:var(--warn);margin-right:auto;line-height:1.4}
+#needHint b{font-weight:600}
 .btn.ghost{border-color:transparent;background:none;color:var(--accent);padding-left:6px;padding-right:6px}
 .btn.sm{padding:5px 10px;font-size:12.5px}
 
@@ -619,6 +624,7 @@ textarea{min-height:70px;resize:vertical}
 
 <div class="actionbar" id="actionbar">
   <span class="msg" id="statusMsg"></span>
+  <span id="needHint"></span>
   <button class="btn" type="button" id="btnDelete" hidden
      style="border-color:#E3C4C2;color:#B4302A">Delete</button>
   <button class="btn" type="button" id="btnNew">New intake</button>
@@ -1005,7 +1011,31 @@ textarea{min-height:70px;resize:vertical}
     $('#btnSubmit').textContent = svc(isSelf ? 'Switch to {svc} and submit' : 'Submit to {svc}');
     $('#btnSave').textContent = isSelf ? 'Save record' : 'Save draft';
     var v = OI.validate(rec);
-    $('#btnSubmit').disabled = !v.ok;
+
+    /* The button is NOT disabled when the form is merely incomplete.
+       It used to be, and the only code that names the missing fields lives
+       inside this button's click handler — so the explanation sat behind a
+       control that could not be clicked. From the customer's side the button
+       was simply dead: no message, no reason, nothing to act on. The rail
+       lists what is missing, but it scrolls off on a narrow window.
+
+       Now the state is visible in the bar itself, and clicking still works
+       and still says what is needed. */
+    var b = $('#btnSubmit'), hint = $('#needHint');
+    b.disabled = false;
+    b.classList.toggle('pending', !v.ok);
+    if (hint) {
+      if (v.ok) { hint.textContent = ''; b.removeAttribute('title'); }
+      else {
+        var miss = (v.missing || []).slice();
+        var shown = miss.slice(0, 3).join(', ')
+                  + (miss.length > 3 ? ' and ' + (miss.length - 3) + ' more' : '');
+        hint.innerHTML = '';
+        hint.appendChild(el('b', null, 'Still needed: '));
+        hint.appendChild(document.createTextNode(shown || 'some required fields'));
+        b.title = 'Still needed: ' + (miss.join(', ') || 'some required fields');
+      }
+    }
   }
 
   /* ---------- editor link ---------- */
@@ -1083,14 +1113,23 @@ textarea{min-height:70px;resize:vertical}
 
   $('#btnSubmit').addEventListener('click', function () {
     var v = OI.validate(rec);
-    if (!v.ok) { setMsg('Still needed: ' + v.missing.join(', ')); return; }
+    if (!v.ok) {
+      setMsg('Still needed: ' + ((v.missing || []).join(', ') || 'some required fields'));
+      /* Naming the fields is not much use if they are three screens away. */
+      var m = $('#railMissing');
+      if (m && m.scrollIntoView) m.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      return;
+    }
     $('#btnSubmit').disabled = true;
     OI.submit(rec, user.email).then(function () {
       dirty = false;
       setMsg(svc('Submitted. {svc} will notify you here when the package is ready.'));
       syncRouteButtons(); refreshList(); renderNotice();
-    }).catch(function (e) {
-      setMsg('Could not submit: ' + e.message); $('#btnSubmit').disabled = false;
+    })['catch'](function (e) {
+      setMsg('Could not submit: ' + ((e && e.message) || 'write refused'));
+      console.error('[intake] submit failed:', e);
+      $('#btnSubmit').disabled = false;
+      syncActionBar();
     });
   });
 

@@ -1349,15 +1349,23 @@ service cloud.firestore {
          It was already pinned by uid; without the email pinned too, a patched
          client could file a record stamped with someone else's domain and
          hand a stranger's colleagues access to it. Costs nothing — the real
-         client writes the signed-in address there anyway. */
+         client writes the signed-in address there anyway.
+
+         .lower() ON BOTH SIDES. The client lowercases the address when it
+         stamps createdBy; a token that arrives as Mitch@ConcordEnergyUSA.com
+         would otherwise fail a case-sensitive comparison and refuse the
+         submit outright, with "Missing or insufficient permissions" and no
+         indication that capitalisation was the problem. Same reasoning as
+         the .lower() in userOrg(), and the same failure mode: ONE user
+         blocked while everyone else works. */
       allow create: if isOmegaStaff()
                     || (signedIn()
                         && request.resource.data.orgId is string
                         && request.resource.data.orgId.size() > 0
                         && request.resource.data.intakeId == intakeId
                         && request.resource.data.createdBy.uid == request.auth.uid
-                        && request.resource.data.createdBy.get('email', request.auth.token.email)
-                             == request.auth.token.email
+                        && request.resource.data.createdBy.get('email', request.auth.token.email).lower()
+                             == request.auth.token.email.lower()
                         && request.resource.data.status in ['draft', 'saved', 'submitted']
                         && request.resource.data.get('quote', {}).get('total', null) == null);
 
