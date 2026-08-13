@@ -52718,59 +52718,1270 @@ window.bnzEnergy = bnzEnergy;
  *  investor's trust permanently.
  * ═══════════════════════════════════════════════════════════════════ */
 var BPS_TARGETS = {
-  as_of:'2026-08-10',
+  as_of:'2026-08-12',
+  source:'1 RCNY 103-14 (eff. 2023-01-19, am. 2024-01-20 and 2025-01-19); NYC Admin Code Art. 320/321',
   jurisdictions:[{
     id:'nyc_ll97', name:'NYC Local Law 97',
-    applies_if:{ min_gsf:25000 },
-    metric:'tco2e_per_sf_yr',   /* LL97 publishes caps in METRIC TONS per sf */
-    penalty:{ rate:268, unit:'usd_per_tco2e_over', cadence:'annual', ceiling:null },
+    applies_if:{ min_gsf:25000,
+      note:'Also covers two or more buildings on one tax lot together over 50,000 sf, and two or more condo buildings under one board together over 50,000 sf. Penalties apply per BIN, not per lot.' },
+    metric:'tco2e_per_sf_yr',
+    penalty:{ rate:268, unit:'usd_per_tco2e_over', cadence:'annual', ceiling:null,
+      late_filing:{ rate:0.50, unit:'usd_per_sf_per_month', cap_months:12 },
+      false_statement:500000 },
     blending:'area_weighted',
-    verify_url:'nyc.gov/dob',
+    verify_url:'nyc.gov/dob \u2014 1 RCNY 103-14',
+    /* All four periods are PUBLISHED in the rule. The earlier build carried
+       interpolated guesses for 2035+ and flagged them provisional; they were
+       wrong by as much as 2x against the real table, which is worse than a
+       flag can fix. 2050 is statutory zero. */
     periods:[
       { label:'2024\u20132029', start:2024, end:2029, conf:'published' },
       { label:'2030\u20132034', start:2030, end:2034, conf:'published' },
-      { label:'2035\u20132039', start:2035, end:2039, conf:'provisional' },
-      { label:'2040\u20132049', start:2040, end:2049, conf:'provisional' },
-      { label:'2050',           start:2050, end:null, conf:'statutory' }
+      { label:'2035\u20132039', start:2035, end:2039, conf:'published' },
+      { label:'2040\u20132049', start:2040, end:2049, conf:'published' },
+      { label:'2050+',          start:2050, end:null, conf:'statutory' }
     ],
-    /* occupancy group -> cap per period, tCO2e/sf/yr as published.
-       Getting this unit wrong by 1000x makes every building fail every
-       period, which is exactly what the first run produced. */
+    /* ESPM property type -> [P1, P2, P3, P4, P5] in tCO2e/sf/yr.
+       Transcribed from 1 RCNY 103-14(c)(3)(i),(iii),(iv),(v). 2050 = 0.00
+       for every type per (c)(3)(vi). ESPM "Other" and "Mixed Use" may NOT
+       be assigned to any part of a covered building. */
     caps:{
-      'A':  [0.01074, 0.00420, 0.00280, 0.00140, 0],
-      'B':  [0.00846, 0.00453, 0.00302, 0.00151, 0],
-      'E':  [0.00758, 0.00344, 0.00229, 0.00115, 0],
-      'F':  [0.00574, 0.00167, 0.00111, 0.00056, 0],
-      'I-2':[0.02381, 0.01193, 0.00795, 0.00398, 0],
-      'M':  [0.01181, 0.00403, 0.00269, 0.00134, 0],
-      'R-1':[0.00987, 0.00526, 0.00351, 0.00175, 0],
-      'R-2':[0.00675, 0.00407, 0.00271, 0.00136, 0],
-      'S':  [0.00426, 0.00110, 0.00073, 0.00037, 0],
-      'U':  [0.00426, 0.00110, 0.00073, 0.00037, 0]
+      'Adult Education':                    [0.00758, 0.003565528, 0.002674146, 0.001782764, 0],
+      'Ambulatory Surgical Center':         [0.01181, 0.008980612, 0.006735459, 0.004490306, 0],
+      'Automobile Dealership':              [0.00675, 0.002824097, 0.002118072, 0.001412048, 0],
+      'Bank Branch':                        [0.00987, 0.004036172, 0.003027129, 0.002018086, 0],
+      'Bowling Alley':                      [0.00574, 0.003103815, 0.002327861, 0.001551907, 0],
+      'College/University':                 [0.00987, 0.002099748, 0.001236322, 0.000180818, 0],
+      'Convenience Store without Gas Station':[0.00675, 0.003540032, 0.002655024, 0.001770016, 0],
+      'Courthouse':                         [0.00426, 0.001480533, 0.001110400, 0.000740266, 0],
+      'Data Center':                        [0.02381, 0.014791131, 0.011093348, 0.007395565, 0],
+      'Distribution Center':                [0.00574, 0.000991600, 0.000549637, 0.000123568, 0],
+      'Enclosed Mall':                      [0.01074, 0.003983803, 0.002987852, 0.001991901, 0],
+      'Financial Office':                   [0.00846, 0.003697004, 0.002772753, 0.001848502, 0],
+      'Fitness Center/Health Club/Gym':     [0.00987, 0.003946728, 0.002960046, 0.001973364, 0],
+      'Food Sales':                         [0.01181, 0.005208880, 0.003906660, 0.002604440, 0],
+      'Food Service':                       [0.01181, 0.007749414, 0.005812060, 0.003874707, 0],
+      'Hospital (General Medical & Surgical)':[0.02381, 0.007335204, 0.004654044, 0.002997851, 0],
+      'Hotel':                              [0.00987, 0.003850668, 0.002640017, 0.001465772, 0],
+      'K-12 School':                        [0.00675, 0.002230588, 0.001488109, 0.000809607, 0],
+      'Laboratory':                         [0.02381, 0.026029868, 0.019522401, 0.013014934, 0],
+      'Library':                            [0.00675, 0.002218412, 0.001663809, 0.001109206, 0],
+      'Lifestyle Center':                   [0.00846, 0.004705850, 0.003529387, 0.002352925, 0],
+      'Mailing Center/Post Office':         [0.00426, 0.001980440, 0.001485330, 0.000990220, 0],
+      'Manufacturing/Industrial Plant':     [0.00758, 0.001417030, 0.000975993, 0.000508346, 0],
+      'Medical Office':                     [0.01074, 0.002912778, 0.001683565, 0.000407851, 0],
+      'Movie Theater':                      [0.01181, 0.005395268, 0.004046451, 0.002697634, 0],
+      'Multifamily Housing':                [0.00675, 0.003346640, 0.002692183, 0.002052731, 0],
+      'Museum':                             [0.01181, 0.005395800, 0.004046850, 0.002697900, 0],
+      'Non-Refrigerated Warehouse':         [0.00426, 0.000883187, 0.000568051, 0.000163152, 0],
+      'Office':                             [0.00758, 0.002690852, 0.001652340, 0.000581893, 0],
+      'Other - Education':                  [0.00846, 0.002934006, 0.001867699, 0.000839571, 0],
+      'Other - Entertainment/Public Assembly':[0.00987, 0.002956738, 0.002250122, 0.001355610, 0],
+      'Other - Lodging/Residential':        [0.00758, 0.001901982, 0.001329089, 0.000762093, 0],
+      'Other - Mall':                       [0.01074, 0.001928226, 0.001006426, 0.000067983, 0],
+      'Other - Public Services':            [0.00758, 0.003808033, 0.002856025, 0.001904017, 0],
+      'Other - Recreation':                 [0.00987, 0.004479570, 0.003359678, 0.002239785, 0],
+      'Other - Restaurant/Bar':             [0.02381, 0.008505075, 0.006378806, 0.004252537, 0],
+      'Other - Services':                   [0.01074, 0.001823381, 0.001367536, 0.000911691, 0],
+      'Other - Specialty Hospital':         [0.02381, 0.006321819, 0.004741365, 0.003160910, 0],
+      'Other - Technology/Science':         [0.02381, 0.010446456, 0.007834842, 0.005223228, 0],
+      'Outpatient Rehabilitation/Physical Therapy':[0.01181, 0.006018323, 0.004513742, 0.003009161, 0],
+      'Parking':                            [0.00426, 0.000214421, 0.000104943, 0, 0],
+      'Performing Arts':                    [0.00846, 0.002472539, 0.001399345, 0, 0],
+      'Personal Services (Health/Beauty, Dry Cleaning, etc.)':[0.00574, 0.004843037, 0.003632278, 0.002421519, 0],
+      'Pre-school/Daycare':                 [0.00675, 0.002362874, 0.001772155, 0.001181437, 0],
+      'Refrigerated Warehouse':             [0.00987, 0.002852131, 0.002139098, 0.001426066, 0],
+      'Repair Services (Vehicle, Shoe, Locksmith, etc.)':[0.00426, 0.002210699, 0.001658024, 0.001105349, 0],
+      'Residence Hall/Dormitory':           [0.00758, 0.002464089, 0.001332459, 0.000528616, 0],
+      'Residential Care Facility':          [0.01138, 0.004893124, 0.004027812, 0.002272629, 0],
+      'Restaurant':                         [0.01181, 0.004038374, 0.003028780, 0.002019187, 0],
+      'Retail Store':                       [0.00758, 0.002104490, 0.001216050, 0.000176040, 0],
+      'Self-Storage Facility':              [0.00426, 0.000611830, 0.000404901, 0.000132282, 0],
+      'Senior Care Community':              [0.01138, 0.004410123, 0.003336443, 0.002277912, 0],
+      'Social/Meeting Hall':                [0.00987, 0.003833108, 0.002874831, 0.001916554, 0],
+      'Strip Mall':                         [0.01181, 0.001361842, 0.000600493, 0.000038512, 0],
+      'Supermarket/Grocery Store':          [0.02381, 0.006755190, 0.004256103, 0.002030027, 0],
+      'Transportation Terminal/Station':    [0.00426, 0.000571669, 0.000428752, 0.000285834, 0],
+      'Urgent Care/Clinic/Other Outpatient':[0.01181, 0.005772375, 0.004329281, 0.002886187, 0],
+      'Vocational School':                  [0.00574, 0.004613122, 0.003459842, 0.002306561, 0],
+      'Wholesale Club/Supercenter':         [0.01138, 0.004264962, 0.003198721, 0.002132481, 0],
+      'Worship Facility':                   [0.00574, 0.001230602, 0.000866921, 0.000549306, 0]
     },
-    /* Article 321 and related routes. Without these the tool reports
-       false penalties across exactly the rent-regulated / LMI / house of
-       worship stock that most needs the analysis. */
+    /* LEGACY OCCUPANCY-GROUP ALIASES.
+       LL97 originally set limits by 10 Building Code occupancy groups; the
+       2022 rule replaced them with the 60 ESPM property types above. Saved
+       projects still carry occupancy-group codes, so those keys resolve to
+       the closest ESPM type rather than breaking. An owner may still elect
+       the Admin Code occupancy limit for CY2024 and CY2025 only, and only
+       where it is HIGHER than the ESPM factor (103-14(c)(3)(ii)). */
+    legacy_occ_alias:{
+      'A':'Other - Entertainment/Public Assembly', 'B':'Office', 'E':'K-12 School',
+      'F':'Manufacturing/Industrial Plant', 'I-2':'Hospital (General Medical & Surgical)',
+      'M':'Retail Store', 'R-1':'Hotel', 'R-2':'Multifamily Housing',
+      'S':'Non-Refrigerated Warehouse', 'U':'Parking'
+    },
     alt_pathways:[
-      { id:'none',              name:'Standard cap compliance' },
-      { id:'prescriptive_lmi',  name:'Prescribed measures (Art. 321 \u2014 rent-regulated / LMI)',
-        note:'Swaps the cap test for a prescribed measures checklist. Buildings with rent-regulated units, HDFC co-ops, or project-based assistance may qualify.' },
-      { id:'houses_of_worship', name:'House of worship \u2014 prescribed measures',
-        note:'Houses of worship follow the prescribed-measures route rather than a straight cap.' },
-      { id:'rec_deduction',     name:'Cap with REC deduction',
-        note:'Grid-delivered RECs from within NYISO Zone J may offset reported electric emissions.' },
-      { id:'good_faith_plan',   name:'Good-faith decarbonisation plan',
-        note:'Mitigated penalty where a credible path to compliance is filed and followed.' }
-    ]
+      { id:'none', name:'Article 320 \u2014 standard annual cap' },
+      { id:'art321_prescriptive', name:'Article 321 \u2014 prescriptive measures (PECMs)',
+        note:'For buildings with >35% rent-regulated dwelling units, HDFC co-ops, project-based federal assistance (Sec. 8/202/811/CoC), and houses of worship. One-time report certified by a retro-commissioning agent covering all 13 applicable PECMs. Replaces the cap test entirely.' },
+      { id:'art321_performance', name:'Article 321 \u2014 performance route',
+        note:'Same eligibility as the prescriptive route, but demonstrates 2024 emissions already met the 2030 limit. One-time report certified by an RDP.' },
+      { id:'rec_deduction', name:'Article 320 with REC deduction',
+        note:'RECs may offset ONLY emissions attributed to utility-supplied electricity, never fuel. Buildings on the good-faith decarbonisation-plan route may not claim RECs at all in 2024\u20132029.' },
+      { id:'good_faith_plan', name:'Article 320 with good-faith decarbonisation plan',
+        note:'Mitigated penalty for 2024\u20132029. Requires LL84 and LL88 compliance, an RDP-certified plan filed by 1 May 2025 built on an energy audit no older than four years, 2024-limit work done within 24 months, and an approved application for 2030-limit work by 1 May 2028. Bars REC use for the period.' },
+      { id:'adjustment_320_7', name:'\u00a7320.7 adjustment (external / financial constraint)',
+        note:'Temporary adjustment to the limit where constraints outside the owner\u0027s control prevent compliance. Filed with the annual report.' },
+      { id:'adjustment_320_9', name:'\u00a7320.9 adjustment (not-for-profit hospital / health centre)',
+        note:'Percent-reduction requirement in place of a cap. Expires when the building stops qualifying.' }
+    ],
+    /* AHRF offsets \u2014 1 RCNY 103-14(e)(3). The only offsets eligible. */
+    offsets:{ program:'NYC Affordable Housing Reinvestment Fund (AHRF)',
+      price_usd_per_tco2e:268, cap_pct_of_limit:10,
+      note:'Offsets from qualifying HPD electrification projects at regulated affordable housing. Capped at 10% of the building\u0027s annual emissions LIMIT (not of its emissions). Available in each compliance period.' },
+    /* Beneficial electrification credit \u2014 103-14(d)(3)(vii). A NEGATIVE
+       coefficient: qualifying heat-pump kWh reduce reported emissions. */
+    beneficial_electrification:{
+      coef_before_2027:-0.0013, coef_2027_2029:-0.00065, unit:'tCO2e_per_kwh',
+      min_cop:'>1.5 COP at 5\u00b0F outdoor dry bulb at maximum heating capacity',
+      banking:{ '2024 and prior':'any 6 calendar years 2024\u20132036', '2025':'any 5 years 2025\u20132035',
+        '2026':'any 4 years 2026\u20132034', '2027':'any 3 years 2027\u20132034',
+        '2028':'any 2 years 2028\u20132034', '2029':'any 1 year 2029\u20132034' },
+      note:'Savings from one year may be applied whole to that year or whole to one future year, never combined across years. Must be applied in any year the building is over its limit.' },
+    /* Deferred first-report dates \u2014 103-14(b)(8). */
+    deferred_reporting:[
+      { who:'1 to <35% rent-regulated dwelling units (\u00a728-320.3.10.1)', first_report:'2027-05-01' },
+      { who:'Limited-profit housing company under Art. 2 PHFL (Mitchell-Lama) (\u00a728-320.3.9)', first_report:'2036-05-01' },
+      { who:'Income-restricted units via state/local loan, grant, tax exemption or 420-c (\u00a728-320.3.9)', first_report:'2036-05-01' }
+    ],
+    deadlines_2026:{ report_due:'2026-05-01', grace_to:'2026-06-30',
+      extension_request_by:'2026-06-30', extension_fee_usd:60, extended_to:'2026-08-29',
+      note:'Filed through ESPM + BEAM + DOB NOW, certified by a registered design professional.' }
   }]
 };
 window.BPS_TARGETS = BPS_TARGETS;
 
-/* BLD_ROM property type -> occupancy group. */
-var BPS_OCC_MAP = { office:'B', warehouse:'S', retail:'M', school:'E', hospital:'I-2',
-                    hotel:'R-1', multifamily:'R-2', worship:'A', manufacturing:'F',
-                    datacenter:'B' };
+/* GHG coefficients by fuel and period \u2014 \u00a728-320.3.1.1 and 103-14(d)(3).
+   Electricity nearly halves in 2030 as the grid decarbonises; gas does not
+   move at all. That divergence is the single most important number in the
+   whole model: it is why a gas building's 2030 exposure grows even if it
+   never changes a thing, and why electrification pays twice. */
+var LL97_COEF = {
+  as_of:'2026-08-12', source:'NYC Admin Code \u00a728-320.3.1.1; 1 RCNY 103-14(d)(3)',
+  electricity_tco2e_per_kwh:{ '2024_2029':0.000288962, '2030_2034':0.000145 },
+  district_steam_tco2e_per_kbtu:{ '2024_2029':0.00004493, '2030_2034':0.0000432 },
+  natural_gas_tco2e_per_kbtu:0.00005311,
+  on_site_fuels_tco2e_per_kbtu:{
+    'No. 2 Fuel Oil':0.00007421, 'No. 4 Fuel Oil':0.00007529, 'Diesel':0.00007421,
+    'Distillate Fuel Oil No. 1':0.00007350, 'Kerosene':0.00007769, 'Propane':0.00006425,
+    'Butane':0.00006502, 'Butylene':0.00006897, 'Ethane':0.00005985, 'Ethylene':0.00006621,
+    'Gasoline':0.00007047, 'Isobutane':0.00006519, 'Isobutylene':0.00006911,
+    'Naphtha (<401F)':0.00006827, 'Other Oil (>401F)':0.00007647, 'Pentanes Plus':0.00007027,
+    'Propylene':0.00006802, 'Special Naphtha':0.00007259, 'Coke Oven Gas':0.00004689,
+    'Fuel Gas':0.00005925, 'Biofuel (biodiesel / renewable diesel)':0.00007389
+  },
+  solar_onsite_or_zonej_offsite_tco2e_per_kwh:0,
+  marginal_grid_coef_tco2e_per_kwh:{ 2024:0.000247038, 2025:0.000237178, 2026:0.000191739,
+    2027:0.000167898, 2028:0.000129971, 2029:0.000113712 },
+  note:'Grid electricity falls ~50% in 2030\u20132034 (0.000288962 \u2192 0.000145 tCO2e/kWh). Natural gas is unchanged across both periods. On-site solar and Zone J offsite solar are zero-rated.'
+};
+window.LL97_COEF = LL97_COEF;
+
+/* The 13 Prescriptive Energy Conservation Measures \u2014 Art. 321 / 1 RCNY 103-17.
+   Four are marked conditional in the DOB filing guide: they apply only where
+   the relevant system exists. */
+var LL97_PECM = [
+  { n:1,  measure:'Adjust temperature set points for heat and hot water' },
+  { n:2,  measure:'Repair heating system leaks' },
+  { n:3,  measure:'Maintain heating system function' },
+  { n:4,  measure:'Install individual radiator temperature controls or insulated enclosures', conditional:true },
+  { n:5,  measure:'Insulate heating and hot water piping' },
+  { n:6,  measure:'Insulate hot water storage tanks' },
+  { n:7,  measure:'Install indoor/outdoor temperature sensors and boiler controls', conditional:true },
+  { n:8,  measure:'Replace or repair steam traps', conditional:true },
+  { n:9,  measure:'Install master venting on steam systems', conditional:true },
+  { n:10, measure:'Upgrade lighting to NYC Energy Conservation Code standard' },
+  { n:11, measure:'Repair the building envelope' },
+  { n:12, measure:'Install timers on exhaust fans' },
+  { n:13, measure:'Install radiant barriers behind radiators' }
+];
+window.LL97_PECM = LL97_PECM;
+
+/* BLD_ROM property type -> ESPM property type. */
+var BPS_OCC_MAP = {
+  office:'Office', financial_office:'Financial Office', warehouse:'Non-Refrigerated Warehouse',
+  distribution:'Distribution Center', retail:'Retail Store', strip_mall:'Strip Mall',
+  supermarket:'Supermarket/Grocery Store', school:'K-12 School', college:'College/University',
+  hospital:'Hospital (General Medical & Surgical)', medical_office:'Medical Office',
+  hotel:'Hotel', multifamily:'Multifamily Housing', dormitory:'Residence Hall/Dormitory',
+  senior:'Senior Care Community', worship:'Worship Facility', museum:'Museum',
+  manufacturing:'Manufacturing/Industrial Plant', datacenter:'Data Center',
+  laboratory:'Laboratory', restaurant:'Restaurant', parking:'Parking',
+  fitness:'Fitness Center/Health Club/Gym', library:'Library', courthouse:'Courthouse',
+  theater:'Movie Theater', performing_arts:'Performing Arts', self_storage:'Self-Storage Facility'
+};
 window.BPS_OCC_MAP = BPS_OCC_MAP;
+
+/* Resolve whatever a project carries \u2014 ESPM name, legacy occupancy group,
+   or BLD_ROM type \u2014 to a cap row. Returns null rather than guessing when
+   nothing matches, because silently defaulting to Office understates a
+   restaurant by 3x and overstates a warehouse by 2x. */
+function bpsResolveType(J, key){
+  if(!J || !key) return null;
+  if(J.caps[key]) return { espm:key, caps:J.caps[key], via:'espm' };
+  var la = (J.legacy_occ_alias||{})[key];
+  if(la && J.caps[la]) return { espm:la, caps:J.caps[la], via:'legacy_occupancy_group' };
+  var bm = BPS_OCC_MAP[key];
+  if(bm && J.caps[bm]) return { espm:bm, caps:J.caps[bm], via:'property_type' };
+  return null;
+}
+window.bpsResolveType = bpsResolveType;
+
+/* ═══════════════════════════════════════════════════════════════════
+ *  BNZ PHASE 5  --  NYC PROGRAM + CITY-FACING NET-ZERO REPORT
+ *  ------------------------------------------------------------------
+ *  Everything above this point answers "does this building comply?".
+ *  A city asks three different questions, and the tool was answering
+ *  none of them:
+ *
+ *      If we put money in, what do we get?
+ *      What is the payoff, and when?
+ *      What is the plan to net zero, and is it credible?
+ *
+ *  Those are portfolio questions with a public-value numerator, not
+ *  building questions with an owner-value numerator. A per-building
+ *  penalty screen cannot be added up into an answer, because the city's
+ *  decision turns on cost per ton abated, leverage of public money,
+ *  and who benefits -- none of which appear in a penalty calculation.
+ *
+ *  So this stage keeps the same deterministic, screening-grade posture
+ *  as the rest of the module and adds the public-value layer on top.
+ *  Every factor below carries its own provenance and is rendered with
+ *  it, because a city cannot defend a number in a budget hearing that
+ *  it cannot source.
+ * ═══════════════════════════════════════════════════════════════════ */
+
+/* ── The rest of the NYC compliance stack ──────────────────────────
+   LL97 does not stand alone, and a report that shows only LL97 leaves
+   an owner exposed on four other filings with their own penalties. The
+   good-faith route under LL97 explicitly REQUIRES LL84 and LL88
+   compliance, so these are not context -- they are preconditions. */
+var NYC_LAWS = {
+  as_of:'2026-08-12',
+  items:[
+    { id:'ll84', name:'LL84 \u2014 Benchmarking', applies:'Covered buildings on the annual DOB list',
+      what:'Report prior-year energy and water through ENERGY STAR Portfolio Manager and share with the City.',
+      due:'1 May annually (2025 data due 1 May 2026)',
+      penalty:'$500 per quarter, up to $2,000/yr',
+      ll97_link:'Prerequisite for the LL97 good-faith effort route.' },
+    { id:'ll33', name:'LL33/LL95 \u2014 Energy grade', applies:'Buildings covered by LL84',
+      what:'Post the 1\u2013100 ENERGY STAR score and A\u2013F letter grade at every public entrance.',
+      due:'Post by early October each year', penalty:'$1,250 for failure to post',
+      ll97_link:'Derived from LL84 data. The grade is the public-facing signal; LL97 is the financial one.' },
+    { id:'ll87', name:'LL87 \u2014 Energy audit & retro-commissioning', applies:'Buildings over 50,000 gsf, every 10 years',
+      what:'ASHRAE Level II audit (Level I under 50,000 sf) plus retro-commissioning, filed as an Energy Efficiency Report.',
+      due:'By tax-block cycle; the 2025 filing year was extended to 31 March 2026',
+      penalty:'$3,000 first year of non-submittal, $5,000 each additional year',
+      ll97_link:'The audit is the evidence base for an LL97 decarbonisation plan \u2014 the plan requires one no older than four years.' },
+    { id:'ll88', name:'LL88 \u2014 Lighting upgrades & sub-metering', applies:'Buildings over 25,000 gsf',
+      what:'Upgrade lighting to code in commercial and common areas; sub-meter non-residential tenant spaces over 5,000 sf and issue monthly statements.',
+      due:'1 January 2025; extensions granted ran to 1 May 2026',
+      penalty:'$1,500/yr lighting; $500 per un-metered covered tenant space',
+      ll97_link:'Prerequisite for the LL97 good-faith effort route.' },
+    { id:'ll154', name:'LL154 \u2014 On-site fossil fuel combustion limit', applies:'New buildings and major alterations',
+      what:'Bars on-site combustion above 25 kgCO2/MMBtu, which in practice means all-electric. Upheld in SDNY in March 2025 against an EPCA preemption challenge.',
+      due:'In force under 7 storeys; 7 storeys and above from 2 July 2027 (affordable housing 31 December 2027)',
+      penalty:'DOB will not approve non-compliant NB/Alt-CO filings',
+      ll97_link:'Sets the floor for anything newly built into the portfolio \u2014 new construction cannot add gas load.' },
+    { id:'nycecc', name:'NYCECC 2025 \u2014 Energy Conservation Code', applies:'New construction and alterations',
+      what:'Adopted December 2025, enforced from 30 March 2026. Prohibits fossil-fuel combustion systems in new construction with exceptions, caps electric-resistance backup at 25% of design load and only below 17\u00b0F, adds envelope thermal-bridging analysis and residential heat/energy recovery ventilation.',
+      due:'Filings on or after 30 March 2026', penalty:'Plan examination rejection',
+      ll97_link:'Governs how the retrofit itself must be built.' }
+  ]
+};
+window.NYC_LAWS = NYC_LAWS;
+
+/* ── The funding stack ─────────────────────────────────────────────
+   A city report that shows only gross capex answers the wrong question.
+   The number a city is deciding on is NET public cost after the stack,
+   and the leverage each public dollar pulls in. Ranges are screening
+   figures; every one must be confirmed against the live program terms,
+   which move more often than the law does. */
+var NYC_FUNDING = {
+  as_of:'2026-08-12',
+  caution:'Screening ranges only. Programme terms, budgets and eligibility change far faster than the statute \u2014 confirm live terms before any figure reaches a capital plan or a council vote.',
+  sources:[
+    { id:'cleanheat_mf', name:'NYS Clean Heat / Con Edison \u2014 multifamily ASHP',
+      basis:'per dwelling unit', low:4000, high:5000,
+      note:'Full-load air-source heat pump with decommissioning of the fossil system. Roughly $1,000/unit more for heat-pump domestic hot water. From March 2026 the incentive is tiered on weatherisation, and from 2028 a minimum weatherisation level becomes a prerequisite.' },
+    { id:'cleanheat_com', name:'NYS Clean Heat / Con Edison \u2014 commercial',
+      basis:'per MMBtu of displaced heating load', low:100, high:120,
+      note:'Full building-load electrification of space heating.' },
+    { id:'nyserda_mpp', name:'NYSERDA multifamily / commercial performance programmes',
+      basis:'percent of eligible project cost', low:0.05, high:0.15, is_pct:true,
+      note:'Multifamily Performance Program, Empire Building Challenge and Heat Recovery among others. Stacks with utility incentives.' },
+    { id:'179d', name:'Federal \u00a7179D deduction', basis:'per sf of conditioned area', low:1.16, high:5.81,
+      note:'Upper figure requires prevailing wage and apprenticeship. Requires IRS-approved third-party certification. A deduction, not a credit \u2014 worth its value times the entity\u0027s marginal rate, and allocable by a tax-exempt owner to the designer.' },
+    { id:'itc', name:'Federal investment tax credit', basis:'percent of eligible equipment', low:0.30, high:0.30, is_pct:true,
+      note:'Applies to geothermal, solar and storage rather than to air-source heat pumps. Confirm current-year eligibility and any bonus adders.' },
+    { id:'cpace', name:'NYC C-PACE', basis:'percent of project financed', low:0.0, high:1.00, is_pct:true, is_financing:true,
+      note:'Long-term financing repaid through a special property-tax assessment that transfers on sale, so it does not sit on the balance sheet as conventional debt. Not a subsidy \u2014 it changes the cash-flow shape, not the project cost. Co-op access has been demonstrated but the closing process is long.' },
+    { id:'accelerator', name:'NYC Accelerator', basis:'free technical assistance', low:0, high:0,
+      note:'MOCEJ programme providing free one-to-one advisory, project scoping and provider matching. Reduces soft costs and de-risks scoping rather than paying for equipment.' },
+    { id:'ahrf', name:'AHRF offset purchase (compliance instrument, not funding)',
+      basis:'per tCO2e', low:268, high:268,
+      note:'Buys down reported emissions up to 10% of the building\u0027s annual LIMIT. For a city this is the more interesting side: AHRF revenue finances electrification at regulated affordable housing, so it recycles compliance cost into the stock least able to fund its own retrofit.' }
+  ]
+};
+window.NYC_FUNDING = NYC_FUNDING;
+
+/* ── Public-value factors ──────────────────────────────────────────
+   These convert a capital programme into the outcomes a city is
+   actually buying. Every one is a screening factor with a named basis:
+   presenting them without the basis is how a co-benefit claim gets
+   struck out of a hearing. */
+var NYC_PUBLIC_VALUE = {
+  as_of:'2026-08-12',
+  jobs_per_million_usd:{ value:8.7, basis:'Urban Green Council on the NYSERDA Empire Building Challenge: about $300M of retrofit investment associated with roughly 2,600 jobs.', unit:'job-years per $1M invested' },
+  citywide_targets:{
+    ghg_reduction_2030_pct:40, ghg_reduction_2050_pct:80, baseline_year:2005,
+    carbon_neutral_by:2050,
+    buildings_share_of_city_emissions_pct:70,
+    ll97_expected_abatement_2030_tco2e:6000000,
+    ll97_expected_green_jobs_2030:26700,
+    health_premature_deaths_avoided_annually:'50 to 130 by 2030',
+    health_hospital_visits_avoided_annually:150,
+    source:'NYC Climate Mobilization Act brief; PlaNYC: Getting Sustainability Done; Getting 97 Done.' },
+  compliance_position:{
+    exceed_2024_2029_pct:'<10%', exceed_2030_2034_pct:'~57%',
+    basis:'NYC Accelerator, on 2024 benchmarking data. DOB analysis has separately cited 11% and 63% on an earlier dataset \u2014 the direction is identical and it is the direction that drives the investment case.' },
+  social_cost_of_carbon_usd_per_tco2e:{ value:190, basis:'US EPA central estimate. Shown alongside the $268 LL97 penalty because they measure different things: the penalty is a transfer, the social cost is a real damage avoided.' }
+};
+window.NYC_PUBLIC_VALUE = NYC_PUBLIC_VALUE;
+
+/* ── Portfolio roll-up ─────────────────────────────────────────────
+   Runs the per-building compliance engine across every building in the
+   model and aggregates. Deliberately does NOT invent buildings that are
+   not modelled: a city report that quietly extrapolates from three
+   buildings to a portfolio of three hundred is worse than no report. */
+function nycPortfolio(opts){
+  opts = opts || {};
+  var out = { ok:false, buildings:[], flags:[], as_of:new Date().toISOString().slice(0,10) };
+  var shapes = [];
+  try{ shapes = (S.shapes||[]).filter(function(sh){ return sh && sh.bnz; }); }catch(e){}
+  if(!shapes.length){ out.flags.push('No buildings with a Building & Net-Zero model in this project. Add at least one before running the city report.'); return out; }
+
+  var T = { gfa:0, capex:0, energySavings:0, penaltyNow:0, penaltyAvoided:0,
+            tBaseP1:0, tPropP1:0, tBaseP2:0, tPropP2:0, units:0, art321:0 };
+
+  shapes.forEach(function(sh){
+    var C = null;
+    try{ C = bnzCompliance(sh); }catch(e){}
+    if(!C || !C.ok){
+      out.flags.push((sh.bnz && sh.bnz.name || 'Building')+': model incomplete \u2014 excluded from the roll-up. '+((C&&C.flags&&C.flags[0])||''));
+      return;
+    }
+    var p1 = C.periods[0]||{}, p2 = C.periods[1]||{};
+    var recon=null; try{ recon = bnzReconcile(sh); }catch(e){}
+    var nd = sh.bnz.nycData || null;
+    var rec = { id:sh.id, name:(sh.bnz.name||'Building'), espmType:C.espmType,
+                address:(nd&&nd.address)||sh.bnz.address||null,
+                bbl:(nd&&nd.bbl)||null, bin:(nd&&nd.bin)||null,
+                ll84:(nd&&nd.ll84)||null, recon:(recon&&recon.ok)?recon:null,
+                gfa:C.gfa, units:+(sh.bnz.dwellingUnits||0),
+                pathway:C.altPathway, capTestApplies:C.capTestApplies!==false,
+                capex:C.capex, energySavings:C.energySavings,
+                penaltyNow:C.penaltyNow, penaltyAvoided:C.penaltyAvoidedNow,
+                paybackYrs:C.paybackYrs,
+                p1:{ cap:p1.capT, base:p1.tBaseline, prop:p1.tProposed, compliant:p1.compliant },
+                p2:{ cap:p2.capT, base:p2.tBaseline, prop:p2.tProposed, compliant:p2.compliant },
+                cliff:(p1.compliant && !p2.compliant),
+                periods:C.periods, flags:C.flags };
+    out.buildings.push(rec);
+    T.gfa += rec.gfa||0; T.capex += rec.capex||0; T.energySavings += rec.energySavings||0;
+    T.units += rec.units||0;
+    if(!rec.capTestApplies) T.art321++;
+    T.penaltyNow += rec.penaltyNow||0; T.penaltyAvoided += rec.penaltyAvoided||0;
+    T.tBaseP1 += p1.tBaseline||0; T.tPropP1 += p1.tProposed||0;
+    T.tBaseP2 += p2.tBaseline||0; T.tPropP2 += p2.tProposed||0;
+  });
+
+  if(!out.buildings.length){ out.flags.push('No building completed the compliance model.'); return out; }
+
+  /* Abatement is measured against the SAME period on both sides. Comparing
+     a proposed 2030 figure to a baseline 2024 figure would silently credit
+     the retrofit with the grid decarbonising, which is not the owner's
+     doing and not the city's purchase. */
+  T.abateP1 = Math.max(0, T.tBaseP1 - T.tPropP1);
+  T.abateP2 = Math.max(0, T.tBaseP2 - T.tPropP2);
+  T.abateAnnual = T.abateP2 || T.abateP1;
+
+  /* Cost per ton abated \u2014 the number a city compares across programmes.
+     Levelised over the measure life so it is comparable to a power
+     purchase or a fleet conversion, not just a first-year ratio. */
+  var life = +opts.measureLifeYrs || 25;
+  T.measureLifeYrs = life;
+  T.lifetimeAbatement = T.abateAnnual * life;
+  T.costPerTonGross = T.lifetimeAbatement>0 ? T.capex/T.lifetimeAbatement : null;
+  /* Net of lifetime savings and penalties avoided this can go BELOW zero:
+     the measures return more than they cost. Clamping to zero and printing
+     "$0/tonne" reads like a rounding error instead of the finding, so the
+     raw signed value is kept and the sign is what gets rendered. */
+  T.netCapexSigned = T.capex - (T.energySavings*life) - (T.penaltyAvoided*life);
+  T.netCapex = Math.max(0, T.netCapexSigned);
+  T.costNegative = T.netCapexSigned < 0;
+  T.costPerTonNet = T.lifetimeAbatement>0 ? T.netCapexSigned/T.lifetimeAbatement : null;
+  T.lifetimeSurplus = T.costNegative ? -T.netCapexSigned : 0;
+  T.annualBenefit = T.energySavings + T.penaltyAvoided;
+  T.simplePaybackYrs = T.annualBenefit>0 ? T.capex/T.annualBenefit : null;
+  T.jobYears = (T.capex/1e6) * NYC_PUBLIC_VALUE.jobs_per_million_usd.value;
+  T.socialValue = T.lifetimeAbatement * NYC_PUBLIC_VALUE.social_cost_of_carbon_usd_per_tco2e.value;
+  T.eui = null;
+  T.cliffCount = out.buildings.filter(function(b){ return b.cliff; }).length;
+  /* How much of this report rests on filed data rather than benchmarks.
+     A city reading a portfolio number is entitled to know what share of
+     it was measured and what share was assumed. */
+  T.withLL84 = out.buildings.filter(function(b){ return !!b.ll84; }).length;
+  T.gfaWithLL84 = out.buildings.reduce(function(a,b){ return a + (b.ll84? (b.gfa||0):0); }, 0);
+  T.pctGfaMeasured = T.gfa>0 ? (T.gfaWithLL84/T.gfa*100) : 0;
+  T.contradicted = out.buildings.filter(function(b){
+    return b.recon && b.recon.checks.some(function(c){ return c.verdict==='contradicts'; }); }).length;
+  T.art321Count = T.art321;
+
+  out.totals = T;
+  out.ok = true;
+  return out;
+}
+window.nycPortfolio = nycPortfolio;
+
+/* ── Funding stack estimate ────────────────────────────────────────
+   Ranges, never a point estimate. A single number here reads as a
+   commitment the city does not have. */
+function nycFundingEstimate(P){
+  var T = P.totals, rows = [], loP=0, hiP=0;
+  function add(name, lo, hi, note){ rows.push({name:name, lo:lo, hi:hi, note:note}); loP+=lo; hiP+=hi; }
+
+  if(T.units>0){
+    var ch = NYC_FUNDING.sources.filter(function(s){return s.id==='cleanheat_mf';})[0];
+    add(ch.name, T.units*ch.low, T.units*ch.high, T.units.toLocaleString()+' dwelling units \u00d7 $'+ch.low.toLocaleString()+'\u2013$'+ch.high.toLocaleString()+'/unit');
+  }
+  var ny = NYC_FUNDING.sources.filter(function(s){return s.id==='nyserda_mpp';})[0];
+  add(ny.name, T.capex*ny.low, T.capex*ny.high, (ny.low*100)+'\u2013'+(ny.high*100)+'% of eligible project cost');
+  var d = NYC_FUNDING.sources.filter(function(s){return s.id==='179d';})[0];
+  add(d.name+' (deduction value, not cash)', T.gfa*d.low, T.gfa*d.high, T.gfa.toLocaleString()+' sf \u00d7 $'+d.low+'\u2013$'+d.high+'/sf');
+
+  /* Cap the stack at the project cost. An incentive stack that exceeds
+     100% of capex is an arithmetic artefact of adding independent
+     programme maxima, not a real offer, and printing it would discredit
+     the whole report. */
+  var capped = hiP > T.capex;
+  if(capped){ hiP = T.capex; }
+  return { rows:rows, lo:loP, hi:hiP, capped:capped,
+           netLo:Math.max(0,T.capex-hiP), netHi:Math.max(0,T.capex-loP),
+           leverageLo: loP>0 ? T.capex/loP : null, leverageHi: hiP>0 ? T.capex/hiP : null };
+}
+window.nycFundingEstimate = nycFundingEstimate;
+
+/* ── The report ────────────────────────────────────────────────────
+   Self-contained HTML: no external CSS, no fonts, no script. It has to
+   survive being emailed to a council office, opened on a locked-down
+   machine, and printed. Anything that needs the network is a document
+   that fails in the room where the decision gets made. */
+function _nzEsc(s){ return String(s==null?'':s).replace(/[&<>"]/g,function(c){
+  return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]; }); }
+function _nzUsd(n){ if(n==null||isNaN(n)) return '\u2014';
+  var a=Math.abs(n);
+  if(a>=1e6) return '$'+(n/1e6).toFixed(a>=1e7?0:1)+'M';
+  if(a>=1e3) return '$'+Math.round(n).toLocaleString();
+  return '$'+Math.round(n); }
+function _nzNum(n,d){ if(n==null||isNaN(n)) return '\u2014';
+  return Number(n).toLocaleString(undefined,{maximumFractionDigits:(d==null?0:d)}); }
+
+function nycNetZeroReportHTML(opts){
+  opts = opts || {};
+  var P = nycPortfolio(opts);
+  if(!P.ok) return null;
+  var T = P.totals, F = nycFundingEstimate(P);
+  var PV = NYC_PUBLIC_VALUE, J = BPS_TARGETS.jurisdictions[0];
+  var title = opts.title || 'Building Decarbonisation \u2014 Investment Case and Net-Zero Plan';
+  var client = opts.client || 'City of New York';
+  var author = opts.author || 'ClearSky Omega';
+
+  function card(label, value, sub){
+    return '<div class="kpi"><div class="kl">'+_nzEsc(label)+'</div><div class="kv">'+value+'</div>'
+      +(sub?'<div class="ks">'+_nzEsc(sub)+'</div>':'')+'</div>'; }
+
+  /* Trajectory: portfolio emissions vs portfolio cap, period by period,
+     baseline and proposed side by side. This is the single chart that
+     answers "is the plan credible" \u2014 a line that never reaches the cap
+     is a plan that never reaches compliance, whatever the summary says. */
+  var per = [], nP = J.periods.length;
+  for(var i=0;i<nP;i++){
+    var cap=0, base=0, prop=0;
+    P.buildings.forEach(function(b){
+      var p=b.periods[i]; if(!p) return;
+      cap+=p.capT||0; base+=p.tBaseline||0; prop+=p.tProposed||0;
+    });
+    per.push({ label:J.periods[i].label, conf:J.periods[i].conf, cap:cap, base:base, prop:prop,
+               overBase:Math.max(0,base-cap), overProp:Math.max(0,prop-cap) });
+  }
+  var maxY = Math.max.apply(null, per.map(function(p){ return Math.max(p.base,p.prop,p.cap); }).concat([1]));
+
+  function bars(){
+    var W=760,H=230,pad=38,bw=W/per.length;
+    var s='<svg viewBox="0 0 '+W+' '+(H+46)+'" width="100%" style="max-width:760px">';
+    s+='<line x1="0" y1="'+H+'" x2="'+W+'" y2="'+H+'" stroke="#c8cdd6"/>';
+    per.forEach(function(p,ix){
+      var x=ix*bw, hB=(p.base/maxY)*(H-pad), hP=(p.prop/maxY)*(H-pad), hC=(p.cap/maxY)*(H-pad);
+      s+='<rect x="'+(x+bw*0.16)+'" y="'+(H-hB)+'" width="'+(bw*0.26)+'" height="'+hB+'" fill="#9aa3b0"/>';
+      s+='<rect x="'+(x+bw*0.46)+'" y="'+(H-hP)+'" width="'+(bw*0.26)+'" height="'+hP+'" fill="#1f7a4d"/>';
+      s+='<line x1="'+(x+bw*0.10)+'" y1="'+(H-hC)+'" x2="'+(x+bw*0.80)+'" y2="'+(H-hC)+'" stroke="#c0392b" stroke-width="2.5" stroke-dasharray="6 4"/>';
+      s+='<text x="'+(x+bw*0.45)+'" y="'+(H+18)+'" font-size="11" text-anchor="middle" fill="#333">'+_nzEsc(p.label)+'</text>';
+      if(p.overProp>0) s+='<text x="'+(x+bw*0.45)+'" y="'+(H+34)+'" font-size="10" text-anchor="middle" fill="#c0392b">over by '+_nzNum(p.overProp)+' t</text>';
+      else s+='<text x="'+(x+bw*0.45)+'" y="'+(H+34)+'" font-size="10" text-anchor="middle" fill="#1f7a4d">compliant</text>';
+    });
+    s+='</svg>';
+    return s;
+  }
+
+  var css='body{font:13px/1.55 -apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,sans-serif;color:#1a1d21;margin:0;padding:34px 40px 60px;max-width:1000px}'
+    +'h1{font-size:23px;margin:0 0 4px}h2{font-size:15px;margin:34px 0 10px;padding-bottom:6px;border-bottom:2px solid #1a1d21}'
+    +'h3{font-size:13px;margin:20px 0 6px}.sub{color:#5a616b;font-size:12px;margin-bottom:22px}'
+    +'table{border-collapse:collapse;width:100%;font-size:12px;margin:10px 0}'
+    +'th,td{border-bottom:1px solid #dde1e6;padding:6px 8px;text-align:left;vertical-align:top}'
+    +'th{background:#f4f6f8;font-weight:600}td.n,th.n{text-align:right;font-variant-numeric:tabular-nums}'
+    +'.kpis{display:flex;flex-wrap:wrap;gap:10px;margin:16px 0}'
+    +'.kpi{flex:1 1 168px;border:1px solid #dde1e6;border-left:3px solid #1f7a4d;padding:10px 12px;background:#fafbfc}'
+    +'.kl{font-size:10px;text-transform:uppercase;letter-spacing:.5px;color:#5a616b}'
+    +'.kv{font-size:20px;font-weight:600;margin:3px 0}.ks{font-size:10.5px;color:#5a616b}'
+    +'.note{background:#fbf7e8;border-left:3px solid #b8912a;padding:9px 12px;margin:12px 0;font-size:12px}'
+    +'.warn{background:#fdf0ee;border-left:3px solid #c0392b;padding:9px 12px;margin:12px 0;font-size:12px}'
+    +'.ok{background:#eef7f1;border-left:3px solid #1f7a4d;padding:9px 12px;margin:12px 0;font-size:12px}'
+    +'.legend{font-size:11px;color:#5a616b;margin-top:6px}'
+    +'.sw{display:inline-block;width:11px;height:11px;vertical-align:-1px;margin-right:4px}'
+    +'footer{margin-top:40px;padding-top:14px;border-top:1px solid #dde1e6;font-size:10.5px;color:#5a616b}'
+    +'@media print{body{padding:0}h2{page-break-after:avoid}table{page-break-inside:avoid}}';
+
+  var h='<!DOCTYPE html><html><head><meta charset="utf-8"><title>'+_nzEsc(title)+'</title><style>'+css+'</style></head><body>';
+  h+='<h1>'+_nzEsc(title)+'</h1>';
+  h+='<div class="sub">Prepared for '+_nzEsc(client)+' \u00b7 '+_nzEsc(author)+' \u00b7 '+_nzEsc(P.as_of)
+    +' \u00b7 '+P.buildings.length+' building'+(P.buildings.length===1?'':'s')+' \u00b7 '+_nzNum(T.gfa)+' gross sf</div>';
+
+  /* 1. THE ANSWER FIRST. A decision-maker who reads only the first
+     screen should already have the investment, the return and the date. */
+  h+='<h2>1 \u00b7 What the investment buys</h2>';
+  h+='<div class="kpis">'
+    +card('Capital required', _nzUsd(T.capex), 'gross, before incentives')
+    +card('Net after incentives', _nzUsd(F.netLo)+'\u2013'+_nzUsd(F.netHi), 'screening range')
+    +card('Annual benefit', _nzUsd(T.annualBenefit), 'energy saved + penalty avoided')
+    +card('Simple payback', T.simplePaybackYrs? T.simplePaybackYrs.toFixed(1)+' yrs':'\u2014', 'undiscounted')
+    +card('Carbon abated', _nzNum(T.abateAnnual)+' t/yr', _nzNum(T.lifetimeAbatement)+' t over '+T.measureLifeYrs+' yrs')
+    +card('Cost per tonne', T.costPerTonNet==null? '\u2014'
+          : (T.costNegative? 'pays for itself' : '$'+_nzNum(T.costPerTonNet,0)),
+          T.costNegative? 'returns '+_nzUsd(T.lifetimeSurplus)+' more than it costs'
+                        : 'net of savings and penalties avoided')
+    +card('Job-years supported', _nzNum(T.jobYears), 'at '+PV.jobs_per_million_usd.value+' per $1M')
+    +card('Anchored to filed data', _nzNum(T.pctGfaMeasured,0)+'%',
+          'of floor area with an LL84 return; rest is benchmarked')
+    +'</div>';
+
+  h+='<div class="note"><b>How to read cost per tonne.</b> '
+    +'Gross cost per tonne is '+(T.costPerTonGross!=null?'$'+_nzNum(T.costPerTonGross,0):'\u2014')
+    +'; net of energy savings and penalties avoided it is '
+    +(T.costPerTonNet==null? '\u2014'
+      : T.costNegative? '<b>negative</b> \u2014 over '+T.measureLifeYrs+' years the scope returns '
+          +_nzUsd(T.lifetimeSurplus)+' more than it costs, so the abatement is free and the carbon is a by-product of a profitable investment'
+      : '$'+_nzNum(T.costPerTonNet,0))+'. '
+    +'Compare against the $268/tCO\u2082e Local Law 97 penalty, which is a transfer rather than an abatement, '
+    +'and against the $'+PV.social_cost_of_carbon_usd_per_tco2e.value+'/tCO\u2082e social cost of carbon, which measures damage actually avoided. '
+    +'A measure costing less per tonne than the penalty pays for itself on compliance grounds alone, before any climate benefit is counted.</div>';
+
+  /* 2. THE OBLIGATION. Why the money is needed at all. */
+  h+='<h2>2 \u00b7 The obligation driving it</h2>';
+  h+='<p>Local Law 97 caps annual greenhouse gas emissions for buildings over 25,000 gross square feet and charges '
+    +'<b>$268 per tonne of CO\u2082e over the cap, every year, with no ceiling</b>. Buildings account for about '
+    +PV.citywide_targets.buildings_share_of_city_emissions_pct+'% of the city\u2019s emissions, which is why the law carries the weight of the city\u2019s '
+    +PV.citywide_targets.ghg_reduction_2030_pct+'%-by-2030 and carbon-neutral-by-'+PV.citywide_targets.carbon_neutral_by+' targets.</p>';
+  h+='<div class="warn"><b>The 2030 cliff is the whole investment case.</b> '
+    +'Caps tighten sharply in 2030 while the electricity coefficient nearly halves (0.000289 \u2192 0.000145 tCO\u2082e/kWh) and the natural gas coefficient does not move at all. '
+    +'Citywide, '+PV.compliance_position.exceed_2024_2029_pct+' of properties exceeded the 2024\u20132029 cap; roughly '
+    +PV.compliance_position.exceed_2030_2034_pct+' are projected to exceed the 2030\u20132034 cap. '
+    +'In this portfolio, <b>'+T.cliffCount+' of '+P.buildings.length+'</b> building'+(T.cliffCount===1?' is':'s are')
+    +' compliant today and non-compliant in 2030 with no change in how they are operated. '
+    +'A building that waits until 2029 to act has no time left to act in.</div>';
+
+  h+='<h3>Portfolio emissions against the cap</h3>'+bars();
+  h+='<div class="legend"><span class="sw" style="background:#9aa3b0"></span>Baseline &nbsp; '
+    +'<span class="sw" style="background:#1f7a4d"></span>With the proposed scope &nbsp; '
+    +'<span class="sw" style="background:#c0392b"></span>Emissions cap (dashed) &nbsp; \u00b7 tonnes CO\u2082e per year</div>';
+
+  h+='<table><tr><th>Compliance period</th><th class="n">Cap (t)</th><th class="n">Baseline (t)</th>'
+    +'<th class="n">Proposed (t)</th><th class="n">Over cap (t)</th><th class="n">Penalty at $268/t</th><th>Basis</th></tr>';
+  per.forEach(function(p){
+    h+='<tr><td>'+_nzEsc(p.label)+'</td><td class="n">'+_nzNum(p.cap)+'</td><td class="n">'+_nzNum(p.base)
+      +'</td><td class="n">'+_nzNum(p.prop)+'</td><td class="n">'+(p.overProp>0?_nzNum(p.overProp):'\u2014')
+      +'</td><td class="n">'+(p.overProp>0?_nzUsd(p.overProp*268)+'/yr':'\u2014')+'</td><td>'+_nzEsc(p.conf)+'</td></tr>';
+  });
+  h+='</table>';
+  h+='<div class="legend">Caps for all four periods are published in 1 RCNY 103-14 by ENERGY STAR Portfolio Manager property type; 2050 is a statutory zero.</div>';
+
+  /* 3. FUNDING. The number a city is actually voting on. */
+  h+='<h2>3 \u00b7 How it gets paid for</h2>';
+  h+='<table><tr><th>Source</th><th class="n">Low</th><th class="n">High</th><th>Basis</th></tr>';
+  F.rows.forEach(function(r){
+    h+='<tr><td>'+_nzEsc(r.name)+'</td><td class="n">'+_nzUsd(r.lo)+'</td><td class="n">'+_nzUsd(r.hi)+'</td><td>'+_nzEsc(r.note)+'</td></tr>';
+  });
+  h+='<tr><th>Incentive stack</th><th class="n">'+_nzUsd(F.lo)+'</th><th class="n">'+_nzUsd(F.hi)+'</th><th></th></tr>';
+  h+='<tr><th>Net capital after incentives</th><th class="n">'+_nzUsd(F.netHi)+'</th><th class="n">'+_nzUsd(F.netLo)+'</th><th>low incentive \u2192 high net</th></tr>';
+  h+='</table>';
+  if(F.capped) h+='<div class="note">The stack has been capped at 100% of project cost. Adding each programme\u2019s independent maximum produces a total above capex, which is an artefact of the arithmetic rather than a real offer.</div>';
+  h+='<p>C-PACE can finance up to 100% of the remaining cost, repaid through a special property-tax assessment that transfers on sale. '
+    +'It changes the shape of the cash flow rather than the cost of the project, so it is shown as financing and not as a subsidy. '
+    +'NYC Accelerator provides free technical assistance, which lowers soft costs and scoping risk rather than paying for equipment.</p>';
+  h+='<div class="note"><b>'+_nzEsc(NYC_FUNDING.caution)+'</b></div>';
+
+  /* 4. PUBLIC VALUE. What a city gets that an owner does not capture. */
+  h+='<h2>4 \u00b7 Public value</h2>';
+  h+='<table><tr><th>Indicator</th><th class="n">This portfolio</th><th>Basis</th></tr>'
+    +'<tr><td>CO\u2082e abated, annual</td><td class="n">'+_nzNum(T.abateAnnual)+' t</td><td>Same-period comparison of baseline against proposed, so the grid decarbonising is not credited to the retrofit</td></tr>'
+    +'<tr><td>CO\u2082e abated, lifetime</td><td class="n">'+_nzNum(T.lifetimeAbatement)+' t</td><td>'+T.measureLifeYrs+'-year measure life</td></tr>'
+    +'<tr><td>Damage avoided at social cost of carbon</td><td class="n">'+_nzUsd(T.socialValue)+'</td><td>'+_nzEsc(PV.social_cost_of_carbon_usd_per_tco2e.basis)+'</td></tr>'
+    +'<tr><td>Job-years supported</td><td class="n">'+_nzNum(T.jobYears)+'</td><td>'+_nzEsc(PV.jobs_per_million_usd.basis)+'</td></tr>'
+    +'<tr><td>Occupant energy cost saved, annual</td><td class="n">'+_nzUsd(T.energySavings)+'</td><td>Modelled energy at project utility rates</td></tr>'
+    +(T.units>0?'<tr><td>Per dwelling unit, annual</td><td class="n">'+_nzUsd(T.energySavings/T.units)+'</td><td>'+_nzNum(T.units)+' units \u2014 the figure that matters where rents are regulated and the owner cannot pass costs through</td></tr>':'')
+    +'<tr><td>Penalty exposure removed, annual</td><td class="n">'+_nzUsd(T.penaltyAvoided)+'</td><td>Money that leaves the buildings as fines and buys nothing</td></tr>'
+    +'</table>';
+  h+='<div class="note">Citywide, Local Law 97 is expected to abate about '+_nzNum(PV.citywide_targets.ll97_expected_abatement_2030_tco2e)
+    +' tonnes and support around '+_nzNum(PV.citywide_targets.ll97_expected_green_jobs_2030)+' green jobs by 2030, while avoiding an estimated '
+    +_nzEsc(PV.citywide_targets.health_premature_deaths_avoided_annually)+' premature deaths and about '
+    +_nzNum(PV.citywide_targets.health_hospital_visits_avoided_annually)+' hospital visits annually. '
+    +'Those are citywide programme figures and are given as context for the scale of the mechanism, not as a share attributable to this portfolio.</div>';
+
+  /* 5. THE PLAN. Credibility rests on sequence and dates, not intent. */
+  h+='<h2>5 \u00b7 The plan to net zero</h2>';
+  h+='<table><tr><th>Horizon</th><th>What has to happen</th><th>Why then</th></tr>'
+    +'<tr><td><b>Now \u2013 2027</b></td><td>Benchmark and grade (LL84/LL33), complete the LL87 audit, finish LL88 lighting and sub-metering, fix the ESPM property type on every building, and scope the 2030 measures.</td><td>LL84 and LL88 compliance are preconditions for the LL97 good-faith route, and the audit is the evidence base a decarbonisation plan is built on.</td></tr>'
+    +'<tr><td><b>2027 \u2013 2029</b></td><td>Execute envelope and controls, replace heating plant at end of life with heat pumps, secure utility and NYSERDA incentives, and file adjustments where they apply.</td><td>Equipment replaced on failure gets replaced like-for-like. Only planned replacement converts a scheduled capital event into an emissions reduction at marginal cost.</td></tr>'
+    +'<tr><td><b>2030 \u2013 2034</b></td><td>Operate against the tightened cap; verify with measured data; apply beneficial-electrification credits and AHRF offsets where eligible.</td><td>This is the period roughly 57% of the city\u2019s buildings are projected to fail.</td></tr>'
+    +'<tr><td><b>2035 \u2013 2049</b></td><td>Retire remaining on-site combustion; deepen the envelope; add on-site and Zone J solar, which is zero-rated.</td><td>Caps continue to tighten on a published schedule through 2049.</td></tr>'
+    +'<tr><td><b>2050</b></td><td>Zero.</td><td>The emissions factor is 0.00 for every property type. There is no compliant level of on-site combustion after 2049.</td></tr>'
+    +'</table>';
+  h+='<div class="ok"><b>What makes this plan credible rather than aspirational:</b> every date above is fixed in statute or rule, '
+    +'the caps for all four periods are published rather than forecast, and the sequence is ordered by when equipment reaches end of life '
+    +'rather than by when the deadline falls. The binding constraint is not capital \u2014 it is that boiler replacement cycles run 20 to 30 years, '
+    +'so a plant replaced conventionally in 2028 forecloses compliance until roughly 2050.</div>';
+
+  /* 6. BUILDING DETAIL. */
+  h+='<h2>6 \u00b7 Building by building</h2>';
+  h+='<table><tr><th>Building</th><th>Address / BBL</th><th>ESPM type</th><th class="n">GSF</th><th>Route</th>'
+    +'<th class="n">Capex</th><th class="n">Annual benefit</th><th class="n">Payback</th><th>2030 position</th></tr>';
+  P.buildings.forEach(function(b){
+    var pos = !b.capTestApplies ? 'Article 321 \u2014 no cap test'
+            : (b.p2.compliant ? 'Compliant' : 'Over cap');
+    var loc = b.address ? (_nzEsc(b.address)+'<div class="ks">BBL '+_nzEsc(b.bbl||'\u2014')
+                +(b.bin?' \u00b7 BIN '+_nzEsc(b.bin):'')+'</div>')
+             : '<span style="color:#8a9099">not resolved</span>';
+    h+='<tr><td>'+_nzEsc(b.name)+'</td><td>'+loc+'</td><td>'+_nzEsc(b.espmType||'\u2014')+'</td><td class="n">'+_nzNum(b.gfa)
+      +'</td><td>'+_nzEsc((b.pathway||'none').replace(/_/g,' '))+'</td><td class="n">'+_nzUsd(b.capex)
+      +'</td><td class="n">'+_nzUsd((b.energySavings||0)+(b.penaltyAvoided||0))+'</td><td class="n">'
+      +(b.paybackYrs? b.paybackYrs.toFixed(1)+' yr':'\u2014')+'</td><td>'+_nzEsc(pos)+'</td></tr>';
+  });
+  h+='</table>';
+
+  /* Model against filed data. This is the section that decides whether
+     the rest of the report is worth acting on: a portfolio whose modelled
+     energy contradicts what the buildings themselves reported to the City
+     has a modelling problem, not an investment case. */
+  var withF = P.buildings.filter(function(b){ return b.ll84; });
+  if(withF.length){
+    h+='<h3>Model against filed data</h3>';
+    h+='<table><tr><th>Building</th><th>LL84 year</th><th class="n">Site EUI filed</th>'
+      +'<th class="n">Site EUI modelled</th><th class="n">GHG filed</th><th class="n">GHG modelled</th><th>Agreement</th></tr>';
+    withF.forEach(function(b){
+      var eu=null, gh=null;
+      (b.recon? b.recon.checks:[]).forEach(function(c){
+        if(/Site EUI/i.test(c.name)) eu=c; if(/GHG/i.test(c.name)) gh=c; });
+      var worst = b.recon && b.recon.checks.length
+        ? b.recon.checks.reduce(function(a,c){ return (!a||Math.abs(c.deltaPct)>Math.abs(a.deltaPct))?c:a; },null) : null;
+      h+='<tr><td>'+_nzEsc(b.name)+'</td><td>'+_nzEsc(b.ll84.year||'\u2014')+'</td>'
+        +'<td class="n">'+(b.ll84.siteEui!=null?_nzNum(b.ll84.siteEui,1):'\u2014')+'</td>'
+        +'<td class="n">'+(eu?_nzNum(eu.modelled,1):'\u2014')+'</td>'
+        +'<td class="n">'+(b.ll84.ghgTotal!=null?_nzNum(b.ll84.ghgTotal):'\u2014')+'</td>'
+        +'<td class="n">'+(gh?_nzNum(gh.modelled):'\u2014')+'</td>'
+        +'<td>'+(worst? _nzEsc(worst.verdict)+' ('+(worst.deltaPct>0?'+':'')+Math.round(worst.deltaPct)+'% worst case)':'\u2014')+'</td></tr>';
+    });
+    h+='</table>';
+    h+='<div class="'+(T.contradicted>0?'warn':'ok')+'">'
+      +'<b>'+_nzNum(T.pctGfaMeasured,0)+'% of portfolio floor area</b> is anchored to a filed LL84 benchmarking return '
+      +'('+T.withLL84+' of '+P.buildings.length+' buildings); the remainder rests on benchmark energy intensities. '
+      +(T.contradicted>0
+        ? '<b>'+T.contradicted+' building'+(T.contradicted===1?'':'s')+' contradict'+(T.contradicted===1?'s':'')
+          +' the filed data by more than 50%.</b> Calibrate those models before the financial figures above are relied on \u2014 '
+          +'an EUI wrong by half makes the penalty, the payback and the cost per tonne wrong by the same factor.'
+        : 'Where both exist, the modelled and filed figures agree within tolerance, so the financial figures rest on a sound energy basis.')
+      +'</div>';
+    h+='<div class="legend">LL84 data is <b>self-reported</b> by owners through EPA ENERGY STAR Portfolio Manager and filed per tax lot (BBL). '
+      +'LL97 penalties are assessed per building (BIN). On a multi-building lot the filed figures cover the whole property and must be apportioned.</div>';
+  } else {
+    h+='<div class="note">No building in this portfolio has been resolved to a NYC address, so nothing here is checked against filed city data. '
+      +'Resolving each building to its BBL pulls its own LL84 benchmarking return and turns these estimates into calibrated figures.</div>';
+  }
+  if(T.art321Count>0) h+='<div class="note"><b>'+T.art321Count+'</b> building'+(T.art321Count===1?'':'s')
+    +' follow'+(T.art321Count===1?'s':'')+' Article 321. For these the test is a one-time measures report, not an annual cap, '
+    +'so no penalty is owed on the cap route however the emissions column reads. Reporting a cap penalty against rent-regulated '
+    +'or house-of-worship stock that does not owe one is the most damaging error this class of tool can make.</div>';
+
+  /* 7. THE REST OF THE STACK. */
+  h+='<h2>7 \u00b7 The rest of the compliance stack</h2>';
+  h+='<table><tr><th>Law</th><th>Requirement</th><th>Deadline</th><th>Penalty</th><th>Relation to LL97</th></tr>';
+  NYC_LAWS.items.forEach(function(l){
+    h+='<tr><td><b>'+_nzEsc(l.name)+'</b><div class="ks">'+_nzEsc(l.applies)+'</div></td><td>'+_nzEsc(l.what)
+      +'</td><td>'+_nzEsc(l.due)+'</td><td>'+_nzEsc(l.penalty)+'</td><td>'+_nzEsc(l.ll97_link)+'</td></tr>';
+  });
+  h+='</table>';
+  h+='<div class="note"><b>2026 LL97 filing calendar.</b> Report due '+_nzEsc(J.deadlines_2026.report_due)
+    +', 60-day grace to '+_nzEsc(J.deadlines_2026.grace_to)+', extension request by '+_nzEsc(J.deadlines_2026.extension_request_by)
+    +' for $'+J.deadlines_2026.extension_fee_usd+' giving until '+_nzEsc(J.deadlines_2026.extended_to)+'. '
+    +_nzEsc(J.deadlines_2026.note)+' Late filing accrues $0.50/sf per month.</div>';
+
+  /* 8. LIMITS AND PROVENANCE. */
+  h+='<h2>8 \u00b7 What this is, and what it is not</h2>';
+  h+='<div class="warn"><b>Screening grade.</b> These are deterministic annual estimates built from geometry, assembly '
+    +'assumptions and benchmark energy intensities. They are sized to support a go/no-go and a budget order of magnitude. '
+    +'They are <b>not</b> an hourly simulation, not an interconnection study, and not a filed emissions report. '
+    +'Before capital is committed, the scope should be confirmed by hourly simulation, and any figure filed with DOB must be '
+    +'prepared and certified by a registered design professional against metered data.</div>';
+  if(P.flags.length){
+    h+='<h3>Model flags</h3><ul>';
+    P.flags.forEach(function(f){ h+='<li>'+_nzEsc(f)+'</li>'; });
+    h+='</ul>';
+  }
+  var bflags=[]; P.buildings.forEach(function(b){ (b.flags||[]).forEach(function(f){ bflags.push(b.name+': '+f); }); });
+  if(bflags.length){
+    h+='<h3>Building flags</h3><ul>';
+    bflags.slice(0,40).forEach(function(f){ h+='<li>'+_nzEsc(f)+'</li>'; });
+    if(bflags.length>40) h+='<li>\u2026 and '+(bflags.length-40)+' more</li>';
+    h+='</ul>';
+  }
+  h+='<h3>Sources</h3><table><tr><th>Item</th><th>Source</th><th>As of</th></tr>'
+    +'<tr><td>Emissions caps, all four periods, 60 ESPM property types</td><td>'+_nzEsc(J.source)+'</td><td>'+_nzEsc(BPS_TARGETS.as_of)+'</td></tr>'
+    +'<tr><td>Fuel and electricity GHG coefficients</td><td>'+_nzEsc(LL97_COEF.source)+'</td><td>'+_nzEsc(LL97_COEF.as_of)+'</td></tr>'
+    +'<tr><td>Penalty, offsets, beneficial electrification, good-faith criteria</td><td>1 RCNY 103-14 (g)\u2013(j), (d)(3)(vii), (e)(3)</td><td>'+_nzEsc(BPS_TARGETS.as_of)+'</td></tr>'
+    +'<tr><td>Article 321 prescriptive measures</td><td>NYC Admin Code \u00a728-321; 1 RCNY 103-17; DOB Article 321 Filing Guide</td><td>'+_nzEsc(BPS_TARGETS.as_of)+'</td></tr>'
+    +'<tr><td>Compliance position citywide</td><td>'+_nzEsc(PV.compliance_position.basis)+'</td><td>'+_nzEsc(PV.as_of)+'</td></tr>'
+    +'<tr><td>Citywide targets and co-benefits</td><td>'+_nzEsc(PV.citywide_targets.source)+'</td><td>'+_nzEsc(PV.as_of)+'</td></tr>'
+    +'<tr><td>Incentive ranges</td><td>NYS Clean Heat / Con Edison, NYSERDA, IRS \u00a7179D, NYC C-PACE, NYC Accelerator</td><td>'+_nzEsc(NYC_FUNDING.as_of)+'</td></tr>'
+    +'<tr><td>Address \u2192 BBL / BIN</td><td>NYC Planning Labs GeoSearch (Property Address Directory)</td><td>live at run time</td></tr>'
+    +'<tr><td>Reported energy, EUI, ENERGY STAR score, GHG</td><td>'+_nzEsc(NYCDATA.datasets.ll84.name)+' \u2014 dataset '+_nzEsc(NYCDATA.datasets.ll84.id)+'. '+_nzEsc(NYCDATA.datasets.ll84.note)+'</td><td>live at run time</td></tr>'
+    +'<tr><td>Year built, floors, units, lot facts</td><td>'+_nzEsc(NYCDATA.datasets.pluto.name)+' \u2014 dataset '+_nzEsc(NYCDATA.datasets.pluto.id)+'. '+_nzEsc(NYCDATA.datasets.pluto.note)+'</td><td>live at run time</td></tr>'
+    +'</table>';
+
+  h+='<footer>Generated by '+_nzEsc(author)+' \u00b7 '+_nzEsc(P.as_of)
+    +' \u00b7 Screening-grade deterministic model \u00b7 Caps and coefficients as of '+_nzEsc(BPS_TARGETS.as_of)
+    +' \u00b7 Verify against '+_nzEsc(J.verify_url)+' before any figure is filed or relied upon financially.</footer>';
+  h+='</body></html>';
+  return h;
+}
+window.nycNetZeroReportHTML = nycNetZeroReportHTML;
+
+function nycNetZeroReportDownload(opts){
+  var html = nycNetZeroReportHTML(opts||{});
+  if(!html){
+    if(typeof showBanner==='function')
+      showBanner('bnz','No building with a Building & Net-Zero model \u2014 add one before running the city report.');
+    return;
+  }
+  try{
+    var blob = new Blob([html], {type:'text/html'});
+    var a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = 'NYC_NetZero_Investment_Case_'+(new Date().toISOString().slice(0,10))+'.html';
+    document.body.appendChild(a); a.click();
+    setTimeout(function(){ try{ URL.revokeObjectURL(a.href); a.remove(); }catch(e){} }, 500);
+    if(typeof showBanner==='function') showBanner('bnz','City net-zero investment case exported.');
+  }catch(e){
+    if(typeof showBanner==='function') showBanner('bnz','Export failed: '+e.message);
+  }
+}
+window.nycNetZeroReportDownload = nycNetZeroReportDownload;
+
+/* ═══════════════════════════════════════════════════════════════════
+ *  BNZ PHASE 6  --  ADDRESS -> REAL DATA
+ *  ------------------------------------------------------------------
+ *  Up to here every energy number in this module is MODELLED: geometry
+ *  times an assembly stack times a benchmark EUI. That is the right way
+ *  to screen a building nobody has measured. It is the wrong way to
+ *  screen a building the city already has four years of metered data on.
+ *
+ *  In New York that data exists and is public. An address resolves to a
+ *  BBL and a BIN; the BBL resolves to the building's own LL84 filing --
+ *  reported Site EUI, ENERGY STAR score, total GHG, floor area, property
+ *  type -- and to PLUTO for year built, floors, units and lot facts.
+ *
+ *  So the address is not a label. It is the join key that turns a
+ *  screening estimate into a calibrated one, and it is the same key DOB
+ *  enforces against. Two consequences the code has to respect:
+ *
+ *    1. LL84 is SELF-REPORTED. It is what the owner told EPA Portfolio
+ *       Manager, not what a meter was audited to. It is far better than
+ *       a benchmark and still not ground truth. Every figure sourced
+ *       from it is tagged, and the tag survives into the report.
+ *
+ *    2. LL84 is filed at BBL (whole property), LL97 penalties land at
+ *       BIN (each building). On a multi-building lot those are not the
+ *       same denominator, and silently treating them as one is how a
+ *       campus gets a per-building number that is wrong by the building
+ *       count.
+ *
+ *  No API key. All three endpoints are public, CORS-enabled and free.
+ * ═══════════════════════════════════════════════════════════════════ */
+
+var NYCDATA = {
+  as_of:'2026-08-12',
+  geosearch:'https://geosearch.planninglabs.nyc/v2',
+  socrata:'https://data.cityofnewyork.us/resource',
+  datasets:{
+    ll84:{ id:'5zyy-y8am', name:'NYC Building Energy & Water Data Disclosure for LL84 (CY2022\u2013present)',
+           note:'Self-reported through EPA ENERGY STAR Portfolio Manager. Filed at BBL.' },
+    pluto:{ id:'64uk-42ks', name:'Primary Land Use Tax Lot Output (PLUTO)',
+           note:'Tax-lot facts from DOF/DCP. BldgArea is the assessor\u0027s figure and often differs from the gross floor area used for LL97.' }
+  },
+  appToken:null,   /* optional Socrata app token; anonymous works but is throttled */
+  timeoutMs:12000
+};
+window.NYCDATA = NYCDATA;
+
+/* Fetch with a timeout. A city API that hangs must fail visibly rather
+   than leaving a spinner on screen with no explanation. */
+function _nycFetch(url){
+  var ctrl = (typeof AbortController!=='undefined') ? new AbortController() : null;
+  var t = ctrl ? setTimeout(function(){ ctrl.abort(); }, NYCDATA.timeoutMs) : null;
+  var opt = ctrl ? { signal:ctrl.signal } : {};
+  if(NYCDATA.appToken) opt.headers = { 'X-App-Token':NYCDATA.appToken };
+  return fetch(url, opt).then(function(r){
+    if(t) clearTimeout(t);
+    if(!r.ok) throw new Error('HTTP '+r.status+' from '+url.split('?')[0]);
+    return r.json();
+  });
+}
+
+/* Normalise a BBL to the canonical 10 digits: borough(1) block(5) lot(4).
+   Every one of the three sources formats it differently \u2014 GeoSearch pads,
+   PLUTO sometimes stores it as a number which drops nothing (borough is
+   never 0) but LL84 has carried hyphens and spaces. Normalising once at
+   the boundary is the only way the joins stay reliable. */
+function nycBBL(v){
+  if(v==null) return null;
+  var s = String(v).replace(/[^0-9]/g,'');
+  if(s.length===10) return s;
+  if(s.length>10) return s.slice(0,10);
+  return null;
+}
+window.nycBBL = nycBBL;
+
+function nycBBLParts(bbl){
+  var b = nycBBL(bbl); if(!b) return null;
+  var boros = {'1':'Manhattan','2':'Bronx','3':'Brooklyn','4':'Queens','5':'Staten Island'};
+  return { borough:boros[b[0]]||('Borough '+b[0]), boroughCode:b[0],
+           block:String(+b.slice(1,6)), lot:String(+b.slice(6,10)), bbl:b };
+}
+window.nycBBLParts = nycBBLParts;
+
+/* ── 1. Address -> BBL / BIN ───────────────────────────────────────
+   GeoSearch returns GeoJSON. The identifiers live in an addendum block
+   whose exact shape has moved between versions, so the extractor walks
+   the likely paths rather than trusting one. */
+function _nycIds(props){
+  var a = props && props.addendum ? props.addendum : {};
+  var pad = a.pad || a.PAD || {};
+  var bbl = pad.bbl || a.bbl || props.bbl || null;
+  var bin = pad.bin || a.bin || props.bin || null;
+  return { bbl:nycBBL(bbl), bin: bin? String(bin).replace(/[^0-9]/g,'') : null };
+}
+
+function nycGeocode(text, opts){
+  opts = opts || {};
+  if(!text || !String(text).trim()) return Promise.resolve([]);
+  var ep = opts.autocomplete ? '/autocomplete' : '/search';
+  var u = NYCDATA.geosearch+ep+'?text='+encodeURIComponent(text)+'&size='+(opts.size||6);
+  /* Bias to where the drawing already is. Queens addresses in particular
+     are hyphenated and repeat across streets with different suffixes, so
+     an unbiased search regularly returns the wrong borough first. */
+  if(opts.lat!=null && opts.lon!=null)
+    u += '&focus.point.lat='+opts.lat+'&focus.point.lon='+opts.lon;
+  return _nycFetch(u).then(function(j){
+    return (j.features||[]).map(function(f){
+      var p = f.properties||{}, ids = _nycIds(p);
+      var c = (f.geometry&&f.geometry.coordinates)||[];
+      return { label:p.label||p.name||'', name:p.name||'', borough:p.borough||p.locality||'',
+               postal:p.postalcode||'', confidence:p.confidence,
+               bbl:ids.bbl, bin:ids.bin, lon:c[0], lat:c[1] };
+    });
+  });
+}
+window.nycGeocode = nycGeocode;
+
+/* ── 2. BBL -> LL84 benchmarking ───────────────────────────────────
+   Socrata API field names are derived from the human column titles and
+   have been renamed between vintages of this dataset. Hardcoding them
+   means the feature silently returns blanks the next time the portal is
+   republished. Matching on patterns costs one pass over the row keys and
+   survives a rename. */
+function _pick(row, patterns){
+  var keys = Object.keys(row||{});
+  for(var i=0;i<patterns.length;i++){
+    var re = patterns[i];
+    for(var k=0;k<keys.length;k++){
+      if(re.test(keys[k])){
+        var v = row[keys[k]];
+        if(v!==''&&v!=null&&String(v).toLowerCase()!=='not available'&&String(v).toLowerCase()!=='n/a') return v;
+      }
+    }
+  }
+  return null;
+}
+function _num(v){ if(v==null) return null; var n=parseFloat(String(v).replace(/[^0-9.\-]/g,'')); return isNaN(n)?null:n; }
+
+function nycBenchmarking(bbl){
+  var b = nycBBL(bbl);
+  if(!b) return Promise.resolve(null);
+  var base = NYCDATA.socrata+'/'+NYCDATA.datasets.ll84.id+'.json';
+  /* The BBL column has been published both as text and as a number, and
+     the API name has changed. Try the likeliest queries in order rather
+     than assuming one. */
+  var tries = [
+    base+'?$where='+encodeURIComponent("bbl_10_digits='"+b+"'")+'&$limit=50',
+    base+'?$where='+encodeURIComponent("bbl='"+b+"'")+'&$limit=50',
+    base+'?$where='+encodeURIComponent("nyc_borough_block_and_lot='"+b+"'")+'&$limit=50',
+    base+'?$q='+encodeURIComponent(b)+'&$limit=50'
+  ];
+  var i = 0;
+  function next(){
+    if(i>=tries.length) return Promise.resolve(null);
+    return _nycFetch(tries[i++]).then(function(rows){
+      if(rows && rows.length) return rows;
+      return next();
+    }).catch(function(){ return next(); });
+  }
+  return next().then(function(rows){
+    if(!rows || !rows.length) return null;
+    /* Keep the most recent reporting year. */
+    rows.forEach(function(r){ r.__yr = _num(_pick(r,[/calendar_year/i,/^year$/i,/report.*year/i,/data_year/i])) || 0; });
+    rows.sort(function(a,c){ return c.__yr - a.__yr; });
+    var r = rows[0];
+    var gfa = _num(_pick(r,[/property_gfa.*calculated.*building/i,/property_gfa/i,/gross_floor_area/i,/floor_area/i]));
+    var out = {
+      source:'LL84 benchmarking (self-reported via ENERGY STAR Portfolio Manager)',
+      dataset:NYCDATA.datasets.ll84.id, fetched:new Date().toISOString().slice(0,10),
+      year:r.__yr||null, bbl:b,
+      propertyName:_pick(r,[/property_name/i]),
+      propertyType:_pick(r,[/primary_property_type.*self/i,/largest_property_use_type/i,/primary_property_type/i,/property_type/i]),
+      gfaSf:gfa,
+      siteEui:_num(_pick(r,[/^site_eui/i,/site_eui_kbtu/i])),
+      sourceEui:_num(_pick(r,[/^source_eui/i,/source_eui_kbtu/i])),
+      wnSiteEui:_num(_pick(r,[/weather_normalized_site_eui/i])),
+      energyStarScore:_num(_pick(r,[/energy_star_score/i,/^score$/i])),
+      ghgTotal:_num(_pick(r,[/total_ghg_emissions.*metric/i,/total_ghg/i,/ghg_emissions/i])),
+      ghgIntensity:_num(_pick(r,[/ghg.*intensity/i,/total_ghg_emissions_intensity/i])),
+      elecKwh:_num(_pick(r,[/electricity_use_grid_purchase.*kwh/i,/electricity.*kwh/i])),
+      gasKbtu:_num(_pick(r,[/natural_gas_use.*kbtu/i,/natural_gas/i])),
+      steamKbtu:_num(_pick(r,[/district_steam/i])),
+      fuelOilKbtu:_num(_pick(r,[/fuel_oil/i])),
+      waterIntensity:_num(_pick(r,[/water_use_intensity/i,/indoor_water_intensity/i])),
+      yearBuilt:_num(_pick(r,[/year_built/i])),
+      occupancy:_num(_pick(r,[/^occupancy$/i])),
+      rowsFound:rows.length, raw:r
+    };
+    /* Derive intensity when the portal did not publish it. */
+    if(out.ghgIntensity==null && out.ghgTotal!=null && out.gfaSf) out.ghgIntensity = out.ghgTotal/out.gfaSf;
+    return out;
+  });
+}
+window.nycBenchmarking = nycBenchmarking;
+
+/* ── 3. BBL -> PLUTO ───────────────────────────────────────────────── */
+function nycPluto(bbl){
+  var b = nycBBL(bbl);
+  if(!b) return Promise.resolve(null);
+  var base = NYCDATA.socrata+'/'+NYCDATA.datasets.pluto.id+'.json';
+  var tries = [ base+'?bbl='+b+'&$limit=1',
+                base+'?$where='+encodeURIComponent("bbl='"+b+"'")+'&$limit=1' ];
+  var i=0;
+  function next(){
+    if(i>=tries.length) return Promise.resolve(null);
+    return _nycFetch(tries[i++]).then(function(rows){
+      if(rows&&rows.length) return rows[0];
+      return next();
+    }).catch(function(){ return next(); });
+  }
+  return next().then(function(r){
+    if(!r) return null;
+    return { source:'PLUTO', dataset:NYCDATA.datasets.pluto.id,
+      fetched:new Date().toISOString().slice(0,10), bbl:b,
+      address:_pick(r,[/^address$/i]), ownerName:_pick(r,[/ownername/i]),
+      bldgClass:_pick(r,[/bldgclass/i]), landUse:_pick(r,[/^landuse$/i]),
+      zoneDist:_pick(r,[/zonedist1/i]),
+      lotArea:_num(_pick(r,[/lotarea/i])), bldgArea:_num(_pick(r,[/^bldgarea$/i])),
+      comArea:_num(_pick(r,[/comarea/i])), resArea:_num(_pick(r,[/resarea/i])),
+      officeArea:_num(_pick(r,[/officearea/i])), retailArea:_num(_pick(r,[/retailarea/i])),
+      numFloors:_num(_pick(r,[/numfloors/i])), numBldgs:_num(_pick(r,[/numbldgs/i])),
+      unitsRes:_num(_pick(r,[/unitsres/i])), unitsTotal:_num(_pick(r,[/unitstotal/i,/unitstot/i])),
+      yearBuilt:_num(_pick(r,[/yearbuilt/i])), yearAlter1:_num(_pick(r,[/yearalter1/i])),
+      lat:_num(_pick(r,[/^latitude$/i])), lon:_num(_pick(r,[/^longitude$/i])), raw:r };
+  });
+}
+window.nycPluto = nycPluto;
+
+/* ── 4. One call: address -> everything ────────────────────────────── */
+function nycResolve(text, opts){
+  opts = opts || {};
+  var out = { query:text, ok:false, flags:[] };
+  return nycGeocode(text, opts).then(function(cands){
+    if(!cands.length){ out.flags.push('No NYC address matched "'+text+'". GeoSearch covers New York City only.'); return out; }
+    var c = cands[0];
+    out.candidates = cands; out.address = c;
+    if(!c.bbl){ out.flags.push('Matched "'+c.label+'" but no BBL came back, so no city records can be joined. Non-addressable places and some new construction have no tax lot yet.'); return out; }
+    out.bbl = c.bbl; out.bin = c.bin;
+    out.bblParts = nycBBLParts(c.bbl);
+    return Promise.all([
+      nycBenchmarking(c.bbl).catch(function(e){ out.flags.push('LL84 lookup failed: '+e.message); return null; }),
+      nycPluto(c.bbl).catch(function(e){ out.flags.push('PLUTO lookup failed: '+e.message); return null; })
+    ]).then(function(res){
+      out.ll84 = res[0]; out.pluto = res[1]; out.ok = true;
+      if(!out.ll84) out.flags.push('No LL84 filing found for BBL '+c.bbl+'. The property may be under the benchmarking threshold, may not have filed, or may be co-reported under a different BBL on the same campus.');
+      if(out.pluto && out.pluto.numBldgs>1)
+        out.flags.push('PLUTO reports '+out.pluto.numBldgs+' buildings on this tax lot. LL84 is filed per BBL but LL97 penalties land per BIN \u2014 the benchmarking figures cover the whole lot, not this building alone. Apportion before using them.');
+      return out;
+    });
+  }).catch(function(e){ out.flags.push('Address lookup failed: '+e.message); return out; });
+}
+window.nycResolve = nycResolve;
+
+/* ── 5. Write it into the building model ───────────────────────────
+   Deliberately does NOT overwrite anything the user set by hand. Real
+   data is a better default, not a mandate: an owner who has measured
+   their own floor area is more right than the assessor. Everything
+   applied is recorded in bnz.nycData with its source and date so the
+   report can say where each number came from. */
+function bnzApplyNycData(sh, R, opts){
+  opts = opts || {};
+  if(!sh || !R || !R.ok) return { applied:[], skipped:[] };
+  var b = bnzGet(sh), applied = [], skipped = [];
+  b.nycData = { fetched:new Date().toISOString().slice(0,10), query:R.query,
+                address:R.address? R.address.label:null, bbl:R.bbl, bin:R.bin,
+                ll84:R.ll84||null, pluto:R.pluto||null, flags:R.flags||[] };
+  b.address = R.address? R.address.label : b.address;
+  b.bbl = R.bbl; b.bin = R.bin;
+
+  function set(key, val, label, src){
+    if(val==null || val==='' || (typeof val==='number' && !(val>0))){ return; }
+    if(b[key]!=null && b[key]!=='' && !opts.overwrite){ skipped.push(label+' \u2014 already set to '+b[key]); return; }
+    b[key] = val; applied.push(label+' = '+val+'  ('+src+')');
+  }
+
+  var L = R.ll84, P = R.pluto;
+  if(L){
+    set('espmType', L.propertyType, 'ESPM property type', 'LL84');
+    set('gfaOverrideSf', L.gfaSf, 'Gross floor area (sf)', 'LL84');
+    set('actualSiteEui', L.siteEui, 'Reported Site EUI (kBtu/sf/yr)', 'LL84 CY'+(L.year||'?'));
+    set('actualSourceEui', L.sourceEui, 'Reported Source EUI', 'LL84');
+    set('energyStarScore', L.energyStarScore, 'ENERGY STAR score', 'LL84');
+    set('actualGhgT', L.ghgTotal, 'Reported total GHG (tCO2e)', 'LL84');
+  }
+  if(P){
+    set('yearBuilt', P.yearBuilt, 'Year built', 'PLUTO');
+    set('floors', P.numFloors, 'Floors', 'PLUTO');
+    set('dwellingUnits', P.unitsRes, 'Dwelling units', 'PLUTO');
+    if(!L || !L.gfaSf) set('gfaOverrideSf', P.bldgArea, 'Gross floor area (sf)', 'PLUTO BldgArea \u2014 assessor figure, verify against the LL97 definition');
+  }
+  return { applied:applied, skipped:skipped, flags:R.flags||[] };
+}
+window.bnzApplyNycData = bnzApplyNycData;
+
+/* ── 6. Reconciliation: does the model match reality? ──────────────
+   This is the part that earns the address. A modelled EUI that lands
+   within a quarter of the filed one means the assembly stack and the
+   benchmark were reasonable. A modelled EUI at half the filed one means
+   the model is wrong, and every penalty, payback and cost-per-tonne
+   downstream of it is wrong by the same factor. Better to say so than
+   to publish a confident number built on a bad EUI. */
+function bnzReconcile(sh){
+  var b = bnzGet(sh), out = { ok:false, checks:[], flags:[] };
+  var L = b.nycData && b.nycData.ll84;
+  if(!L){ out.flags.push('No LL84 data attached \u2014 nothing to reconcile against. Resolve an address first.'); return out; }
+  var E = null, C = null;
+  try{ E = bnzEnergy(sh); }catch(e){}
+  try{ C = bnzCompliance(sh); }catch(e){}
+  if(!E || !E.ok){ out.flags.push('Energy model incomplete \u2014 cannot reconcile.'); return out; }
+
+  var gfa = (C&&C.gfa) || (bnzGeometry(sh).gfaSf) || L.gfaSf;
+
+  function chk(name, modelled, reported, unit, tol){
+    if(modelled==null || reported==null || !(reported>0)) return;
+    var d = (modelled-reported)/reported;
+    var verdict = Math.abs(d) <= (tol||0.25) ? 'agrees'
+                : Math.abs(d) <= 0.5 ? 'diverges' : 'contradicts';
+    out.checks.push({ name:name, modelled:modelled, reported:reported, unit:unit,
+                      deltaPct:d*100, verdict:verdict });
+    if(verdict!=='agrees')
+      out.flags.push(name+': model says '+Math.round(modelled).toLocaleString()+' '+unit
+        +', the building filed '+Math.round(reported).toLocaleString()+' '+unit
+        +' ('+(d>0?'+':'')+Math.round(d*100)+'%). '
+        +(verdict==='contradicts'
+          ? 'That is too far apart to publish. Calibrate the model to the filed figure before any financial number is used.'
+          : 'Worth checking the assembly stack and benchmark EUI before relying on the penalty and payback figures.'));
+  }
+
+  var modelledEui = (E.baseline && E.baseline.euiSite) != null ? E.baseline.euiSite
+                   : (gfa>0 && E.baseline ? ((E.baseline.elecKwh*3.412)+(E.baseline.gasTherm*100))/gfa : null);
+  chk('Site EUI', modelledEui, L.siteEui, 'kBtu/sf/yr', 0.25);
+
+  if(C && C.periods && C.periods[0])
+    chk('Annual GHG', C.periods[0].tBaseline, L.ghgTotal, 'tCO\u2082e/yr', 0.25);
+
+  if(L.gfaSf) chk('Gross floor area', gfa, L.gfaSf, 'sf', 0.10);
+
+  out.ok = true;
+  out.worst = out.checks.reduce(function(a,c){
+    return (!a || Math.abs(c.deltaPct)>Math.abs(a.deltaPct)) ? c : a; }, null);
+  out.trustworthy = !out.checks.some(function(c){ return c.verdict==='contradicts'; });
+  return out;
+}
+window.bnzReconcile = bnzReconcile;
+
+/* ── 7. UI: the address bar ────────────────────────────────────────
+   Deliberately shows the candidate list rather than silently taking the
+   first hit. NYC addresses are ambiguous in ways that matter: the same
+   number and street name exists in several boroughs, and Queens uses
+   hyphenated numbering that geocoders regularly mis-split. Picking for
+   the user is how the wrong building's energy data ends up in a report
+   that a council reads. */
+function bnzAddressPanelHTML(sh){
+  var b = bnzGet(sh);
+  var d = b.nycData;
+  var esc = (typeof _nzEsc==='function') ? _nzEsc : function(s){ return String(s==null?'':s); };
+  var h = '<div style="border:1px solid rgba(52,211,153,.28);border-radius:7px;padding:10px;margin:8px 0;background:rgba(52,211,153,.05)">'
+    +'<div style="font-size:10px;font-weight:700;letter-spacing:.5px;color:#6EE7B7;text-transform:uppercase;margin-bottom:6px">Address &amp; city records</div>'
+    +'<div style="display:flex;gap:6px;align-items:center">'
+    +'<input id="bnz-addr-in" placeholder="e.g. 120 Broadway, Manhattan" value="'+esc(b.address||'')
+    +'" style="flex:1;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.18);color:#E2EEF9;font-size:11px;padding:6px 8px;border-radius:5px;font-family:inherit">'
+    +'<button onclick="bnzAddressLookup(\''+sh.id+'\')" style="background:rgba(52,211,153,.16);border:1px solid rgba(52,211,153,.45);color:#6EE7B7;font-size:10px;font-weight:700;padding:6px 10px;border-radius:5px;cursor:pointer;font-family:inherit">Look up</button>'
+    +'</div>'
+    +'<div id="bnz-addr-out" style="margin-top:8px;font-size:10.5px;color:#9FB3C8"></div>';
+
+  if(d){
+    h += '<div style="margin-top:8px;padding-top:8px;border-top:1px solid rgba(255,255,255,.10);font-size:10.5px;line-height:1.7">'
+      +'<div style="color:#E2EEF9;font-weight:600">'+esc(d.address||'')+'</div>'
+      +'<div>BBL <b>'+esc(d.bbl||'\u2014')+'</b>'+(d.bin?' \u00b7 BIN <b>'+esc(d.bin)+'</b>':'')+'</div>';
+    if(d.ll84){
+      var L=d.ll84;
+      h += '<div style="margin-top:5px;color:#6EE7B7">LL84 CY'+esc(L.year||'?')+' \u2014 filed data</div>'
+        +'<div>Site EUI <b>'+(L.siteEui!=null?L.siteEui:'\u2014')+'</b> kBtu/sf'
+        +' \u00b7 ENERGY STAR <b>'+(L.energyStarScore!=null?L.energyStarScore:'\u2014')+'</b>'
+        +' \u00b7 GHG <b>'+(L.ghgTotal!=null?Math.round(L.ghgTotal).toLocaleString():'\u2014')+'</b> tCO\u2082e</div>'
+        +'<div>'+esc(L.propertyType||'\u2014')+' \u00b7 '+(L.gfaSf?Math.round(L.gfaSf).toLocaleString()+' sf':'\u2014')+'</div>';
+    } else {
+      h += '<div style="margin-top:5px;color:#FBBF24">No LL84 filing found for this lot.</div>';
+    }
+    if(d.pluto){
+      var P=d.pluto;
+      h += '<div style="margin-top:5px;color:#93C5FD">PLUTO</div>'
+        +'<div>Built '+(P.yearBuilt||'\u2014')+' \u00b7 '+(P.numFloors||'\u2014')+' floors \u00b7 '
+        +(P.unitsRes!=null?P.unitsRes+' res units':'\u2014')+' \u00b7 class '+esc(P.bldgClass||'\u2014')+'</div>';
+    }
+    h += '<button onclick="bnzReconcileShow(\''+sh.id+'\')" style="margin-top:7px;background:rgba(147,197,253,.14);border:1px solid rgba(147,197,253,.4);color:#93C5FD;font-size:10px;font-weight:700;padding:5px 9px;border-radius:5px;cursor:pointer;font-family:inherit">Reconcile model vs filed</button>';
+    h += '<div id="bnz-recon-out" style="margin-top:7px"></div>';
+    h += '</div>';
+  }
+  h += '</div>';
+  return h;
+}
+window.bnzAddressPanelHTML = bnzAddressPanelHTML;
+
+function bnzAddressLookup(shId){
+  var sh = (S.shapes||[]).filter(function(x){ return x.id===shId; })[0];
+  var inp = document.getElementById('bnz-addr-in');
+  var out = document.getElementById('bnz-addr-out');
+  if(!sh || !inp || !out) return;
+  var text = inp.value;
+  if(!text.trim()){ out.innerHTML = '<span style="color:#FBBF24">Enter an address.</span>'; return; }
+  out.innerHTML = 'Searching NYC address records\u2026';
+
+  /* Bias the search to wherever the drawing already sits. */
+  var lat=null, lon=null;
+  try{
+    var ms = (typeof _liveMapState==='function') ? _liveMapState() : null;
+    if(ms){ lat = ms.lat!=null?ms.lat:(ms.center&&ms.center.lat); lon = ms.lng!=null?ms.lng:(ms.center&&ms.center.lng); }
+  }catch(e){}
+
+  nycGeocode(text, { lat:lat, lon:lon, size:6 }).then(function(cands){
+    if(!cands.length){ out.innerHTML = '<span style="color:#FBBF24">No NYC address matched. GeoSearch covers New York City only.</span>'; return; }
+    var h = '<div style="color:#9FB3C8;margin-bottom:4px">'+cands.length+' match'+(cands.length===1?'':'es')+' \u2014 pick the right one:</div>';
+    cands.forEach(function(c,i){
+      window.__bnzCands = cands;
+      h += '<div onclick="bnzAddressPick(\''+shId+'\','+i+')" style="cursor:pointer;padding:5px 7px;margin:2px 0;border:1px solid rgba(255,255,255,.12);border-radius:4px;background:rgba(255,255,255,.03)">'
+        +'<div style="color:#E2EEF9">'+_nzEsc(c.label)+'</div>'
+        +'<div style="font-size:9.5px;color:#7A8CA0">BBL '+_nzEsc(c.bbl||'none')+(c.bin?' \u00b7 BIN '+_nzEsc(c.bin):'')+'</div></div>';
+    });
+    out.innerHTML = h;
+  }).catch(function(e){
+    out.innerHTML = '<span style="color:#F87171">Lookup failed: '+_nzEsc(e.message)+'</span>';
+  });
+}
+window.bnzAddressLookup = bnzAddressLookup;
+
+function bnzAddressPick(shId, ix){
+  var sh = (S.shapes||[]).filter(function(x){ return x.id===shId; })[0];
+  var out = document.getElementById('bnz-addr-out');
+  var c = (window.__bnzCands||[])[ix];
+  if(!sh || !c || !out) return;
+  if(!c.bbl){ out.innerHTML = '<span style="color:#FBBF24">That match has no BBL, so no city records can be joined to it.</span>'; return; }
+  out.innerHTML = 'Pulling LL84 benchmarking and PLUTO for BBL '+_nzEsc(c.bbl)+'\u2026';
+  Promise.all([ nycBenchmarking(c.bbl).catch(function(){ return null; }),
+                nycPluto(c.bbl).catch(function(){ return null; }) ]).then(function(r){
+    var R = { ok:true, query:c.label, address:c, bbl:c.bbl, bin:c.bin,
+              bblParts:nycBBLParts(c.bbl), ll84:r[0], pluto:r[1], flags:[] };
+    if(!R.ll84) R.flags.push('No LL84 filing found for BBL '+c.bbl+'. The property may be under the benchmarking threshold, may not have filed, or may be co-reported under another BBL on the same campus.');
+    if(R.pluto && R.pluto.numBldgs>1)
+      R.flags.push('PLUTO reports '+R.pluto.numBldgs+' buildings on this tax lot. LL84 is filed per BBL but LL97 penalties land per BIN \u2014 apportion before using these figures for one building.');
+    var res = bnzApplyNycData(sh, R);
+    var h = '<div style="color:#6EE7B7">Attached to '+_nzEsc(sh.bnz.name||'building')+'.</div>';
+    if(res.applied.length) h += '<div style="margin-top:4px;color:#9FB3C8">Applied:<br>\u00b7 '+res.applied.map(_nzEsc).join('<br>\u00b7 ')+'</div>';
+    if(res.skipped.length) h += '<div style="margin-top:4px;color:#7A8CA0">Kept your values:<br>\u00b7 '+res.skipped.map(_nzEsc).join('<br>\u00b7 ')+'</div>';
+    if(R.flags.length) h += '<div style="margin-top:4px;color:#FBBF24">\u00b7 '+R.flags.map(_nzEsc).join('<br>\u00b7 ')+'</div>';
+    out.innerHTML = h;
+    try{ if(typeof pushHist==='function') pushHist(); }catch(e){}
+    try{ if(typeof updateRightPanel==='function') updateRightPanel(); }catch(e){}
+  }).catch(function(e){
+    out.innerHTML = '<span style="color:#F87171">Data fetch failed: '+_nzEsc(e.message)+'</span>';
+  });
+}
+window.bnzAddressPick = bnzAddressPick;
+
+function bnzReconcileShow(shId){
+  var sh = (S.shapes||[]).filter(function(x){ return x.id===shId; })[0];
+  var out = document.getElementById('bnz-recon-out');
+  if(!sh || !out) return;
+  var R = bnzReconcile(sh);
+  if(!R.ok){ out.innerHTML = '<span style="color:#FBBF24">'+_nzEsc(R.flags[0]||'Cannot reconcile.')+'</span>'; return; }
+  var col = { agrees:'#6EE7B7', diverges:'#FBBF24', contradicts:'#F87171' };
+  var h = '<div style="font-size:10px">';
+  R.checks.forEach(function(c){
+    h += '<div style="display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px solid rgba(255,255,255,.07)">'
+      +'<span style="color:#9FB3C8">'+_nzEsc(c.name)+'</span>'
+      +'<span style="color:'+col[c.verdict]+'">'+Math.round(c.modelled).toLocaleString()+' vs '+Math.round(c.reported).toLocaleString()
+      +' ('+(c.deltaPct>0?'+':'')+Math.round(c.deltaPct)+'%)</span></div>';
+  });
+  if(!R.checks.length) h += '<div style="color:#FBBF24">Nothing comparable \u2014 the filing has no Site EUI or GHG figure.</div>';
+  R.flags.forEach(function(f){ h += '<div style="color:#FBBF24;margin-top:4px">'+_nzEsc(f)+'</div>'; });
+  if(R.trustworthy && R.checks.length)
+    h += '<div style="color:#6EE7B7;margin-top:4px">Model is consistent with the filed data. Penalty and payback figures rest on a sound EUI.</div>';
+  h += '</div>';
+  out.innerHTML = h;
+}
+window.bnzReconcileShow = bnzReconcileShow;
+
+
 
 /* Utility rates. Defaults are national-average placeholders and are
    overridable per project -- energy cost drives payback, so a wrong rate
@@ -52799,9 +54010,22 @@ function bnzCompliance(sh){
   if(!J){ out.flags.push('No building performance standard selected.'); return out; }
   out.jurisdiction = J;
 
-  var occ = b.occGroup || BPS_OCC_MAP[b.propertyType||'office'] || 'B';
-  out.occGroup = occ;
-  var caps = J.caps[occ] || J.caps['B'];
+  /* Resolve the cap row. LL97 sets limits by ESPM property type; a saved
+     project may carry an ESPM name, a legacy occupancy group, or a BLD_ROM
+     type. Refusing to guess matters: defaulting a restaurant to Office
+     understates its cap by ~3x, and a warehouse by ~2x the other way. */
+  var typeKey = b.espmType || b.occGroup || b.propertyType || null;
+  var R = bpsResolveType(J, typeKey);
+  if(!R){
+    out.flags.push('No LL97 property type set. Emissions limits are assigned by ENERGY STAR Portfolio Manager property type \u2014 pick one before any penalty number is used. (ESPM "Other" and "Mixed Use" may not be assigned to any part of a covered building.)');
+    return out;
+  }
+  out.espmType = R.espm;
+  out.occGroup = R.espm;
+  out.typeResolvedVia = R.via;
+  if(R.via==='legacy_occupancy_group')
+    out.flags.push('Cap taken from legacy occupancy group "'+typeKey+'" mapped to ESPM "'+R.espm+'". The 2022 rule replaced the 10 occupancy groups with 60 ESPM property types \u2014 confirm the ESPM type before filing.');
+  var caps = R.caps;
 
   out.applies = gfa >= (J.applies_if.min_gsf||0);
   if(!out.applies)
@@ -52811,8 +54035,17 @@ function bnzCompliance(sh){
   out.altPathway = alt;
   var altDef = (J.alt_pathways||[]).filter(function(x){ return x.id===alt; })[0];
   out.altPathwayDef = altDef;
-  if(alt!=='none' && alt!=='rec_deduction'){
-    out.flags.push('Prescribed-measures pathway selected \u2014 compliance is a measures checklist, not a cap test. The penalty column below is what the cap route WOULD cost, shown for comparison.');
+  /* Article 321 replaces the cap test outright; the other routes keep the
+     cap and change what may be deducted from it, or what the penalty is.
+     Collapsing those into one message is how a rent-regulated building ends
+     up reading a penalty it does not actually owe as if it were a bill. */
+  out.capTestApplies = (alt!=='art321_prescriptive' && alt!=='art321_performance');
+  if(alt==='art321_prescriptive'){
+    out.flags.push('Article 321 prescriptive route: compliance is a one-time report certified by a retro-commissioning agent covering all 13 applicable PECMs \u2014 NOT an annual cap test. The penalty column below is what the Article 320 cap route would have cost, shown only for comparison.');
+  } else if(alt==='art321_performance'){
+    out.flags.push('Article 321 performance route: compliance is a one-time RDP-certified demonstration that 2024 emissions already met the 2030 limit. The 2030 column is therefore the test that matters; later columns are context, not obligation.');
+  } else if(alt==='rec_deduction'){
+    out.flags.push('RECs may be deducted ONLY from emissions attributed to utility-supplied electricity \u2014 never from gas, oil or steam. A gas-heated building cannot buy its way to compliance with RECs.');
   }
 
   /* Emissions per period use that period's own grid coefficient. This is
@@ -52862,9 +54095,16 @@ function bnzCompliance(sh){
   out.paybackYrs = out.annualBenefit>0 ? out.capex/out.annualBenefit : null;
   out.energy = E; out.envelope = env; out.gfa = gfa;
 
-  /* Provisional caps must never read as settled law. */
-  if(out.periods.some(function(p){ return p.conf==='provisional' && p.penaltyProposed>0; }))
-    out.flags.push('Penalties shown for 2035 onward use PROVISIONAL caps interpolated toward the 2050 statutory zero. Verify against '+J.verify_url+' before these numbers reach a financial model.');
+  /* The 2035\u20132039 and 2040\u20132049 caps are PUBLISHED in 1 RCNY 103-14, not
+     interpolated, so they no longer carry a provisional warning. What does
+     need saying is the 2030 cliff: caps tighten sharply and the grid
+     coefficient halves, so a building can be comfortably compliant today
+     and badly exposed in 2030 without changing anything at all. */
+  var p1 = out.periods[0], p2 = out.periods[1];
+  if(p1 && p2 && p1.compliant && !p2.compliant)
+    out.flags.push('Compliant today, NOT compliant in 2030. Citywide, under 10% of buildings exceeded the 2024\u20132029 cap but roughly 57% are projected to exceed the 2030\u20132034 cap. Work on a 2030 scope has to start now \u2014 DOB expects good-faith progress well in advance of the deadline.');
+  if(out.altPathway==='good_faith_plan')
+    out.flags.push('Good-faith route bars REC deductions for 2024\u20132029 and requires the 2024-limit work done within 24 months of filing plus an approved application for 2030-limit work by 1 May 2028. DOB may assess penalties retroactively across the whole period if the plan is not followed.');
 
   out.ok = true;
   return out;
@@ -54628,8 +55868,13 @@ function _bnzInner(){
     +'<div style="display:flex;align-items:center;gap:8px">'
      +'<button onclick="bnzReportDownload()" title="Export a self-contained HTML report: geometry, assembly stack with confidence, windows by elevation, thermal, energy, carbon, compliance and the assumptions that drive them." style="background:rgba(74,222,128,.14);border:1px solid rgba(74,222,128,.45);color:#86EFAC;font-size:10px;font-weight:700;padding:6px 10px;border-radius:6px;cursor:pointer;font-family:inherit">\u2913 Report</button>'
      +'<button onclick="omegaBuildingDownload()" title="Export this model as omega.building.v1 \u2014 geometry, assemblies, assumptions, energy, compliance and provenance. This is the handoff the digital twin consumes." style="background:rgba(167,139,250,.14);border:1px solid rgba(167,139,250,.45);color:#C4B5FD;font-size:10px;font-weight:700;padding:6px 10px;border-radius:6px;cursor:pointer;font-family:inherit">\u2913 Export for twin</button>'
+     +'<button onclick="nycNetZeroReportDownload()" title="Export the city-facing investment case: capital required, net cost after the incentive stack, payback, cost per tonne abated, public value, and the dated plan to net zero. Self-contained HTML \u2014 opens and prints anywhere, no network needed." style="background:rgba(52,211,153,.14);border:1px solid rgba(52,211,153,.45);color:#6EE7B7;font-size:10px;font-weight:700;padding:6px 10px;border-radius:6px;cursor:pointer;font-family:inherit;margin-left:6px">\u2913 City net-zero case</button>'
      +'<button onclick="var h=document.getElementById(\'bnz-modal\');if(h)h.remove()" style="background:none;border:none;color:#64748B;font-size:20px;cursor:pointer;line-height:1">\u00d7</button></div></div>'
   +'<div style="padding:16px 20px">'
+
+   /* Address first. Everything below is modelled; this is the join key that
+      lets the model be checked against what the building actually filed. */
+   +(function(){ try{ return bnzAddressPanelHTML(sh); }catch(e){ return ''; } })()
 
    +'<div style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;margin-bottom:14px">'
     +'<div><div style="font-size:9px;color:#64748B;text-transform:uppercase">Name</div>'
