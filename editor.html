@@ -85161,7 +85161,7 @@ window._crmToastModal=_crmToastModal;
 </script>
 <!-- OMEGA FIX PACK END -->
 
-<!-- OMEGA TERRAIN + ELECTRICAL PACK v2.0 BEGIN -->
+<!-- OMEGA TERRAIN + ELECTRICAL PACK v2.1 BEGIN -->
 <script>
 /* ══════════════════════════════════════════════════════════════════════════
    OMEGA TERRAIN + ELECTRICAL PACK  ·  v1.0
@@ -85195,7 +85195,7 @@ window._crmToastModal=_crmToastModal;
   'use strict';
 
   var TAG = '[omega-terrain]';
-  var VERSION = '2.0';
+  var VERSION = '2.1';
 
   /* ══════════════════════════════════════════════════════════════════
      0.  UTILITIES
@@ -85929,12 +85929,44 @@ window._crmToastModal=_crmToastModal;
      count on its own does not tell you whether to regrade or re-lay.
      ══════════════════════════════════════════════════════════════════ */
 
-  function checkCollisions(tables, presetKey, pileRes, proj, field, pxPerFt) {
+  function checkCollisions(tables, presetKey, pileRes, proj, field, pxPerFt, opts) {
+    opts = opts || {};
     var R = rackTuned(presetKey);
     if (R.pileMode === 'none' || !pileRes) return null;
 
     var clear = num(R.minGroundClearFt, 1.5);
-    var strikes = [], breaks = [];
+    var strikes = [], breaks = [], buried = [], relief = [], swept = [];
+
+    /* ---- per-pile local relief  (pack v2.1) -------------------------
+       The plane and line fits average the ground under a table, so a
+       boulder or a rut between sample points disappears into the
+       residual. Ring eight probes around each solved pile at a small
+       radius and compare against what the fit assumed. This is the check
+       that a 0.1 m "checking radius" in commercial tools is doing. */
+    var ringR = num(opts.checkRadiusFt, 0.33);          /* ~0.1 m */
+    var reliefLim = num(opts.localReliefFt, 1.5);
+    pileRes.piles.forEach(function (p) {
+      var mn = Infinity, mx = -Infinity, seen = 0;
+      for (var k = 0; k < 8; k++) {
+        var ang = (Math.PI * 2 * k) / 8;
+        var f = proj.toFt(p.px + ringR * pxPerFt * Math.cos(ang),
+                          p.py + ringR * pxPerFt * Math.sin(ang));
+        var z = field.zAt(f.x, f.y);
+        if (z == null) continue;
+        seen++;
+        if (z < mn) mn = z;
+        if (z > mx) mx = z;
+      }
+      if (!seen) return;
+      if (mx > p.topFt - 0.15) {
+        buried.push({ tableIdx: p.tableIdx, seq: p.seq,
+                      groundMaxFt: +mx.toFixed(2), topFt: +p.topFt.toFixed(2),
+                      excessFt: +(mx - p.topFt).toFixed(2) });
+      }
+      if (mx - mn > reliefLim) {
+        relief.push({ tableIdx: p.tableIdx, seq: p.seq, reliefFt: +(mx - mn).toFixed(2) });
+      }
+    });
 
     /* top-of-pile elevation per table, from the schedule */
     var topByTable = {};
@@ -85972,10 +86004,85 @@ window._crmToastModal=_crmToastModal;
       }
     }
 
+    /* ---- swept-edge clearance at stow  (pack v2.1) ------------------
+       A tracker does not collide at flat, it collides at stow. At the
+       rotation limit the leading edge drops (chord/2)*sin(rot) below the
+       tube and swings (chord/2)*cos(rot) to the side — on cross-sloped
+       ground the downhill edge loses exactly the clearance the tube fit
+       gained. So sweep both edges along the tube rather than sampling
+       the centre once, and report the WORST point per table per side:
+       one failing table produces two rows, not two hundred. */
+    if (isTrackerPreset(presetKey)) {
+      var rot = num(opts.maxRotDeg, 60) * D2R;
+      /* The tube is a straight line, so its elevation at a station has to
+         be INTERPOLATED. An earlier version compared the table's lowest
+         pile top against ground anywhere along the tube, which on a
+         sloped tube pits the low end's steel against the high end's dirt
+         and failed roughly 70% of tables on a site that is actually
+         buildable. Keep the end piles and interpolate between them. */
+      var topBy = {};
+      pileRes.piles.forEach(function (p) {
+        var e = topBy[p.tableIdx];
+        if (!e) { topBy[p.tableIdx] = { r0: p.runFt, z0: p.topFt, r1: p.runFt, z1: p.topFt }; return; }
+        if (p.runFt < e.r0) { e.r0 = p.runFt; e.z0 = p.topFt; }
+        if (p.runFt > e.r1) { e.r1 = p.runFt; e.z1 = p.topFt; }
+      });
+      for (var si = 0; si < tables.length; si++) {
+        var t = tables[si], tp = topBy[si];
+        if (!tp) continue;
+        var g = tableGeom(t);
+        var wFt = t.w / pxPerFt, hFt = t.h / pxPerFt;
+        var chord = Math.min(wFt, hFt), tube = Math.max(wFt, hFt);
+        var alongX = (wFt >= hFt);              /* tube on local x? */
+        var drop = (chord / 2) * Math.sin(rot);
+        var lat = (chord / 2) * Math.cos(rot);
+        var worstSide = { '-1': null, '1': null };
+        var steps = Math.max(2, Math.min(24, Math.round(tube / 12)));
+        for (var q = 0; q <= steps; q++) {
+          var d = -tube / 2 + (tube * q) / steps;
+          for (var sd = -1; sd <= 1; sd += 2) {
+            var lx = alongX ? d : (lat * sd);
+            var ly = alongX ? (lat * sd) : d;
+            var px = g.cx + (lx * g.ex.x + ly * g.ey.x) * pxPerFt;
+            var py = g.cy + (lx * g.ex.y + ly * g.ey.y) * pxPerFt;
+            var f2 = proj.toFt(px, py);
+            var gz = field.zAt(f2.x, f2.y);
+            if (gz == null) continue;
+            var span = tp.r1 - tp.r0;
+            var frac = (span > 1e-6) ? ((d - tp.r0) / span) : 0;
+            var tubeZ = tp.z0 + frac * (tp.z1 - tp.z0);
+            var clr = (tubeZ - drop) - gz;
+            var cur = worstSide[String(sd)];
+            if (clr < clear && (!cur || clr < cur.clearanceFt)) {
+              worstSide[String(sd)] = {
+                tableIdx: si, side: sd < 0 ? 'A' : 'B',
+                stationFt: +d.toFixed(1),
+                clearanceFt: +clr.toFixed(2), requiredFt: clear
+              };
+            }
+          }
+        }
+        if (worstSide['-1']) swept.push(worstSide['-1']);
+        if (worstSide['1']) swept.push(worstSide['1']);
+      }
+    }
+
+    var hitTables = {};
+    buried.forEach(function (x) { hitTables[x.tableIdx] = 1; });
+    relief.forEach(function (x) { hitTables[x.tableIdx] = 1; });
+    swept.forEach(function (x) { hitTables[x.tableIdx] = 1; });
+    strikes.forEach(function (x) { hitTables[x.idx] = 1; });
+
     return {
       strikes: strikes, strikeCount: strikes.length,
+      buried: buried, buriedCount: buried.length,
+      localRelief: relief, localReliefCount: relief.length,
+      swept: swept, sweptCount: swept.length,
       nearLimit: breaks, nearLimitCount: breaks.length,
-      requiredClearFt: clear
+      tablesAffected: Object.keys(hitTables).length,
+      requiredClearFt: clear,
+      checkRadiusFt: ringR,
+      maxRotDeg: num(opts.maxRotDeg, 60)
     };
   }
 
@@ -86648,6 +86755,18 @@ window._crmToastModal=_crmToastModal;
     rows.push([], ['block_id', 'combiners', 'kw_dc', 'kw_ac']);
     S2.blocks.forEach(function (b) { rows.push(['B' + b.id, b.combiners.length, b.kwDc, b.kwAc]); });
 
+    if (res.backtrack && res.backtrack.ok) {
+      var B = res.backtrack;
+      rows.push([], ['# backtracking \u2014 chord ' + B.chordFt + ' ft, pitch ' + B.pitchFt
+                     + ' ft, worst row dz ' + B.worstDzFt + ' ft']);
+      rows.push(['sun_theta_deg', 'flat_angle_deg', 'morning_deg', 'morning_corr_deg',
+                 'evening_deg', 'evening_corr_deg']);
+      B.table.forEach(function (r) {
+        rows.push([r.thetaDeg, r.flatDeg, r.morningDeg, r.morningCorrDeg,
+                   r.eveningDeg, r.eveningCorrDeg]);
+      });
+    }
+
     rows.push([], ['TOTALS', S2.stringCount + ' strings', S2.totalModules + ' modules',
                    S2.kwDc + ' kW-DC', S2.totalDcFt + ' ft DC cable',
                    S2.dcPerKw + ' ft/kW']);
@@ -87294,6 +87413,176 @@ window._crmToastModal=_crmToastModal;
     return out;
   }
 
+
+  /* ══════════════════════════════════════════════════════════════════
+     21.  TERRAIN-AWARE BACKTRACKING                        (pack v2.1)
+     ──────────────────────────────────────────────────────────────────
+     A tracker backtracks in the morning and evening: it rotates AWAY
+     from the sun so the row in front does not shade the row behind. The
+     flat-ground formula assumes both rows sit at the same elevation. On
+     rolling ground they do not, and the error is one-sided — it always
+     costs you the edge hours, never gives them back.
+
+     Geometry, in the plane normal to the tracker axis. The neighbouring
+     row is offset by (pitch, dz) with the SUNWARD row at +pitch, and the
+     sun ray in that plane makes angle theta from vertical. The
+     perpendicular gap between the parallel rays through the two axes is
+     the cross product:
+
+         gap = pitch * cos(theta) - dz * sin(theta)
+
+     so a HIGHER sunward neighbour CLOSES the gap and demands more
+     backtracking. No shading while the projected collector fits:
+
+         chord * cos(theta - beta) <= gap
+
+     which solves directly for beta. An earlier version of this had the
+     dz sign the other way and rotated uphill rows toward the sun; the
+     unit tests in the field pipeline caught it, which is why the sign is
+     spelled out here rather than left to inspection.
+
+     dz comes from the SOLVED pile tops, not raw ground, so the clamped
+     tube slopes are what the controller actually sees. East and west are
+     resolved through the real longitude of each row centroid rather than
+     assumed from canvas orientation, which matters because the layout
+     can sit at any azimuth.
+     ══════════════════════════════════════════════════════════════════ */
+
+  function backtrackAngle(thetaDeg, pitchFt, chordFt, dzFt) {
+    var th = Math.abs(num(thetaDeg, 0)) * D2R;
+    var dz = num(dzFt, 0);
+    var sgn = (thetaDeg < 0) ? -1 : 1;
+
+    function solve(gapNum) {
+      var rhs = gapNum / chordFt;
+      if (rhs >= 1) return th;              /* cannot shade: true-track   */
+      if (rhs <= 0) return 0;               /* shaded regardless: go flat */
+      var b = th - Math.acos(rhs);
+      return b < 0 ? 0 : b;
+    }
+    var beta = solve(pitchFt * Math.cos(th) - dz * Math.sin(th));
+    var flat = solve(pitchFt * Math.cos(th));
+
+    return {
+      angleDeg: +(sgn * beta * R2D).toFixed(2),
+      flatAngleDeg: +(sgn * flat * R2D).toFixed(2),
+      correctionDeg: +(sgn * (beta - flat) * R2D).toFixed(2),
+      fullyShaded: (pitchFt * Math.cos(th) - dz * Math.sin(th)) <= 0
+    };
+  }
+
+  /* Row-to-row height offsets, east-positive, from solved pile tops. */
+  function rowOffsets(res) {
+    if (!res || !res.piles || !res.kept.length) return [];
+    var P = ppf();
+    var pitchPx = num(res.pitchFt, 0) * P;
+    if (!(pitchPx > 0)) return [];
+
+    /* Bucket tables into rows along the pitch axis of their own frame. */
+    var a = res.kept[0].a || 0, c = Math.cos(a), s = Math.sin(a);
+    var rows = {};
+    var topBy = res.topByTable || {};
+    res.kept.forEach(function (t, i) {
+      var top = topBy[i];
+      if (top == null) return;
+      var cx = t.x + t.w / 2, cy = t.y + t.h / 2;
+      var lv = (-cx * s + cy * c);              /* along the pitch axis, px */
+      var k = Math.round(lv / pitchPx);
+      var r = rows[k] || (rows[k] = { z: 0, n: 0, px: 0, py: 0 });
+      r.z += top; r.n++; r.px += cx; r.py += cy;
+    });
+
+    var keys = Object.keys(rows).map(Number).sort(function (p, q) { return p - q; });
+    var out = [];
+    for (var i = 0; i + 1 < keys.length; i++) {
+      if (keys[i + 1] - keys[i] !== 1) continue;      /* gap in the field */
+      var A = rows[keys[i]], B = rows[keys[i + 1]];
+      var zA = A.z / A.n, zB = B.z / B.n;
+
+      /* Which of the pair is actually east? Ask the projector rather than
+         assuming, because the array can sit at any azimuth. */
+      var eastIsB = true;
+      try {
+        var llA = res.proj.toLatLng(A.px / A.n, A.py / A.n);
+        var llB = res.proj.toLatLng(B.px / B.n, B.py / B.n);
+        if (llA && llB) eastIsB = (llB.lng >= llA.lng);
+      } catch (e) {}
+
+      out.push({
+        row: keys[i],
+        dzEastFt: +((eastIsB ? (zB - zA) : (zA - zB))).toFixed(2)
+      });
+    }
+    return out;
+  }
+
+  /* Whole-array backtracking report at a few representative sun angles. */
+  function backtrackReport(res, opts) {
+    opts = opts || {};
+    res = res || LAST;
+    if (!res || !res.ok) return { ok: false, why: 'Run the terrain analysis first.' };
+
+    var R = rackTuned(res.presetKey);
+    if (R.pileMode === 'none' || !isTrackerPreset(res.presetKey)) {
+      return { ok: false, why: 'Backtracking applies to trackers. This array is ' + R.label + '.' };
+    }
+
+    var offs = rowOffsets(res);
+    if (!offs.length) return { ok: false, why: 'Not enough adjacent rows to compare.' };
+
+    var chord = Math.min(num(res.chordFt, 0) || Infinity,
+                         num(LAST.kept[0].w, 0) / ppf(),
+                         num(LAST.kept[0].h, 0) / ppf());
+    if (!(chord > 0) || !isFinite(chord)) chord = 6;
+    var pitch = num(res.pitchFt, chord / 0.33);
+
+    var dzs = offs.map(function (o) { return o.dzEastFt; });
+    var absSorted = dzs.map(Math.abs).sort(function (p, q) { return p - q; });
+    var worst = dzs.reduce(function (a, b) { return Math.abs(b) > Math.abs(a) ? b : a; }, 0);
+    var median = absSorted[Math.floor(absSorted.length / 2)];
+    /* Drive the angle table from a REPRESENTATIVE row, not the worst one.
+       A single 40% pair on an otherwise gentle site pins every angle at
+       zero and reports an array that never tracks, which is false for all
+       but that one pair. The worst pair is reported alongside, as a
+       flag — it is a row to fix, not a controller setting. */
+    var p90 = absSorted[Math.min(absSorted.length - 1, Math.floor(absSorted.length * 0.9))];
+    var repDz = (worst < 0 ? -1 : 1) * median;
+
+    /* Sample the tracking day: theta is the sun's angle from vertical in
+       the rotation plane, so large theta is early or late. */
+    var thetas = opts.thetas || [45, 60, 70, 80];
+    var table = thetas.map(function (th) {
+      var am = backtrackAngle(th, pitch, chord, repDz);      /* sun east */
+      var pm = backtrackAngle(th, pitch, chord, -repDz);     /* sun west */
+      return {
+        thetaDeg: th,
+        flatDeg: am.flatAngleDeg,
+        morningDeg: am.angleDeg, morningCorrDeg: am.correctionDeg,
+        eveningDeg: pm.angleDeg, eveningCorrDeg: pm.correctionDeg
+      };
+    });
+
+    var maxCorr = table.reduce(function (m, r) {
+      return Math.max(m, Math.abs(r.morningCorrDeg), Math.abs(r.eveningCorrDeg));
+    }, 0);
+
+    return {
+      ok: true,
+      rowPairs: offs.length,
+      chordFt: +chord.toFixed(2),
+      pitchFt: +pitch.toFixed(2),
+      gcr: +(chord / pitch).toFixed(3),
+      medianDzFt: +median.toFixed(2),
+      p90DzFt: +p90.toFixed(2),
+      worstDzFt: +worst.toFixed(2),
+      basisDzFt: +repDz.toFixed(2),
+      outlierRows: offs.filter(function (o) { return Math.abs(o.dzEastFt) > 4 * (median || 0.5); }).length,
+      table: table,
+      maxCorrectionDeg: +maxCorr.toFixed(2),
+      offsets: offs
+    };
+  }
+
   /* ══════════════════════════════════════════════════════════════════
      14.  ORCHESTRATOR
      ══════════════════════════════════════════════════════════════════ */
@@ -87360,7 +87649,7 @@ window._crmToastModal=_crmToastModal;
     }
 
     /* 3. collisions */
-    var coll = checkCollisions(screen.kept, presetKey, piles, proj, field, P);
+    var coll = checkCollisions(screen.kept, presetKey, piles, proj, field, P, opts);
 
     /* 4. shading */
     var rowAz = num(opts.rowAzimuthDeg, 180);
@@ -87402,8 +87691,13 @@ window._crmToastModal=_crmToastModal;
       tiltDeg: num(opts.tiltDeg, R.tiltDeg),
       kwFlat: kwFlat, kwReal: kwReal,
       kwLost: kwFlat - kwReal,
+      pitchFt: num(sh.pitchFt, 0),
+      chordFt: Math.min(num(sh.tableWft, 0) || Infinity, num(sh.tableHft, 0) || Infinity),
       at: Date.now()
     };
+    /* Backtracking reads the solved pile tops, so it runs last. */
+    try { LAST.backtrack = backtrackReport(LAST, opts); }
+    catch (e) { LAST.backtrack = { ok: false, why: (e && e.message) || 'failed' }; }
     return LAST;
   }
 
@@ -87542,9 +87836,52 @@ window._crmToastModal=_crmToastModal;
 
     if (c) {
       h += '<h4>Clearance</h4>'
+        + row('Tables affected', c.tablesAffected, c.tablesAffected ? 'a' : 'g')
         + row('Grade strikes', c.strikeCount, c.strikeCount ? 'x' : 'g')
+        + row('Piles buried', c.buriedCount, c.buriedCount ? 'x' : 'g')
+        + row('Local relief flags', c.localReliefCount, c.localReliefCount ? 'a' : 'g')
+        + row('Swept edge @ ' + c.maxRotDeg + '\u00b0 stow', c.sweptCount, c.sweptCount ? 'x' : 'g')
         + row('Required clearance', c.requiredClearFt + ' ft')
         + row('Rows near the limit', c.nearLimitCount, c.nearLimitCount ? 'a' : 'g');
+      if (c.buriedCount || c.sweptCount) {
+        h += '<div class="note">Buried piles and swept-edge hits are hard stops \u2014 the '
+           + 'structure meets ground. Local relief is a warning: the fit averaged over '
+           + 'something the ' + c.checkRadiusFt + ' ft probe ring found.</div>';
+      }
+    }
+
+    var bt = res.backtrack;
+    if (bt && bt.ok) {
+      h += '<h4>Backtracking</h4>'
+        + row('Row pairs', bt.rowPairs)
+        + row('Chord \u00b7 pitch', bt.chordFt + ' \u00b7 ' + bt.pitchFt + ' ft (GCR ' + bt.gcr + ')')
+        + row('Row \u0394z med / p90 / worst',
+              bt.medianDzFt + ' / ' + bt.p90DzFt + ' / ' + bt.worstDzFt + ' ft')
+        + row('Angles computed on', bt.basisDzFt + ' ft (median row)')
+        + row('Max terrain correction', bt.maxCorrectionDeg + '\u00b0',
+              Math.abs(bt.maxCorrectionDeg) > 3 ? 'a' : 'g');
+      h += '<div class="note" style="margin-top:5px">'
+         + '<table style="width:100%;border-collapse:collapse;font-size:9px">'
+         + '<tr style="color:#8FA3B8"><th style="text-align:right">sun \u03b8</th>'
+         + '<th style="text-align:right">flat</th><th style="text-align:right">AM</th>'
+         + '<th style="text-align:right">PM</th></tr>';
+      bt.table.forEach(function (r) {
+        h += '<tr><td style="text-align:right">' + r.thetaDeg + '\u00b0</td>'
+           + '<td style="text-align:right">' + r.flatDeg + '\u00b0</td>'
+           + '<td style="text-align:right">' + r.morningDeg + '\u00b0</td>'
+           + '<td style="text-align:right">' + r.eveningDeg + '\u00b0</td></tr>';
+      });
+      h += '</table>Flat-ground backtracking under-rotates on sloped rows and the loss '
+         + 'is one-sided \u2014 it always costs edge hours, never returns them.';
+      if (bt.outlierRows) {
+        h += '<br><br>' + bt.outlierRows + ' row pair(s) sit far outside the rest '
+           + '(worst ' + bt.worstDzFt + ' ft over ' + bt.pitchFt + ' ft). Those are rows to '
+           + 're-grade or drop, not a reason to detune the whole array \u2014 the angles above '
+           + 'are computed on the median row.';
+      }
+      h += '</div>';
+    } else if (bt && bt.why && isTrackerPreset(res.presetKey)) {
+      h += '<h4>Backtracking</h4><div class="note">' + esc(bt.why) + '</div>';
     }
 
     h += '<h4>Shading</h4>';
@@ -87825,6 +88162,9 @@ window._crmToastModal=_crmToastModal;
     /* v2 */
     capacity: capacitySearch,
     section: sectionArm,
+    backtrack: backtrackReport,
+    backtrackAngle: backtrackAngle,
+    rowOffsets: rowOffsets,
     tin: buildGridTIN,
     get trackerAxisFix() { return _trackerFix; },
     set trackerAxisFix(v) { _trackerFix = !!v; },
