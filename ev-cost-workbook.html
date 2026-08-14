@@ -10,6 +10,7 @@
 <script src="/omega-tools.js" onerror="void 0"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.4.0/exceljs.min.js" onerror="window._XLFAIL=1"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js" onerror="window._ZIPFAIL=1"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf-lib/1.17.1/pdf-lib.min.js" onerror="window._PDFFAIL=1"></script>
 <style>
 :root{
   --bg:#F4F1EC; --surface:#FFFFFF; --ink:#0B1E35; --gold:#C9A84C;
@@ -520,7 +521,20 @@ var L2_BASELINE = {
               cableUG:{mat:2.50, lab:3.47},
               cableAG:{mat:2.50, lab:21.00},
               restoration:{mat:43.00, lab:20.00} },
-  futureProof:{ trench:{mat:0, lab:27.83}, conduit:{mat:4.73, lab:6.79} },
+  /* Future proofing is 100% rebatable on both CT programs and it is the one
+     block that routinely exports empty, so it gets real rates rather than a
+     trench percentage and nothing else. Back-solved from the 50 Fitch Street
+     UI sheet, which future-proofed a 400 LF run:
+
+       spare conduit   $2,130.80 mat / $2,966.00 lab   (~450 LF at the rates
+                       below — the primary route plus pull slack)
+       spare conductors  $500 mat / $1,500 lab         (per site)
+       spare gear/panel  $500 mat / $1,000 lab         (per site)
+
+     The spare conduit rate is low because it shares an excavation that is
+     already open: the trench itself is allocated by the FP % instead. */
+  futureProof:{ trench:{mat:0, lab:27.83}, conduit:{mat:4.73, lab:6.79},
+                wire:{mat:500, lab:1500}, panel:{mat:500, lab:1000} },
 
   /* A utility transformer pad appeared on two of the four jobs and was left
      blank on the other two — 27 Oak and 1040 Barnum both tap an existing
@@ -543,7 +557,8 @@ function applyBaselineFromSite(opts){
   var B=L2_BASELINE, OPT=B.optional;
   var ports=Math.max(1, num(DATA.plugs)||1);
   var state=String(DATA.state||DATA.city||'CT').toUpperCase().indexOf('MA')>=0 ? 'MA' : 'CT';
-  var ft={ trench:num(DATA.ftTrench), conduit:num(DATA.ftConduit), cable:num(DATA.ftCable) };
+  var ft={ trench:num(DATA.ftTrench), conduit:num(DATA.ftConduit), cable:num(DATA.ftCable),
+           ug:(num(DATA.ftConduitUG)||num(DATA.ftConduit)), ag:num(DATA.ftConduitAG) };
   var turf=String(DATA.trenchSurface||'paved').toLowerCase().indexOf('turf')>=0;
   var add=[];
   function L(cat,desc,qty,unit,mat,lab,bucket,row){
@@ -587,12 +602,15 @@ function applyBaselineFromSite(opts){
     ft.trench,'LF', trn.mat*ft.trench, trn.lab*ft.trench, 'mr','trench');
   L('Civil','Restoration and/or remediation', ft.trench,'LF',
     B.perFoot.restoration.mat*ft.trench, B.perFoot.restoration.lab*ft.trench, 'mr','restore');
-  L('Conduit','Conduit & cable \u2014 underground', ft.conduit,'LF',
-    (B.perFoot.conduitUG.mat+B.perFoot.cableUG.mat)*ft.conduit,
-    (B.perFoot.conduitUG.lab+B.perFoot.cableUG.lab)*ft.conduit, 'mr','conduit');
-  L('Wire','Conduit & cable \u2014 above ground / indoor', ft.cable,'LF',
-    (B.perFoot.conduitAG.mat+B.perFoot.cableAG.mat)*ft.cable,
-    (B.perFoot.conduitAG.lab+B.perFoot.cableAG.lab)*ft.cable, 'mr','wire');
+  L('Conduit','Conduit & cable \u2014 underground', ft.ug,'LF',
+    (B.perFoot.conduitUG.mat+B.perFoot.cableUG.mat)*ft.ug,
+    (B.perFoot.conduitUG.lab+B.perFoot.cableUG.lab)*ft.ug, 'mr','conduit');
+  /* Above-ground FOOTAGE, not the reported cable length: cable that runs
+     underground is already priced on the line above, and pricing it twice
+     was the difference between a clean sheet and a padded one. */
+  L('Wire','Conduit & cable \u2014 above ground / indoor', ft.ag,'LF',
+    (B.perFoot.conduitAG.mat+B.perFoot.cableAG.mat)*ft.ag,
+    (B.perFoot.conduitAG.lab+B.perFoot.cableAG.lab)*ft.ag, 'mr','wire');
   L('Site','Protective bollards', ports,'EA',
     B.perUnit.bollard.mat*ports, B.perUnit.bollard.lab*ports, 'ne','bollard');
   if(OPT.concreteBase)
@@ -766,6 +784,9 @@ function applyDetectedClass(){
 var FORM_UI_L2 = {
   id:'ui-ct-l2',
   utility:'United Illuminating',
+  /* their commercial application is a fillable PDF, so this form can hand
+     back the submittal itself and not only the cost sheet */
+  pdf:'ui-ct',
   program:'EV Charging Program — Level 2',
   short:'United Illuminating — L2',
   classes:['l2'],          /* offered only on Level 2 projects */
@@ -1527,9 +1548,12 @@ function contractorToBrand(){
 }
 
 /* ── 6. CLASSIFIER ────────────────────────────────────────────────── */
-function classify(cat, desc, size){
+function classify(cat, desc, size, unit){
   var c=String(cat||'').toLowerCase();
   var t=String(desc||'').toLowerCase()+' '+String(size||'').toLowerCase();
+  /* A civil line that merely NAMES the conduit it is digging for is still
+     excavation, so description matching never applies to it. */
+  var perFoot=isFootUnit(unit) && !/civil/.test(c) && !/trench|sawcut|backfill|restorat|bedding|warning tape/.test(t);
   var future=/spare|future.?proof/.test(t);
   var dc=(chargerClass()==='dcfc');
 
@@ -1538,8 +1562,17 @@ function classify(cat, desc, size){
     if(/pedestal|mount|stanchion/.test(t)) return {b:'evse', r:'pedestal', fp:0};
     return {b:'evse', r:'charger', fp:0};
   }
-  if(/conduit|fitting/.test(c)) return future?{b:'fp',r:'conduit',fp:0}:{b:'mr',r:'conduit',fp:0};
-  if(/wire|cable/.test(c))      return future?{b:'fp',r:'wire',fp:0}   :{b:'mr',r:'wire',fp:0};
+  /* Category first. Then, for per-foot lines only, the description — an
+     estimate that files 2" PVC under 'Electrical' is still conduit, and
+     leaving it in Other is what emptied the Conduit & Conductors row. The
+     per-foot guard keeps 'conduit stubs' inside a lump-sum make-ready line
+     from being read as a conduit run. */
+  if(/conduit|raceway|fitting/.test(c) ||
+     (perFoot && /\b(conduit|emt|rmc|imc|pvc sch|sch ?40|sch ?80|innerduct|liquidtight|sealtite)\b/.test(t)))
+    return future?{b:'fp',r:'conduit',fp:0}:{b:'mr',r:'conduit',fp:0};
+  if(/wire|cable|conductor/.test(c) ||
+     (perFoot && /\b(thhn|thwn|xhhw|conductor|feeder cable)\b/.test(t)))
+    return future?{b:'fp',r:'wire',fp:0}   :{b:'mr',r:'wire',fp:0};
   if(/civil/.test(c))           return {b:'mr', r:'trench', fp:nval('p_fp')};
 
   if(/bollard/.test(t))                            return {b:'ne', r:'bollard',  fp:0};
@@ -1565,7 +1598,7 @@ function classify(cat, desc, size){
 
 /* ── 7. IMPORT PATHS ──────────────────────────────────────────────── */
 function addLine(o){
-  var cls=classify(o.category, o.description, o.size);
+  var cls=classify(o.category, o.description, o.size, o.unit);
   LINES.push({
     id:_nid++, desc:o.description||'(unnamed)', size:o.size||'', cat:o.category||'',
     qty:(o.qty==null?'':o.qty), unit:o.unit||'',
@@ -1623,8 +1656,27 @@ function packEstimate(est, w){
     if(typeof w.evChargerTotals==='function'){ var t=w.evChargerTotals();
       evT={ports:t.ports,l2Units:t.l2Units,dcfcUnits:t.dcfcUnits,l2Kw:t.l2Kw,dcfcKw:t.dcfcKw}; }
   } }catch(e){}
+  /* The direct pull used to send trenchFt and nothing else, so a workbook
+     opened from the editor window threw away every measured length and fell
+     back to inferring footage from purchasing quantities. Take the geometry
+     from whichever object the editor is exposing. */
+  var feet=null, cand=[], ci;
+  try{
+    if(est.feet)    cand.push(est.feet);
+    if(est.takeoff) cand.push(est.takeoff);
+    if(est.bom)     cand.push(est.bom);
+    if(w){
+      if(w.OMEGA_TAKEOFF) cand.push(w.OMEGA_TAKEOFF);
+      if(w.PLOT_FEET)     cand.push(w.PLOT_FEET);
+      if(w.EV_FEET)       cand.push(w.EV_FEET);
+      if(typeof w.plotFeet==='function')   cand.push(w.plotFeet());
+      if(typeof w.plotTakeoff==='function')cand.push(w.plotTakeoff());
+    }
+  }catch(e){}
+  for(ci=0; ci<cand.length && !feet; ci++){ feet=normalizeFeet(cand[ci]); }
+  if(!feet && est.bom && num(est.bom.trenchFt)>0) feet={ trench:num(est.bom.trenchFt) };
   return { lines:items, crewRate:crew, site:site, trenchFt:(est.bom&&est.bom.trenchFt)||0,
-           chargers:fleet, priceBasis:basis, evTotals:evT };
+           feet:feet, chargers:fleet, priceBasis:basis, evTotals:evT };
 }
 /* Charger fleet handed over by the editor: real models, part numbers and
    price-book figures. Held here so the baseline rows and the port count
@@ -1643,7 +1695,11 @@ function loadPayload(pay){
     if(!d('applicant') && pay.site.applicant) DATA.applicant=pay.site.applicant;
     if(!d('address')   && pay.site.address)   DATA.address  =pay.site.address;
   }
-  EDITOR_FEET = pay.feet || null;
+  /* Accept the takeoff under any of the names the editor has shipped it as,
+     and fall back to the bare trenchFt the older payloads carried. */
+  EDITOR_FEET = normalizeFeet(pay.feet) || normalizeFeet(pay.takeoff)
+             || normalizeFeet(pay.measured) || normalizeFeet(pay)
+             || (num(pay.trenchFt)>0 ? { trench:num(pay.trenchFt) } : null);
   if(pay.chargers) applyChargerCosts(pay.chargers);
   if(pay.contractor) applyContractor(pay.contractor);
   if(applyDetectedClass()) setClass(DATA['class']);
@@ -1774,11 +1830,20 @@ function addManual(){
   var el=document.getElementById('d-'+(_nid-1));
   if(el){ el.focus(); el.select(); }
 }
+/* Fourth element: only add this row if the rate card can actually price it.
+   A conduit row added at $0 because nothing was measured is worse than no
+   row at all — it reads as a priced zero. */
 var STANDARD=[
   ['Permitting Costs','mr','permit'], ['Design Costs','mr','design'],
   ['Activation','evse','activation'], ['Shipping','evse','shipping'],
   ['EVSE Networking/Software','ne','network'], ['EVSE Warranty','ne','warranty'],
-  ['Signage','ne','signage'], ['Striping','ne','striping']
+  ['Signage','ne','signage'], ['Striping','ne','striping'],
+  ['Trenching/Restoration','mr','trench',true],
+  ['Conduit & Conductors','mr','conduit',true],
+  ['Wiring','mr','wire',true],
+  ['Spare conduit for future ports','fp','conduit',true],
+  ['Spare conductors','fp','wire',true],
+  ['Spare gear / breaker positions','fp','panel',true]
 ];
 /* Price the standard rows instead of inserting them at zero.
 
@@ -1794,7 +1859,33 @@ function standardRate(row, bucket){
   var ports=Math.max(1, num(DATA.plugs)||1);
   var peds =Math.max(1, Math.ceil(ports/2));       /* dual-port pedestals */
   var ftT  =num(DATA.ftTrench), ftC=num(DATA.ftConduit), ftW=num(DATA.ftCable);
+  var ftUG =num(DATA.ftConduitUG) || ftC, ftAG=num(DATA.ftConduitAG);
   var MA   =String(DATA.city||DATA.state||'').toUpperCase().indexOf('MA')>=0;
+
+  /* ── future proofing ──────────────────────────────────────────────
+     Spare capacity is priced off the SAME route the primary run takes,
+     because that is what gets installed: another conduit in the trench
+     already open, and the gear capacity to land it later. */
+  if(bucket==='fp'){
+    var spares = (DATA.fpSpares==null || DATA.fpSpares==='') ? 1 : num(DATA.fpSpares);
+    var fpRoute= num(DATA.ftConduitFP)>0
+               ? Math.round(num(DATA.ftConduitFP))                  /* drawn on the site map */
+               : Math.round((num(DATA.ftConduitUG)||ftC) * spares); /* the primary route, doubled up */
+    var fpPorts= num(DATA.fpPorts);
+    var FP=B.futureProof;
+    switch(row){
+      case 'conduit': return fpRoute>0 ? { qty:fpRoute, unit:'LF',
+                             mat:FP.conduit.mat*fpRoute, lab:FP.conduit.lab*fpRoute,
+                             note:spares+' spare conduit'+(spares===1?'':'s')+' \u00d7 '+Math.round(fpRoute/Math.max(1,spares))+' LF, same trench' } : null;
+      case 'wire':    return (String(d('fpPullSpare'))==='Yes' && fpRoute>0)
+                           ? { qty:1, unit:'LS', mat:FP.wire.mat, lab:FP.wire.lab,
+                               note:'conductors pulled in the spare conduit' } : null;
+      case 'panel':   return fpPorts>0 ? { qty:1, unit:'LS', mat:FP.panel.mat, lab:FP.panel.lab,
+                             note:'breaker positions and gear capacity for '+fpPorts+' future port'+(fpPorts===1?'':'s') } : null;
+      case 'trench':  return null;   /* allocated by the FP %, not added on top */
+      default:        return null;
+    }
+  }
 
   switch(row){
     /* Design lands on $1,000/port in all four reference jobs. */
@@ -1826,6 +1917,21 @@ function standardRate(row, bucket){
                                 note:'opt-in \u2014 absent on 2 of 5 reference jobs' };
     case 'restore':    return ftT>0 ? { qty:ftT, unit:'LF', mat:B.perFoot.restoration.mat*ftT,
                                         lab:B.perFoot.restoration.lab*ftT, note:ftT+' LF' } : null;
+    /* Conduit and wiring are priced from footage like every other per-foot
+       row. Left out of this list they exported at $0 whenever the estimate
+       filed its conduit under a category the classifier didn't recognise. */
+    case 'conduit':    return ftUG>0 ? { qty:ftUG, unit:'LF',
+                                        mat:(B.perFoot.conduitUG.mat+B.perFoot.cableUG.mat)*ftUG,
+                                        lab:(B.perFoot.conduitUG.lab+B.perFoot.cableUG.lab)*ftUG,
+                                        note:ftUG+' LF underground \u2014 conduit + conductors' } : null;
+    case 'wire':       return ftAG>0 ? { qty:ftAG, unit:'LF',
+                                        mat:(B.perFoot.conduitAG.mat+B.perFoot.cableAG.mat)*ftAG,
+                                        lab:(B.perFoot.conduitAG.lab+B.perFoot.cableAG.lab)*ftAG,
+                                        note:ftAG+' LF above ground / indoor' } : null;
+    case 'trench':     return ftT>0 ? { qty:ftT, unit:'LF',
+                                        mat:(MA?B.perFoot.trenchMA:B.perFoot.trenchCT).mat*ftT,
+                                        lab:(MA?B.perFoot.trenchMA:B.perFoot.trenchCT).lab*ftT,
+                                        note:ftT+' LF' } : null;
     case 'concrete':   return { qty:peds, unit:'EA', mat:800*peds, lab:400*peds, note:'EVSE bases' };
     default: return null;
   }
@@ -1841,6 +1947,75 @@ function subtotalExcluding(skipRow){
   return t;
 }
 
+/* What the FP block currently holds, mirrored trench share included. */
+function fpTotal(){
+  var t=0, i, l, pct;
+  for(i=0;i<LINES.length;i++){
+    l=LINES[i];
+    pct=Math.max(0,Math.min(100,num(l.fp)))/100;
+    if(l.bucket==='fp') t+=num(l.mat)+num(l.lab);
+    else if(pct>0)      t+=(num(l.mat)+num(l.lab))*pct;
+  }
+  return r2(t);
+}
+
+var FP_STANDARD=[['fp','conduit','Spare conduit for future ports'],
+                 ['fp','wire','Spare conductors'],
+                 ['fp','panel','Spare gear / breaker positions']];
+
+/* Recalculates the future-proofing lines against the current route length
+   and future-port count, overwriting the ones this tool priced. Hand-typed
+   and estimate-sourced lines are left alone. */
+function priceFutureProofing(){
+  var i, j, l, rate, found, n=0;
+  for(i=0;i<FP_STANDARD.length;i++){
+    var bucket=FP_STANDARD[i][0], row=FP_STANDARD[i][1], label=FP_STANDARD[i][2];
+    if(!rowExists(bucket,row)) continue;
+    rate=standardRate(row,bucket);
+    found=null;
+    for(j=0;j<LINES.length;j++){
+      l=LINES[j];
+      if(l.bucket===bucket && l.row===row && (l.src==='standard'||l.baseline)) found=l;
+    }
+    if(!rate){
+      /* the measure was switched off — clear the line this tool wrote
+         rather than leaving a stale number in an eligible block */
+      if(found){ found.mat=0; found.lab=0; found.qty=''; found.note=''; }
+      continue;
+    }
+    if(found){
+      found.mat=r2(rate.mat); found.lab=r2(rate.lab);
+      found.qty=rate.qty; found.unit=rate.unit; found.note=rate.note; found.desc=label;
+    } else {
+      LINES.push({ id:_nid++, desc:label, size:'', cat:'', qty:rate.qty, unit:rate.unit,
+                   mat:r2(rate.mat), lab:r2(rate.lab), note:rate.note,
+                   bucket:bucket, row:row, fp:0, src:'standard' });
+    }
+    n++;
+  }
+  render();
+  var st=document.getElementById('fpMsg');
+  if(st) st.innerHTML = n
+    ? 'Future proofing priced \u2014 '+money(fpTotal())+' in the eligible future-proofing block.'
+    : 'Nothing to price yet: add a conduit route or a future port count first.';
+  return n;
+}
+window.priceFutureProofing=priceFutureProofing;
+
+/* Future proofing is rebated at 100% and, on a DCFC application, scores 10
+   of the 100 selection points — so leaving the block empty costs real
+   money twice over. */
+function fpAudit(){
+  var out=[], t=fpTotal(), ports=num(DATA.fpPorts), route=num(DATA.ftConduitUG)||num(DATA.ftConduit);
+  if(!t && route>0)
+    out.push('Nothing is priced as future proofing. A spare conduit in the trench you are already digging is rebated at 100% \u2014 press <b>Price future proofing</b>.');
+  if(t>0 && !ports)
+    out.push('Future proofing is priced but no future port count is set, and UI\u2019s application asks for it in Section 4.');
+  if(ports>0 && !t)
+    out.push(ports+' future port'+(ports===1?'':'s')+' declared with no future-proofing cost against them.');
+  return out;
+}
+
 function addStandardRows(opts){
   opts=opts||{};
   var i, j, have, existing, rate, filled=0, added=0;
@@ -1852,6 +2027,7 @@ function addStandardRows(opts){
       if(LINES[j].bucket===bucket && LINES[j].row===row){ have=true; existing=LINES[j]; }
     }
     rate=standardRate(row, bucket);
+    if(!rate && STANDARD[i][3]) continue;         /* nothing measured to price */
     if(!have){
       LINES.push({ id:_nid++, desc:STANDARD[i][0], size:'', cat:'',
                    qty:rate?rate.qty:'', unit:rate?rate.unit:'',
@@ -1883,7 +2059,7 @@ function reclassifyAll(){
   var i, c;
   for(i=0;i<LINES.length;i++){
     if(LINES[i].src!=='estimate') continue;
-    c=classify(LINES[i].cat, LINES[i].desc, LINES[i].size);
+    c=classify(LINES[i].cat, LINES[i].desc, LINES[i].size, LINES[i].unit);
     LINES[i].bucket=c.b; LINES[i].row=c.r; LINES[i].fp=c.fp;
   }
   render();
@@ -1935,21 +2111,62 @@ var EDITOR_FEET = null;
    So when the editor hands over measured geometry we use it. Inferring
    from line descriptions is the fallback for the pasted-CSV path only,
    and it is approximate — the banner under the footage fields says so. */
-function autofillFeet(){
-  if(EDITOR_FEET){
-    var E=EDITOR_FEET;
-    DATA.ftTrench      = Math.round(num(E.trench));
-    DATA.ftTrenchPaved = Math.round(num(E.trenchPaved));
-    DATA.ftTrenchTurf  = Math.round(num(E.trenchTurf!=null?E.trenchTurf:E.trench));
-    DATA.ftConduit     = Math.round(num(E.conduit));
-    DATA.ftConduitUG   = Math.round(num(E.conduitUG!=null?E.conduitUG:E.conduit));
-    DATA.ftConduitAG   = Math.round(num(E.conduitAG));
-    DATA.ftCable       = Math.round(num(E.cable));
-    syncField('ftTrench'); syncField('ftConduit'); syncField('ftCable');
-    render();
-    return;
-  }
+/* Where each footage came from, so the sheet can say so and a zero can be
+   told apart from a measurement of zero. */
+var FEET_SRC = {};
 
+/* The editor has changed the shape of its takeoff more than once, and a
+   payload that spells conduit `conduitLf` used to arrive as a silent zero:
+   the UI sheet then reported 0 LF of conduit and $0 of Conduit & Conductors
+   next to 57 LF of trench, which is how 282 Ferry Street went out. Read the
+   names the editor has actually used rather than one of them. */
+var FEET_ALIASES = {
+  trench:      ['trench','trenchFt','trenchLf','trenchLF','trenchFeet','ftTrench','trenching','trenchTotal','totalTrench'],
+  trenchPaved: ['trenchPaved','pavedTrench','trenchPavedFt','ftTrenchPaved','trenchHard','trenchAsphalt','trenchConcrete'],
+  trenchTurf:  ['trenchTurf','turfTrench','trenchTurfFt','ftTrenchTurf','trenchSoft','trenchGrass','trenchLandscape'],
+  conduit:     ['conduit','conduitFt','conduitLf','conduitLF','conduitFeet','ftConduit','conduitTotal','totalConduit','raceway','racewayFt','racewayLf'],
+  conduitUG:   ['conduitUG','conduitUg','conduitUnderground','undergroundConduit','ugConduit','ftConduitUG','conduitBuried','buriedConduit'],
+  conduitAG:   ['conduitAG','conduitAg','conduitAboveGround','abovegroundConduit','agConduit','ftConduitAG','conduitExposed','conduitIndoor'],
+  cable:       ['cable','cableFt','cableLf','cableLF','cableFeet','ftCable','cableTotal','totalCable','conductor','conductorFt','conductorLf'],
+  /* a spare run drawn in the editor is a measurement like any other, and
+     beats multiplying the primary route by an assumed spare count */
+  conduitFP:   ['conduitFP','fpConduit','spareConduit','conduitSpare','futureConduit','conduitFuture','ftConduitFP']
+};
+
+/* Accepts the editor's feet object in any of its shapes — flat, nested
+   under .feet, or a bare bom — and returns canonical keys. A key that is
+   absent stays absent; only a real number lands in the result, so a missing
+   measurement never masquerades as a measured zero. */
+function normalizeFeet(raw){
+  if(!raw || typeof raw!=='object') return null;
+  var src=raw;
+  if(src.feet    && typeof src.feet==='object')    src=src.feet;
+  else if(src.takeoff && typeof src.takeoff==='object') src=src.takeoff;
+  else if(src.bom  && typeof src.bom==='object' && src.bom.trenchFt!=null) src=src.bom;
+  var out={}, k, list, i, v, any=false;
+  for(k in FEET_ALIASES){
+    if(!FEET_ALIASES.hasOwnProperty(k)) continue;
+    list=FEET_ALIASES[k];
+    for(i=0;i<list.length;i++){
+      v=src[list[i]];
+      if(v==null || v==='') continue;
+      v=num(v);
+      if(v>0){ out[k]=v; any=true; break; }
+    }
+  }
+  if(src.trenchDrawn!=null) out.trenchDrawn=!!src.trenchDrawn;
+  else if(raw.trenchDrawn!=null) out.trenchDrawn=!!raw.trenchDrawn;
+  return any ? out : null;
+}
+
+/* Footage read back out of the cost lines. Approximate — these are
+   PURCHASING quantities carrying the BOM's 10% contingency — but a good
+   cross-check on the measured numbers and the only source on the pasted-CSV
+   path. Units are matched loosely because estimates spell linear feet four
+   different ways. */
+function isFootUnit(u){ return /^(lf|lft|lnft|ln ft|ft|feet|foot|linear ?f(ee)?t)$/.test(String(u||'').toLowerCase().replace(/\./g,'')); }
+
+function feetFromLines(){
   var trench=0, paved=0, cond=0, cable=0, egc=0, i, l, t;
   var haveDrawnTrench=false;
   for(i=0;i<LINES.length;i++){
@@ -1958,7 +2175,7 @@ function autofillFeet(){
   }
   for(i=0;i<LINES.length;i++){
     l=LINES[i]; t=(l.desc||'').toLowerCase();
-    if(String(l.unit||'').toLowerCase()!=='lf') continue;
+    if(!isFootUnit(l.unit)) continue;
     if(/civil/i.test(l.cat)){
       if(!/trench|sawcut/.test(t)) continue;
       if(/tape|bedding|patch|restoration/.test(t)) continue;
@@ -1969,26 +2186,114 @@ function autofillFeet(){
       /* a sawcut is by definition through paving */
       if(/sawcut|concrete/.test(t)) paved+=num(l.qty);
     }
-    else if(/conduit/i.test(l.cat)) cond+=num(l.qty);
-    else if(/wire|cable/i.test(l.cat)){
+    /* Category first, then the description — an estimate that files conduit
+       under 'Electrical' still measures conduit, and dropping those runs is
+       what produced a $0 Conduit & Conductors row. */
+    else if(/trench|sawcut|backfill|restorat|bedding|warning tape/.test(t)) continue;
+    else if(/conduit|raceway|fitting/i.test(l.cat) ||
+            /\b(conduit|emt|rmc|imc|pvc sch|sch ?40|sch ?80|innerduct|liquidtight|sealtite)\b/.test(t)) cond+=num(l.qty);
+    else if(/wire|cable|conductor/i.test(l.cat) ||
+            /\b(thhn|thwn|xhhw|conductor|feeder cable)\b/.test(t)){
       /* The ground conductor runs the route once, so it is the closest
          thing to route length in the line items. Phase conductors are
          multiples of it and would overstate the run several times over. */
-      if(/ground|egc/.test(t)) egc+=num(l.qty);
+      if(/ground|egc|bare cu/.test(t)) egc+=num(l.qty);
       cable+=num(l.qty);
     }
   }
-  DATA.ftTrench=Math.round(trench);
-  DATA.ftTrenchPaved=Math.round(paved);
-  DATA.ftTrenchTurf=Math.round(trench-paved);
-  DATA.ftConduit=Math.round(cond);
-  /* No per-run data in a pasted CSV, so treat the conduit as underground —
-     the common case on a make-ready job, and the row a reviewer expects. */
-  DATA.ftConduitUG=Math.round(cond);
-  DATA.ftConduitAG=0;
-  DATA.ftCable=Math.round(egc>0?egc:cable);
+  return { trench:trench, trenchPaved:paved, trenchTurf:Math.max(0,trench-paved),
+           conduit:cond, conduitUG:cond, conduitAG:0, cable:(egc>0?egc:cable) };
+}
+
+/* Measured geometry wins wherever it exists; the estimate lines fill the
+   gaps; anything still missing is derived from what is known and labelled
+   as derived. The one thing this will not do is hand the utility a zero. */
+function autofillFeet(){
+  var M = normalizeFeet(EDITOR_FEET);
+  var L = feetFromLines();
+  var F = {}, S = {};
+  function pick(k){
+    if(M && num(M[k])>0){ F[k]=num(M[k]); S[k]='measured'; return; }
+    if(num(L[k])>0){ F[k]=num(L[k]); S[k]='lines'; return; }
+    F[k]=0; S[k]='none';
+  }
+  pick('trench'); pick('trenchPaved'); pick('trenchTurf');
+  pick('conduit'); pick('conduitUG'); pick('conduitAG'); pick('cable'); pick('conduitFP');
+
+  /* ── reconcile the three conduit numbers against each other ──────── */
+  /* A measured total outranks an inferred split of it: mixing the two gave
+     374 LF underground inside a 340 LF measured run, which is impossible. */
+  if(S.conduit==='measured' && S.conduitUG!=='measured'){
+    var _ag = (S.conduitAG==='measured') ? F.conduitAG : 0;
+    F.conduitUG = Math.max(0, F.conduit - _ag);
+    F.conduitAG = _ag;
+    S.conduitUG = 'balance of the measured run';
+    if(_ag) S.conduitAG='measured';
+  }
+  if(!F.conduit && (F.conduitUG||F.conduitAG)){
+    F.conduit=F.conduitUG+F.conduitAG; S.conduit='split';
+  }
+  if(F.conduit && !F.conduitUG && !F.conduitAG){
+    F.conduitUG=F.conduit; S.conduitUG='assumed underground';
+  }
+  if(F.conduit < F.conduitUG+F.conduitAG){
+    F.conduit=F.conduitUG+F.conduitAG; S.conduit='split';
+  }
+  /* ── trench splits ───────────────────────────────────────────────── */
+  if(!F.trench && (F.trenchPaved||F.trenchTurf)){ F.trench=F.trenchPaved+F.trenchTurf; S.trench='split'; }
+  if(F.trench && !F.trenchPaved && !F.trenchTurf){ F.trenchTurf=F.trench; S.trenchTurf='assumed turf'; }
+  else if(F.trench && F.trenchPaved && !F.trenchTurf){ F.trenchTurf=Math.max(0,F.trench-F.trenchPaved); S.trenchTurf='balance'; }
+
+  /* ── last resort: conduit from the excavation it sits in ─────────── */
+  var ports=Math.max(1, num(DATA.plugs)||1), peds=Math.max(1, Math.ceil(ports/2));
+  if(!F.conduit && F.trench>0){
+    /* the run is the trench plus a stub-up at the source and at each
+       pedestal — never shorter than the trench it lies in */
+    F.conduit=Math.round(F.trench + 10 + 10*peds);
+    F.conduitUG=F.conduit;
+    S.conduit='derived from trench'; S.conduitUG='derived from trench';
+  }
+  /* Cable is a REPORTED length on the utility sheet, not a pricing input —
+     the wiring cost comes off the above-ground footage — so filling it in
+     from the conduit route cannot inflate a cost line. */
+  if(!F.cable && F.conduit>0){ F.cable=F.conduit; S.cable='conduit route'; }
+
+  DATA.ftTrench      = Math.round(F.trench);
+  DATA.ftTrenchPaved = Math.round(F.trenchPaved);
+  DATA.ftTrenchTurf  = Math.round(F.trenchTurf);
+  DATA.ftConduit     = Math.round(F.conduit);
+  DATA.ftConduitUG   = Math.round(F.conduitUG);
+  DATA.ftConduitAG   = Math.round(F.conduitAG);
+  DATA.ftCable       = Math.round(F.cable);
+  DATA.ftConduitFP   = Math.round(F.conduitFP);
+  FEET_SRC = S;
+  FEET_SRC._lines = L;
   syncField('ftTrench'); syncField('ftConduit'); syncField('ftCable');
   render();
+}
+
+/* Everything that would embarrass us in review, in one place. Shown under
+   the footage fields and again before the workbook is written. */
+function feetAudit(){
+  var out=[], i, l;
+  var trench=num(DATA.ftTrench), cond=num(DATA.ftConduit), ports=num(DATA.plugs);
+  var condCost=0, trenchCost=0;
+  for(i=0;i<LINES.length;i++){
+    l=LINES[i];
+    if(l.row==='conduit') condCost+=num(l.mat)+num(l.lab);
+    if(l.row==='trench')  trenchCost+=num(l.mat)+num(l.lab);
+  }
+  if(!cond && ports)
+    out.push('No conduit footage. The sheet would report 0 LF of conduit and $0 of Conduit &amp; Conductors \\u2014 draw the run in the site map, or type the length in.');
+  if(cond && trench>cond)
+    out.push('Trench is '+trench+' LF but the conduit in it is only '+cond+' LF. One of the two is wrong \\u2014 conduit is never shorter than its trench.');
+  if(cond>0 && !condCost)
+    out.push(cond+' LF of conduit is measured but no conduit cost is mapped. Press <b>Add permitting, design, activation\\u2026</b> to price it from the rate card, or map a cost line to Conduit &amp; Conductors.');
+  if(trench>0 && !trenchCost)
+    out.push(trench+' LF of trench is measured but no trenching cost is mapped.');
+  if(!trench && cond>0 && FEET_SRC.conduit==='measured')
+    out.push(cond+' LF of conduit with no trench. Fine for an indoor or surface run \\u2014 check it is not a missed excavation.');
+  return out;
 }
 function autofillPlugs(){
   /* The editor counts ports from the placed fleet -- dual-port units are
@@ -2293,12 +2598,24 @@ function renderSiteForm(){
   /* Say where the numbers came from. Measured geometry is as-built; the CSV
      fallback is inferred from purchasing quantities and still carries the
      BOM's 10% contingency, which a reviewer would read as extra footage. */
-  h+= EDITOR_FEET
-    ? '<div class="ok" style="margin-top:8px">Footages measured from the site map \u2014 as-built, each length counted once'
-      + (EDITOR_FEET.trenchDrawn===false ? '. No trench was drawn, so the underground conduit route stands in for the excavation \u2014 check it.' : '.')
-      + '</div>'
-    : '<div class="warn" style="margin-top:8px">Footages inferred from the estimate lines, not measured. Those quantities '
-      + 'include the BOM\u2019s 10% contingency, so conduit and cable read high. Verify against the drawing before submitting.</div>';
+  h+= feetProvenanceHTML();
+  var _fa=feetAudit(), _fi;
+  for(_fi=0;_fi<_fa.length;_fi++) h+='<div class="warn" style="margin-top:6px">'+_fa[_fi]+'</div>';
+
+  /* Future proofing sits with the footages because that is what drives it:
+     the spare conduit follows the route already measured above. */
+  h+='<div class="sect mt">Future proofing</div>'
+   + '<div style="font-size:11px;color:#57606a;margin-bottom:6px">Rebated at 100% by both CT programs, and scored on DCFC applications. '
+   + 'The spare run shares the trench, so it is priced at the in-trench rate.</div>'
+   + (function(){ if(DATA.fpSpares==null||DATA.fpSpares==='') DATA.fpSpares=1; return ''; })()
+   + fieldHTML({k:'fpPorts',      label:'Ports the site should be able to add later', type:'number'})
+   + fieldHTML({k:'fpSpares',     label:'Spare conduits in the same trench',          type:'number'})
+   + fieldHTML({k:'fpPullSpare',  label:'Pull conductors in the spare conduit',       type:'select', options:['No','Yes']})
+   + '<button class="btn sm" onclick="priceFutureProofing()">Price future proofing</button>'
+   + '<div id="fpMsg" class="note" style="margin-top:6px">Currently '+money(fpTotal())
+   + ' in the future-proofing block, including its share of the trench.</div>';
+  var _fp=fpAudit(), _pi;
+  for(_pi=0;_pi<_fp.length;_pi++) h+='<div class="warn" style="margin-top:6px">'+_fp[_pi]+'</div>';
   document.getElementById('siteForm').innerHTML=h;
 }
 function fieldHTML(f, tight){
@@ -2317,6 +2634,36 @@ function fieldHTML(f, tight){
        + '<input type="'+type+'" id="f-'+k+'" value="'+esc(v)+'" oninput="setD(\''+k+'\',this.value)"></label>';
 }
 function shortLabel(l){ return String(l).replace(/^#\s*of\s*/i,'# ').replace(/^Total Feet of\s*/i,'Feet — '); }
+
+/* Say where each footage came from. One banner reading "measured from the
+   site map" was true of the trench and false of the conduit on the same
+   export, which is how a zero got through looking authoritative. */
+var FEET_SRC_LABEL = {
+  'measured':'measured on the site map',
+  'lines':'read from the estimate lines (carries the BOM\u2019s 10% contingency)',
+  'split':'summed from the underground and above-ground runs',
+  'assumed underground':'measured, treated as underground',
+  'assumed turf':'measured, treated as non-continuously paved',
+  'balance':'the balance of the trench',
+  'balance of the measured run':'the balance of the measured conduit run',
+  'derived from trench':'DERIVED from the trench length \u2014 nothing was measured',
+  'conduit route':'taken as the conduit route length',
+  'none':'not measured and not in the estimate'
+};
+function feetProvenanceHTML(){
+  var rows=[['Trenching','ftTrench','trench'],['Conduit','ftConduit','conduit'],['Cable','ftCable','cable']];
+  var h='', i, s, bad=false;
+  for(i=0;i<rows.length;i++){
+    s=FEET_SRC[rows[i][2]]||'none';
+    if(s==='none' || s==='derived from trench' || s==='conduit route') bad=true;
+    h+='<div><b>'+rows[i][0]+'</b> '+num(DATA[rows[i][1]])+' LF \u2014 '+(FEET_SRC_LABEL[s]||s)+'</div>';
+  }
+  if(num(DATA.ftConduitAG)>0)
+    h+='<div>Of that conduit, '+num(DATA.ftConduitUG)+' LF underground and '+num(DATA.ftConduitAG)+' LF above ground / indoor.</div>';
+  if(EDITOR_FEET && EDITOR_FEET.trenchDrawn===false)
+    h+='<div>No trench was drawn in the editor, so the underground conduit route stands in for the excavation \u2014 check it.</div>';
+  return '<div class="'+(bad?'warn':'ok')+'" style="margin-top:8px;line-height:1.6">'+h+'</div>';
+}
 
 /* ── 12. RENDER — mapping + previews ──────────────────────────────── */
 function render(){ renderMap(); renderOutputs(); }
@@ -2494,7 +2841,12 @@ function previewForm(m, form){
     }
   }
   h+=r(td(form.totalLabel,'pv-gold')+td('','pv-gold')+td(acct(m.mat),'pv-gold num')+td(acct(m.lab),'pv-gold num')+td(acct(m.total),'pv-gold num'));
-  return h+'</table>';
+  h+='</table>';
+  /* The cost sheet is one of the two things UI wants. The other is their
+     application, and it is fillable, so it is built here from the same
+     numbers rather than typed out again. */
+  if(form && form.pdf==='ui-ct') h+=uiPdfCard();
+  return h;
 }
 
 
@@ -3375,6 +3727,469 @@ function _fileSlug(){
   return String(d('applicant')||d('address')||'Site').replace(/[^A-Za-z0-9]+/g,'_').slice(0,34);
 }
 
+/* ══════════════════════════════════════════════════════════════════════
+   UNITED ILLUMINATING — COMMERCIAL APPLICATION PDF (UEVC006 01/23 EO)
+
+   Their application is a real AcroForm: 238 named fields across 11 pages.
+   So the workbook fills THEIR file rather than redrawing it — the version
+   that lands on the reviewer's desk is byte-for-byte the form they issued,
+   with our numbers in the boxes.
+
+   Field names in that PDF are meaningless ('Field-1', 'Check Box 1015'),
+   so the map below is by position on the page, read off the widget
+   rectangles. Site A only: this workbook is one site per export, which is
+   also how UI's own cost sheet is organised. Sites B–D stay blank.
+
+   One quirk worth knowing: 'Text Field 602' is used TWICE in their form —
+   the payee phone box on page 5 and the date box beside the customer
+   signature. One value would print in both, so this writer leaves it
+   alone and the two get filled by hand.
+   ══════════════════════════════════════════════════════════════════════ */
+var UI_PDF = {
+  applicant:'Field-1', account:'Field-2', acctExec:'Field-3',
+  custAddr:'Field-4', custCity:'Field-5', custState:'Field-6', custZip:'Field-7',
+  contact:'Field-8', phone:'Field-9', email:'Field-10',
+  ownerYes:'Field-11', ownerNo:'Field-12',
+  ownerName:'Field-13', ownerAddr:'Field-14', ownerCity:'Field-15', ownerState:'Field-16', ownerZip:'Field-17',
+
+  siteAddr:'p2-1', siteCity:'p2-2', siteState:'p2-3', siteZip:'p2-4',
+  underservedYes:'p2-5', underservedNo:'p2-6', neviYes:'p20', neviNo:'p21',
+  facilityOther:'p2-11',
+  facility:{ 'College/University':'p2-8', 'Lodging':'p2-9',
+             'Education/K-12':'12', 'Medical Clinic':'13',
+             'Fast Food Restaurant':'14', 'Office':'15',
+             'Food Sales/Grocery':'16', 'Parking Garage':'17',
+             'Hospital':'18', 'Retail':'19',
+             'Industrial':'20', 'Warehouse':'21', 'Other':'p2-10' },
+
+  siteName:'Text Field 508',
+  locType:{ 'Workplace':'Check Box 53', 'Multi-Unit Dwelling':'Check Box 54',
+            'Fleet':'Check Box 55', 'Destination Parking (Public)':'Check Box 56' },
+  parkType:{ 'Grade Level':'Check Box 57', 'Above Grade Parking Structure':'Check Box 58',
+             'Subterranean Parking Structure':'Check Box 59', 'Other':'Check Box 60' },
+  spaces:'Text Field 509', publicPlugs:'Text Field 5014', privatePlugs:'Text Field 5015',
+  svcNew:'Check Box 62', svcWO:'Text Field 510',
+  svcExisting:'Check Box 64', svcAcct:'Text Field 511',
+
+  contractor:'Text Field 521', cContact:'Text Field 522', cPhone:'Text Field 523', cEmail:'Text Field 524',
+  cAddr:'Text Field 525', cCity:'Text Field 526', cState:'Text Field 527', cZip:'Text Field 528',
+  network:'Text Field 529',
+  typeL2:'Check Box 110', typeDC:'Check Box 111',
+  l2:{ mfr:'Text Field 532', model:'Text Field 533', units:'Text Field 534',
+       portsPer:'Text Field 535', ports:'Text Field 536', kw:'Text Field 537' },
+  dc:{ mfr:'Text Field 610', model:'Text Field 611', units:'Text Field 612',
+       portsPer:'Text Field 613', ports:'Text Field 614', kw:'Text Field 615' },
+  fpYes:'Check Box 113', fpNo:'Check Box 114', fpPorts:'Text Field 539',
+
+  fin:{ total:'Text Field 561', evse:'Text Field 562',
+        mrUtil:'Text Field 563', mrCust:'Text Field 564', mrTotal:'Text Field 565',
+        fpUtil:'Text Field 566', fpCust:'Text Field 567', fpTotal:'Text Field 568',
+        incentive:'Text Field 569' },
+
+  status:{ 'Planning':'Check Box 128', 'Design':'Check Box 129',
+           'Procurement':'Check Box 130', 'Ready to Install':'Check Box 131' },
+  activation:'Text Field 608', newConYes:'Check Box 132', newConNo:'Check Box 133',
+
+  payee:'Text Field 99', payeeRel:'Text Field 604', payeeAddr:'Text Field 597',
+  payeeCity:'Text Field 598', payeeState:'Text Field 599', payeeZip:'Text Field 600',
+  payeeEmail:'Text Field 603', completedBy:'Text Field 605', completedPhone:'Text Field 606',
+  taxId:'Text Field 607', custPrinted:'Text Field 601', installDate:'Text Field 609'
+};
+
+var UI_PDF_BYTES=null, UI_PDF_SRC='', UI_PDF_BUSY=false;
+
+/* Where a hosted copy of the blank form lives. Drop the PDF in the repo at
+   one of these paths and the button needs no file picker. */
+function uiPdfUrls(){
+  var u=[], C=window.CLEARSKY_CONFIG||{};
+  if(C.uiEvApplicationPdf) u.push(C.uiEvApplicationPdf);
+  u.push('/forms/UI_Commercial_EV_Charging_Incentive_Application.pdf');
+  u.push('./UI_Commercial_EV_Charging_Incentive_Application.pdf');
+  return u;
+}
+
+function uiPdfState(html, kind){
+  var e=document.getElementById('uiPdfState');
+  if(e){ e.className = kind==='warn'?'warn':(kind==='ok'?'ok':'note'); e.innerHTML=html; }
+}
+
+/* A PDF without their field names is the wrong PDF — a scan, a print-out,
+   or a flattened copy. Say which, instead of writing nothing into it. */
+function uiPdfCheck(bytes){
+  return PDFLib.PDFDocument.load(bytes).then(function(doc){
+    var f=doc.getForm(), ok=false;
+    try{ f.getTextField(UI_PDF.applicant); ok=true; }catch(e){}
+    if(!ok) throw new Error('That PDF has no fillable fields. Use United Illuminating\u2019s own commercial application (UEVC006 01/23 EO) \u2014 a printed or scanned copy cannot be filled.');
+    return doc;
+  });
+}
+
+function uiPdfLoadFile(file){
+  if(!file) return;
+  UI_PDF_BUSY=true; uiPdfState('Reading '+esc(file.name)+'\u2026','');
+  var fr=new FileReader();
+  fr.onload=function(){
+    var bytes=new Uint8Array(fr.result);
+    uiPdfCheck(bytes).then(function(){
+      UI_PDF_BYTES=bytes; UI_PDF_SRC=file.name; UI_PDF_BUSY=false;
+      uiPdfState('Loaded <b>'+esc(file.name)+'</b> \u2014 ready to fill.','ok');
+    }).catch(function(e){
+      UI_PDF_BUSY=false; uiPdfState(esc(e.message),'warn');
+    });
+  };
+  fr.onerror=function(){ UI_PDF_BUSY=false; uiPdfState('That file could not be read.','warn'); };
+  fr.readAsArrayBuffer(file);
+}
+
+/* Try the hosted copy first so the common case is one click. */
+function uiPdfEnsure(){
+  if(UI_PDF_BYTES) return Promise.resolve(UI_PDF_BYTES);
+  var urls=uiPdfUrls(), ix=0;
+  function next(){
+    if(ix>=urls.length) return Promise.reject(new Error('no hosted copy'));
+    var u=urls[ix++];
+    return fetch(u).then(function(r){
+      if(!r.ok) throw new Error('http '+r.status);
+      return r.arrayBuffer();
+    }).then(function(buf){
+      var bytes=new Uint8Array(buf);
+      return uiPdfCheck(bytes).then(function(){ UI_PDF_BYTES=bytes; UI_PDF_SRC=u; return bytes; });
+    }).catch(function(){ return next(); });
+  }
+  return next();
+}
+
+/* ── the numbers ──────────────────────────────────────────────────── */
+function uiBlockTotal(m, id){
+  var i;
+  for(i=0;i<m.blocks.length;i++){ if(m.blocks[i].id===id) return r2(m.blocks[i].mat+m.blocks[i].lab); }
+  return 0;
+}
+/* Their cap: up to 50% of the EVSE cost plus up to 100% of make-ready,
+   against a per-site ceiling that doubles in an underserved community.
+   Future proofing is a separate eligible column on their sheet and is
+   carried at 100% alongside make-ready. */
+function uiIncentive(m){
+  var evse=uiBlockTotal(m,'evse'), mr=uiBlockTotal(m,'mr'), fp=uiBlockTotal(m,'fp');
+  var under=(d('ui_underserved')==='Yes');
+  var dc=(chargerClass()==='dcfc');
+  var cap = dc ? (under?250000:150000) : (under?40000:20000);
+  var eligible=r2(evse*0.5 + mr + fp);
+  var ports=num(DATA.plugs);
+  var minPorts = dc ? 2 : (String(d('ui_locType')).indexOf('Workplace')===0 ? 4 : 2);
+  return { evse:evse, mr:mr, fp:fp, eligible:eligible, cap:cap,
+           incentive:r2(Math.min(eligible,cap)), capped:eligible>cap,
+           ports:ports, minPorts:minPorts, shortPorts:(ports>0 && ports<minPorts) };
+}
+
+function uiSplitCSZ(s){
+  var t=String(s||'').replace(/^\s+|\s+$/g,''), m;
+  m=t.match(/^(.*?)[,\s]+([A-Za-z]{2})\.?\s*(\d{5}(?:-\d{4})?)?$/);
+  if(m) return { city:String(m[1]).replace(/[,\s]+$/,''), state:m[2].toUpperCase(), zip:m[3]||'' };
+  return { city:t, state:'', zip:'' };
+}
+/* Values come from the workbook wherever the workbook knows them; the
+   UI-only questions fall back to a sensible default rather than a blank. */
+function uiV(k, fallback){
+  var v=d(k);
+  return (v===''||v==null) ? (fallback==null?'':String(fallback)) : v;
+}
+function uiPdfValues(){
+  var form=formById('ui-ct-l2'), m=buildModel(form), inc=uiIncentive(m);
+  var csz=uiSplitCSZ(d('city')||d('address'));
+  var ports=num(DATA.plugs)||0;
+  var portsPer=num(uiV('ui_portsPer', 2))||2;
+  var units=Math.max(1, Math.ceil(ports/portsPer));
+  var mfr='', model='', i;
+  if(EDITOR_FLEET && EDITOR_FLEET.length){ mfr=EDITOR_FLEET[0].mfr||''; model=EDITOR_FLEET[0].model||''; }
+  if(!model){
+    for(i=0;i<LINES.length;i++){
+      if(LINES[i].bucket==='evse' && LINES[i].row==='charger' && num(LINES[i].mat)>0){
+        model=String(LINES[i].desc||'').replace(/^EVSE hardware\s*[\u2014-]\s*/i,''); break;
+      }
+    }
+  }
+  var mrUtil=num(d('ui_utilMR')), fpUtil=num(d('ui_utilFP'));
+  return {
+    m:m, inc:inc,
+    applicant:d('applicant'), account:d('ui_account'), acctExec:d('ui_acctExec'),
+    custAddr:uiV('ui_custAddr', d('address')), custCity:uiV('ui_custCity', csz.city),
+    custState:uiV('ui_custState', csz.state||'CT'), custZip:uiV('ui_custZip', csz.zip),
+    contact:uiV('ui_contact', d('contact')), phone:uiV('ui_phone', d('phone')), email:uiV('ui_email', d('email')),
+    owner:uiV('ui_owner','Yes'), ownerName:d('ui_ownerName'), ownerAddr:d('ui_ownerAddr'),
+    ownerCity:d('ui_ownerCity'), ownerState:d('ui_ownerState'), ownerZip:d('ui_ownerZip'),
+    siteAddr:uiV('ui_siteAddr', d('address')), siteCity:uiV('ui_siteCity', csz.city),
+    siteState:uiV('ui_siteState', csz.state||'CT'), siteZip:uiV('ui_siteZip', csz.zip),
+    underserved:uiV('ui_underserved','No'), nevi:uiV('ui_nevi','No'),
+    facility:uiV('ui_facility','Office'), facilityOther:d('ui_facilityOther'),
+    siteName:uiV('ui_siteName', d('site')||'Site 1'),
+    locType:uiV('ui_locType', (d('category')==='MUDs'?'Multi-Unit Dwelling'
+             : d('category')==='Fleet'?'Fleet'
+             : d('category')==='Public Parking'?'Destination Parking (Public)':'Workplace')),
+    parkType:uiV('ui_parkType','Grade Level'),
+    spaces:uiV('ui_spaces', ports), publicPlugs:uiV('ui_publicPlugs', 0), privatePlugs:uiV('ui_privatePlugs', ports),
+    service:uiV('ui_service','Existing Service'), wo:d('ui_wo'), svcAcct:d('ui_svcAcct'),
+    company:d('company'), cContact:d('contact'), cPhone:d('phone'), cEmail:d('email'),
+    cAddr:d('cAddress'), network:d('ui_network'),
+    mfr:uiV('ui_mfr', mfr), model:uiV('ui_model', model),
+    units:uiV('ui_units', units), portsPer:portsPer, ports:ports, kw:num(DATA.kwsim)||r2(num(DATA.kw1)*ports),
+    fp:uiV('ui_fp', (uiBlockTotal(m,'fp')>0 || num(DATA.fpPorts)>0)?'Yes':'No'),
+    fpPorts:uiV('ui_fpPorts', DATA.fpPorts),
+    status:uiV('ui_status','Design'), activation:uiV('ui_activation', d('end')),
+    newCon:uiV('ui_newCon','No'),
+    mrUtil:mrUtil, mrCust:inc.mr, fpUtil:fpUtil, fpCust:inc.fp,
+    payee:uiV('ui_payee', d('company')), payeeRel:uiV('ui_payeeRel','Installing contractor'),
+    payeeAddr:uiV('ui_payeeAddr', d('cAddress')), payeeCity:d('ui_payeeCity'),
+    payeeState:d('ui_payeeState'), payeeZip:d('ui_payeeZip'),
+    payeeEmail:uiV('ui_payeeEmail', d('email')),
+    completedBy:uiV('ui_completedBy', d('contact')), completedPhone:uiV('ui_completedPhone', d('phone')),
+    installDate:uiV('ui_installDate', d('end'))
+  };
+}
+
+function uiMoney(n){
+  n=num(n);
+  return '$'+n.toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2});
+}
+function uiDate(v){
+  if(!v) return '';
+  var p=String(v).split('-');
+  if(p.length===3) return p[1]+'/'+p[2]+'/'+p[0];
+  return String(v);
+}
+
+function uiPdfFill(){
+  if(window._PDFFAIL || typeof PDFLib==='undefined'){
+    uiPdfState('The PDF writer did not load. Check the connection and reload the page.','warn'); return;
+  }
+  if(UI_PDF_BUSY) return;
+  UI_PDF_BUSY=true;
+  uiPdfState('Building the application\u2026','');
+  uiPdfEnsure().then(function(bytes){
+    return PDFLib.PDFDocument.load(bytes);
+  }).then(function(doc){
+    var f=doc.getForm(), V=uiPdfValues(), missed=[];
+    function T(name, value, size){
+      if(value===''||value==null) return;
+      try{
+        var fld=f.getTextField(name);
+        fld.setText(String(value));
+        if(size){ try{ fld.setFontSize(size); }catch(e){} }
+      }catch(e){ missed.push(name); }
+    }
+    function C(name, on){
+      if(!on || !name) return;
+      try{ f.getCheckBox(name).check(); }catch(e){ missed.push(name); }
+    }
+
+    /* Section 1 — applicant */
+    T(UI_PDF.applicant, V.applicant); T(UI_PDF.account, V.account); T(UI_PDF.acctExec, V.acctExec);
+    T(UI_PDF.custAddr, V.custAddr); T(UI_PDF.custCity, V.custCity);
+    T(UI_PDF.custState, V.custState); T(UI_PDF.custZip, V.custZip);
+    T(UI_PDF.contact, V.contact); T(UI_PDF.phone, V.phone); T(UI_PDF.email, V.email);
+    C(UI_PDF.ownerYes, V.owner==='Yes'); C(UI_PDF.ownerNo, V.owner!=='Yes');
+    if(V.owner!=='Yes'){
+      T(UI_PDF.ownerName, V.ownerName); T(UI_PDF.ownerAddr, V.ownerAddr);
+      T(UI_PDF.ownerCity, V.ownerCity); T(UI_PDF.ownerState, V.ownerState); T(UI_PDF.ownerZip, V.ownerZip);
+    }
+
+    /* Section 2 — site */
+    T(UI_PDF.siteAddr, V.siteAddr); T(UI_PDF.siteCity, V.siteCity);
+    T(UI_PDF.siteState, V.siteState); T(UI_PDF.siteZip, V.siteZip);
+    C(UI_PDF.underservedYes, V.underserved==='Yes'); C(UI_PDF.underservedNo, V.underserved!=='Yes');
+    C(UI_PDF.neviYes, V.nevi==='Yes'); C(UI_PDF.neviNo, V.nevi!=='Yes');
+    C(UI_PDF.facility[V.facility], true);
+    if(V.facility==='Other') T(UI_PDF.facilityOther, V.facilityOther, 8);
+    T(UI_PDF.siteName, V.siteName, 8);
+    C(UI_PDF.locType[V.locType], true);
+    C(UI_PDF.parkType[V.parkType], true);
+    T(UI_PDF.spaces, V.spaces, 8); T(UI_PDF.publicPlugs, V.publicPlugs, 8); T(UI_PDF.privatePlugs, V.privatePlugs, 8);
+    if(V.service==='New/Upgraded Service'){ C(UI_PDF.svcNew, true); T(UI_PDF.svcWO, V.wo, 8); }
+    else { C(UI_PDF.svcExisting, true); T(UI_PDF.svcAcct, V.svcAcct||V.account, 8); }
+
+    /* Section 4 — scope */
+    T(UI_PDF.contractor, V.company); T(UI_PDF.cContact, V.cContact);
+    T(UI_PDF.cPhone, V.cPhone); T(UI_PDF.cEmail, V.cEmail, 8);
+    var caddr=uiSplitCSZ(V.cAddr);
+    T(UI_PDF.cAddr, V.cAddr);
+    T(UI_PDF.cCity, uiV('ui_cCity', caddr.city)); T(UI_PDF.cState, uiV('ui_cState', caddr.state));
+    T(UI_PDF.cZip, uiV('ui_cZip', caddr.zip));
+    T(UI_PDF.network, V.network);
+    var dc=(chargerClass()==='dcfc'), row=dc?UI_PDF.dc:UI_PDF.l2;
+    C(dc?UI_PDF.typeDC:UI_PDF.typeL2, true);
+    T(row.mfr, V.mfr, 7); T(row.model, V.model, 7); T(row.units, V.units, 7);
+    T(row.portsPer, V.portsPer, 7); T(row.ports, V.ports, 7); T(row.kw, V.kw, 7);
+    C(UI_PDF.fpYes, V.fp==='Yes'); C(UI_PDF.fpNo, V.fp!=='Yes');
+    if(V.fp==='Yes') T(UI_PDF.fpPorts, V.fpPorts, 7);
+
+    /* Section 5 — financials, straight off the cost sheet */
+    T(UI_PDF.fin.total, uiMoney(V.m.total), 7);
+    T(UI_PDF.fin.evse,  uiMoney(V.inc.evse), 7);
+    T(UI_PDF.fin.mrUtil,  V.mrUtil?uiMoney(V.mrUtil):'', 7);
+    T(UI_PDF.fin.mrCust,  uiMoney(V.mrCust), 7);
+    T(UI_PDF.fin.mrTotal, uiMoney(V.mrCust+V.mrUtil), 7);
+    if(V.inc.fp || V.fpUtil){
+      T(UI_PDF.fin.fpUtil,  V.fpUtil?uiMoney(V.fpUtil):'', 7);
+      T(UI_PDF.fin.fpCust,  uiMoney(V.fpCust), 7);
+      T(UI_PDF.fin.fpTotal, uiMoney(V.fpCust+V.fpUtil), 7);
+    }
+    T(UI_PDF.fin.incentive, uiMoney(V.inc.incentive), 7);
+
+    /* Page 4 — status */
+    C(UI_PDF.status[V.status], true);
+    T(UI_PDF.activation, uiDate(V.activation));
+    C(UI_PDF.newConYes, V.newCon==='Yes'); C(UI_PDF.newConNo, V.newCon!=='Yes');
+
+    /* Page 5 — payee */
+    T(UI_PDF.payee, V.payee); T(UI_PDF.payeeRel, V.payeeRel);
+    T(UI_PDF.payeeAddr, V.payeeAddr); T(UI_PDF.payeeCity, V.payeeCity);
+    T(UI_PDF.payeeState, V.payeeState); T(UI_PDF.payeeZip, V.payeeZip);
+    T(UI_PDF.payeeEmail, V.payeeEmail, 8);
+    T(UI_PDF.completedBy, V.completedBy); T(UI_PDF.completedPhone, V.completedPhone);
+    T(UI_PDF.custPrinted, V.applicant); T(UI_PDF.installDate, uiDate(V.installDate));
+
+    return doc.save().then(function(out){ return { out:out, V:V, missed:missed }; });
+  }).then(function(res){
+    var blob=new Blob([res.out], {type:'application/pdf'});
+    var name='UI_EV_Application_'+_fileSlug()+'_'+new Date().toISOString().slice(0,10)+'.pdf';
+    var url=URL.createObjectURL(blob), a=document.createElement('a');
+    a.href=url; a.download=name; a.style.display='none';
+    document.body.appendChild(a); a.click();
+    setTimeout(function(){ try{ document.body.removeChild(a); URL.revokeObjectURL(url); }catch(e){} }, 4000);
+    UI_PDF_BUSY=false;
+    var notes=[];
+    notes.push('Downloaded <b>'+esc(name)+'</b>. Requested incentive '+uiMoney(res.V.inc.incentive)
+             + (res.V.inc.capped ? ' \u2014 capped at the '+uiMoney(res.V.inc.cap)+' per-site ceiling.' : '.'));
+    notes.push('Sign page 5 and attach the cost sheet, the site plan and the contractor proposal before sending it to UIEVApplications@clearesult.com.');
+    if(res.missed.length) notes.push('These boxes were not found in that PDF and are still blank: '+esc(res.missed.slice(0,6).join(', '))+'.');
+    uiPdfState(notes.join('<br>'),'ok');
+  }).catch(function(e){
+    UI_PDF_BUSY=false;
+    if(String(e && e.message)==='no hosted copy'){
+      uiPdfState('No blank application is hosted with the tool yet \u2014 choose UI\u2019s PDF below and it will fill straight away.','warn');
+      var inp=document.getElementById('uiPdfFile'); if(inp) inp.click();
+      return;
+    }
+    uiPdfState(esc((e && e.message) || 'The application could not be built.'),'warn');
+  });
+}
+
+/* Written straight to DATA: this card is inside the preview, which is
+   rebuilt on every cost edit, so a re-render mid-typing would steal focus.
+   Values are read back from DATA when it redraws. */
+function setQ(k,v){ DATA[k]=v; }
+function setQR(k,v){ DATA[k]=v; renderOutputs(); }
+
+function uiPdfSel(k, label, options, dflt){
+  var v=d(k)||dflt, i, o, opts='';
+  for(i=0;i<options.length;i++){
+    o=options[i];
+    opts+='<option'+(o===v?' selected':'')+'>'+esc(o)+'</option>';
+  }
+  return '<label class="f"><span>'+esc(label)+'</span><select onchange="setQR(\''+k+'\',this.value)">'+opts+'</select></label>';
+}
+function uiPdfTxt(k, label, dflt, type){
+  return '<label class="f"><span>'+esc(label)+'</span><input type="'+(type||'text')+'" value="'+esc(d(k)||'')
+       + '" placeholder="'+esc(dflt==null?'':String(dflt))+'" onchange="setQ(\''+k+'\',this.value)"></label>';
+}
+
+function uiPdfCard(){
+  var V, err='';
+  try{ V=uiPdfValues(); }catch(e){ V=null; err=e.message; }
+  var h='<div style="margin-top:12px;padding:10px 12px;border:1px solid #d8dee4;border-radius:6px;background:#fbfcfd">'
+      + '<div style="font-weight:600;margin-bottom:4px">United Illuminating application (UEVC006)</div>'
+      + '<div style="font-size:12px;margin-bottom:8px;color:#57606a">'
+      + 'Fills UI\u2019s own fillable application from the costs above \u2014 Sections 1, 2, 4 and 5, the project status page and the payee block. '
+      + 'Site A only; sign page 5 by hand.</div>'
+      + '<div id="uiPdfState" class="note" style="margin-bottom:8px">'
+      + (UI_PDF_BYTES ? 'Blank application loaded from '+esc(UI_PDF_SRC)+'.' : 'Uses the copy hosted with the tool, or choose UI\u2019s PDF below.')
+      + '</div>'
+      + '<input type="file" id="uiPdfFile" accept=".pdf" style="display:none" '
+      +   'onchange="if(this.files[0])uiPdfLoadFile(this.files[0])">'
+      + '<button onclick="document.getElementById(\'uiPdfFile\').click()">Choose blank PDF\u2026</button> '
+      + '<button onclick="uiPdfFill()"><strong>Fill &amp; download</strong></button>';
+
+  if(V){
+    var inc=V.inc;
+    h+='<div style="margin-top:10px;font-size:12px;line-height:1.7">'
+      +'<div><b>Total site cost</b> '+uiMoney(V.m.total)+' &nbsp;\u00b7&nbsp; <b>EVSE</b> '+uiMoney(inc.evse)
+      +' &nbsp;\u00b7&nbsp; <b>Make-ready</b> '+uiMoney(inc.mr)+' &nbsp;\u00b7&nbsp; <b>Future proofing</b> '+uiMoney(inc.fp)+'</div>'
+      +'<div><b>Requested incentive</b> '+uiMoney(inc.incentive)+' \u2014 50% of EVSE plus make-ready and future proofing'
+      +(inc.capped?', capped at the '+uiMoney(inc.cap)+' per-site ceiling':'')+'.</div>'
+      +'</div>';
+    if(inc.fp<=0)
+      h+='<div class="warn" style="margin-top:8px">No future-proofing cost is priced. UI rebates it at 100%'
+        +(chargerClass()==='dcfc'?' and Appendix B scores it 10 of 100 selection points':'')
+        +' \u2014 price it in the site panel before filing.</div>';
+    else if(chargerClass()==='dcfc' && inc.capped)
+      h+='<div class="warn" style="margin-top:8px">The request is at the '+uiMoney(inc.cap)
+        +' ceiling, so Appendix B scores the future-proofing measure at half points rather than all 10.</div>';
+    if(inc.shortPorts)
+      h+='<div class="warn" style="margin-top:8px">'+inc.ports+' port'+(inc.ports===1?'':'s')
+        +' \u2014 UI requires at least '+inc.minPorts+' for this property type. The application would be rejected as filed.</div>';
+    if(chargerGap())
+      h+='<div class="warn" style="margin-top:8px">'+chargerGap()+' charger line'+(chargerGap()===1?'':'s')
+        +' still price at $0, so the EVSE cost on the application is understated.</div>';
+  } else {
+    h+='<div class="warn" style="margin-top:8px">'+esc(err)+'</div>';
+  }
+
+  h+='<div class="sect mt" style="margin-top:12px">Application details</div>'
+   + '<div style="font-size:11px;color:#57606a;margin-bottom:6px">Blank fields use the greyed value.</div>'
+   + uiPdfTxt('ui_account','Existing electric account number','')
+   + uiPdfTxt('ui_acctExec','UI account executive (optional)','')
+   + uiPdfTxt('ui_contact','Customer primary contact', V?V.contact:'')
+   + uiPdfTxt('ui_phone','Customer contact phone', V?V.phone:'')
+   + uiPdfTxt('ui_email','Customer contact email', V?V.email:'')
+   + uiPdfSel('ui_owner','Applicant is the property owner',['Yes','No'],'Yes')
+   + (d('ui_owner')==='No'
+      ? uiPdfTxt('ui_ownerName','Property owner name','')
+        + uiPdfTxt('ui_ownerAddr','Property owner street','')
+        + '<div class="grid3">'+uiPdfTxt('ui_ownerCity','City','')+uiPdfTxt('ui_ownerState','State','')+uiPdfTxt('ui_ownerZip','ZIP','')+'</div>'
+      : '')
+   + '<div class="grid3">'+uiPdfTxt('ui_siteCity','Site city', V?V.siteCity:'')
+   + uiPdfTxt('ui_siteState','State', V?V.siteState:'CT')+uiPdfTxt('ui_siteZip','ZIP', V?V.siteZip:'')+'</div>'
+   + uiPdfSel('ui_underserved','Underserved community',['No','Yes'],'No')
+   + uiPdfSel('ui_nevi','Applying for CT DOT NEVI incentives',['No','Yes'],'No')
+   + uiPdfSel('ui_facility','Facility type',
+       ['Office','Retail','Industrial','Warehouse','Lodging','Hospital','Medical Clinic','Food Sales/Grocery',
+        'Fast Food Restaurant','Parking Garage','College/University','Education/K-12','Other'],'Office')
+   + (d('ui_facility')==='Other' ? uiPdfTxt('ui_facilityOther','Describe the facility','') : '')
+   + uiPdfSel('ui_locType','Charging location type',
+       ['Workplace','Multi-Unit Dwelling','Fleet','Destination Parking (Public)'],'Workplace')
+   + uiPdfSel('ui_parkType','Parking type',
+       ['Grade Level','Above Grade Parking Structure','Subterranean Parking Structure','Other'],'Grade Level')
+   + '<div class="grid3">'+uiPdfTxt('ui_spaces','EV spaces', V?V.spaces:'','number')
+   + uiPdfTxt('ui_publicPlugs','Public plugs', 0,'number')
+   + uiPdfTxt('ui_privatePlugs','Private plugs', V?V.privatePlugs:'','number')+'</div>'
+   + uiPdfSel('ui_service','Electric service',['Existing Service','New/Upgraded Service'],'Existing Service')
+   + (d('ui_service')==='New/Upgraded Service'
+      ? uiPdfTxt('ui_wo','UI work order / service request #','')
+      : uiPdfTxt('ui_svcAcct','Site account # (if different)', V?V.account:''))
+   + uiPdfTxt('ui_network','Charging network service provider','')
+   + '<div class="grid3">'+uiPdfTxt('ui_mfr','Hardware manufacturer', V?V.mfr:'')
+   + uiPdfTxt('ui_model','Model', V?V.model:'')
+   + uiPdfTxt('ui_units','Units', V?V.units:'','number')+'</div>'
+   + uiPdfTxt('ui_portsPer','Ports per unit', 2,'number')
+   + uiPdfSel('ui_fp','Futureproofing included',['No','Yes'], (V && V.fp==='Yes')?'Yes':'No')
+   + (d('ui_fp')==='Yes' ? uiPdfTxt('ui_fpPorts','# of planned future ports', V?V.fpPorts:'') : '')
+   + '<div class="grid2">'+uiPdfTxt('ui_utilMR','Utility-side make-ready $', 0,'number')
+   + uiPdfTxt('ui_utilFP','Utility-side futureproofing $', 0,'number')+'</div>'
+   + uiPdfSel('ui_status','Current project status',['Planning','Design','Procurement','Ready to Install'],'Design')
+   + uiPdfTxt('ui_activation','Estimated activation date', V?V.activation:'','date')
+   + uiPdfSel('ui_newCon','New construction project',['No','Yes'],'No')
+   + '<div class="sect mt">Rebate payee</div>'
+   + uiPdfTxt('ui_payee','Payee name', V?V.payee:'')
+   + uiPdfTxt('ui_payeeRel','Relationship to applicant','Installing contractor')
+   + uiPdfTxt('ui_payeeAddr','Mailing address', V?V.payeeAddr:'')
+   + '<div class="grid3">'+uiPdfTxt('ui_payeeCity','City','')+uiPdfTxt('ui_payeeState','State','')+uiPdfTxt('ui_payeeZip','ZIP','')+'</div>'
+   + uiPdfTxt('ui_payeeEmail','Payee email', V?V.payeeEmail:'')
+   + uiPdfTxt('ui_installDate','Installation date', V?V.installDate:'','date')
+   + '<div style="font-size:11px;color:#57606a;margin-top:8px">The payee phone box shares a name with the date box beside the customer signature in UI\u2019s form, so both are left for hand-filling. Sites B\u2013D stay blank \u2014 one site per application.</div>'
+   + '</div>';
+  return h;
+}
+
 function exportWorkbook(){
   if(window._XLFAIL || typeof ExcelJS==='undefined'){
     alert('The Excel writer did not load. Check the connection and reload the page.');
@@ -3388,6 +4203,15 @@ function exportWorkbook(){
   if(PICK.proposal) jobs.push({ kind:'proposal' });
   if(!jobs.length){ alert('Pick at least one sheet to build.'); return; }
   if(!LINES.length && !confirm('There are no cost lines. Export anyway?')) return;
+  /* A sheet that reports zero conduit next to a drawn trench comes straight
+     back from review, so it does not leave here quietly. */
+  var _audit=feetAudit().concat(fpAudit());
+  if(_audit.length){
+    var _msg='Before this goes to the utility:\n\n', _ai;
+    for(_ai=0;_ai<_audit.length;_ai++)
+      _msg += '  \u2022 ' + String(_audit[_ai]).replace(/<[^>]+>/g,'').replace(/&amp;/g,'&').replace(/&\w+;/g,'') + '\n';
+    if(!confirm(_msg+'\nExport anyway?')) return;
+  }
 
   var btn=document.getElementById('btnExport');
   btn.disabled=true; btn.textContent='Building\u2026';
