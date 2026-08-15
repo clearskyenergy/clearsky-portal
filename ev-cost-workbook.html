@@ -144,6 +144,19 @@ table.pv td.num{text-align:right;font-variant-numeric:tabular-nums}
 .gate-msg code{background:#F6F4F0;border:1px solid var(--line2);border-radius:3px;padding:1px 5px;font-size:11.5px}
 .gate-foot{margin-top:22px;padding-top:14px;border-top:1px solid var(--line2);font-size:10px;letter-spacing:.9px;text-transform:uppercase;color:var(--dim)}
 .tb-who{font-size:11px;color:var(--sub);padding-right:12px;border-right:1px solid var(--line);margin-right:2px}
+
+/* site tabs */
+.siteTabs{display:flex;flex-wrap:wrap;gap:6px;margin:0 0 10px}
+.siteTab{padding:5px 10px;border:1px solid #d8dee4;border-radius:999px;background:#fff;cursor:pointer;
+  font:inherit;font-size:12px;color:#3a4450;line-height:1.2}
+.siteTab b{font-weight:700;margin-right:4px}
+.siteTab:hover{border-color:#9aa5b1}
+.siteTab.on{background:#1f3b57;border-color:#1f3b57;color:#fff}
+.siteTab.add{border-style:dashed;color:#4a5866}
+.siteTab.del{margin-left:auto;color:#a0342c;border-color:#e7c4c0}
+.siteTab-empty{opacity:.55;font-style:italic}
+.siteTab-addr{opacity:.7;font-size:11px;margin-left:4px}
+.siteTab.on .siteTab-addr{opacity:.85}
 </style>
 </head>
 <body>
@@ -1409,7 +1422,14 @@ function num(v){
 function r2(n){ return Math.round((n||0)*100)/100; }
 function d(k){ return DATA[k]==null?'':String(DATA[k]); }
 function dn(k){ return num(DATA[k]); }
-function setD(k,v){ DATA[k]=v; render(); }
+function setD(k,v){
+  DATA[k]=v;
+  /* one box on the form means one value across the sites */
+  if(typeof SHARED_KEYS!=='undefined' && SHARED_KEYS[k]){
+    var i; for(i=0;i<SITES.length;i++) if(SITES[i].DATA && SITES[i].DATA!==DATA) SITES[i].DATA[k]=v;
+  }
+  render();
+}
 function val(id){ var e=document.getElementById(id); return e?e.value:''; }
 function nval(id){ return num(val(id)); }
 function money(n){ return '$'+r2(n).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2}); }
@@ -1606,10 +1626,243 @@ function addLine(o){
     bucket:cls.b, row:cls.r, fp:cls.fp, src:o.src||'estimate'
   });
 }
+/* ══════════════════════════════════════════════════════════════════════
+   SITES
+
+   UI's application holds up to four sites (A–D) on ONE property: one
+   applicant, one contractor, one street address, one payee, and then a
+   table of sites underneath with its own row in Sections 2, 4 and 5. The
+   per-site incentive cap applies to each row, so two properly separated
+   sites on one property are worth two caps.
+
+   The workbook mirrors that shape: each site carries its own cost lines,
+   footages and future proofing, while the application-level answers are
+   held once and written through to every site.
+   ══════════════════════════════════════════════════════════════════════ */
+var SITES=[], ACTIVE=0, SITE_LETTERS='ABCD', MAX_SITES=4;
+
+/* Answered once for the whole application \u2014 an edit on any site writes
+   through to all of them, because there is only one box on the form. */
+var SHARED_KEYS={
+  applicant:1, company:1, contact:1, phone:1, email:1,
+  cAddress:1, license:1, start:1, end:1, 'class':1,
+  ui_account:1, ui_acctExec:1, ui_custAddr:1, ui_custCity:1, ui_custState:1, ui_custZip:1,
+  ui_contact:1, ui_phone:1, ui_email:1,
+  ui_owner:1, ui_ownerName:1, ui_ownerAddr:1, ui_ownerCity:1, ui_ownerState:1, ui_ownerZip:1,
+  ui_siteAddr:1, ui_siteCity:1, ui_siteState:1, ui_siteZip:1,
+  ui_underserved:1, ui_nevi:1, ui_facility:1, ui_facilityOther:1,
+  ui_network:1, ui_cCity:1, ui_cState:1, ui_cZip:1,
+  ui_status:1, ui_activation:1, ui_newCon:1,
+  ui_payee:1, ui_payeeRel:1, ui_payeeAddr:1, ui_payeeCity:1, ui_payeeState:1,
+  ui_payeeZip:1, ui_payeeEmail:1, ui_completedBy:1, ui_completedPhone:1, ui_installDate:1
+};
+
+/* Copied into a new site as a starting point but NOT linked afterwards.
+   The address belongs to the site map it was drawn on: two drawings on one
+   campus can sit at different street numbers, and the workbook should say
+   so rather than quietly stamping them all with the first one. */
+var SEED_KEYS={ address:1, city:1 };
+
+/* Sites are identified the way the drawings are: which site map, and the
+   address on it. That pair is what goes on the tab, the worksheet name and
+   the Unique Site Name column of the application. */
+function siteAutoLabel(i){ return 'Site Map '+(i+1); }
+function siteAddress(i){
+  var r=SITES[i];
+  return (r && r.DATA && r.DATA.address) ? String(r.DATA.address) : '';
+}
+function siteIdentity(i){
+  var a=siteAddress(i);
+  return siteLabel(i) + (a ? ' \u2014 ' + a : '');
+}
+/* The property the application is filed against. UI takes one street
+   address in Section 2, so it comes from the first site that has one. */
+function propertyAddress(){
+  sitesInit();
+  var i;
+  for(i=0;i<SITES.length;i++) if(siteAddress(i)) return siteAddress(i);
+  return '';
+}
+function propertyCity(){
+  sitesInit();
+  var i;
+  for(i=0;i<SITES.length;i++){ if(SITES[i].DATA && SITES[i].DATA.city) return String(SITES[i].DATA.city); }
+  return '';
+}
+/* Two street addresses is two properties, and UI wants an application for
+   each. Cheap to check, expensive to discover after filing. */
+function addressAudit(){
+  sitesInit();
+  var seen=[], i, a, norm;
+  for(i=0;i<SITES.length;i++){
+    a=siteAddress(i); if(!a) continue;
+    norm=a.toLowerCase().replace(/[^a-z0-9]+/g,' ').replace(/^\s+|\s+$/g,'');
+    if(seen.indexOf(norm)<0) seen.push(norm);
+  }
+  if(seen.length>1)
+    return ['The site maps are at '+seen.length+' different street addresses. UI takes one application per property \u2014 '
+      +'every site on one application shares the Section 2 address. File these separately, or correct the addresses '
+      +'if it really is one property.'];
+  return [];
+}
+
+/* Snapshots hold REFERENCES, not copies: switching sites is a pointer swap,
+   so a half-typed line on site B is still there when you come back to it. */
+function siteSnapshot(){
+  return { DATA:DATA, LINES:LINES, nid:_nid, feet:EDITOR_FEET, feetSrc:FEET_SRC,
+           fleet:EDITOR_FLEET, basis:EDITOR_BASIS, evt:EDITOR_EVT };
+}
+function siteRestore(rec){
+  DATA=rec.DATA||{}; LINES=rec.LINES||[]; _nid=rec.nid||1;
+  EDITOR_FEET=rec.feet||null; FEET_SRC=rec.feetSrc||{};
+  EDITOR_FLEET=rec.fleet||null; EDITOR_BASIS=rec.basis||null; EDITOR_EVT=rec.evt||null;
+}
+function sitesInit(){ if(!SITES.length){ SITES=[siteSnapshot()]; ACTIVE=0; } }
+function saveActive(){ sitesInit(); SITES[ACTIVE]=siteSnapshot(); }
+function siteLetter(i){ return SITE_LETTERS.charAt(i)||String(i+1); }
+function siteLabel(i){
+  var r=SITES[i];
+  return (r && r.DATA && r.DATA.site) ? String(r.DATA.site) : ('Site '+siteLetter(i));
+}
+function siteHasWork(i){ var r=SITES[i]; return !!(r && r.LINES && r.LINES.length); }
+
+/* Run something against another site's state and put everything back. Used
+   by the exporters so building site B's sheet never disturbs what is on
+   screen \u2014 the finally clause matters more than it looks. */
+function withSite(i, fn){
+  sitesInit();
+  if(i===ACTIVE) return fn(i);
+  saveActive();
+  var keep=ACTIVE, out;
+  siteRestore(SITES[i]); ACTIVE=i;
+  try{ out=fn(i); }
+  finally { siteRestore(SITES[keep]); ACTIVE=keep; }
+  return out;
+}
+function eachSite(fn){
+  sitesInit();
+  var out=[], i;
+  for(i=0;i<SITES.length;i++) out.push(withSite(i, fn));
+  return out;
+}
+
+function addSite(){
+  saveActive();
+  if(SITES.length>=MAX_SITES){
+    alert('UI\u2019s application has room for four sites (A\u2013D). A fifth needs its own application.');
+    return -1;
+  }
+  var src=SITES[ACTIVE].DATA, nd={}, k;
+  for(k in src) if(src.hasOwnProperty(k) && (SHARED_KEYS[k]||SEED_KEYS[k])) nd[k]=src[k];
+  nd.site=siteAutoLabel(SITES.length);
+  SITES.push({ DATA:nd, LINES:[], nid:1, feet:null, feetSrc:{}, fleet:null, basis:null, evt:null });
+  return SITES.length-1;
+}
+function newSite(){ var i=addSite(); if(i>=0) activateSite(i); }
+function activateSite(i){
+  sitesInit();
+  if(i<0 || i>=SITES.length) return;
+  saveActive(); siteRestore(SITES[i]); ACTIVE=i;
+  renderAll();
+}
+function removeSite(i){
+  sitesInit();
+  if(SITES.length<2){ alert('There has to be at least one site.'); return; }
+  if(siteHasWork(i) && !confirm('Delete '+siteLabel(i)+' and its '+SITES[i].LINES.length+' cost lines? This cannot be undone.')) return;
+  saveActive();
+  SITES.splice(i,1);
+  ACTIVE=Math.max(0, Math.min(ACTIVE>i?ACTIVE-1:ACTIVE, SITES.length-1));
+  siteRestore(SITES[ACTIVE]);
+  renderAll();
+}
+function renderAll(){ renderSiteForm(); render(); }
+window.activateSite=activateSite; window.newSite=newSite; window.removeSite=removeSite;
+
+/* Load a list of editor payloads as sites A, B, C… keeping the answers that
+   belong to the application rather than to any one site. */
+function loadSites(list){
+  sitesInit(); saveActive();
+  var keep={}, src=SITES[ACTIVE].DATA, k, i;
+  for(k in src) if(src.hasOwnProperty(k) && SHARED_KEYS[k]) keep[k]=src[k];
+  var made=[];
+  for(i=0;i<list.length && i<MAX_SITES;i++){
+    var nd={};
+    for(k in keep) if(keep.hasOwnProperty(k)) nd[k]=keep[k];
+    /* Deliberately NOT seeded with an address: each drawing brings its own,
+       and inheriting site A's would hide a second property. */
+    var rec={ DATA:nd, LINES:[], nid:1, feet:null, feetSrc:{}, fleet:null, basis:null, evt:null };
+    made.push(rec);
+    SITES=made; ACTIVE=i; siteRestore(rec);
+    loadPayload(list[i]);
+    var ps=list[i].site||{};
+    /* The drawing's own name if it has one, otherwise which map it was. */
+    if(!DATA.site) DATA.site = ps.name || ps.mapName || ps.label || siteAutoLabel(i);
+    if(ps.address) DATA.address = ps.address;
+    if(ps.city)    DATA.city    = ps.city;
+    made[i]=siteSnapshot();
+  }
+  SITES=made; ACTIVE=0; siteRestore(SITES[0]);
+  renderAll();
+  msg('srcMsg', made.length+' site'+(made.length===1?'':'s')+' pulled from the editor: '
+     + made.map(function(r,ix){ return siteLetter(ix)+' \u00b7 '+esc((r.DATA&&r.DATA.site)||'') ; }).join(', ')
+     + '. Check the footages on each before exporting.', 'ok');
+  if(list.length>MAX_SITES)
+    msg('srcMsg', 'The editor handed over '+list.length+' sites; the first four were loaded because UI\u2019s application only has rows A\u2013D.','warn');
+}
+
+/* One payload or many, in whichever shape the editor sends. */
+function payloadSites(pay){
+  if(!pay) return [];
+  if(Object.prototype.toString.call(pay)==='[object Array]') return pay;
+  if(pay.sites && pay.sites.length) return pay.sites;
+  return [pay];
+}
+
+function siteTabsHTML(){
+  sitesInit(); saveActive();
+  var h='<div class="siteTabs">', i;
+  for(i=0;i<SITES.length;i++){
+    h+='<button class="siteTab'+(i===ACTIVE?' on':'')+'" onclick="activateSite('+i+')" '
+      + 'title="'+esc(siteIdentity(i))+(siteHasWork(i)?' \u2014 '+SITES[i].LINES.length+' cost lines':' \u2014 empty')+'">'
+      + '<b>'+siteLetter(i)+'</b> '+esc(siteLabel(i))
+      + (siteAddress(i) ? ' <span class="siteTab-addr">'+esc(siteAddress(i))+'</span>' : '')
+      + (siteHasWork(i)?'':' <span class="siteTab-empty">empty</span>')
+      + '</button>';
+  }
+  if(SITES.length<MAX_SITES) h+='<button class="siteTab add" onclick="newSite()">+ Add site</button>';
+  if(SITES.length>1) h+='<button class="siteTab del" onclick="removeSite('+ACTIVE+')" title="Delete the site you are on">Delete '+siteLetter(ACTIVE)+'</button>';
+  h+='</div>';
+  if(SITES.length>1)
+    h+='<div class="note" style="margin:-4px 0 10px">Costs, footages and future proofing are per site. '
+      +'The applicant, contractor, property address and payee are shared \u2014 edit them anywhere and every site follows. '
+      +'All '+SITES.length+' export into one workbook and one application PDF.</div>';
+  return h;
+}
+
 function pullFromEditor(){
   var pay=null, why='';
   try{
-    if(window.opener && window.opener._ELEC_EST) pay=packEstimate(window.opener._ELEC_EST, window.opener);
+    var W=window.opener;
+    if(W){
+      /* Two drawings open in the editor arrive as a list. Accept either bare
+         estimates or {name, est} wrappers, and keep the drawing's own name
+         so the sites come across labelled. */
+      var multi = W._ELEC_EST_SITES || W.OMEGA_SITE_ESTIMATES || W.OMEGA_SITES || null;
+      if(multi && multi.length){
+        var packed=[], mi, m, one;
+        for(mi=0;mi<multi.length;mi++){
+          m=multi[mi];
+          one = m && m.lines ? m : (m && m.est ? m.est : null);
+          if(!one) continue;
+          var pk=packEstimate(one, W);
+          pk.site=pk.site||{};
+          if(m.name||m.label) pk.site.name=m.name||m.label;
+          packed.push(pk);
+        }
+        if(packed.length) pay={ sites:packed };
+      }
+      if(!pay && W._ELEC_EST) pay=packEstimate(W._ELEC_EST, W);
+    }
   }catch(e){ why='The editor window blocked direct access. '; }
   if(!pay){
     try{ var raw=localStorage.getItem('OMEGA_EV_COST_HANDOFF'); if(raw) pay=JSON.parse(raw); }catch(e2){}
@@ -1622,7 +1875,22 @@ function pullFromEditor(){
     msg('srcMsg', why+'Nothing handed over yet. In the editor open <b>Electrical Estimate</b> and press <b>EV Cost Workbook</b>, or paste the estimate CSV here.','warn');
     return;
   }
-  loadPayload(pay);
+  var list=payloadSites(pay);
+  if(list.length>1){ loadSites(list); return; }
+
+  sitesInit();
+  /* Pulling a second drawing should not quietly overwrite the first. */
+  if(LINES.length && SITES.length<MAX_SITES){
+    var here=siteLetter(ACTIVE)+' \u00b7 '+siteLabel(ACTIVE);
+    if(!confirm(here+' already has '+LINES.length+' cost lines.\n\n'
+       +'OK = replace this site with what the editor is handing over.\n'
+       +'Cancel = keep it and load this drawing as a new site.')){
+      var ix=addSite();
+      if(ix>=0){ saveActive(); siteRestore(SITES[ix]); ACTIVE=ix; }
+    }
+  }
+  loadPayload(list[0]);
+  renderAll();
 }
 function packEstimate(est, w){
   var crew=(w && w.ELEC_BID && w.ELEC_BID.crewRate)?w.ELEC_BID.crewRate:nval('p_crew');
@@ -2561,6 +2829,7 @@ var PROPOSAL_FIELDS = [
 
 function renderSiteForm(){
   var h='', gi, fi, g, f, it, ci, c, cls=chargerClass();
+  h+=siteTabsHTML();
   h+='<label class="f"><span>Charger type</span><select id="f-class" onchange="setClass(this.value)">'
    +   '<option value="l2"'+(cls==='l2'?' selected':'')+'>Level 2 (AC)</option>'
    +   '<option value="dcfc"'+(cls==='dcfc'?' selected':'')+'>DC Fast Charging</option>'
@@ -2614,6 +2883,8 @@ function renderSiteForm(){
    + '<button class="btn sm" onclick="priceFutureProofing()">Price future proofing</button>'
    + '<div id="fpMsg" class="note" style="margin-top:6px">Currently '+money(fpTotal())
    + ' in the future-proofing block, including its share of the trench.</div>';
+  var _aa=addressAudit(), _pj;
+  for(_pj=0;_pj<_aa.length;_pj++) h+='<div class="warn" style="margin-top:6px">'+_aa[_pj]+'</div>';
   var _fp=fpAudit(), _pi;
   for(_pi=0;_pi<_fp.length;_pi++) h+='<div class="warn" style="margin-top:6px">'+_fp[_pi]+'</div>';
   document.getElementById('siteForm').innerHTML=h;
@@ -3762,30 +4033,65 @@ var UI_PDF = {
              'Hospital':'18', 'Retail':'19',
              'Industrial':'20', 'Warehouse':'21', 'Other':'p2-10' },
 
-  siteName:'Text Field 508',
-  locType:{ 'Workplace':'Check Box 53', 'Multi-Unit Dwelling':'Check Box 54',
-            'Fleet':'Check Box 55', 'Destination Parking (Public)':'Check Box 56' },
-  parkType:{ 'Grade Level':'Check Box 57', 'Above Grade Parking Structure':'Check Box 58',
-             'Subterranean Parking Structure':'Check Box 59', 'Other':'Check Box 60' },
-  spaces:'Text Field 509', publicPlugs:'Text Field 5014', privatePlugs:'Text Field 5015',
-  svcNew:'Check Box 62', svcWO:'Text Field 510',
-  svcExisting:'Check Box 64', svcAcct:'Text Field 511',
+  /* Rows A–D of the site table, the scope table and the financials. Read
+     off the widget rectangles, not guessed from the numbering — UI's own
+     field names run 508, 5010, 5016, 5020 down the column. */
+  rows:[
+    { site:{ name:'Text Field 508',
+             locType:['Check Box 53','Check Box 54','Check Box 55','Check Box 56'],
+             parkType:['Check Box 57','Check Box 58','Check Box 59','Check Box 60'],
+             spaces:'Text Field 509', publicPlugs:'Text Field 5014', privatePlugs:'Text Field 5015',
+             svcNew:'Check Box 62', svcWO:'Text Field 510',
+             svcExisting:'Check Box 64', svcAcct:'Text Field 511' },
+      scope:{ l2:'Check Box 110', dc:'Check Box 111',
+              l2f:['Text Field 532','Text Field 533','Text Field 534','Text Field 535','Text Field 536','Text Field 537'],
+              dcf:['Text Field 610','Text Field 611','Text Field 612','Text Field 613','Text Field 614','Text Field 615'],
+              fpYes:'Check Box 113', fpNo:'Check Box 114', fpPorts:'Text Field 539' },
+      fin:['Text Field 561','Text Field 562','Text Field 563','Text Field 564','Text Field 565',
+           'Text Field 566','Text Field 567','Text Field 568','Text Field 569'] },
+    { site:{ name:'Text Field 5010',
+             locType:['Check Box 95','Check Box 96','Check Box 97','Check Box 98'],
+             parkType:['Check Box 99','Check Box 100','Check Box 101','Check Box 102'],
+             spaces:'Text Field 5013', publicPlugs:'Text Field 5011', privatePlugs:'Text Field 5012',
+             svcNew:'Check Box 103', svcWO:'Text Field 515',
+             svcExisting:'Check Box 104', svcAcct:'Text Field 516' },
+      scope:{ l2:'Check Box 116', dc:'Check Box 117',
+              l2f:['Text Field 616','Text Field 617','Text Field 618','Text Field 619','Text Field 620','Text Field 621'],
+              dcf:['Text Field 622','Text Field 623','Text Field 624','Text Field 625','Text Field 626','Text Field 627'],
+              fpYes:'Check Box 118', fpNo:'Check Box 119', fpPorts:'Text Field 546' },
+      fin:['Text Field 570','Text Field 571','Text Field 572','Text Field 573','Text Field 574',
+           'Text Field 575','Text Field 576','Text Field 577','Text Field 578'] },
+    { site:{ name:'Text Field 5016',
+             locType:['Check Box 105','Check Box 106','Check Box 107','Check Box 108'],
+             parkType:['Check Box 109','Check Box 1010','Check Box 1011','Check Box 1012'],
+             spaces:'Text Field 5019', publicPlugs:'Text Field 5017', privatePlugs:'Text Field 5018',
+             svcNew:'Check Box 1013', svcWO:'Text Field 517',
+             svcExisting:'Check Box 1014', svcAcct:'Text Field 518' },
+      scope:{ l2:'Check Box 120', dc:'Check Box 121',
+              l2f:['Text Field 628','Text Field 629','Text Field 630','Text Field 631','Text Field 632','Text Field 633'],
+              dcf:['Text Field 634','Text Field 635','Text Field 636','Text Field 637','Text Field 638','Text Field 639'],
+              fpYes:'Check Box 122', fpNo:'Check Box 123', fpPorts:'Text Field 553' },
+      fin:['Text Field 579','Text Field 580','Text Field 581','Text Field 582','Text Field 583',
+           'Text Field 584','Text Field 585','Text Field 586','Text Field 587'] },
+    { site:{ name:'Text Field 5020',
+             locType:['Check Box 1015','Check Box 1016','Check Box 1017','Check Box 1018'],
+             parkType:['Check Box 1019','Check Box 1020','Check Box 1021','Check Box 1022'],
+             spaces:'Text Field 5023', publicPlugs:'Text Field 5021', privatePlugs:'Text Field 5022',
+             svcNew:'Check Box 1023', svcWO:'Text Field 519',
+             svcExisting:'Check Box 1024', svcAcct:'Text Field 520' },
+      scope:{ l2:'Check Box 124', dc:'Check Box 125',
+              l2f:['Text Field 640','Text Field 641','Text Field 642','Text Field 643','Text Field 644','Text Field 645'],
+              dcf:['Text Field 646','Text Field 647','Text Field 648','Text Field 649','Text Field 650','Text Field 651'],
+              fpYes:'Check Box 126', fpNo:'Check Box 127', fpPorts:'Text Field 560' },
+      fin:['Text Field 588','Text Field 589','Text Field 590','Text Field 591','Text Field 592',
+           'Text Field 593','Text Field 594','Text Field 595','Text Field 596'] }
+  ],
+  LOC_ORDER:['Workplace','Multi-Unit Dwelling','Fleet','Destination Parking (Public)'],
+  PARK_ORDER:['Grade Level','Above Grade Parking Structure','Subterranean Parking Structure','Other'],
 
   contractor:'Text Field 521', cContact:'Text Field 522', cPhone:'Text Field 523', cEmail:'Text Field 524',
   cAddr:'Text Field 525', cCity:'Text Field 526', cState:'Text Field 527', cZip:'Text Field 528',
   network:'Text Field 529',
-  typeL2:'Check Box 110', typeDC:'Check Box 111',
-  l2:{ mfr:'Text Field 532', model:'Text Field 533', units:'Text Field 534',
-       portsPer:'Text Field 535', ports:'Text Field 536', kw:'Text Field 537' },
-  dc:{ mfr:'Text Field 610', model:'Text Field 611', units:'Text Field 612',
-       portsPer:'Text Field 613', ports:'Text Field 614', kw:'Text Field 615' },
-  fpYes:'Check Box 113', fpNo:'Check Box 114', fpPorts:'Text Field 539',
-
-  fin:{ total:'Text Field 561', evse:'Text Field 562',
-        mrUtil:'Text Field 563', mrCust:'Text Field 564', mrTotal:'Text Field 565',
-        fpUtil:'Text Field 566', fpCust:'Text Field 567', fpTotal:'Text Field 568',
-        incentive:'Text Field 569' },
-
   status:{ 'Planning':'Check Box 128', 'Design':'Check Box 129',
            'Procurement':'Check Box 130', 'Ready to Install':'Check Box 131' },
   activation:'Text Field 608', newConYes:'Check Box 132', newConNo:'Check Box 133',
@@ -3896,7 +4202,7 @@ function uiV(k, fallback){
 }
 function uiPdfValues(){
   var form=formById('ui-ct-l2'), m=buildModel(form), inc=uiIncentive(m);
-  var csz=uiSplitCSZ(d('city')||d('address'));
+  var csz=uiSplitCSZ(d('city')||propertyCity()||d('address')||propertyAddress());
   var ports=num(DATA.plugs)||0;
   var portsPer=num(uiV('ui_portsPer', 2))||2;
   var units=Math.max(1, Math.ceil(ports/portsPer));
@@ -3913,16 +4219,21 @@ function uiPdfValues(){
   return {
     m:m, inc:inc,
     applicant:d('applicant'), account:d('ui_account'), acctExec:d('ui_acctExec'),
-    custAddr:uiV('ui_custAddr', d('address')), custCity:uiV('ui_custCity', csz.city),
+    custAddr:uiV('ui_custAddr', d('address')||propertyAddress()), custCity:uiV('ui_custCity', csz.city),
     custState:uiV('ui_custState', csz.state||'CT'), custZip:uiV('ui_custZip', csz.zip),
     contact:uiV('ui_contact', d('contact')), phone:uiV('ui_phone', d('phone')), email:uiV('ui_email', d('email')),
     owner:uiV('ui_owner','Yes'), ownerName:d('ui_ownerName'), ownerAddr:d('ui_ownerAddr'),
     ownerCity:d('ui_ownerCity'), ownerState:d('ui_ownerState'), ownerZip:d('ui_ownerZip'),
-    siteAddr:uiV('ui_siteAddr', d('address')), siteCity:uiV('ui_siteCity', csz.city),
+    siteAddr:uiV('ui_siteAddr', propertyAddress()||d('address')), siteCity:uiV('ui_siteCity', csz.city),
     siteState:uiV('ui_siteState', csz.state||'CT'), siteZip:uiV('ui_siteZip', csz.zip),
     underserved:uiV('ui_underserved','No'), nevi:uiV('ui_nevi','No'),
     facility:uiV('ui_facility','Office'), facilityOther:d('ui_facilityOther'),
-    siteName:uiV('ui_siteName', d('site')||'Site 1'),
+    klass:chargerClass(),
+    /* Unique Site Name on the application: which site map, and the address
+       on it. The box is multiline (73\u00d799pt), so the two sit on their own
+       lines and a reviewer can match the row to the drawing at a glance. */
+    siteName:uiV('ui_siteName', siteLabel(ACTIVE)||siteAutoLabel(ACTIVE)),
+    siteRowAddr:siteAddress(ACTIVE),
     locType:uiV('ui_locType', (d('category')==='MUDs'?'Multi-Unit Dwelling'
              : d('category')==='Fleet'?'Fleet'
              : d('category')==='Public Parking'?'Destination Parking (Public)':'Workplace')),
@@ -3945,6 +4256,25 @@ function uiPdfValues(){
     completedBy:uiV('ui_completedBy', d('contact')), completedPhone:uiV('ui_completedPhone', d('phone')),
     installDate:uiV('ui_installDate', d('end'))
   };
+}
+
+function idxOf(list, v){
+  var i; for(i=0;i<list.length;i++) if(list[i]===v) return i;
+  return 0;
+}
+/* Values for every site, each built against that site's own cost lines. */
+function uiAllSites(){
+  return eachSite(function(){ return uiPdfValues(); });
+}
+/* What the whole application asks for. The cap is per site, so this is a
+   sum of capped rows, not a cap on the sum. */
+function uiAppIncentive(){
+  var t=0, cap=0, capped=0;
+  eachSite(function(){
+    var inc=uiIncentive(buildModel(formById('ui-ct-l2')));
+    t+=inc.incentive; cap+=inc.cap; if(inc.capped) capped++;
+  });
+  return { incentive:r2(t), cap:cap, cappedSites:capped };
 }
 
 function uiMoney(n){
@@ -4000,12 +4330,43 @@ function uiPdfFill(){
     C(UI_PDF.neviYes, V.nevi==='Yes'); C(UI_PDF.neviNo, V.nevi!=='Yes');
     C(UI_PDF.facility[V.facility], true);
     if(V.facility==='Other') T(UI_PDF.facilityOther, V.facilityOther, 8);
-    T(UI_PDF.siteName, V.siteName, 8);
-    C(UI_PDF.locType[V.locType], true);
-    C(UI_PDF.parkType[V.parkType], true);
-    T(UI_PDF.spaces, V.spaces, 8); T(UI_PDF.publicPlugs, V.publicPlugs, 8); T(UI_PDF.privatePlugs, V.privatePlugs, 8);
-    if(V.service==='New/Upgraded Service'){ C(UI_PDF.svcNew, true); T(UI_PDF.svcWO, V.wo, 8); }
-    else { C(UI_PDF.svcExisting, true); T(UI_PDF.svcAcct, V.svcAcct||V.account, 8); }
+    /* Sections 2, 4 and 5 get one row per site — A, B, C, D down the page,
+       each with its own scope and its own cap. */
+    var SV=uiAllSites(), si, R, sv, dcS, scopeF;
+    for(si=0; si<SV.length && si<UI_PDF.rows.length; si++){
+      sv=SV[si]; R=UI_PDF.rows[si];
+      /* multiline field \u2014 map on line one, address on line two */
+      T(R.site.name, sv.siteName + (sv.siteRowAddr ? '\n' + sv.siteRowAddr : ''), 7);
+      C(R.site.locType[idxOf(UI_PDF.LOC_ORDER, sv.locType)], true);
+      C(R.site.parkType[idxOf(UI_PDF.PARK_ORDER, sv.parkType)], true);
+      T(R.site.spaces, sv.spaces, 8);
+      T(R.site.publicPlugs, sv.publicPlugs, 8);
+      T(R.site.privatePlugs, sv.privatePlugs, 8);
+      if(sv.service==='New/Upgraded Service'){ C(R.site.svcNew, true); T(R.site.svcWO, sv.wo, 8); }
+      else { C(R.site.svcExisting, true); T(R.site.svcAcct, sv.svcAcct||sv.account, 8); }
+
+      /* Section 4 — the Level 2 and DCFC lines are separate rows */
+      dcS=(sv.klass==='dcfc');
+      C(dcS?R.scope.dc:R.scope.l2, true);
+      scopeF = dcS ? R.scope.dcf : R.scope.l2f;
+      T(scopeF[0], sv.mfr, 7);   T(scopeF[1], sv.model, 7); T(scopeF[2], sv.units, 7);
+      T(scopeF[3], sv.portsPer, 7); T(scopeF[4], sv.ports, 7); T(scopeF[5], sv.kw, 7);
+      C(sv.fp==='Yes'?R.scope.fpYes:R.scope.fpNo, true);
+      if(sv.fp==='Yes') T(R.scope.fpPorts, sv.fpPorts, 7);
+
+      /* Section 5 — straight off that site's cost sheet */
+      T(R.fin[0], uiMoney(sv.m.total), 7);
+      T(R.fin[1], uiMoney(sv.inc.evse), 7);
+      T(R.fin[2], sv.mrUtil?uiMoney(sv.mrUtil):'', 7);
+      T(R.fin[3], uiMoney(sv.mrCust), 7);
+      T(R.fin[4], uiMoney(sv.mrCust+sv.mrUtil), 7);
+      if(sv.inc.fp || sv.fpUtil){
+        T(R.fin[5], sv.fpUtil?uiMoney(sv.fpUtil):'', 7);
+        T(R.fin[6], uiMoney(sv.fpCust), 7);
+        T(R.fin[7], uiMoney(sv.fpCust+sv.fpUtil), 7);
+      }
+      T(R.fin[8], uiMoney(sv.inc.incentive), 7);
+    }
 
     /* Section 4 — scope */
     T(UI_PDF.contractor, V.company); T(UI_PDF.cContact, V.cContact);
@@ -4015,26 +4376,6 @@ function uiPdfFill(){
     T(UI_PDF.cCity, uiV('ui_cCity', caddr.city)); T(UI_PDF.cState, uiV('ui_cState', caddr.state));
     T(UI_PDF.cZip, uiV('ui_cZip', caddr.zip));
     T(UI_PDF.network, V.network);
-    var dc=(chargerClass()==='dcfc'), row=dc?UI_PDF.dc:UI_PDF.l2;
-    C(dc?UI_PDF.typeDC:UI_PDF.typeL2, true);
-    T(row.mfr, V.mfr, 7); T(row.model, V.model, 7); T(row.units, V.units, 7);
-    T(row.portsPer, V.portsPer, 7); T(row.ports, V.ports, 7); T(row.kw, V.kw, 7);
-    C(UI_PDF.fpYes, V.fp==='Yes'); C(UI_PDF.fpNo, V.fp!=='Yes');
-    if(V.fp==='Yes') T(UI_PDF.fpPorts, V.fpPorts, 7);
-
-    /* Section 5 — financials, straight off the cost sheet */
-    T(UI_PDF.fin.total, uiMoney(V.m.total), 7);
-    T(UI_PDF.fin.evse,  uiMoney(V.inc.evse), 7);
-    T(UI_PDF.fin.mrUtil,  V.mrUtil?uiMoney(V.mrUtil):'', 7);
-    T(UI_PDF.fin.mrCust,  uiMoney(V.mrCust), 7);
-    T(UI_PDF.fin.mrTotal, uiMoney(V.mrCust+V.mrUtil), 7);
-    if(V.inc.fp || V.fpUtil){
-      T(UI_PDF.fin.fpUtil,  V.fpUtil?uiMoney(V.fpUtil):'', 7);
-      T(UI_PDF.fin.fpCust,  uiMoney(V.fpCust), 7);
-      T(UI_PDF.fin.fpTotal, uiMoney(V.fpCust+V.fpUtil), 7);
-    }
-    T(UI_PDF.fin.incentive, uiMoney(V.inc.incentive), 7);
-
     /* Page 4 — status */
     C(UI_PDF.status[V.status], true);
     T(UI_PDF.activation, uiDate(V.activation));
@@ -4111,12 +4452,31 @@ function uiPdfCard(){
 
   if(V){
     var inc=V.inc;
-    h+='<div style="margin-top:10px;font-size:12px;line-height:1.7">'
-      +'<div><b>Total site cost</b> '+uiMoney(V.m.total)+' &nbsp;\u00b7&nbsp; <b>EVSE</b> '+uiMoney(inc.evse)
-      +' &nbsp;\u00b7&nbsp; <b>Make-ready</b> '+uiMoney(inc.mr)+' &nbsp;\u00b7&nbsp; <b>Future proofing</b> '+uiMoney(inc.fp)+'</div>'
-      +'<div><b>Requested incentive</b> '+uiMoney(inc.incentive)+' \u2014 50% of EVSE plus make-ready and future proofing'
-      +(inc.capped?', capped at the '+uiMoney(inc.cap)+' per-site ceiling':'')+'.</div>'
-      +'</div>';
+    /* Every site that will land on the application, so what the PDF is
+       about to say is visible before it is written. */
+    var all=uiAllSites(), app=uiAppIncentive(), ai2;
+    h+='<table class="pv" style="margin-top:10px;width:100%;font-size:11px">'
+      +'<tr><th>ID</th><th>Site</th><th class="num">Ports</th><th class="num">EVSE</th>'
+      +'<th class="num">Make-ready</th><th class="num">Future proofing</th><th class="num">Total</th><th class="num">Incentive</th></tr>';
+    for(ai2=0; ai2<all.length; ai2++){
+      var A=all[ai2];
+      h+='<tr'+(ai2===ACTIVE?' style="font-weight:600"':'')+'><td>'+siteLetter(ai2)+'</td><td>'+esc(A.siteName)+'</td>'
+        +'<td class="num">'+A.ports+'</td><td class="num">'+uiMoney(A.inc.evse)+'</td>'
+        +'<td class="num">'+uiMoney(A.inc.mr)+'</td><td class="num">'+uiMoney(A.inc.fp)+'</td>'
+        +'<td class="num">'+uiMoney(A.m.total)+'</td><td class="num">'+uiMoney(A.inc.incentive)+'</td></tr>';
+    }
+    if(all.length>1)
+      h+='<tr class="pv-gold"><td></td><td><b>All sites</b></td><td class="num"></td><td class="num"></td>'
+        +'<td class="num"></td><td class="num"></td><td class="num"></td><td class="num"><b>'+uiMoney(app.incentive)+'</b></td></tr>';
+    h+='</table>';
+    h+='<div style="margin-top:8px;font-size:12px;line-height:1.7">'
+      +'<div><b>Requested incentive</b> '+uiMoney(app.incentive)+' \u2014 50% of EVSE plus make-ready and future proofing'
+      +(all.length>1 ? ', each site against its own '+uiMoney(inc.cap)+' ceiling' : (inc.capped?', capped at the '+uiMoney(inc.cap)+' per-site ceiling':''))
+      +'.</div></div>';
+    if(all.length>1 && app.cappedSites)
+      h+='<div class="note" style="margin-top:6px">'+app.cappedSites+' of '+all.length
+        +' sites are at the cap. The ceiling applies per site, so the application can request more than one site\u2019s worth \u2014 '
+        +'but each site must have its own service panel, junction boxes and conduit to count as separate under the Terms &amp; Conditions.</div>';
     if(inc.fp<=0)
       h+='<div class="warn" style="margin-top:8px">No future-proofing cost is priced. UI rebates it at 100%'
         +(chargerClass()==='dcfc'?' and Appendix B scores it 10 of 100 selection points':'')
@@ -4202,14 +4562,29 @@ function exportWorkbook(){
   }
   if(PICK.proposal) jobs.push({ kind:'proposal' });
   if(!jobs.length){ alert('Pick at least one sheet to build.'); return; }
-  if(!LINES.length && !confirm('There are no cost lines. Export anyway?')) return;
+  sitesInit(); saveActive();
+  var _work=0, _si;
+  for(_si=0;_si<SITES.length;_si++) if(siteHasWork(_si)) _work++;
+  if(!_work && !confirm('There are no cost lines on any site. Export anyway?')) return;
+
   /* A sheet that reports zero conduit next to a drawn trench comes straight
-     back from review, so it does not leave here quietly. */
-  var _audit=feetAudit().concat(fpAudit());
+     back from review, so it does not leave here quietly — and with more
+     than one site the check runs on every one of them, since it is the
+     quiet empty site that gets exported by accident. */
+  var _audit=[];
+  eachSite(function(ix){
+    var a=feetAudit().concat(fpAudit()), ai;
+    if(!siteHasWork(ix) && SITES.length>1)
+      a.push('No cost lines at all \u2014 it would export as an empty row on the application.');
+    for(ai=0;ai<a.length;ai++)
+      _audit.push((SITES.length>1 ? siteLetter(ix)+' \u00b7 '+siteLabel(ix)+': ' : '')
+        + String(a[ai]).replace(/<[^>]+>/g,'').replace(/&amp;/g,'&').replace(/&\w+;/g,''));
+  });
+  var _ad=addressAudit(), _adi;
+  for(_adi=0;_adi<_ad.length;_adi++) _audit.push(String(_ad[_adi]).replace(/<[^>]+>/g,''));
   if(_audit.length){
     var _msg='Before this goes to the utility:\n\n', _ai;
-    for(_ai=0;_ai<_audit.length;_ai++)
-      _msg += '  \u2022 ' + String(_audit[_ai]).replace(/<[^>]+>/g,'').replace(/&amp;/g,'&').replace(/&\w+;/g,'') + '\n';
+    for(_ai=0;_ai<_audit.length;_ai++) _msg += '  \u2022 ' + _audit[_ai] + '\n';
     if(!confirm(_msg+'\nExport anyway?')) return;
   }
 
@@ -4227,22 +4602,32 @@ function exportWorkbook(){
       btn.disabled=false; btn.textContent='Export workbook';
       var st=document.getElementById('xlWarn');
       if(st) st.innerHTML='<div class="warn" style="background:#e8f5e9;border-color:#a5d6a7;color:#1b5e20">'
-        +made.length+' file'+(made.length===1?'':'s')+' exported: '+made.join(', ')+'</div>';
+        +made.length+' file'+(made.length===1?'':'s')+' exported: '+made.join(', ')
+        +(PICK['ui-ct-l2']?' \u2014 building the UI application PDF\u2026':'')+'</div>';
+      /* The cost sheet and the application go out together, so the export
+         button produces the whole submittal rather than half of it. */
+      if(PICK['ui-ct-l2']) setTimeout(function(){ uiPdfFill(); }, 800);
       return;
     }
     var j=jobs[ix], wb=_newBook(), name;
     try{
-      if(j.kind==='proposal'){
-        sheetProposal(wb, buildModel(proposalForm()), site);
-        name='Proposal_'+slug+'_'+stamp+'.xlsx';
-      } else if(j.form.writer==='eversource'){
-        sheetES30(wb, buildModel(j.form), j.form, site);
-        name='Eversource_Cost_Estimate_Matrix_'+slug+'_'+stamp+'.xlsx';
-      } else {
-        sheetForm(wb, buildModel(j.form), j.form, site);
-        name=String(j.form.utility||'Utility').replace(/[^A-Za-z0-9]+/g,'_')
+      /* Every site goes into the SAME workbook, one worksheet each, so what
+         gets emailed to the program is a single file the reviewer can page
+         through rather than four attachments to reconcile by hand. */
+      if(SITES.length>1) sheetSiteSummary(wb, j);
+      eachSite(function(ix2){
+        var tab=(SITES.length>1 ? siteLetter(ix2)+' \u2014 ' : '')+(siteLabel(ix2)||site);
+        /* safeSheetName trims to Excel's 31 chars, so the address rides
+           along only when there is room for it */
+        if(SITES.length>1 && siteAddress(ix2) && (tab+' '+siteAddress(ix2)).length<=31) tab+=' '+siteAddress(ix2);
+        if(j.kind==='proposal')            sheetProposal(wb, buildModel(proposalForm()), tab);
+        else if(j.form.writer==='eversource') sheetES30(wb, buildModel(j.form), j.form, tab);
+        else                                sheetForm(wb, buildModel(j.form), j.form, tab);
+      });
+      if(j.kind==='proposal')                name='Proposal_'+slug+'_'+stamp+'.xlsx';
+      else if(j.form.writer==='eversource')  name='Eversource_Cost_Estimate_Matrix_'+slug+'_'+stamp+'.xlsx';
+      else name=String(j.form.utility||'Utility').replace(/[^A-Za-z0-9]+/g,'_')
              +'_EV_Costs_'+slug+'_'+stamp+'.xlsx';
-      }
     }catch(err){
       btn.disabled=false; btn.textContent='Export workbook';
       alert('Could not build '+(j.kind==='proposal'?'the proposal':j.form.utility)+': '
@@ -4261,6 +4646,68 @@ function exportWorkbook(){
 }
 
 /* ── Utility program form — written from its own definition ───────── */
+/* First tab when there is more than one site: what each site costs, what it
+   asks for, and what the application adds up to. Reviewers open this before
+   anything else, and it is the sheet that makes a four-site submittal
+   legible instead of four unrelated cost sheets. */
+function sheetSiteSummary(wb, job){
+  var ws=wb.addWorksheet('Summary', { views:[{showGridLines:false}] });
+  var W=[2,8,26,10,15,15,15,15,15,16], i;
+  for(i=0;i<W.length;i++) ws.getColumn(i+1).width=W[i];
+  var GREEN={ fill:'FF92D050', bold:true, color:'FFFFFFFF' };
+  var HEAD ={ fill:'FFBFBFBF', bold:true, wrap:true, align:'center' };
+  var MONEY='"$"#,##0.00';
+
+  merge(ws,'B2:J2');
+  cell(ws,'B2', (d('applicant')||'EV charging project')+' \u2014 '+SITES.length+' sites', GREEN);
+  ws.getRow(2).height=17;
+  cell(ws,'B3','Property', {bold:true}); merge(ws,'C3:J3');
+  cell(ws,'C3', [d('address'), d('city')].filter(Boolean).join(', '), {});
+
+  var R=5, hdr=['ID','Site','Ports','EVSE','Make-ready','Future proofing','Non-eligible','Total','Requested incentive'];
+  var COLS=['B','C','D','E','F','G','H','I','J'];
+  for(i=0;i<hdr.length;i++) cell(ws, COLS[i]+R, hdr[i], HEAD);
+  R++;
+
+  var first=R, tot={evse:0,mr:0,fp:0,ne:0,all:0,inc:0,ports:0};
+  eachSite(function(ix){
+    var form=(job && job.kind!=='proposal' && job.form) ? job.form : proposalForm();
+    var m=buildModel(form), inc=uiIncentive(m);
+    var ne=uiBlockTotal(m,'ne'), ports=num(DATA.plugs);
+    cell(ws,'B'+R, siteLetter(ix), {align:'center',bold:true});
+    cell(ws,'C'+R, siteLabel(ix), {});
+    cell(ws,'D'+R, ports, {align:'center'});
+    cell(ws,'E'+R, r2(inc.evse), {fmt:MONEY});
+    cell(ws,'F'+R, r2(inc.mr),   {fmt:MONEY});
+    cell(ws,'G'+R, r2(inc.fp),   {fmt:MONEY});
+    cell(ws,'H'+R, r2(ne),       {fmt:MONEY});
+    cell(ws,'I'+R, r2(m.total),  {fmt:MONEY,bold:true});
+    cell(ws,'J'+R, r2(inc.incentive), {fmt:MONEY,bold:true});
+    tot.evse+=inc.evse; tot.mr+=inc.mr; tot.fp+=inc.fp; tot.ne+=ne;
+    tot.all+=m.total; tot.inc+=inc.incentive; tot.ports+=ports;
+    R++;
+  });
+  var last=R-1;
+
+  cell(ws,'B'+R,'',{fill:'FFFFC000'});
+  cell(ws,'C'+R,'All sites',{fill:'FFFFC000',bold:true});
+  cell(ws,'D'+R, tot.ports, {fill:'FFFFC000',bold:true,align:'center'});
+  var cols=[['E','evse'],['F','mr'],['G','fp'],['H','ne'],['I','all'],['J','inc']];
+  for(i=0;i<cols.length;i++)
+    fxc(ws, cols[i][0]+R, sumF(cols[i][0], first, last), tot[cols[i][1]],
+        {fill:'FFFFC000',bold:true,fmt:MONEY});
+  R+=2;
+
+  /* The cap is per SITE, which is the whole reason to split a property into
+     two \u2014 worth saying on the sheet so nobody "simplifies" it back into one. */
+  cell(ws,'B'+R,'The incentive cap applies to each site separately. Splitting a property into '
+    +SITES.length+' qualifying sites is worth up to '+SITES.length
+    +'\u00d7 the per-site ceiling, provided each site has its own service panel, junction boxes and conduit '
+    +'as defined in the program Terms & Conditions.', {border:false, wrap:true, size:9});
+  merge(ws,'B'+R+':J'+(R+1));
+  return ws;
+}
+
 function sheetForm(wb, m, form, site){
   var title=safeSheetName((form.sheet||'{site}').replace('{site}', site));
   var ws=wb.addWorksheet(title, { views:[{showGridLines:false}] });
