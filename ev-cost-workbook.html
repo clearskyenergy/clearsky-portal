@@ -97,6 +97,11 @@ table.map tr.orphan td:first-child{box-shadow:inset 3px 0 0 var(--gold)}
 table.map tr:hover td{background:#F7F4EF}
 .cell-in{width:100%;padding:5px 6px;font-size:11.5px;text-align:right}
 .desc-in{width:100%;padding:4px 6px;font-size:11.5px;border-color:transparent;background:transparent}
+.qty-cell{white-space:nowrap}
+.qty-in{width:56px;padding:4px 5px;font-size:11px;text-align:right}
+.unit-in{width:40px;padding:4px 4px;font-size:11px;border-color:transparent;background:transparent}
+.unit-in:hover,.unit-in:focus{border-color:#CFC8BC;background:#fff}
+.rate-hint{display:block;color:var(--dim);font-size:9.5px;margin-top:2px;font-family:inherit}
 .desc-in:hover{border-color:#CFC8BC}
 .meta{display:block;color:var(--dim);font-size:9.5px;margin-top:1px;padding-left:6px}
 .sel-sm{padding:5px 6px;font-size:11px;background-position:calc(100% - 12px) 12px,calc(100% - 8px) 12px}
@@ -2421,6 +2426,18 @@ function setLine(id, field, v){
   for(i=0;i<LINES.length;i++){
     if(LINES[i].id!==id) continue;
     if(field==='mat'||field==='lab'||field==='fp') LINES[i][field]=num(v);
+    /* Quantity carries the cost with it: two chargers cost twice one, and
+       260 LF of trench costs less than 279 did. The unit rate comes from
+       what is in the row right now, so a hand-corrected price is respected
+       rather than overwritten by the rate card. */
+    else if(field==='qty'){
+      var L=LINES[i], oldQ=num(L.qty), newQ=(String(v)==='' ? '' : num(v));
+      if(newQ!=='' && oldQ>0){ L.unitMat=num(L.mat)/oldQ; L.unitLab=num(L.lab)/oldQ; }
+      if(newQ!=='' && L.unitMat!=null){ L.mat=r2(L.unitMat*newQ); L.lab=r2(L.unitLab*newQ); }
+      L.qty=newQ;
+      renderMap();
+    }
+    else if(field==='unit'){ LINES[i].unit=String(v||'').replace(/^\s+|\s+$/g,''); renderMap(); }
     else if(field==='bucket'){
       LINES[i].bucket=v; LINES[i].orphan=false;
       if(!rowExists(v, LINES[i].row)) LINES[i].row=blockById(v).rows[blockById(v).rows.length-1].k;
@@ -3016,6 +3033,37 @@ function feetProvenanceHTML(){
 /* ── 12. RENDER — mapping + previews ──────────────────────────────── */
 function render(){ renderMap(); renderOutputs(); }
 
+/* What one of these costs, so it is obvious what changing the quantity will
+   do before it is changed. */
+function rateHint(l){
+  var q=num(l.qty), t=num(l.mat)+num(l.lab);
+  if(!(q>0) || !t) return '';
+  return '<span class="rate-hint">'+money(r2(t/q))+' / '+esc(l.unit||'ea')+'</span>';
+}
+
+/* Charger quantity and the plug count drive different things — the plug
+   count feeds design, activation, networking and UI's minimum-port rule —
+   so changing one and not the other is a quiet way to file a wrong
+   application. */
+function chargerQtyNote(){
+  var units=0, i, l, per=2, have=num(DATA.plugs);
+  for(i=0;i<LINES.length;i++){
+    l=LINES[i];
+    if(l.bucket==='evse' && l.row==='charger' && num(l.qty)>0) units+=num(l.qty);
+  }
+  if(!units || !have) return '';
+  try{
+    if(EDITOR_FLEET && EDITOR_FLEET.length && num(EDITOR_FLEET[0].ports)>0)
+      per=num(EDITOR_FLEET[0].ports);
+  }catch(e){}
+  var implied=Math.round(units*per);
+  if(implied===have) return '';
+  return '<div class="warn" style="margin-top:8px"><b>Charger count and plug count disagree.</b> '
+    + 'The charger lines add up to '+units+' unit'+(units===1?'':'s')+' \u2014 about '+implied+' port'+(implied===1?'':'s')
+    + ' at '+per+' per unit \u2014 but <b># of Level 2 Plugs</b> is set to '+have+'. '
+    + 'Ports drive design, activation, networking and UI\u2019s minimum-port rule, so update it in Site &amp; program if the count changed.</div>';
+}
+
 function renderMap(){
   var BL=activeBlocks();
   var tb=document.getElementById('mapBody'), h='', i, l, bi, ri, b;
@@ -3033,7 +3081,14 @@ function renderMap(){
     h+='<tr class="'+(l.src==='manual'?'manual':'')+(l.orphan?' orphan':'')+'">'
       +'<td><input id="d-'+l.id+'" class="desc-in" value="'+esc(l.desc)+'" oninput="setLine('+l.id+',\'desc\',this.value)">'
       +   (l.size||l.cat ? '<span class="meta">'+esc(l.cat)+(l.size?' · '+esc(l.size):'')+'</span>' : '')+'</td>'
-      +'<td class="mono" style="color:var(--dim);font-size:10.5px">'+esc(l.qty!==''?l.qty+' '+l.unit:'—')+'</td>'
+      +'<td class="qty-cell">'
+      +   '<input class="qty-in mono" type="number" step="any" min="0" value="'+esc(l.qty)+'" '
+      +     'title="Quantity \u2014 changing it rescales material and labour at the same unit rate" '
+      +     'onchange="setLine('+l.id+',\'qty\',this.value)">'
+      +   '<input class="unit-in mono" value="'+esc(l.unit||'')+'" placeholder="unit" '
+      +     'title="Unit of measure" onchange="setLine('+l.id+',\'unit\',this.value)">'
+      +   rateHint(l)
+      +'</td>'
       +'<td><select class="sel-sm" onchange="setLine('+l.id+',\'bucket\',this.value)">'+bopts+'</select></td>'
       +'<td><select class="sel-sm" onchange="setLine('+l.id+',\'row\',this.value)">'+ropts+'</select></td>'
       +'<td><input class="cell-in mono" type="number" value="'+l.fp+'" onchange="setLine('+l.id+',\'fp\',this.value)"'+(l.bucket==='fp'?' disabled':'')+'></td>'
@@ -3053,6 +3108,7 @@ function renderMap(){
       bnote += '<li>'+esc(bad[bi2].desc)+' \u2014 '+esc(bad[bi2].why)+'</li>';
     bnote += '</ul><div style="margin-top:5px">Neither direction is automatically wrong; site conditions vary. But confirm before submitting \u2014 high invites a kickback, low costs you the margin.</div></div>';
   }
+  bnote += chargerQtyNote();
   if(inel.length){
     bnote += '<div class="warn" style="margin-top:8px"><b>Usually not rebate-eligible</b> \u2014 '
           + 'these are priced in an eligible block:<ul style="margin:5px 0 0;padding-left:17px">';
