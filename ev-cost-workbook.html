@@ -4691,7 +4691,6 @@ function exportWorkbook(){
       /* Every site goes into the SAME workbook, one worksheet each, so what
          gets emailed to the program is a single file the reviewer can page
          through rather than four attachments to reconcile by hand. */
-      if(SITES.length>1) sheetSiteSummary(wb, j);
       eachSite(function(ix2){
         var tab=(SITES.length>1 ? siteLetter(ix2)+' \u2014 ' : '')+(siteLabel(ix2)||site);
         /* safeSheetName trims to Excel's 31 chars, so the address rides
@@ -4723,68 +4722,6 @@ function exportWorkbook(){
 }
 
 /* ── Utility program form — written from its own definition ───────── */
-/* First tab when there is more than one site: what each site costs, what it
-   asks for, and what the application adds up to. Reviewers open this before
-   anything else, and it is the sheet that makes a four-site submittal
-   legible instead of four unrelated cost sheets. */
-function sheetSiteSummary(wb, job){
-  var ws=wb.addWorksheet('Summary', { views:[{showGridLines:false}] });
-  var W=[2,8,26,10,15,15,15,15,15,16], i;
-  for(i=0;i<W.length;i++) ws.getColumn(i+1).width=W[i];
-  var GREEN={ fill:'FF92D050', bold:true, color:'FFFFFFFF' };
-  var HEAD ={ fill:'FFBFBFBF', bold:true, wrap:true, align:'center' };
-  var MONEY='"$"#,##0.00';
-
-  merge(ws,'B2:J2');
-  cell(ws,'B2', (d('applicant')||'EV charging project')+' \u2014 '+SITES.length+' sites', GREEN);
-  ws.getRow(2).height=17;
-  cell(ws,'B3','Property', {bold:true}); merge(ws,'C3:J3');
-  cell(ws,'C3', [d('address'), d('city')].filter(Boolean).join(', '), {});
-
-  var R=5, hdr=['ID','Site','Ports','EVSE','Make-ready','Future proofing','Non-eligible','Total','Requested incentive'];
-  var COLS=['B','C','D','E','F','G','H','I','J'];
-  for(i=0;i<hdr.length;i++) cell(ws, COLS[i]+R, hdr[i], HEAD);
-  R++;
-
-  var first=R, tot={evse:0,mr:0,fp:0,ne:0,all:0,inc:0,ports:0};
-  eachSite(function(ix){
-    var form=(job && job.kind!=='proposal' && job.form) ? job.form : proposalForm();
-    var m=buildModel(form), inc=uiIncentive(m);
-    var ne=uiBlockTotal(m,'ne'), ports=num(DATA.plugs);
-    cell(ws,'B'+R, siteLetter(ix), {align:'center',bold:true});
-    cell(ws,'C'+R, siteLabel(ix), {});
-    cell(ws,'D'+R, ports, {align:'center'});
-    cell(ws,'E'+R, r2(inc.evse), {fmt:MONEY});
-    cell(ws,'F'+R, r2(inc.mr),   {fmt:MONEY});
-    cell(ws,'G'+R, r2(inc.fp),   {fmt:MONEY});
-    cell(ws,'H'+R, r2(ne),       {fmt:MONEY});
-    cell(ws,'I'+R, r2(m.total),  {fmt:MONEY,bold:true});
-    cell(ws,'J'+R, r2(inc.incentive), {fmt:MONEY,bold:true});
-    tot.evse+=inc.evse; tot.mr+=inc.mr; tot.fp+=inc.fp; tot.ne+=ne;
-    tot.all+=m.total; tot.inc+=inc.incentive; tot.ports+=ports;
-    R++;
-  });
-  var last=R-1;
-
-  cell(ws,'B'+R,'',{fill:'FFFFC000'});
-  cell(ws,'C'+R,'All sites',{fill:'FFFFC000',bold:true});
-  cell(ws,'D'+R, tot.ports, {fill:'FFFFC000',bold:true,align:'center'});
-  var cols=[['E','evse'],['F','mr'],['G','fp'],['H','ne'],['I','all'],['J','inc']];
-  for(i=0;i<cols.length;i++)
-    fxc(ws, cols[i][0]+R, sumF(cols[i][0], first, last), tot[cols[i][1]],
-        {fill:'FFFFC000',bold:true,fmt:MONEY});
-  R+=2;
-
-  /* The cap is per SITE, which is the whole reason to split a property into
-     two \u2014 worth saying on the sheet so nobody "simplifies" it back into one. */
-  cell(ws,'B'+R,'The incentive cap applies to each site separately. Splitting a property into '
-    +SITES.length+' qualifying sites is worth up to '+SITES.length
-    +'\u00d7 the per-site ceiling, provided each site has its own service panel, junction boxes and conduit '
-    +'as defined in the program Terms & Conditions.', {border:false, wrap:true, size:9});
-  merge(ws,'B'+R+':J'+(R+1));
-  return ws;
-}
-
 function sheetForm(wb, m, form, site){
   var title=safeSheetName((form.sheet||'{site}').replace('{site}', site));
   var ws=wb.addWorksheet(title, { views:[{showGridLines:false}] });
