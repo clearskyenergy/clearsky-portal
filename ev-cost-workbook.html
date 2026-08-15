@@ -1839,6 +1839,98 @@ function siteTabsHTML(){
   return h;
 }
 
+/* ── WHICH SITE DOES AN INCOMING ESTIMATE BELONG TO? ───────────────
+   The editor is cross-origin, so this tool cannot read its tabs: every
+   estimate arrives one at a time, whenever the EV Cost Workbook button is
+   pressed on whichever site map is open. Pressing it twice used to load
+   the second map straight over the first, which is why Site Map 2 came
+   through empty.
+
+   Routing goes by name when the editor sends one, and by how much the
+   line items overlap when it does not. A re-pull of a map already loaded
+   updates that map in place instead of piling up duplicates. */
+function payloadName(pay){
+  var s=(pay && pay.site) || {};
+  var n = pay.mapName || pay.siteMap || pay.tab || pay.name
+       || s.name || s.mapName || s.siteMap || s.tab || s.label || '';
+  return String(n).replace(/^\s+|\s+$/g,'');
+}
+function fingerprint(lines){
+  var f={}, i, l, k;
+  for(i=0;i<lines.length;i++){
+    l=lines[i];
+    k=String(l.desc||l.description||'').toLowerCase().replace(/[^a-z0-9]+/g,' ')
+      .replace(/^\s+|\s+$/g,'');
+    if(k) f[k]=(f[k]||0)+1;
+  }
+  return f;
+}
+/* How much of the INCOMING estimate the site already contains. Asymmetric
+   on purpose: a loaded site also carries permitting, design and the priced
+   conduit rows this tool adds, so a symmetric comparison scored a re-pull
+   of the same drawing at 0.25 and filed it as a brand new site. */
+function fpOverlap(incoming, existing){
+  var k, both=0, n=0;
+  for(k in incoming) if(incoming.hasOwnProperty(k)){ n++; if(existing[k]) both++; }
+  return n ? both/n : 0;
+}
+function findSiteFor(pay){
+  sitesInit();
+  var nm=payloadName(pay), i, lab;
+  if(nm){
+    for(i=0;i<SITES.length;i++){
+      lab=String(siteLabel(i)).toLowerCase();
+      if(lab===nm.toLowerCase()) return { ix:i, why:'name' };
+    }
+    return { ix:-1, why:'new', name:nm };
+  }
+  /* No name from the editor \u2014 fall back to what the lines look like. */
+  var fp=fingerprint(pay.lines||[]), best=-1, bestScore=0, sc;
+  for(i=0;i<SITES.length;i++){
+    if(!SITES[i].LINES || !SITES[i].LINES.length) continue;
+    sc=fpOverlap(fp, fingerprint(SITES[i].LINES));
+    if(sc>bestScore){ bestScore=sc; best=i; }
+  }
+  if(best>=0 && bestScore>=0.6) return { ix:best, why:'match', score:bestScore };
+  return { ix:-1, why:'new' };
+}
+
+/* Every route in \u2014 the button, the handshake, a second press from another
+   tab \u2014 comes through here so nothing can quietly overwrite a site. */
+function receivePayload(pay){
+  var list=payloadSites(pay);
+  if(list.length>1){ loadSites(list); return; }
+  pay=list[0];
+  if(!pay || !pay.lines) return;
+
+  sitesInit(); saveActive();
+  var f=findSiteFor(pay), ix=f.ix, made=false;
+  if(ix<0){
+    if(!siteHasWork(ACTIVE)) ix=ACTIVE;              /* current site is empty */
+    else {
+      ix=addSite();                                   /* keep what is there */
+      if(ix<0){ msg('srcMsg','All four site rows are used. Delete one, or start a second application.','warn'); return; }
+      made=true;
+    }
+  }
+  siteRestore(SITES[ix]); ACTIVE=ix;
+  var nm=payloadName(pay);
+  loadPayload(pay);
+  if(nm) DATA.site=nm;
+  else if(!DATA.site || made) DATA.site=siteAutoLabel(ix);
+  saveActive(); renderAll();
+
+  var where=siteLetter(ix)+' \u00b7 '+esc(siteLabel(ix));
+  msg('srcMsg',
+    (f.why==='name'  ? 'Updated <b>'+where+'</b> from the editor.' :
+     f.why==='match' ? 'Recognised this as <b>'+where+'</b> (the line items match) and updated it.' :
+     made            ? 'Loaded as a new site: <b>'+where+'</b>. '+SITES.length+' sites now on the application.'
+                     : 'Loaded into <b>'+where+'</b>.')
+    + (nm ? '' : ' The editor did not send a site map name \u2014 rename it above if this is the wrong row.'),
+    'ok');
+}
+window.receivePayload=receivePayload;
+
 function pullFromEditor(){
   var pay=null, why='';
   try{
@@ -1875,22 +1967,7 @@ function pullFromEditor(){
     msg('srcMsg', why+'Nothing handed over yet. In the editor open <b>Electrical Estimate</b> and press <b>EV Cost Workbook</b>, or paste the estimate CSV here.','warn');
     return;
   }
-  var list=payloadSites(pay);
-  if(list.length>1){ loadSites(list); return; }
-
-  sitesInit();
-  /* Pulling a second drawing should not quietly overwrite the first. */
-  if(LINES.length && SITES.length<MAX_SITES){
-    var here=siteLetter(ACTIVE)+' \u00b7 '+siteLabel(ACTIVE);
-    if(!confirm(here+' already has '+LINES.length+' cost lines.\n\n'
-       +'OK = replace this site with what the editor is handing over.\n'
-       +'Cancel = keep it and load this drawing as a new site.')){
-      var ix=addSite();
-      if(ix>=0){ saveActive(); siteRestore(SITES[ix]); ACTIVE=ix; }
-    }
-  }
-  loadPayload(list[0]);
-  renderAll();
+  receivePayload(pay);
 }
 function packEstimate(est, w){
   var crew=(w && w.ELEC_BID && w.ELEC_BID.crewRate)?w.ELEC_BID.crewRate:nval('p_crew');
@@ -5128,8 +5205,10 @@ window.addEventListener('message', function(ev){
       + ') and was ignored. Paste the CSV instead.','warn');
     return;
   }
-  if(x.payload && x.payload.lines){
-    try{ loadPayload(x.payload); }catch(e){}
+  if(x.payload && (x.payload.lines || x.payload.sites)){
+    /* Straight to loadPayload, this overwrote whichever site was open: press
+       the button on Site Map 2 and Site Map 1's costs were gone. */
+    try{ receivePayload(x.payload); }catch(e){}
   }
 }, false);
 
@@ -5137,7 +5216,9 @@ window.addEventListener('message', function(ev){
 function pingOpener(){
   try{
     if(window.opener && !window.opener.closed){
-      window.opener.postMessage({ type:'OMEGA_EV_COST_READY' }, '*');
+      /* wantAllSites lets an editor that knows about tabs hand over every
+         site map at once; older builds ignore it and send the open one. */
+      window.opener.postMessage({ type:'OMEGA_EV_COST_READY', wantAllSites:true, maxSites:MAX_SITES }, '*');
       return true;
     }
   }catch(e){}
