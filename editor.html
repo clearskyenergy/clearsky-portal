@@ -66109,6 +66109,61 @@ window._crmToastModal=_crmToastModal;
   }
   body.omega-dock-left .rbtn.home-hero{ min-width:0!important; max-width:none!important; }
   body.omega-dock-left .rsbtn{ width:100%; }
+
+  /* ---- FIX: docked panels collapsed on top of each other ---------------
+     THE PANELS DO NOT FIT, SO THEY COLLIDE. Same class of bug as the
+     Recent Projects strip in OMEGA PATCH 5 — not z-index, not width.
+
+     Once turned on its side, .ribbon-page is a flex COLUMN with height:100%
+     inside a grid cell that has a definite height. The Edit tab puts ten
+     buttons and three captions (~330px) into a ~600px column, but Draw and
+     Home put in far more, and flex items shrink by default. Each .rpanel
+     was squeezed toward zero while its buttons kept the height their text
+     actually needs, so the Scale panel's caption and rows painted straight
+     over the Edit panel's rows: "Delete Conduit" and "Calibrate Scale" on
+     the same pixels.
+
+     Two defaults did the squeezing and both have to go:
+       .rpanel      -> flex-shrink:1 (initial)   panel compressed
+       .rpanel-body -> flex:1 1 0                basis 0, so it starts at
+                       nothing and only grows into space that a horizontal
+                       ribbon has and a vertical column does not
+
+     Fix: let the column be as tall as its content and hand the overflow to
+     #ribbon, which is already overflow-y:auto and just needed min-height:0
+     to be allowed to scroll instead of fighting the grid. ------------- */
+  body.omega-dock-left #ribbon{
+    /* Grid items are min-height:auto, which means "never shrink below your
+       content" — that silently cancels overflow-y:auto. Without this the
+       column tries to grow past 100vh and body's overflow:hidden clips the
+       last panels away instead of scrolling to them. */
+    min-height:0;
+  }
+  body.omega-dock-left .ribbon-page{
+    height:auto!important;        /* was 100% of a definite grid row */
+    justify-content:flex-start;
+  }
+  body.omega-dock-left .rpanel{
+    flex:0 0 auto!important;      /* 1. a panel can never be compressed
+                                        below the buttons it contains */
+    height:auto; justify-content:flex-start;
+  }
+  body.omega-dock-left .rpanel-body{
+    flex:0 0 auto!important;      /* 2. basis 0 collapsed it to nothing */
+    height:auto; min-height:0;
+  }
+  body.omega-dock-left .rpanel-body .rbtn{
+    flex:0 0 auto!important;      /* 3. and a row can never be compressed
+                                        below its own label */
+    height:auto!important;
+    /* max-height is calc(--ribbon-h - 22px): it reserves room for the
+       caption inside a 68px horizontal strip. In a column the caption sits
+       in its own row above, so the cap only clips two-line labels. */
+    max-height:none!important;
+  }
+  /* Labels like "Delete<br>Conduit" keep their break and simply wrap to two
+     lines, which is what "Clear Schematic" was already doing correctly. */
+  body.omega-dock-left .rbtn .rb-lbl{ white-space:normal; }
   /* The .rtab elements are NOT direct children of #tb - they sit in a
      #ribbon-tabs wrapper that is flex-wrap:nowrap. Wrapping #tb alone did
      nothing, so the eleven tabs overflowed the column and rendered across
