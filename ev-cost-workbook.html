@@ -258,6 +258,18 @@ table.pv td.num{text-align:right;font-variant-numeric:tabular-nums}
     </div>
 
     <div class="card">
+      <h3>Future proofing<span class="hint" id="fpTotal"></span></h3>
+      <div class="body">
+        <div class="note" style="margin-bottom:10px">Spare capacity installed now so the
+          site can grow without re-trenching. Both programmes rebate it, each on its own
+          rows. Anything entered here is added to the estimate as future-proofing — the
+          trench split above is separate and still applies.</div>
+        <div id="fpPanel"></div>
+        <div id="fpMsg" class="note" style="margin-top:9px"></div>
+      </div>
+    </div>
+
+    <div class="card">
       <h3>Proposal appearance<span class="hint">what the customer sees</span></h3>
       <div class="body">
         <label class="f"><span>Brand this proposal as</span>
@@ -1678,6 +1690,9 @@ function loadPayload(pay){
   if(pay.chargers) applyChargerCosts(pay.chargers);
   if(pay.contractor) applyContractor(pay.contractor);
   if(applyDetectedClass()) setClass(DATA['class']);
+  /* the rep's future-proofing entries are scope decisions, not estimate
+     output, so they survive a reload of the estimate */
+  syncFPLines();
   autofillFeet(); autofillPlugs();
   /* The sitemap gives conduit, trench and equipment. Everything else on a
      utility sheet — design, permitting, activation, freight, networking,
@@ -1780,6 +1795,107 @@ function renderSitePicker(){
   h+='</div><div class="note" style="margin-top:6px">Each site exports its own '
    + 'workbook \u2014 the utility forms are per-site documents. Export one, then pick the next.</div>';
   host.innerHTML=h;
+}
+
+/* ── FUTURE PROOFING PANEL ────────────────────────────────────────
+   Spare capacity is often scope the ESTIMATE doesn't carry: the drawing
+   shows what gets built, while future proofing is what the developer
+   chooses to put in the same trench for later. Before this, the only
+   ways in were a description containing the word "spare" or the trench
+   split — neither of which lets a rep simply say "add 200 ft of spare
+   3-inch".
+
+   Each entry becomes a real cost line in the future-proofing block, so
+   it flows through both forms untouched:
+
+     row       United Illuminating          Eversource v4.0
+     conduit   Conduit & Conductors         r34 Primary Conduit
+     wire      Wiring                       r37 Other
+     panel     Panel                        r37 Other
+     xfmr      Transformers                 r37 Other
+     concrete  (folds into Panel)           r36 Concrete Work/Bases/Pads
+     restore   (folds into Trenching)       r35 Restoration and/or Remediation
+     other     Other                        r37 Other
+
+   Defaults come from BENCH, the rates read off accepted submissions, so
+   a rep entering only a footage still lands inside the approved band. */
+var FP_ITEMS = [
+  { k:'conduit',  l:'Spare conduit',                 unit:'LF',  mat:2.20, lab:4.30 },
+  { k:'wire',     l:'Spare wiring / conductors',     unit:'LF',  mat:2.40, lab:1.90 },
+  { k:'trenchTurf',l:'Extra trench, unpaved',        unit:'LF',  mat:10.00, lab:60.00 },
+  { k:'restore',  l:'Restoration over spare trench', unit:'LF',  mat:9.00, lab:2.00 },
+  { k:'concrete', l:'Concrete bases / pads',         unit:'ea',  mat:800.00, lab:400.00 },
+  { k:'panel',    l:'Spare gear / breaker positions',unit:'lot', mat:500.00, lab:1000.00 },
+  { k:'xfmr',     l:'Transformer capacity',          unit:'lot', mat:0, lab:0 },
+  { k:'other',    l:'Other future proofing',         unit:'lot', mat:0, lab:0 }
+];
+
+function fpKey(k,f){ return 'fp_'+k+'_'+f; }
+
+function renderFPPanel(){
+  var host=document.getElementById('fpPanel');
+  if(!host) return;
+  var h='', i, it, q, mu, lu;
+  for(i=0;i<FP_ITEMS.length;i++){
+    it=FP_ITEMS[i];
+    q  = d(fpKey(it.k,'q'));
+    mu = d(fpKey(it.k,'m')); if(mu==='') mu=it.mat?String(it.mat):'';
+    lu = d(fpKey(it.k,'l')); if(lu==='') lu=it.lab?String(it.lab):'';
+    h+='<div style="margin-bottom:9px">'
+      +'<div style="font-size:11px;font-weight:600;margin-bottom:3px">'+esc(it.l)
+      +' <span style="font-weight:400;color:var(--dim)">('+esc(it.unit)+')</span></div>'
+      +'<div class="grid3">'
+      +'<input type="number" step="any" placeholder="qty" value="'+esc(q)+'" '
+      +'oninput="setFP(\''+it.k+'\',\'q\',this.value)">'
+      +'<input type="number" step="any" placeholder="$ mat/'+esc(it.unit)+'" value="'+esc(mu)+'" '
+      +'oninput="setFP(\''+it.k+'\',\'m\',this.value)">'
+      +'<input type="number" step="any" placeholder="$ lab/'+esc(it.unit)+'" value="'+esc(lu)+'" '
+      +'oninput="setFP(\''+it.k+'\',\'l\',this.value)">'
+      +'</div></div>';
+  }
+  host.innerHTML=h;
+}
+
+function setFP(k, f, v){
+  DATA[fpKey(k,f)] = v;
+  syncFPLines();
+  render();
+}
+
+/* Rebuild the panel's lines from scratch each time, so clearing a quantity
+   removes its line rather than leaving a stale one behind. */
+function syncFPLines(){
+  var keep=[], i;
+  for(i=0;i<LINES.length;i++){ if(LINES[i].src!=='fp-panel') keep.push(LINES[i]); }
+  LINES=keep;
+
+  var added=0, it, q, mu, lu;
+  for(i=0;i<FP_ITEMS.length;i++){
+    it=FP_ITEMS[i];
+    q  = num(d(fpKey(it.k,'q')));
+    mu = d(fpKey(it.k,'m'))===''? it.mat : num(d(fpKey(it.k,'m')));
+    lu = d(fpKey(it.k,'l'))===''? it.lab : num(d(fpKey(it.k,'l')));
+    if(!(q>0)) continue;
+    /* Keep the TRUE row key. Each form places it — Eversource has a concrete
+       row, United Illuminating doesn't and folds it into Other — so deciding
+       here would freeze whichever form happened to be selected at the time. */
+    LINES.push({ id:_nid++, desc:it.l, size:'', cat:'Future proofing',
+                 qty:q, unit:it.unit, mat:r2(q*mu), lab:r2(q*lu),
+                 bucket:'fp', row:it.k, fp:0, src:'fp-panel' });
+    added++;
+  }
+  var msg1=document.getElementById('fpMsg');
+  if(msg1){
+    var tot=0, z;
+    for(z=0;z<LINES.length;z++){ if(LINES[z].src==='fp-panel') tot+=LINES[z].mat+LINES[z].lab; }
+    msg1.className='note';
+    msg1.innerHTML = added
+      ? added+' future-proofing line'+(added>1?'s':'')+' added to the estimate, $'+money(tot).slice(1)+'.'
+      : 'Enter a quantity to add future-proofing scope. Rates default to the bands seen on accepted submissions.';
+    var badge=document.getElementById('fpTotal');
+    if(badge) badge.textContent = tot? money(tot) : '';
+  }
+  return added;
 }
 
 function togglePaste(){
@@ -2124,8 +2240,27 @@ function buildModel(form){
     b=BL[bi]; grid[b.id]={};
     for(ri=0;ri<b.rows.length;ri++) grid[b.id][b.rows[ri].k]={ mat:0, lab:0, notes:[] };
   }
+  /* Forms don't all carry the same rows. When a line's row is missing from
+     the active form, keep it in ITS OWN block and fall to that block's Other
+     — the old code jumped to the last block entirely, so a future-proofing
+     concrete pad on a form without a concrete row landed in Ineligible and
+     quietly moved money out of the rebate. */
+  function blockOther(bid){
+    var b=null, z, rows;
+    for(z=0;z<BL.length;z++){ if(BL[z].id===bid) b=BL[z]; }
+    if(!b) return null;
+    rows=b.rows;
+    for(z=0;z<rows.length;z++){ if(rows[z].k==='other') return 'other'; }
+    return rows[rows.length-1].k;
+  }
   function put(bid,k,mat,lab,note){
-    if(!grid[bid] || !grid[bid][k]){ bid=BL[BL.length-1].id; k=BL[BL.length-1].rows[BL[BL.length-1].rows.length-1].k; }
+    if(!grid[bid]){
+      bid=BL[BL.length-1].id;
+      k=BL[BL.length-1].rows[BL[BL.length-1].rows.length-1].k;
+    } else if(!grid[bid][k]){
+      k=blockOther(bid) || k;
+    }
+    if(!grid[bid] || !grid[bid][k]) return;
     grid[bid][k].mat+=mat; grid[bid][k].lab+=lab;
     if(note && (mat||lab)) grid[bid][k].notes.push(note);
   }
@@ -2275,9 +2410,12 @@ function taxKnob(){
    flagged, so it shows up for re-mapping instead of quietly inflating Other. */
 function reconcileToForm(){
   var BL=activeBlocks(), last=BL[BL.length-1], lastRow=last.rows[last.rows.length-1];
+  /* panel lines carry a deliberate key and buildModel places them per form,
+     so they must not be re-homed or flagged */
   var i, l, ok, bi;
   for(i=0;i<LINES.length;i++){
     l=LINES[i]; ok=false;
+    if(l.src==='fp-panel'){ l.orphan=false; continue; }
     for(bi=0;bi<BL.length;bi++){ if(BL[bi].id===l.bucket) ok=true; }
     if(ok && !rowExists(l.bucket, l.row)) ok=false;
     if(ok){ l.orphan=false; continue; }
@@ -4029,6 +4167,8 @@ function boot(){
   onFormChange();
   renderPicker();
   renderSiteForm();
+  renderFPPanel();
+  syncFPLines();
   noteClass();
 
   var q=readQueryContractor();
