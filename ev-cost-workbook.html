@@ -891,7 +891,10 @@ var BLOCKS_ES_L2 = [
          "restoration" that was actually pull rope has a fair question.
          Restoration gets its own key; spare wiring falls to Other. */
       {k:'restore', l:'Restoration and/or Remediation',         es:{sec:'fp', unit:'Per Site'}},
-      {k:'panel',   l:'Concrete Work/Bases/Pads',               es:{sec:'fp', unit:'Total'}},
+      {k:'concrete',l:'Concrete Work/Bases/Pads',               es:{sec:'fp', unit:'Total'}},
+      /* Spare gear is not concrete work. The master has no gear row under
+         future proofing, so it belongs on Other with the spare wiring. */
+      {k:'panel',   l:'Spare gear / breaker positions',         es:{sec:'fp', unit:'Total'}},
       {k:'wire',    l:'Spare wiring / conductors',              es:{sec:'fp', unit:'Total'}},
       {k:'xfmr',    l:'Transformer capacity',                   es:{sec:'fp', unit:'Total'}},
       {k:'other',   l:'Other (i.e., Additional Cost/Scope Deviations)', es:{sec:'fp', unit:'Total'}}
@@ -3035,11 +3038,12 @@ var ES40 = {
             u:'Per Foot', mul:true, k:'trenchTurf', sec:'fp' },
     { r:34, t:'Primary Conduit (concrete-encased)', u:'Per Foot', mul:true, k:'conduit', sec:'fp' },
     { r:35, t:'Restoration and/or Remediation', c:'Specify:', u:'Per Site', mul:true, k:'restore', sec:'fp' },
-    { r:36, t:'Concrete Work/Bases/Pads', u:'Total', mul:true,  k:'panel', sec:'fp' },
-    /* The master has no spare-wiring or transformer row under future
-       proofing, so both land on Other rather than being dropped. */
+    { r:36, t:'Concrete Work/Bases/Pads', u:'Total', mul:true,  k:'concrete', sec:'fp' },
+    /* The master has no rows under future proofing for spare wiring, spare
+       gear or transformer capacity, so all three land on Other rather than
+       being dropped or misfiled onto Concrete. */
     { r:37, t:'Other (i.e., Additional Cost/Scope Deviations)', c:'Specify:', u:'Total', mul:false,
-            k:'other', ks:['other','wire','xfmr'], sec:'fp' },
+            k:'other', ks:['other','wire','panel','xfmr'], sec:'fp' },
 
     { band:38, t:'Eligible EVSE Costs' },
     { r:39, t:'EVSE Hardware #1', c:'EVSE Type (L2, DCFC): \nEVSE Make/Model: ', u:'Per Unit', mul:true, k:'charger',  sec:'evse', qty:'plugs' },
