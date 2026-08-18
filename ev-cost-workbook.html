@@ -187,6 +187,7 @@ table.pv td.num{text-align:right;font-variant-numeric:tabular-nums}
           <button class="btn p sm" onclick="importCSV()">Load lines</button>
         </div>
         <div id="srcMsg" class="note" style="margin-top:10px"></div>
+        <div id="sitePicker"></div>
       </div>
     </div>
 
@@ -885,10 +886,15 @@ var BLOCKS_ES_L2 = [
       {k:'trenchTurf', l:'Trenching & Backfill - Non-Continuously Paved Area\n(i.e., ground cover, turf)',
                     es:{sec:'fp', unit:'Per Foot'}},
       {k:'conduit', l:'Primary Conduit (concrete-encased)',     es:{sec:'fp', unit:'Per Foot'}},
-      {k:'wire',    l:'Restoration and/or Remediation',         es:{sec:'fp', unit:'Per Site'}},
+      /* 'wire' used to be labelled Restoration here, so spare conductors
+         exported onto the restoration line — a reviewer reading $500 of
+         "restoration" that was actually pull rope has a fair question.
+         Restoration gets its own key; spare wiring falls to Other. */
+      {k:'restore', l:'Restoration and/or Remediation',         es:{sec:'fp', unit:'Per Site'}},
       {k:'panel',   l:'Concrete Work/Bases/Pads',               es:{sec:'fp', unit:'Total'}},
-      {k:'xfmr',    l:'Other (i.e., Additional Cost/Scope Deviations)', es:{sec:'fp', unit:'Total'}},
-      {k:'other',   l:'Other (Future Proofing)',                es:{sec:'fp', unit:'Total'}}
+      {k:'wire',    l:'Spare wiring / conductors',              es:{sec:'fp', unit:'Total'}},
+      {k:'xfmr',    l:'Transformer capacity',                   es:{sec:'fp', unit:'Total'}},
+      {k:'other',   l:'Other (i.e., Additional Cost/Scope Deviations)', es:{sec:'fp', unit:'Total'}}
   ]},
   { id:'ne', title:'Ineligible Costs', fill:'FFFFC000', rows:[
       {k:'bollard', l:'Protective Bollards, Signs, Parking Spot Striping/Painting', es:{sec:'inel', unit:'Total'}},
@@ -1565,6 +1571,11 @@ function classify(cat, desc, size){
   if(/warrant/.test(t))                            return {b:'ne', r:'warranty', fp:0};
   if(/transformer|xfmr/.test(t))                   return future ? {b:'fp',r:'xfmr',fp:0}
                                                                 : {b:(dc?'mr':'fp'), r:'xfmr', fp:0};
+  /* Spare gear, spare breaker positions and the like are future proofing
+     wherever they appear — the earlier rule only caught conduit and wire,
+     so a spare panel stayed in make-ready and inflated the eligible cost. */
+  if(future && /panel|gear|breaker|switchgear|position/.test(t)) return {b:'fp', r:'panel', fp:0};
+  if(future)                                       return {b:'fp', r:'other', fp:0};
   /* rows that only exist on the DCFC layout */
   if(dc && /pad|slab|foundation/.test(t))          return {b:'mr', r:'pad',        fp:0};
   if(dc && /commission|startup|start-up|energiz/.test(t)) return {b:'mr', r:'commission', fp:0};
@@ -1688,17 +1699,35 @@ function loadPayload(pay){
    Left alone that lands as $0 Charger Hardware on the UI sheet and $0 EVSE
    Hardware #1 on the Eversource matrix — the largest eligible cost on an L2
    job, missing from both. evChargerCosts() has the real figures. */
+/* The editor sends an ARRAY of charger models — {id, model, qty, eq, install,
+   unitCost, …} — while an older build sent {byModel:{…}}. Accept both, or the
+   charger price silently fails to land and the application goes out with $0
+   hardware, its largest eligible cost. */
+function chargerList(c){
+  var out=[], k;
+  if(!c) return out;
+  if(c.length){ return c; }                       /* already an array */
+  if(c.byModel){
+    for(k in c.byModel){
+      if(!c.byModel.hasOwnProperty(k)) continue;
+      var m=c.byModel[k];
+      out.push({ model:k, qty:m.qty, kw:m.kw, eq:m.eq, install:m.install });
+    }
+  }
+  return out;
+}
 function applyChargerCosts(c){
-  if(!c || !c.byModel) return 0;
-  var filled=0, i, l, k, m;
+  var list=chargerList(c);
+  if(!list.length) return 0;
+  var filled=0, i, l, z, m, nm;
   for(i=0;i<LINES.length;i++){
     l=LINES[i];
     if(l.bucket!=='evse' || l.row!=='charger') continue;
     if(num(l.mat)>0) continue;                    /* already priced — leave it */
     m=null;
-    for(k in c.byModel){
-      if(!c.byModel.hasOwnProperty(k)) continue;
-      if(String(k).toLowerCase()===String(l.desc).toLowerCase()){ m=c.byModel[k]; break; }
+    for(z=0;z<list.length;z++){
+      nm=String(list[z].model||list[z].id||'').toLowerCase();
+      if(nm && nm===String(l.desc).toLowerCase()){ m=list[z]; break; }
     }
     if(m){ l.mat=r2(num(m.eq)); filled++; }
   }
@@ -1714,6 +1743,40 @@ function chargerGap(){
     if(l.bucket==='evse' && l.row==='charger' && !num(l.mat)) n++;
   }
   return n;
+}
+
+/* Every site map the editor sent, so the rep can move between them without
+   going back to the editor. Each still exports its own workbook — the utility
+   forms are per-site documents. */
+var SITE_SET = null, SITE_IX = 0;
+
+function loadSiteSet(sites){
+  SITE_SET = sites;
+  SITE_IX = 0;
+  loadSite(0);
+}
+function loadSite(ix){
+  if(!SITE_SET || !SITE_SET[ix]) return;
+  SITE_IX = ix;
+  var p = SITE_SET[ix];
+  loadPayload(p);
+  if(p.site && p.site.name) { DATA.site = p.site.name; syncField('site'); }
+  renderSitePicker();
+  msg('srcMsg', 'Loaded <b>'+esc(d('site')||('Site '+(ix+1)))+'</b> \u2014 site '
+    + (ix+1)+' of '+SITE_SET.length+'. Check the mapping, export, then switch to the next.','ok');
+}
+function renderSitePicker(){
+  var host=document.getElementById('sitePicker');
+  if(!host) return;
+  if(!SITE_SET || SITE_SET.length<2){ host.innerHTML=''; return; }
+  var h='<div class="sect mt">Site maps received</div><div class="row-btn">', i, nm;
+  for(i=0;i<SITE_SET.length;i++){
+    nm=(SITE_SET[i].site && SITE_SET[i].site.name) || ('Site '+(i+1));
+    h+='<button class="btn sm'+(i===SITE_IX?' p':'')+'" onclick="loadSite('+i+')">'+esc(nm)+'</button>';
+  }
+  h+='</div><div class="note" style="margin-top:6px">Each site exports its own '
+   + 'workbook \u2014 the utility forms are per-site documents. Export one, then pick the next.</div>';
+  host.innerHTML=h;
 }
 
 function togglePaste(){
@@ -2971,9 +3034,12 @@ var ES40 = {
     { r:33, t:'Trenching & Backfill - Non-Continuously Paved Area\n(i.e., ground cover, turf)',
             u:'Per Foot', mul:true, k:'trenchTurf', sec:'fp' },
     { r:34, t:'Primary Conduit (concrete-encased)', u:'Per Foot', mul:true, k:'conduit', sec:'fp' },
-    { r:35, t:'Restoration and/or Remediation', c:'Specify:', u:'Per Site', mul:true, k:'wire', sec:'fp' },
+    { r:35, t:'Restoration and/or Remediation', c:'Specify:', u:'Per Site', mul:true, k:'restore', sec:'fp' },
     { r:36, t:'Concrete Work/Bases/Pads', u:'Total', mul:true,  k:'panel', sec:'fp' },
-    { r:37, t:'Other (i.e., Additional Cost/Scope Deviations)', c:'Specify:', u:'Total', mul:false, k:'other', sec:'fp' },
+    /* The master has no spare-wiring or transformer row under future
+       proofing, so both land on Other rather than being dropped. */
+    { r:37, t:'Other (i.e., Additional Cost/Scope Deviations)', c:'Specify:', u:'Total', mul:false,
+            k:'other', ks:['other','wire','xfmr'], sec:'fp' },
 
     { band:38, t:'Eligible EVSE Costs' },
     { r:39, t:'EVSE Hardware #1', c:'EVSE Type (L2, DCFC): \nEVSE Make/Model: ', u:'Per Unit', mul:true, k:'charger',  sec:'evse', qty:'plugs' },
@@ -4010,8 +4076,17 @@ window.addEventListener('message', function(ev){
       + ') and was ignored. Paste the CSV instead.','warn');
     return;
   }
-  if(x.payload && x.payload.lines){
-    try{ loadPayload(x.payload); }catch(e){}
+  var pay=x.payload;
+  if(!pay) return;
+  /* The editor walks every site map tab and sends {sites:[…]} when there is
+     more than one. Ignoring that shape means the rep presses the button and
+     nothing happens, so keep the set and load the first. */
+  if(pay.sites && pay.sites.length){
+    try{ loadSiteSet(pay.sites); }catch(e){}
+    return;
+  }
+  if(pay.lines){
+    try{ SITE_SET=null; loadPayload(pay); renderSitePicker(); }catch(e){}
   }
 }, false);
 
