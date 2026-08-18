@@ -97,11 +97,6 @@ table.map tr.orphan td:first-child{box-shadow:inset 3px 0 0 var(--gold)}
 table.map tr:hover td{background:#F7F4EF}
 .cell-in{width:100%;padding:5px 6px;font-size:11.5px;text-align:right}
 .desc-in{width:100%;padding:4px 6px;font-size:11.5px;border-color:transparent;background:transparent}
-.qty-cell{white-space:nowrap}
-.qty-in{width:56px;padding:4px 5px;font-size:11px;text-align:right}
-.unit-in{width:40px;padding:4px 4px;font-size:11px;border-color:transparent;background:transparent}
-.unit-in:hover,.unit-in:focus{border-color:#CFC8BC;background:#fff}
-.rate-hint{display:block;color:var(--dim);font-size:9.5px;margin-top:2px;font-family:inherit}
 .desc-in:hover{border-color:#CFC8BC}
 .meta{display:block;color:var(--dim);font-size:9.5px;margin-top:1px;padding-left:6px}
 .sel-sm{padding:5px 6px;font-size:11px;background-position:calc(100% - 12px) 12px,calc(100% - 8px) 12px}
@@ -149,19 +144,6 @@ table.pv td.num{text-align:right;font-variant-numeric:tabular-nums}
 .gate-msg code{background:#F6F4F0;border:1px solid var(--line2);border-radius:3px;padding:1px 5px;font-size:11.5px}
 .gate-foot{margin-top:22px;padding-top:14px;border-top:1px solid var(--line2);font-size:10px;letter-spacing:.9px;text-transform:uppercase;color:var(--dim)}
 .tb-who{font-size:11px;color:var(--sub);padding-right:12px;border-right:1px solid var(--line);margin-right:2px}
-
-/* site tabs */
-.siteTabs{display:flex;flex-wrap:wrap;gap:6px;margin:0 0 10px}
-.siteTab{padding:5px 10px;border:1px solid #d8dee4;border-radius:999px;background:#fff;cursor:pointer;
-  font:inherit;font-size:12px;color:#3a4450;line-height:1.2}
-.siteTab b{font-weight:700;margin-right:4px}
-.siteTab:hover{border-color:#9aa5b1}
-.siteTab.on{background:#1f3b57;border-color:#1f3b57;color:#fff}
-.siteTab.add{border-style:dashed;color:#4a5866}
-.siteTab.del{margin-left:auto;color:#a0342c;border-color:#e7c4c0}
-.siteTab-empty{opacity:.55;font-style:italic}
-.siteTab-addr{opacity:.7;font-size:11px;margin-left:4px}
-.siteTab.on .siteTab-addr{opacity:.85}
 </style>
 </head>
 <body>
@@ -184,8 +166,6 @@ table.pv td.num{text-align:right;font-variant-numeric:tabular-nums}
   <div class="tb-sub">EV Cost Workbook</div>
   <div class="tb-sp"></div>
   <span class="tb-who" id="tbWho"></span>
-  <button class="btn" id="btnUiPdf" onclick="uiPdfFill()" style="display:none"
-          title="Fill United Illuminating's commercial application (UEVC006) from these costs">UI application PDF</button>
   <button class="btn p" id="btnExport" onclick="exportWorkbook()">Export workbook</button>
 </div>
 
@@ -208,6 +188,7 @@ table.pv td.num{text-align:right;font-variant-numeric:tabular-nums}
           <button class="btn p sm" onclick="importCSV()">Load lines</button>
         </div>
         <div id="srcMsg" class="note" style="margin-top:10px"></div>
+        <div id="sitePicker"></div>
       </div>
     </div>
 
@@ -274,6 +255,18 @@ table.pv td.num{text-align:right;font-variant-numeric:tabular-nums}
           </select>
         </label>
         <div class="note">Markup spreads overhead and profit across material and labor before tax. Leave it at 0 if the estimate lines already carry your margin.</div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h3>Future proofing<span class="hint" id="fpTotal"></span></h3>
+      <div class="body">
+        <div class="note" style="margin-bottom:10px">Spare capacity installed now so the
+          site can grow without re-trenching. Both programmes rebate it, each on its own
+          rows. Anything entered here is added to the estimate as future-proofing — the
+          trench split above is separate and still applies.</div>
+        <div id="fpPanel"></div>
+        <div id="fpMsg" class="note" style="margin-top:9px"></div>
       </div>
     </div>
 
@@ -541,20 +534,7 @@ var L2_BASELINE = {
               cableUG:{mat:2.50, lab:3.47},
               cableAG:{mat:2.50, lab:21.00},
               restoration:{mat:43.00, lab:20.00} },
-  /* Future proofing is 100% rebatable on both CT programs and it is the one
-     block that routinely exports empty, so it gets real rates rather than a
-     trench percentage and nothing else. Back-solved from the 50 Fitch Street
-     UI sheet, which future-proofed a 400 LF run:
-
-       spare conduit   $2,130.80 mat / $2,966.00 lab   (~450 LF at the rates
-                       below — the primary route plus pull slack)
-       spare conductors  $500 mat / $1,500 lab         (per site)
-       spare gear/panel  $500 mat / $1,000 lab         (per site)
-
-     The spare conduit rate is low because it shares an excavation that is
-     already open: the trench itself is allocated by the FP % instead. */
-  futureProof:{ trench:{mat:0, lab:27.83}, conduit:{mat:4.73, lab:6.79},
-                wire:{mat:500, lab:1500}, panel:{mat:500, lab:1000} },
+  futureProof:{ trench:{mat:0, lab:27.83}, conduit:{mat:4.73, lab:6.79} },
 
   /* A utility transformer pad appeared on two of the four jobs and was left
      blank on the other two — 27 Oak and 1040 Barnum both tap an existing
@@ -577,8 +557,7 @@ function applyBaselineFromSite(opts){
   var B=L2_BASELINE, OPT=B.optional;
   var ports=Math.max(1, num(DATA.plugs)||1);
   var state=String(DATA.state||DATA.city||'CT').toUpperCase().indexOf('MA')>=0 ? 'MA' : 'CT';
-  var ft={ trench:num(DATA.ftTrench), conduit:num(DATA.ftConduit), cable:num(DATA.ftCable),
-           ug:(num(DATA.ftConduitUG)||num(DATA.ftConduit)), ag:num(DATA.ftConduitAG) };
+  var ft={ trench:num(DATA.ftTrench), conduit:num(DATA.ftConduit), cable:num(DATA.ftCable) };
   var turf=String(DATA.trenchSurface||'paved').toLowerCase().indexOf('turf')>=0;
   var add=[];
   function L(cat,desc,qty,unit,mat,lab,bucket,row){
@@ -622,15 +601,12 @@ function applyBaselineFromSite(opts){
     ft.trench,'LF', trn.mat*ft.trench, trn.lab*ft.trench, 'mr','trench');
   L('Civil','Restoration and/or remediation', ft.trench,'LF',
     B.perFoot.restoration.mat*ft.trench, B.perFoot.restoration.lab*ft.trench, 'mr','restore');
-  L('Conduit','Conduit & cable \u2014 underground', ft.ug,'LF',
-    (B.perFoot.conduitUG.mat+B.perFoot.cableUG.mat)*ft.ug,
-    (B.perFoot.conduitUG.lab+B.perFoot.cableUG.lab)*ft.ug, 'mr','conduit');
-  /* Above-ground FOOTAGE, not the reported cable length: cable that runs
-     underground is already priced on the line above, and pricing it twice
-     was the difference between a clean sheet and a padded one. */
-  L('Wire','Conduit & cable \u2014 above ground / indoor', ft.ag,'LF',
-    (B.perFoot.conduitAG.mat+B.perFoot.cableAG.mat)*ft.ag,
-    (B.perFoot.conduitAG.lab+B.perFoot.cableAG.lab)*ft.ag, 'mr','wire');
+  L('Conduit','Conduit & cable \u2014 underground', ft.conduit,'LF',
+    (B.perFoot.conduitUG.mat+B.perFoot.cableUG.mat)*ft.conduit,
+    (B.perFoot.conduitUG.lab+B.perFoot.cableUG.lab)*ft.conduit, 'mr','conduit');
+  L('Wire','Conduit & cable \u2014 above ground / indoor', ft.cable,'LF',
+    (B.perFoot.conduitAG.mat+B.perFoot.cableAG.mat)*ft.cable,
+    (B.perFoot.conduitAG.lab+B.perFoot.cableAG.lab)*ft.cable, 'mr','wire');
   L('Site','Protective bollards', ports,'EA',
     B.perUnit.bollard.mat*ports, B.perUnit.bollard.lab*ports, 'ne','bollard');
   if(OPT.concreteBase)
@@ -902,7 +878,13 @@ var BLOCKS_ES_L2 = [
       /* Above-ground footage, not cable footage: an underground cable run
          belongs on the Underground line above, and reporting it here told
          the reviewer the opposite of what was built. */
-      {k:'wire',    l:'Conduit & Cable - Above Ground/Indoor',  es:{sec:'gen',  unit:'Per Foot', qty:'ftConduitAG'}},
+      {k:'wire',    l:'Cable - Underground',                    es:{sec:'gen',  unit:'Per Foot', qty:'ftCableUG'}},
+      /* Above-ground runs are priced differently from buried ones — $4.25/ft
+         against $2.75/ft on the Bridgeport job — so they get their own rows
+         and the sheet's combined line adds them, rather than the tool
+         apportioning one blended rate across both. */
+      {k:'conduitAG', l:'Conduit - Above Ground/Indoor',        es:{sec:'gen',  unit:'Per Foot', qty:'ftConduitAG'}},
+      {k:'wireAG',    l:'Cable - Above Ground/Indoor',          es:{sec:'gen',  unit:'Per Foot', qty:'ftCableAG'}},
       {k:'restore', l:'Restoration and/or Remediation',         es:{sec:'gen',  unit:'Per Site', qty:'ftTrench'}},
       {k:'handhole',l:'Handholes/Manholes',                     es:{sec:'gen',  unit:'Per Unit'}},
       {k:'concrete',l:'Concrete Work/Bases/Pads',               es:{sec:'gen',  unit:'Total'}},
@@ -920,10 +902,18 @@ var BLOCKS_ES_L2 = [
       {k:'trenchTurf', l:'Trenching & Backfill - Non-Continuously Paved Area\n(i.e., ground cover, turf)',
                     es:{sec:'fp', unit:'Per Foot'}},
       {k:'conduit', l:'Primary Conduit (concrete-encased)',     es:{sec:'fp', unit:'Per Foot'}},
-      {k:'wire',    l:'Restoration and/or Remediation',         es:{sec:'fp', unit:'Per Site'}},
-      {k:'panel',   l:'Concrete Work/Bases/Pads',               es:{sec:'fp', unit:'Total'}},
-      {k:'xfmr',    l:'Other (i.e., Additional Cost/Scope Deviations)', es:{sec:'fp', unit:'Total'}},
-      {k:'other',   l:'Other (Future Proofing)',                es:{sec:'fp', unit:'Total'}}
+      /* 'wire' used to be labelled Restoration here, so spare conductors
+         exported onto the restoration line — a reviewer reading $500 of
+         "restoration" that was actually pull rope has a fair question.
+         Restoration gets its own key; spare wiring falls to Other. */
+      {k:'restore', l:'Restoration and/or Remediation',         es:{sec:'fp', unit:'Per Site'}},
+      {k:'concrete',l:'Concrete Work/Bases/Pads',               es:{sec:'fp', unit:'Total'}},
+      /* Spare gear is not concrete work. The master has no gear row under
+         future proofing, so it belongs on Other with the spare wiring. */
+      {k:'panel',   l:'Spare gear / breaker positions',         es:{sec:'fp', unit:'Total'}},
+      {k:'wire',    l:'Spare wiring / conductors',              es:{sec:'fp', unit:'Total'}},
+      {k:'xfmr',    l:'Transformer capacity',                   es:{sec:'fp', unit:'Total'}},
+      {k:'other',   l:'Other (i.e., Additional Cost/Scope Deviations)', es:{sec:'fp', unit:'Total'}}
   ]},
   { id:'ne', title:'Ineligible Costs', fill:'FFFFC000', rows:[
       {k:'bollard', l:'Protective Bollards, Signs, Parking Spot Striping/Painting', es:{sec:'inel', unit:'Total'}},
@@ -1429,14 +1419,7 @@ function num(v){
 function r2(n){ return Math.round((n||0)*100)/100; }
 function d(k){ return DATA[k]==null?'':String(DATA[k]); }
 function dn(k){ return num(DATA[k]); }
-function setD(k,v){
-  DATA[k]=v;
-  /* one box on the form means one value across the sites */
-  if(typeof SHARED_KEYS!=='undefined' && SHARED_KEYS[k]){
-    var i; for(i=0;i<SITES.length;i++) if(SITES[i].DATA && SITES[i].DATA!==DATA) SITES[i].DATA[k]=v;
-  }
-  render();
-}
+function setD(k,v){ DATA[k]=v; render(); }
 function val(id){ var e=document.getElementById(id); return e?e.value:''; }
 function nval(id){ return num(val(id)); }
 function money(n){ return '$'+r2(n).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2}); }
@@ -1575,12 +1558,9 @@ function contractorToBrand(){
 }
 
 /* ── 6. CLASSIFIER ────────────────────────────────────────────────── */
-function classify(cat, desc, size, unit){
+function classify(cat, desc, size){
   var c=String(cat||'').toLowerCase();
   var t=String(desc||'').toLowerCase()+' '+String(size||'').toLowerCase();
-  /* A civil line that merely NAMES the conduit it is digging for is still
-     excavation, so description matching never applies to it. */
-  var perFoot=isFootUnit(unit) && !/civil/.test(c) && !/trench|sawcut|backfill|restorat|bedding|warning tape/.test(t);
   var future=/spare|future.?proof/.test(t);
   var dc=(chargerClass()==='dcfc');
 
@@ -1589,17 +1569,19 @@ function classify(cat, desc, size, unit){
     if(/pedestal|mount|stanchion/.test(t)) return {b:'evse', r:'pedestal', fp:0};
     return {b:'evse', r:'charger', fp:0};
   }
-  /* Category first. Then, for per-foot lines only, the description — an
-     estimate that files 2" PVC under 'Electrical' is still conduit, and
-     leaving it in Other is what emptied the Conduit & Conductors row. The
-     per-foot guard keeps 'conduit stubs' inside a lump-sum make-ready line
-     from being read as a conduit run. */
-  if(/conduit|raceway|fitting/.test(c) ||
-     (perFoot && /\b(conduit|emt|rmc|imc|pvc sch|sch ?40|sch ?80|innerduct|liquidtight|sealtite)\b/.test(t)))
-    return future?{b:'fp',r:'conduit',fp:0}:{b:'mr',r:'conduit',fp:0};
-  if(/wire|cable|conductor/.test(c) ||
-     (perFoot && /\b(thhn|thwn|xhhw|conductor|feeder cable)\b/.test(t)))
-    return future?{b:'fp',r:'wire',fp:0}   :{b:'mr',r:'wire',fp:0};
+  /* RMC, EMT and anything called out as indoor or above grade is an
+     above-ground run; Eversource prices those on their own line. */
+  var above = /\brmc\b|\bemt\b|above.?ground|indoor|interior|surface|exposed/.test(t);
+  if(/conduit|fitting/.test(c)){
+    if(future) return {b:'fp', r:'conduit', fp:0};
+    if(above) return {b:'mr', r:'conduitAG', fp:0};
+    return {b:'mr', r:'conduit', fp:0};
+  }
+  if(/wire|cable/.test(c)){
+    if(future) return {b:'fp', r:'wire', fp:0};
+    if(above) return {b:'mr', r:'wireAG', fp:0};
+    return {b:'mr', r:'wire', fp:0};
+  }
   if(/civil/.test(c))           return {b:'mr', r:'trench', fp:nval('p_fp')};
 
   if(/bollard/.test(t))                            return {b:'ne', r:'bollard',  fp:0};
@@ -1608,6 +1590,11 @@ function classify(cat, desc, size, unit){
   if(/warrant/.test(t))                            return {b:'ne', r:'warranty', fp:0};
   if(/transformer|xfmr/.test(t))                   return future ? {b:'fp',r:'xfmr',fp:0}
                                                                 : {b:(dc?'mr':'fp'), r:'xfmr', fp:0};
+  /* Spare gear, spare breaker positions and the like are future proofing
+     wherever they appear — the earlier rule only caught conduit and wire,
+     so a spare panel stayed in make-ready and inflated the eligible cost. */
+  if(future && /panel|gear|breaker|switchgear|position/.test(t)) return {b:'fp', r:'panel', fp:0};
+  if(future)                                       return {b:'fp', r:'other', fp:0};
   /* rows that only exist on the DCFC layout */
   if(dc && /pad|slab|foundation/.test(t))          return {b:'mr', r:'pad',        fp:0};
   if(dc && /commission|startup|start-up|energiz/.test(t)) return {b:'mr', r:'commission', fp:0};
@@ -1625,7 +1612,7 @@ function classify(cat, desc, size, unit){
 
 /* ── 7. IMPORT PATHS ──────────────────────────────────────────────── */
 function addLine(o){
-  var cls=classify(o.category, o.description, o.size, o.unit);
+  var cls=classify(o.category, o.description, o.size);
   LINES.push({
     id:_nid++, desc:o.description||'(unnamed)', size:o.size||'', cat:o.category||'',
     qty:(o.qty==null?'':o.qty), unit:o.unit||'',
@@ -1633,335 +1620,10 @@ function addLine(o){
     bucket:cls.b, row:cls.r, fp:cls.fp, src:o.src||'estimate'
   });
 }
-/* ══════════════════════════════════════════════════════════════════════
-   SITES
-
-   UI's application holds up to four sites (A–D) on ONE property: one
-   applicant, one contractor, one street address, one payee, and then a
-   table of sites underneath with its own row in Sections 2, 4 and 5. The
-   per-site incentive cap applies to each row, so two properly separated
-   sites on one property are worth two caps.
-
-   The workbook mirrors that shape: each site carries its own cost lines,
-   footages and future proofing, while the application-level answers are
-   held once and written through to every site.
-   ══════════════════════════════════════════════════════════════════════ */
-var SITES=[], ACTIVE=0, SITE_LETTERS='ABCD', MAX_SITES=4;
-
-/* Answered once for the whole application \u2014 an edit on any site writes
-   through to all of them, because there is only one box on the form. */
-var SHARED_KEYS={
-  applicant:1, company:1, contact:1, phone:1, email:1,
-  cAddress:1, license:1, start:1, end:1, 'class':1,
-  ui_account:1, ui_acctExec:1, ui_custAddr:1, ui_custCity:1, ui_custState:1, ui_custZip:1,
-  ui_contact:1, ui_phone:1, ui_email:1,
-  ui_owner:1, ui_ownerName:1, ui_ownerAddr:1, ui_ownerCity:1, ui_ownerState:1, ui_ownerZip:1,
-  ui_siteAddr:1, ui_siteCity:1, ui_siteState:1, ui_siteZip:1,
-  ui_underserved:1, ui_nevi:1, ui_facility:1, ui_facilityOther:1,
-  ui_network:1, ui_cCity:1, ui_cState:1, ui_cZip:1,
-  ui_status:1, ui_activation:1, ui_newCon:1,
-  ui_payee:1, ui_payeeRel:1, ui_payeeAddr:1, ui_payeeCity:1, ui_payeeState:1,
-  ui_payeeZip:1, ui_payeeEmail:1, ui_completedBy:1, ui_completedPhone:1, ui_installDate:1
-};
-
-/* Copied into a new site as a starting point but NOT linked afterwards.
-   The address belongs to the site map it was drawn on: two drawings on one
-   campus can sit at different street numbers, and the workbook should say
-   so rather than quietly stamping them all with the first one. */
-var SEED_KEYS={ address:1, city:1 };
-
-/* Sites are identified the way the drawings are: which site map, and the
-   address on it. That pair is what goes on the tab, the worksheet name and
-   the Unique Site Name column of the application. */
-function siteAutoLabel(i){ return 'Site Map '+(i+1); }
-function siteAddress(i){
-  var r=SITES[i];
-  return (r && r.DATA && r.DATA.address) ? String(r.DATA.address) : '';
-}
-function siteIdentity(i){
-  var a=siteAddress(i);
-  return siteLabel(i) + (a ? ' \u2014 ' + a : '');
-}
-/* The property the application is filed against. UI takes one street
-   address in Section 2, so it comes from the first site that has one. */
-function propertyAddress(){
-  sitesInit();
-  var i;
-  for(i=0;i<SITES.length;i++) if(siteAddress(i)) return siteAddress(i);
-  return '';
-}
-function propertyCity(){
-  sitesInit();
-  var i;
-  for(i=0;i<SITES.length;i++){ if(SITES[i].DATA && SITES[i].DATA.city) return String(SITES[i].DATA.city); }
-  return '';
-}
-/* Two street addresses is two properties, and UI wants an application for
-   each. Cheap to check, expensive to discover after filing. */
-function addressAudit(){
-  sitesInit();
-  var seen=[], i, a, norm;
-  for(i=0;i<SITES.length;i++){
-    a=siteAddress(i); if(!a) continue;
-    norm=a.toLowerCase().replace(/[^a-z0-9]+/g,' ').replace(/^\s+|\s+$/g,'');
-    if(seen.indexOf(norm)<0) seen.push(norm);
-  }
-  if(seen.length>1)
-    return ['The site maps are at '+seen.length+' different street addresses. UI takes one application per property \u2014 '
-      +'every site on one application shares the Section 2 address. File these separately, or correct the addresses '
-      +'if it really is one property.'];
-  return [];
-}
-
-/* Snapshots hold REFERENCES, not copies: switching sites is a pointer swap,
-   so a half-typed line on site B is still there when you come back to it. */
-function siteSnapshot(){
-  return { DATA:DATA, LINES:LINES, nid:_nid, feet:EDITOR_FEET, feetSrc:FEET_SRC,
-           fleet:EDITOR_FLEET, basis:EDITOR_BASIS, evt:EDITOR_EVT };
-}
-function siteRestore(rec){
-  DATA=rec.DATA||{}; LINES=rec.LINES||[]; _nid=rec.nid||1;
-  EDITOR_FEET=rec.feet||null; FEET_SRC=rec.feetSrc||{};
-  EDITOR_FLEET=rec.fleet||null; EDITOR_BASIS=rec.basis||null; EDITOR_EVT=rec.evt||null;
-}
-function sitesInit(){ if(!SITES.length){ SITES=[siteSnapshot()]; ACTIVE=0; } }
-function saveActive(){ sitesInit(); SITES[ACTIVE]=siteSnapshot(); }
-function siteLetter(i){ return SITE_LETTERS.charAt(i)||String(i+1); }
-function siteLabel(i){
-  var r=SITES[i];
-  return (r && r.DATA && r.DATA.site) ? String(r.DATA.site) : ('Site '+siteLetter(i));
-}
-function siteHasWork(i){ var r=SITES[i]; return !!(r && r.LINES && r.LINES.length); }
-
-/* Run something against another site's state and put everything back. Used
-   by the exporters so building site B's sheet never disturbs what is on
-   screen \u2014 the finally clause matters more than it looks. */
-function withSite(i, fn){
-  sitesInit();
-  if(i===ACTIVE) return fn(i);
-  saveActive();
-  var keep=ACTIVE, out;
-  siteRestore(SITES[i]); ACTIVE=i;
-  try{ out=fn(i); }
-  finally { siteRestore(SITES[keep]); ACTIVE=keep; }
-  return out;
-}
-function eachSite(fn){
-  sitesInit();
-  var out=[], i;
-  for(i=0;i<SITES.length;i++) out.push(withSite(i, fn));
-  return out;
-}
-
-function addSite(){
-  saveActive();
-  if(SITES.length>=MAX_SITES){
-    alert('UI\u2019s application has room for four sites (A\u2013D). A fifth needs its own application.');
-    return -1;
-  }
-  var src=SITES[ACTIVE].DATA, nd={}, k;
-  for(k in src) if(src.hasOwnProperty(k) && (SHARED_KEYS[k]||SEED_KEYS[k])) nd[k]=src[k];
-  nd.site=siteAutoLabel(SITES.length);
-  SITES.push({ DATA:nd, LINES:[], nid:1, feet:null, feetSrc:{}, fleet:null, basis:null, evt:null });
-  return SITES.length-1;
-}
-function newSite(){ var i=addSite(); if(i>=0) activateSite(i); }
-function activateSite(i){
-  sitesInit();
-  if(i<0 || i>=SITES.length) return;
-  saveActive(); siteRestore(SITES[i]); ACTIVE=i;
-  renderAll();
-}
-function removeSite(i){
-  sitesInit();
-  if(SITES.length<2){ alert('There has to be at least one site.'); return; }
-  if(siteHasWork(i) && !confirm('Delete '+siteLabel(i)+' and its '+SITES[i].LINES.length+' cost lines? This cannot be undone.')) return;
-  saveActive();
-  SITES.splice(i,1);
-  ACTIVE=Math.max(0, Math.min(ACTIVE>i?ACTIVE-1:ACTIVE, SITES.length-1));
-  siteRestore(SITES[ACTIVE]);
-  renderAll();
-}
-function renderAll(){ renderSiteForm(); render(); }
-window.activateSite=activateSite; window.newSite=newSite; window.removeSite=removeSite;
-
-/* Load a list of editor payloads as sites A, B, C… keeping the answers that
-   belong to the application rather than to any one site. */
-function loadSites(list){
-  sitesInit(); saveActive();
-  var keep={}, src=SITES[ACTIVE].DATA, k, i;
-  for(k in src) if(src.hasOwnProperty(k) && SHARED_KEYS[k]) keep[k]=src[k];
-  var made=[];
-  for(i=0;i<list.length && i<MAX_SITES;i++){
-    var nd={};
-    for(k in keep) if(keep.hasOwnProperty(k)) nd[k]=keep[k];
-    /* Deliberately NOT seeded with an address: each drawing brings its own,
-       and inheriting site A's would hide a second property. */
-    var rec={ DATA:nd, LINES:[], nid:1, feet:null, feetSrc:{}, fleet:null, basis:null, evt:null };
-    made.push(rec);
-    SITES=made; ACTIVE=i; siteRestore(rec);
-    loadPayload(list[i]);
-    var ps=list[i].site||{};
-    /* The drawing's own name if it has one, otherwise which map it was. */
-    if(!DATA.site) DATA.site = ps.name || ps.mapName || ps.label || siteAutoLabel(i);
-    if(ps.address) DATA.address = ps.address;
-    if(ps.city)    DATA.city    = ps.city;
-    made[i]=siteSnapshot();
-  }
-  SITES=made; ACTIVE=0; siteRestore(SITES[0]);
-  renderAll();
-  msg('srcMsg', made.length+' site'+(made.length===1?'':'s')+' pulled from the editor: '
-     + made.map(function(r,ix){ return siteLetter(ix)+' \u00b7 '+esc((r.DATA&&r.DATA.site)||'') ; }).join(', ')
-     + '. Check the footages on each before exporting.', 'ok');
-  if(list.length>MAX_SITES)
-    msg('srcMsg', 'The editor handed over '+list.length+' sites; the first four were loaded because UI\u2019s application only has rows A\u2013D.','warn');
-}
-
-/* One payload or many, in whichever shape the editor sends. */
-function payloadSites(pay){
-  if(!pay) return [];
-  if(Object.prototype.toString.call(pay)==='[object Array]') return pay;
-  if(pay.sites && pay.sites.length) return pay.sites;
-  return [pay];
-}
-
-function siteTabsHTML(){
-  sitesInit(); saveActive();
-  var h='<div class="siteTabs">', i;
-  for(i=0;i<SITES.length;i++){
-    h+='<button class="siteTab'+(i===ACTIVE?' on':'')+'" onclick="activateSite('+i+')" '
-      + 'title="'+esc(siteIdentity(i))+(siteHasWork(i)?' \u2014 '+SITES[i].LINES.length+' cost lines':' \u2014 empty')+'">'
-      + '<b>'+siteLetter(i)+'</b> '+esc(siteLabel(i))
-      + (siteAddress(i) ? ' <span class="siteTab-addr">'+esc(siteAddress(i))+'</span>' : '')
-      + (siteHasWork(i)?'':' <span class="siteTab-empty">empty</span>')
-      + '</button>';
-  }
-  if(SITES.length<MAX_SITES) h+='<button class="siteTab add" onclick="newSite()">+ Add site</button>';
-  if(SITES.length>1) h+='<button class="siteTab del" onclick="removeSite('+ACTIVE+')" title="Delete the site you are on">Delete '+siteLetter(ACTIVE)+'</button>';
-  h+='</div>';
-  if(SITES.length>1)
-    h+='<div class="note" style="margin:-4px 0 10px">Costs, footages and future proofing are per site. '
-      +'The applicant, contractor, property address and payee are shared \u2014 edit them anywhere and every site follows. '
-      +'All '+SITES.length+' export into one workbook and one application PDF.</div>';
-  return h;
-}
-
-/* ── WHICH SITE DOES AN INCOMING ESTIMATE BELONG TO? ───────────────
-   The editor is cross-origin, so this tool cannot read its tabs: every
-   estimate arrives one at a time, whenever the EV Cost Workbook button is
-   pressed on whichever site map is open. Pressing it twice used to load
-   the second map straight over the first, which is why Site Map 2 came
-   through empty.
-
-   Routing goes by name when the editor sends one, and by how much the
-   line items overlap when it does not. A re-pull of a map already loaded
-   updates that map in place instead of piling up duplicates. */
-function payloadName(pay){
-  var s=(pay && pay.site) || {};
-  var n = pay.mapName || pay.siteMap || pay.tab || pay.name
-       || s.name || s.mapName || s.siteMap || s.tab || s.label || '';
-  return String(n).replace(/^\s+|\s+$/g,'');
-}
-function fingerprint(lines){
-  var f={}, i, l, k;
-  for(i=0;i<lines.length;i++){
-    l=lines[i];
-    k=String(l.desc||l.description||'').toLowerCase().replace(/[^a-z0-9]+/g,' ')
-      .replace(/^\s+|\s+$/g,'');
-    if(k) f[k]=(f[k]||0)+1;
-  }
-  return f;
-}
-/* How much of the INCOMING estimate the site already contains. Asymmetric
-   on purpose: a loaded site also carries permitting, design and the priced
-   conduit rows this tool adds, so a symmetric comparison scored a re-pull
-   of the same drawing at 0.25 and filed it as a brand new site. */
-function fpOverlap(incoming, existing){
-  var k, both=0, n=0;
-  for(k in incoming) if(incoming.hasOwnProperty(k)){ n++; if(existing[k]) both++; }
-  return n ? both/n : 0;
-}
-function findSiteFor(pay){
-  sitesInit();
-  var nm=payloadName(pay), i, lab;
-  if(nm){
-    for(i=0;i<SITES.length;i++){
-      lab=String(siteLabel(i)).toLowerCase();
-      if(lab===nm.toLowerCase()) return { ix:i, why:'name' };
-    }
-    return { ix:-1, why:'new', name:nm };
-  }
-  /* No name from the editor \u2014 fall back to what the lines look like. */
-  var fp=fingerprint(pay.lines||[]), best=-1, bestScore=0, sc;
-  for(i=0;i<SITES.length;i++){
-    if(!SITES[i].LINES || !SITES[i].LINES.length) continue;
-    sc=fpOverlap(fp, fingerprint(SITES[i].LINES));
-    if(sc>bestScore){ bestScore=sc; best=i; }
-  }
-  if(best>=0 && bestScore>=0.6) return { ix:best, why:'match', score:bestScore };
-  return { ix:-1, why:'new' };
-}
-
-/* Every route in \u2014 the button, the handshake, a second press from another
-   tab \u2014 comes through here so nothing can quietly overwrite a site. */
-function receivePayload(pay){
-  var list=payloadSites(pay);
-  if(list.length>1){ loadSites(list); return; }
-  pay=list[0];
-  if(!pay || !pay.lines) return;
-
-  sitesInit(); saveActive();
-  var f=findSiteFor(pay), ix=f.ix, made=false;
-  if(ix<0){
-    if(!siteHasWork(ACTIVE)) ix=ACTIVE;              /* current site is empty */
-    else {
-      ix=addSite();                                   /* keep what is there */
-      if(ix<0){ msg('srcMsg','All four site rows are used. Delete one, or start a second application.','warn'); return; }
-      made=true;
-    }
-  }
-  siteRestore(SITES[ix]); ACTIVE=ix;
-  var nm=payloadName(pay);
-  loadPayload(pay);
-  if(nm) DATA.site=nm;
-  else if(!DATA.site || made) DATA.site=siteAutoLabel(ix);
-  saveActive(); renderAll();
-
-  var where=siteLetter(ix)+' \u00b7 '+esc(siteLabel(ix));
-  msg('srcMsg',
-    (f.why==='name'  ? 'Updated <b>'+where+'</b> from the editor.' :
-     f.why==='match' ? 'Recognised this as <b>'+where+'</b> (the line items match) and updated it.' :
-     made            ? 'Loaded as a new site: <b>'+where+'</b>. '+SITES.length+' sites now on the application.'
-                     : 'Loaded into <b>'+where+'</b>.')
-    + (nm ? '' : ' The editor did not send a site map name \u2014 rename it above if this is the wrong row.'),
-    'ok');
-}
-window.receivePayload=receivePayload;
-
 function pullFromEditor(){
   var pay=null, why='';
   try{
-    var W=window.opener;
-    if(W){
-      /* Two drawings open in the editor arrive as a list. Accept either bare
-         estimates or {name, est} wrappers, and keep the drawing's own name
-         so the sites come across labelled. */
-      var multi = W._ELEC_EST_SITES || W.OMEGA_SITE_ESTIMATES || W.OMEGA_SITES || null;
-      if(multi && multi.length){
-        var packed=[], mi, m, one;
-        for(mi=0;mi<multi.length;mi++){
-          m=multi[mi];
-          one = m && m.lines ? m : (m && m.est ? m.est : null);
-          if(!one) continue;
-          var pk=packEstimate(one, W);
-          pk.site=pk.site||{};
-          if(m.name||m.label) pk.site.name=m.name||m.label;
-          packed.push(pk);
-        }
-        if(packed.length) pay={ sites:packed };
-      }
-      if(!pay && W._ELEC_EST) pay=packEstimate(W._ELEC_EST, W);
-    }
+    if(window.opener && window.opener._ELEC_EST) pay=packEstimate(window.opener._ELEC_EST, window.opener);
   }catch(e){ why='The editor window blocked direct access. '; }
   if(!pay){
     try{ var raw=localStorage.getItem('OMEGA_EV_COST_HANDOFF'); if(raw) pay=JSON.parse(raw); }catch(e2){}
@@ -1974,7 +1636,7 @@ function pullFromEditor(){
     msg('srcMsg', why+'Nothing handed over yet. In the editor open <b>Electrical Estimate</b> and press <b>EV Cost Workbook</b>, or paste the estimate CSV here.','warn');
     return;
   }
-  receivePayload(pay);
+  loadPayload(pay);
 }
 function packEstimate(est, w){
   var crew=(w && w.ELEC_BID && w.ELEC_BID.crewRate)?w.ELEC_BID.crewRate:nval('p_crew');
@@ -2008,27 +1670,8 @@ function packEstimate(est, w){
     if(typeof w.evChargerTotals==='function'){ var t=w.evChargerTotals();
       evT={ports:t.ports,l2Units:t.l2Units,dcfcUnits:t.dcfcUnits,l2Kw:t.l2Kw,dcfcKw:t.dcfcKw}; }
   } }catch(e){}
-  /* The direct pull used to send trenchFt and nothing else, so a workbook
-     opened from the editor window threw away every measured length and fell
-     back to inferring footage from purchasing quantities. Take the geometry
-     from whichever object the editor is exposing. */
-  var feet=null, cand=[], ci;
-  try{
-    if(est.feet)    cand.push(est.feet);
-    if(est.takeoff) cand.push(est.takeoff);
-    if(est.bom)     cand.push(est.bom);
-    if(w){
-      if(w.OMEGA_TAKEOFF) cand.push(w.OMEGA_TAKEOFF);
-      if(w.PLOT_FEET)     cand.push(w.PLOT_FEET);
-      if(w.EV_FEET)       cand.push(w.EV_FEET);
-      if(typeof w.plotFeet==='function')   cand.push(w.plotFeet());
-      if(typeof w.plotTakeoff==='function')cand.push(w.plotTakeoff());
-    }
-  }catch(e){}
-  for(ci=0; ci<cand.length && !feet; ci++){ feet=normalizeFeet(cand[ci]); }
-  if(!feet && est.bom && num(est.bom.trenchFt)>0) feet={ trench:num(est.bom.trenchFt) };
   return { lines:items, crewRate:crew, site:site, trenchFt:(est.bom&&est.bom.trenchFt)||0,
-           feet:feet, chargers:fleet, priceBasis:basis, evTotals:evT };
+           chargers:fleet, priceBasis:basis, evTotals:evT };
 }
 /* Charger fleet handed over by the editor: real models, part numbers and
    price-book figures. Held here so the baseline rows and the port count
@@ -2047,14 +1690,13 @@ function loadPayload(pay){
     if(!d('applicant') && pay.site.applicant) DATA.applicant=pay.site.applicant;
     if(!d('address')   && pay.site.address)   DATA.address  =pay.site.address;
   }
-  /* Accept the takeoff under any of the names the editor has shipped it as,
-     and fall back to the bare trenchFt the older payloads carried. */
-  EDITOR_FEET = normalizeFeet(pay.feet) || normalizeFeet(pay.takeoff)
-             || normalizeFeet(pay.measured) || normalizeFeet(pay)
-             || (num(pay.trenchFt)>0 ? { trench:num(pay.trenchFt) } : null);
+  EDITOR_FEET = pay.feet || null;
   if(pay.chargers) applyChargerCosts(pay.chargers);
   if(pay.contractor) applyContractor(pay.contractor);
   if(applyDetectedClass()) setClass(DATA['class']);
+  /* the rep's future-proofing entries are scope decisions, not estimate
+     output, so they survive a reload of the estimate */
+  syncFPLines();
   autofillFeet(); autofillPlugs();
   /* The sitemap gives conduit, trench and equipment. Everything else on a
      utility sheet — design, permitting, activation, freight, networking,
@@ -2079,17 +1721,35 @@ function loadPayload(pay){
    Left alone that lands as $0 Charger Hardware on the UI sheet and $0 EVSE
    Hardware #1 on the Eversource matrix — the largest eligible cost on an L2
    job, missing from both. evChargerCosts() has the real figures. */
+/* The editor sends an ARRAY of charger models — {id, model, qty, eq, install,
+   unitCost, …} — while an older build sent {byModel:{…}}. Accept both, or the
+   charger price silently fails to land and the application goes out with $0
+   hardware, its largest eligible cost. */
+function chargerList(c){
+  var out=[], k;
+  if(!c) return out;
+  if(c.length){ return c; }                       /* already an array */
+  if(c.byModel){
+    for(k in c.byModel){
+      if(!c.byModel.hasOwnProperty(k)) continue;
+      var m=c.byModel[k];
+      out.push({ model:k, qty:m.qty, kw:m.kw, eq:m.eq, install:m.install });
+    }
+  }
+  return out;
+}
 function applyChargerCosts(c){
-  if(!c || !c.byModel) return 0;
-  var filled=0, i, l, k, m;
+  var list=chargerList(c);
+  if(!list.length) return 0;
+  var filled=0, i, l, z, m, nm;
   for(i=0;i<LINES.length;i++){
     l=LINES[i];
     if(l.bucket!=='evse' || l.row!=='charger') continue;
     if(num(l.mat)>0) continue;                    /* already priced — leave it */
     m=null;
-    for(k in c.byModel){
-      if(!c.byModel.hasOwnProperty(k)) continue;
-      if(String(k).toLowerCase()===String(l.desc).toLowerCase()){ m=c.byModel[k]; break; }
+    for(z=0;z<list.length;z++){
+      nm=String(list[z].model||list[z].id||'').toLowerCase();
+      if(nm && nm===String(l.desc).toLowerCase()){ m=list[z]; break; }
     }
     if(m){ l.mat=r2(num(m.eq)); filled++; }
   }
@@ -2098,6 +1758,22 @@ function applyChargerCosts(c){
 
 /* A submission with $0 charger hardware is the kind of thing a reviewer
    catches, not the rep — so say it loudly rather than let it export. */
+/* A make-ready submission with chargers but no conduit and no cable is
+   almost certainly incomplete — the conduit runs are what make-ready IS.
+   It happens when the site map has chargers placed but no conduit drawn,
+   so the estimate never carries a Conduit or Wire/Cable line and the
+   utility rows come out blank without anything looking broken. */
+function conduitGap(){
+  var i, l, hasCharger=false, hasRun=false;
+  for(i=0;i<LINES.length;i++){
+    l=LINES[i];
+    if(l.bucket==='evse' && l.row==='charger' && (num(l.mat)||num(l.lab))) hasCharger=true;
+    if((l.row==='conduit'||l.row==='wire'||l.row==='conduitAG'||l.row==='wireAG')
+       && (num(l.mat)||num(l.lab))) hasRun=true;
+  }
+  return (hasCharger && !hasRun);
+}
+
 function chargerGap(){
   var i, l, n=0;
   for(i=0;i<LINES.length;i++){
@@ -2105,6 +1781,141 @@ function chargerGap(){
     if(l.bucket==='evse' && l.row==='charger' && !num(l.mat)) n++;
   }
   return n;
+}
+
+/* Every site map the editor sent, so the rep can move between them without
+   going back to the editor. Each still exports its own workbook — the utility
+   forms are per-site documents. */
+var SITE_SET = null, SITE_IX = 0;
+
+function loadSiteSet(sites){
+  SITE_SET = sites;
+  SITE_IX = 0;
+  loadSite(0);
+}
+function loadSite(ix){
+  if(!SITE_SET || !SITE_SET[ix]) return;
+  SITE_IX = ix;
+  var p = SITE_SET[ix];
+  loadPayload(p);
+  if(p.site && p.site.name) { DATA.site = p.site.name; syncField('site'); }
+  renderSitePicker();
+  msg('srcMsg', 'Loaded <b>'+esc(d('site')||('Site '+(ix+1)))+'</b> \u2014 site '
+    + (ix+1)+' of '+SITE_SET.length+'. Check the mapping, export, then switch to the next.','ok');
+}
+function renderSitePicker(){
+  var host=document.getElementById('sitePicker');
+  if(!host) return;
+  if(!SITE_SET || SITE_SET.length<2){ host.innerHTML=''; return; }
+  var h='<div class="sect mt">Site maps received</div><div class="row-btn">', i, nm;
+  for(i=0;i<SITE_SET.length;i++){
+    nm=(SITE_SET[i].site && SITE_SET[i].site.name) || ('Site '+(i+1));
+    h+='<button class="btn sm'+(i===SITE_IX?' p':'')+'" onclick="loadSite('+i+')">'+esc(nm)+'</button>';
+  }
+  h+='</div><div class="note" style="margin-top:6px">Each site exports its own '
+   + 'workbook \u2014 the utility forms are per-site documents. Export one, then pick the next.</div>';
+  host.innerHTML=h;
+}
+
+/* ── FUTURE PROOFING PANEL ────────────────────────────────────────
+   Spare capacity is often scope the ESTIMATE doesn't carry: the drawing
+   shows what gets built, while future proofing is what the developer
+   chooses to put in the same trench for later. Before this, the only
+   ways in were a description containing the word "spare" or the trench
+   split — neither of which lets a rep simply say "add 200 ft of spare
+   3-inch".
+
+   Each entry becomes a real cost line in the future-proofing block, so
+   it flows through both forms untouched:
+
+     row       United Illuminating          Eversource v4.0
+     conduit   Conduit & Conductors         r34 Primary Conduit
+     wire      Wiring                       r37 Other
+     panel     Panel                        r37 Other
+     xfmr      Transformers                 r37 Other
+     concrete  (folds into Panel)           r36 Concrete Work/Bases/Pads
+     restore   (folds into Trenching)       r35 Restoration and/or Remediation
+     other     Other                        r37 Other
+
+   Defaults come from BENCH, the rates read off accepted submissions, so
+   a rep entering only a footage still lands inside the approved band. */
+var FP_ITEMS = [
+  { k:'conduit',  l:'Spare conduit',                 unit:'LF',  mat:2.20, lab:4.30 },
+  { k:'wire',     l:'Spare wiring / conductors',     unit:'LF',  mat:2.40, lab:1.90 },
+  { k:'trenchTurf',l:'Extra trench, unpaved',        unit:'LF',  mat:10.00, lab:60.00 },
+  { k:'restore',  l:'Restoration over spare trench', unit:'LF',  mat:9.00, lab:2.00 },
+  { k:'concrete', l:'Concrete bases / pads',         unit:'ea',  mat:800.00, lab:400.00 },
+  { k:'panel',    l:'Spare gear / breaker positions',unit:'lot', mat:500.00, lab:1000.00 },
+  { k:'xfmr',     l:'Transformer capacity',          unit:'lot', mat:0, lab:0 },
+  { k:'other',    l:'Other future proofing',         unit:'lot', mat:0, lab:0 }
+];
+
+function fpKey(k,f){ return 'fp_'+k+'_'+f; }
+
+function renderFPPanel(){
+  var host=document.getElementById('fpPanel');
+  if(!host) return;
+  var h='', i, it, q, mu, lu;
+  for(i=0;i<FP_ITEMS.length;i++){
+    it=FP_ITEMS[i];
+    q  = d(fpKey(it.k,'q'));
+    mu = d(fpKey(it.k,'m')); if(mu==='') mu=it.mat?String(it.mat):'';
+    lu = d(fpKey(it.k,'l')); if(lu==='') lu=it.lab?String(it.lab):'';
+    h+='<div style="margin-bottom:9px">'
+      +'<div style="font-size:11px;font-weight:600;margin-bottom:3px">'+esc(it.l)
+      +' <span style="font-weight:400;color:var(--dim)">('+esc(it.unit)+')</span></div>'
+      +'<div class="grid3">'
+      +'<input type="number" step="any" placeholder="qty" value="'+esc(q)+'" '
+      +'oninput="setFP(\''+it.k+'\',\'q\',this.value)">'
+      +'<input type="number" step="any" placeholder="$ mat/'+esc(it.unit)+'" value="'+esc(mu)+'" '
+      +'oninput="setFP(\''+it.k+'\',\'m\',this.value)">'
+      +'<input type="number" step="any" placeholder="$ lab/'+esc(it.unit)+'" value="'+esc(lu)+'" '
+      +'oninput="setFP(\''+it.k+'\',\'l\',this.value)">'
+      +'</div></div>';
+  }
+  host.innerHTML=h;
+}
+
+function setFP(k, f, v){
+  DATA[fpKey(k,f)] = v;
+  syncFPLines();
+  render();
+}
+
+/* Rebuild the panel's lines from scratch each time, so clearing a quantity
+   removes its line rather than leaving a stale one behind. */
+function syncFPLines(){
+  var keep=[], i;
+  for(i=0;i<LINES.length;i++){ if(LINES[i].src!=='fp-panel') keep.push(LINES[i]); }
+  LINES=keep;
+
+  var added=0, it, q, mu, lu;
+  for(i=0;i<FP_ITEMS.length;i++){
+    it=FP_ITEMS[i];
+    q  = num(d(fpKey(it.k,'q')));
+    mu = d(fpKey(it.k,'m'))===''? it.mat : num(d(fpKey(it.k,'m')));
+    lu = d(fpKey(it.k,'l'))===''? it.lab : num(d(fpKey(it.k,'l')));
+    if(!(q>0)) continue;
+    /* Keep the TRUE row key. Each form places it — Eversource has a concrete
+       row, United Illuminating doesn't and folds it into Other — so deciding
+       here would freeze whichever form happened to be selected at the time. */
+    LINES.push({ id:_nid++, desc:it.l, size:'', cat:'Future proofing',
+                 qty:q, unit:it.unit, mat:r2(q*mu), lab:r2(q*lu),
+                 bucket:'fp', row:it.k, fp:0, src:'fp-panel' });
+    added++;
+  }
+  var msg1=document.getElementById('fpMsg');
+  if(msg1){
+    var tot=0, z;
+    for(z=0;z<LINES.length;z++){ if(LINES[z].src==='fp-panel') tot+=LINES[z].mat+LINES[z].lab; }
+    msg1.className='note';
+    msg1.innerHTML = added
+      ? added+' future-proofing line'+(added>1?'s':'')+' added to the estimate, $'+money(tot).slice(1)+'.'
+      : 'Enter a quantity to add future-proofing scope. Rates default to the bands seen on accepted submissions.';
+    var badge=document.getElementById('fpTotal');
+    if(badge) badge.textContent = tot? money(tot) : '';
+  }
+  return added;
 }
 
 function togglePaste(){
@@ -2182,20 +1993,11 @@ function addManual(){
   var el=document.getElementById('d-'+(_nid-1));
   if(el){ el.focus(); el.select(); }
 }
-/* Fourth element: only add this row if the rate card can actually price it.
-   A conduit row added at $0 because nothing was measured is worse than no
-   row at all — it reads as a priced zero. */
 var STANDARD=[
   ['Permitting Costs','mr','permit'], ['Design Costs','mr','design'],
   ['Activation','evse','activation'], ['Shipping','evse','shipping'],
   ['EVSE Networking/Software','ne','network'], ['EVSE Warranty','ne','warranty'],
-  ['Signage','ne','signage'], ['Striping','ne','striping'],
-  ['Trenching/Restoration','mr','trench',true],
-  ['Conduit & Conductors','mr','conduit',true],
-  ['Wiring','mr','wire',true],
-  ['Spare conduit for future ports','fp','conduit',true],
-  ['Spare conductors','fp','wire',true],
-  ['Spare gear / breaker positions','fp','panel',true]
+  ['Signage','ne','signage'], ['Striping','ne','striping']
 ];
 /* Price the standard rows instead of inserting them at zero.
 
@@ -2211,33 +2013,7 @@ function standardRate(row, bucket){
   var ports=Math.max(1, num(DATA.plugs)||1);
   var peds =Math.max(1, Math.ceil(ports/2));       /* dual-port pedestals */
   var ftT  =num(DATA.ftTrench), ftC=num(DATA.ftConduit), ftW=num(DATA.ftCable);
-  var ftUG =num(DATA.ftConduitUG) || ftC, ftAG=num(DATA.ftConduitAG);
   var MA   =String(DATA.city||DATA.state||'').toUpperCase().indexOf('MA')>=0;
-
-  /* ── future proofing ──────────────────────────────────────────────
-     Spare capacity is priced off the SAME route the primary run takes,
-     because that is what gets installed: another conduit in the trench
-     already open, and the gear capacity to land it later. */
-  if(bucket==='fp'){
-    var spares = (DATA.fpSpares==null || DATA.fpSpares==='') ? 1 : num(DATA.fpSpares);
-    var fpRoute= num(DATA.ftConduitFP)>0
-               ? Math.round(num(DATA.ftConduitFP))                  /* drawn on the site map */
-               : Math.round((num(DATA.ftConduitUG)||ftC) * spares); /* the primary route, doubled up */
-    var fpPorts= num(DATA.fpPorts);
-    var FP=B.futureProof;
-    switch(row){
-      case 'conduit': return fpRoute>0 ? { qty:fpRoute, unit:'LF',
-                             mat:FP.conduit.mat*fpRoute, lab:FP.conduit.lab*fpRoute,
-                             note:spares+' spare conduit'+(spares===1?'':'s')+' \u00d7 '+Math.round(fpRoute/Math.max(1,spares))+' LF, same trench' } : null;
-      case 'wire':    return (String(d('fpPullSpare'))==='Yes' && fpRoute>0)
-                           ? { qty:1, unit:'LS', mat:FP.wire.mat, lab:FP.wire.lab,
-                               note:'conductors pulled in the spare conduit' } : null;
-      case 'panel':   return fpPorts>0 ? { qty:1, unit:'LS', mat:FP.panel.mat, lab:FP.panel.lab,
-                             note:'breaker positions and gear capacity for '+fpPorts+' future port'+(fpPorts===1?'':'s') } : null;
-      case 'trench':  return null;   /* allocated by the FP %, not added on top */
-      default:        return null;
-    }
-  }
 
   switch(row){
     /* Design lands on $1,000/port in all four reference jobs. */
@@ -2269,21 +2045,6 @@ function standardRate(row, bucket){
                                 note:'opt-in \u2014 absent on 2 of 5 reference jobs' };
     case 'restore':    return ftT>0 ? { qty:ftT, unit:'LF', mat:B.perFoot.restoration.mat*ftT,
                                         lab:B.perFoot.restoration.lab*ftT, note:ftT+' LF' } : null;
-    /* Conduit and wiring are priced from footage like every other per-foot
-       row. Left out of this list they exported at $0 whenever the estimate
-       filed its conduit under a category the classifier didn't recognise. */
-    case 'conduit':    return ftUG>0 ? { qty:ftUG, unit:'LF',
-                                        mat:(B.perFoot.conduitUG.mat+B.perFoot.cableUG.mat)*ftUG,
-                                        lab:(B.perFoot.conduitUG.lab+B.perFoot.cableUG.lab)*ftUG,
-                                        note:ftUG+' LF underground \u2014 conduit + conductors' } : null;
-    case 'wire':       return ftAG>0 ? { qty:ftAG, unit:'LF',
-                                        mat:(B.perFoot.conduitAG.mat+B.perFoot.cableAG.mat)*ftAG,
-                                        lab:(B.perFoot.conduitAG.lab+B.perFoot.cableAG.lab)*ftAG,
-                                        note:ftAG+' LF above ground / indoor' } : null;
-    case 'trench':     return ftT>0 ? { qty:ftT, unit:'LF',
-                                        mat:(MA?B.perFoot.trenchMA:B.perFoot.trenchCT).mat*ftT,
-                                        lab:(MA?B.perFoot.trenchMA:B.perFoot.trenchCT).lab*ftT,
-                                        note:ftT+' LF' } : null;
     case 'concrete':   return { qty:peds, unit:'EA', mat:800*peds, lab:400*peds, note:'EVSE bases' };
     default: return null;
   }
@@ -2299,75 +2060,6 @@ function subtotalExcluding(skipRow){
   return t;
 }
 
-/* What the FP block currently holds, mirrored trench share included. */
-function fpTotal(){
-  var t=0, i, l, pct;
-  for(i=0;i<LINES.length;i++){
-    l=LINES[i];
-    pct=Math.max(0,Math.min(100,num(l.fp)))/100;
-    if(l.bucket==='fp') t+=num(l.mat)+num(l.lab);
-    else if(pct>0)      t+=(num(l.mat)+num(l.lab))*pct;
-  }
-  return r2(t);
-}
-
-var FP_STANDARD=[['fp','conduit','Spare conduit for future ports'],
-                 ['fp','wire','Spare conductors'],
-                 ['fp','panel','Spare gear / breaker positions']];
-
-/* Recalculates the future-proofing lines against the current route length
-   and future-port count, overwriting the ones this tool priced. Hand-typed
-   and estimate-sourced lines are left alone. */
-function priceFutureProofing(){
-  var i, j, l, rate, found, n=0;
-  for(i=0;i<FP_STANDARD.length;i++){
-    var bucket=FP_STANDARD[i][0], row=FP_STANDARD[i][1], label=FP_STANDARD[i][2];
-    if(!rowExists(bucket,row)) continue;
-    rate=standardRate(row,bucket);
-    found=null;
-    for(j=0;j<LINES.length;j++){
-      l=LINES[j];
-      if(l.bucket===bucket && l.row===row && (l.src==='standard'||l.baseline)) found=l;
-    }
-    if(!rate){
-      /* the measure was switched off — clear the line this tool wrote
-         rather than leaving a stale number in an eligible block */
-      if(found){ found.mat=0; found.lab=0; found.qty=''; found.note=''; }
-      continue;
-    }
-    if(found){
-      found.mat=r2(rate.mat); found.lab=r2(rate.lab);
-      found.qty=rate.qty; found.unit=rate.unit; found.note=rate.note; found.desc=label;
-    } else {
-      LINES.push({ id:_nid++, desc:label, size:'', cat:'', qty:rate.qty, unit:rate.unit,
-                   mat:r2(rate.mat), lab:r2(rate.lab), note:rate.note,
-                   bucket:bucket, row:row, fp:0, src:'standard' });
-    }
-    n++;
-  }
-  render();
-  var st=document.getElementById('fpMsg');
-  if(st) st.innerHTML = n
-    ? 'Future proofing priced \u2014 '+money(fpTotal())+' in the eligible future-proofing block.'
-    : 'Nothing to price yet: add a conduit route or a future port count first.';
-  return n;
-}
-window.priceFutureProofing=priceFutureProofing;
-
-/* Future proofing is rebated at 100% and, on a DCFC application, scores 10
-   of the 100 selection points — so leaving the block empty costs real
-   money twice over. */
-function fpAudit(){
-  var out=[], t=fpTotal(), ports=num(DATA.fpPorts), route=num(DATA.ftConduitUG)||num(DATA.ftConduit);
-  if(!t && route>0)
-    out.push('Nothing is priced as future proofing. A spare conduit in the trench you are already digging is rebated at 100% \u2014 press <b>Price future proofing</b>.');
-  if(t>0 && !ports)
-    out.push('Future proofing is priced but no future port count is set, and UI\u2019s application asks for it in Section 4.');
-  if(ports>0 && !t)
-    out.push(ports+' future port'+(ports===1?'':'s')+' declared with no future-proofing cost against them.');
-  return out;
-}
-
 function addStandardRows(opts){
   opts=opts||{};
   var i, j, have, existing, rate, filled=0, added=0;
@@ -2379,7 +2071,6 @@ function addStandardRows(opts){
       if(LINES[j].bucket===bucket && LINES[j].row===row){ have=true; existing=LINES[j]; }
     }
     rate=standardRate(row, bucket);
-    if(!rate && STANDARD[i][3]) continue;         /* nothing measured to price */
     if(!have){
       LINES.push({ id:_nid++, desc:STANDARD[i][0], size:'', cat:'',
                    qty:rate?rate.qty:'', unit:rate?rate.unit:'',
@@ -2411,7 +2102,7 @@ function reclassifyAll(){
   var i, c;
   for(i=0;i<LINES.length;i++){
     if(LINES[i].src!=='estimate') continue;
-    c=classify(LINES[i].cat, LINES[i].desc, LINES[i].size, LINES[i].unit);
+    c=classify(LINES[i].cat, LINES[i].desc, LINES[i].size);
     LINES[i].bucket=c.b; LINES[i].row=c.r; LINES[i].fp=c.fp;
   }
   render();
@@ -2428,18 +2119,6 @@ function setLine(id, field, v){
   for(i=0;i<LINES.length;i++){
     if(LINES[i].id!==id) continue;
     if(field==='mat'||field==='lab'||field==='fp') LINES[i][field]=num(v);
-    /* Quantity carries the cost with it: two chargers cost twice one, and
-       260 LF of trench costs less than 279 did. The unit rate comes from
-       what is in the row right now, so a hand-corrected price is respected
-       rather than overwritten by the rate card. */
-    else if(field==='qty'){
-      var L=LINES[i], oldQ=num(L.qty), newQ=(String(v)==='' ? '' : num(v));
-      if(newQ!=='' && oldQ>0){ L.unitMat=num(L.mat)/oldQ; L.unitLab=num(L.lab)/oldQ; }
-      if(newQ!=='' && L.unitMat!=null){ L.mat=r2(L.unitMat*newQ); L.lab=r2(L.unitLab*newQ); }
-      L.qty=newQ;
-      renderMap();
-    }
-    else if(field==='unit'){ LINES[i].unit=String(v||'').replace(/^\s+|\s+$/g,''); renderMap(); }
     else if(field==='bucket'){
       LINES[i].bucket=v; LINES[i].orphan=false;
       if(!rowExists(v, LINES[i].row)) LINES[i].row=blockById(v).rows[blockById(v).rows.length-1].k;
@@ -2475,62 +2154,23 @@ var EDITOR_FEET = null;
    So when the editor hands over measured geometry we use it. Inferring
    from line descriptions is the fallback for the pasted-CSV path only,
    and it is approximate — the banner under the footage fields says so. */
-/* Where each footage came from, so the sheet can say so and a zero can be
-   told apart from a measurement of zero. */
-var FEET_SRC = {};
-
-/* The editor has changed the shape of its takeoff more than once, and a
-   payload that spells conduit `conduitLf` used to arrive as a silent zero:
-   the UI sheet then reported 0 LF of conduit and $0 of Conduit & Conductors
-   next to 57 LF of trench, which is how 282 Ferry Street went out. Read the
-   names the editor has actually used rather than one of them. */
-var FEET_ALIASES = {
-  trench:      ['trench','trenchFt','trenchLf','trenchLF','trenchFeet','ftTrench','trenching','trenchTotal','totalTrench'],
-  trenchPaved: ['trenchPaved','pavedTrench','trenchPavedFt','ftTrenchPaved','trenchHard','trenchAsphalt','trenchConcrete'],
-  trenchTurf:  ['trenchTurf','turfTrench','trenchTurfFt','ftTrenchTurf','trenchSoft','trenchGrass','trenchLandscape'],
-  conduit:     ['conduit','conduitFt','conduitLf','conduitLF','conduitFeet','ftConduit','conduitTotal','totalConduit','raceway','racewayFt','racewayLf'],
-  conduitUG:   ['conduitUG','conduitUg','conduitUnderground','undergroundConduit','ugConduit','ftConduitUG','conduitBuried','buriedConduit'],
-  conduitAG:   ['conduitAG','conduitAg','conduitAboveGround','abovegroundConduit','agConduit','ftConduitAG','conduitExposed','conduitIndoor'],
-  cable:       ['cable','cableFt','cableLf','cableLF','cableFeet','ftCable','cableTotal','totalCable','conductor','conductorFt','conductorLf'],
-  /* a spare run drawn in the editor is a measurement like any other, and
-     beats multiplying the primary route by an assumed spare count */
-  conduitFP:   ['conduitFP','fpConduit','spareConduit','conduitSpare','futureConduit','conduitFuture','ftConduitFP']
-};
-
-/* Accepts the editor's feet object in any of its shapes — flat, nested
-   under .feet, or a bare bom — and returns canonical keys. A key that is
-   absent stays absent; only a real number lands in the result, so a missing
-   measurement never masquerades as a measured zero. */
-function normalizeFeet(raw){
-  if(!raw || typeof raw!=='object') return null;
-  var src=raw;
-  if(src.feet    && typeof src.feet==='object')    src=src.feet;
-  else if(src.takeoff && typeof src.takeoff==='object') src=src.takeoff;
-  else if(src.bom  && typeof src.bom==='object' && src.bom.trenchFt!=null) src=src.bom;
-  var out={}, k, list, i, v, any=false;
-  for(k in FEET_ALIASES){
-    if(!FEET_ALIASES.hasOwnProperty(k)) continue;
-    list=FEET_ALIASES[k];
-    for(i=0;i<list.length;i++){
-      v=src[list[i]];
-      if(v==null || v==='') continue;
-      v=num(v);
-      if(v>0){ out[k]=v; any=true; break; }
-    }
+function autofillFeet(){
+  if(EDITOR_FEET){
+    var E=EDITOR_FEET;
+    DATA.ftTrench      = Math.round(num(E.trench));
+    DATA.ftTrenchPaved = Math.round(num(E.trenchPaved));
+    DATA.ftTrenchTurf  = Math.round(num(E.trenchTurf!=null?E.trenchTurf:E.trench));
+    DATA.ftConduit     = Math.round(num(E.conduit));
+    DATA.ftConduitUG   = Math.round(num(E.conduitUG!=null?E.conduitUG:E.conduit));
+    DATA.ftConduitAG   = Math.round(num(E.conduitAG));
+    DATA.ftCable       = Math.round(num(E.cable));
+    DATA.ftCableUG     = Math.round(num(E.cableUG));
+    DATA.ftCableAG     = Math.round(num(E.cableAG));
+    syncField('ftTrench'); syncField('ftConduit'); syncField('ftCable');
+    render();
+    return;
   }
-  if(src.trenchDrawn!=null) out.trenchDrawn=!!src.trenchDrawn;
-  else if(raw.trenchDrawn!=null) out.trenchDrawn=!!raw.trenchDrawn;
-  return any ? out : null;
-}
 
-/* Footage read back out of the cost lines. Approximate — these are
-   PURCHASING quantities carrying the BOM's 10% contingency — but a good
-   cross-check on the measured numbers and the only source on the pasted-CSV
-   path. Units are matched loosely because estimates spell linear feet four
-   different ways. */
-function isFootUnit(u){ return /^(lf|lft|lnft|ln ft|ft|feet|foot|linear ?f(ee)?t)$/.test(String(u||'').toLowerCase().replace(/\./g,'')); }
-
-function feetFromLines(){
   var trench=0, paved=0, cond=0, cable=0, egc=0, i, l, t;
   var haveDrawnTrench=false;
   for(i=0;i<LINES.length;i++){
@@ -2539,7 +2179,7 @@ function feetFromLines(){
   }
   for(i=0;i<LINES.length;i++){
     l=LINES[i]; t=(l.desc||'').toLowerCase();
-    if(!isFootUnit(l.unit)) continue;
+    if(String(l.unit||'').toLowerCase()!=='lf') continue;
     if(/civil/i.test(l.cat)){
       if(!/trench|sawcut/.test(t)) continue;
       if(/tape|bedding|patch|restoration/.test(t)) continue;
@@ -2550,114 +2190,26 @@ function feetFromLines(){
       /* a sawcut is by definition through paving */
       if(/sawcut|concrete/.test(t)) paved+=num(l.qty);
     }
-    /* Category first, then the description — an estimate that files conduit
-       under 'Electrical' still measures conduit, and dropping those runs is
-       what produced a $0 Conduit & Conductors row. */
-    else if(/trench|sawcut|backfill|restorat|bedding|warning tape/.test(t)) continue;
-    else if(/conduit|raceway|fitting/i.test(l.cat) ||
-            /\b(conduit|emt|rmc|imc|pvc sch|sch ?40|sch ?80|innerduct|liquidtight|sealtite)\b/.test(t)) cond+=num(l.qty);
-    else if(/wire|cable|conductor/i.test(l.cat) ||
-            /\b(thhn|thwn|xhhw|conductor|feeder cable)\b/.test(t)){
+    else if(/conduit/i.test(l.cat)) cond+=num(l.qty);
+    else if(/wire|cable/i.test(l.cat)){
       /* The ground conductor runs the route once, so it is the closest
          thing to route length in the line items. Phase conductors are
          multiples of it and would overstate the run several times over. */
-      if(/ground|egc|bare cu/.test(t)) egc+=num(l.qty);
+      if(/ground|egc/.test(t)) egc+=num(l.qty);
       cable+=num(l.qty);
     }
   }
-  return { trench:trench, trenchPaved:paved, trenchTurf:Math.max(0,trench-paved),
-           conduit:cond, conduitUG:cond, conduitAG:0, cable:(egc>0?egc:cable) };
-}
-
-/* Measured geometry wins wherever it exists; the estimate lines fill the
-   gaps; anything still missing is derived from what is known and labelled
-   as derived. The one thing this will not do is hand the utility a zero. */
-function autofillFeet(){
-  var M = normalizeFeet(EDITOR_FEET);
-  var L = feetFromLines();
-  var F = {}, S = {};
-  function pick(k){
-    if(M && num(M[k])>0){ F[k]=num(M[k]); S[k]='measured'; return; }
-    if(num(L[k])>0){ F[k]=num(L[k]); S[k]='lines'; return; }
-    F[k]=0; S[k]='none';
-  }
-  pick('trench'); pick('trenchPaved'); pick('trenchTurf');
-  pick('conduit'); pick('conduitUG'); pick('conduitAG'); pick('cable'); pick('conduitFP');
-
-  /* ── reconcile the three conduit numbers against each other ──────── */
-  /* A measured total outranks an inferred split of it: mixing the two gave
-     374 LF underground inside a 340 LF measured run, which is impossible. */
-  if(S.conduit==='measured' && S.conduitUG!=='measured'){
-    var _ag = (S.conduitAG==='measured') ? F.conduitAG : 0;
-    F.conduitUG = Math.max(0, F.conduit - _ag);
-    F.conduitAG = _ag;
-    S.conduitUG = 'balance of the measured run';
-    if(_ag) S.conduitAG='measured';
-  }
-  if(!F.conduit && (F.conduitUG||F.conduitAG)){
-    F.conduit=F.conduitUG+F.conduitAG; S.conduit='split';
-  }
-  if(F.conduit && !F.conduitUG && !F.conduitAG){
-    F.conduitUG=F.conduit; S.conduitUG='assumed underground';
-  }
-  if(F.conduit < F.conduitUG+F.conduitAG){
-    F.conduit=F.conduitUG+F.conduitAG; S.conduit='split';
-  }
-  /* ── trench splits ───────────────────────────────────────────────── */
-  if(!F.trench && (F.trenchPaved||F.trenchTurf)){ F.trench=F.trenchPaved+F.trenchTurf; S.trench='split'; }
-  if(F.trench && !F.trenchPaved && !F.trenchTurf){ F.trenchTurf=F.trench; S.trenchTurf='assumed turf'; }
-  else if(F.trench && F.trenchPaved && !F.trenchTurf){ F.trenchTurf=Math.max(0,F.trench-F.trenchPaved); S.trenchTurf='balance'; }
-
-  /* ── last resort: conduit from the excavation it sits in ─────────── */
-  var ports=Math.max(1, num(DATA.plugs)||1), peds=Math.max(1, Math.ceil(ports/2));
-  if(!F.conduit && F.trench>0){
-    /* the run is the trench plus a stub-up at the source and at each
-       pedestal — never shorter than the trench it lies in */
-    F.conduit=Math.round(F.trench + 10 + 10*peds);
-    F.conduitUG=F.conduit;
-    S.conduit='derived from trench'; S.conduitUG='derived from trench';
-  }
-  /* Cable is a REPORTED length on the utility sheet, not a pricing input —
-     the wiring cost comes off the above-ground footage — so filling it in
-     from the conduit route cannot inflate a cost line. */
-  if(!F.cable && F.conduit>0){ F.cable=F.conduit; S.cable='conduit route'; }
-
-  DATA.ftTrench      = Math.round(F.trench);
-  DATA.ftTrenchPaved = Math.round(F.trenchPaved);
-  DATA.ftTrenchTurf  = Math.round(F.trenchTurf);
-  DATA.ftConduit     = Math.round(F.conduit);
-  DATA.ftConduitUG   = Math.round(F.conduitUG);
-  DATA.ftConduitAG   = Math.round(F.conduitAG);
-  DATA.ftCable       = Math.round(F.cable);
-  DATA.ftConduitFP   = Math.round(F.conduitFP);
-  FEET_SRC = S;
-  FEET_SRC._lines = L;
+  DATA.ftTrench=Math.round(trench);
+  DATA.ftTrenchPaved=Math.round(paved);
+  DATA.ftTrenchTurf=Math.round(trench-paved);
+  DATA.ftConduit=Math.round(cond);
+  /* No per-run data in a pasted CSV, so treat the conduit as underground —
+     the common case on a make-ready job, and the row a reviewer expects. */
+  DATA.ftConduitUG=Math.round(cond);
+  DATA.ftConduitAG=0;
+  DATA.ftCable=Math.round(egc>0?egc:cable);
   syncField('ftTrench'); syncField('ftConduit'); syncField('ftCable');
   render();
-}
-
-/* Everything that would embarrass us in review, in one place. Shown under
-   the footage fields and again before the workbook is written. */
-function feetAudit(){
-  var out=[], i, l;
-  var trench=num(DATA.ftTrench), cond=num(DATA.ftConduit), ports=num(DATA.plugs);
-  var condCost=0, trenchCost=0;
-  for(i=0;i<LINES.length;i++){
-    l=LINES[i];
-    if(l.row==='conduit') condCost+=num(l.mat)+num(l.lab);
-    if(l.row==='trench')  trenchCost+=num(l.mat)+num(l.lab);
-  }
-  if(!cond && ports)
-    out.push('No conduit footage. The sheet would report 0 LF of conduit and $0 of Conduit &amp; Conductors \\u2014 draw the run in the site map, or type the length in.');
-  if(cond && trench>cond)
-    out.push('Trench is '+trench+' LF but the conduit in it is only '+cond+' LF. One of the two is wrong \\u2014 conduit is never shorter than its trench.');
-  if(cond>0 && !condCost)
-    out.push(cond+' LF of conduit is measured but no conduit cost is mapped. Press <b>Add permitting, design, activation\\u2026</b> to price it from the rate card, or map a cost line to Conduit &amp; Conductors.');
-  if(trench>0 && !trenchCost)
-    out.push(trench+' LF of trench is measured but no trenching cost is mapped.');
-  if(!trench && cond>0 && FEET_SRC.conduit==='measured')
-    out.push(cond+' LF of conduit with no trench. Fine for an indoor or surface run \\u2014 check it is not a missed excavation.');
-  return out;
 }
 function autofillPlugs(){
   /* The editor counts ports from the placed fleet -- dual-port units are
@@ -2708,8 +2260,35 @@ function buildModel(form){
     b=BL[bi]; grid[b.id]={};
     for(ri=0;ri<b.rows.length;ri++) grid[b.id][b.rows[ri].k]={ mat:0, lab:0, notes:[] };
   }
+  /* Forms don't all carry the same rows. When a line's row is missing from
+     the active form, keep it in ITS OWN block and fall to that block's Other
+     — the old code jumped to the last block entirely, so a future-proofing
+     concrete pad on a form without a concrete row landed in Ineligible and
+     quietly moved money out of the rebate. */
+  /* Some forms split a category the others keep whole: Eversource has
+     separate above-ground conduit and cable rows, United Illuminating has
+     one "Conduit & Conductors". Fold to the coarser row rather than to
+     Other, so a UI sheet reads correctly instead of burying the run. */
+  var ROW_ALIAS = { conduitAG:'conduit', wireAG:'wire', restore:'trench',
+                    concrete:'panel', install:'other', trenchTurf:'trench' };
+  function blockOther(bid){
+    var b=null, z, rows;
+    for(z=0;z<BL.length;z++){ if(BL[z].id===bid) b=BL[z]; }
+    if(!b) return null;
+    rows=b.rows;
+    for(z=0;z<rows.length;z++){ if(rows[z].k==='other') return 'other'; }
+    return rows[rows.length-1].k;
+  }
   function put(bid,k,mat,lab,note){
-    if(!grid[bid] || !grid[bid][k]){ bid=BL[BL.length-1].id; k=BL[BL.length-1].rows[BL[BL.length-1].rows.length-1].k; }
+    if(!grid[bid]){
+      bid=BL[BL.length-1].id;
+      k=BL[BL.length-1].rows[BL[BL.length-1].rows.length-1].k;
+    } else if(!grid[bid][k]){
+      var alias=ROW_ALIAS[k];
+      if(alias && grid[bid][alias]) k=alias;
+      else k=blockOther(bid) || k;
+    }
+    if(!grid[bid] || !grid[bid][k]) return;
     grid[bid][k].mat+=mat; grid[bid][k].lab+=lab;
     if(note && (mat||lab)) grid[bid][k].notes.push(note);
   }
@@ -2859,9 +2438,12 @@ function taxKnob(){
    flagged, so it shows up for re-mapping instead of quietly inflating Other. */
 function reconcileToForm(){
   var BL=activeBlocks(), last=BL[BL.length-1], lastRow=last.rows[last.rows.length-1];
+  /* panel lines carry a deliberate key and buildModel places them per form,
+     so they must not be re-homed or flagged */
   var i, l, ok, bi;
   for(i=0;i<LINES.length;i++){
     l=LINES[i]; ok=false;
+    if(l.src==='fp-panel'){ l.orphan=false; continue; }
     for(bi=0;bi<BL.length;bi++){ if(BL[bi].id===l.bucket) ok=true; }
     if(ok && !rowExists(l.bucket, l.row)) ok=false;
     if(ok){ l.orphan=false; continue; }
@@ -2925,7 +2507,6 @@ var PROPOSAL_FIELDS = [
 
 function renderSiteForm(){
   var h='', gi, fi, g, f, it, ci, c, cls=chargerClass();
-  h+=siteTabsHTML();
   h+='<label class="f"><span>Charger type</span><select id="f-class" onchange="setClass(this.value)">'
    +   '<option value="l2"'+(cls==='l2'?' selected':'')+'>Level 2 (AC)</option>'
    +   '<option value="dcfc"'+(cls==='dcfc'?' selected':'')+'>DC Fast Charging</option>'
@@ -2963,26 +2544,12 @@ function renderSiteForm(){
   /* Say where the numbers came from. Measured geometry is as-built; the CSV
      fallback is inferred from purchasing quantities and still carries the
      BOM's 10% contingency, which a reviewer would read as extra footage. */
-  h+= feetProvenanceHTML();
-  var _fa=feetAudit(), _fi;
-  for(_fi=0;_fi<_fa.length;_fi++) h+='<div class="warn" style="margin-top:6px">'+_fa[_fi]+'</div>';
-
-  /* Future proofing sits with the footages because that is what drives it:
-     the spare conduit follows the route already measured above. */
-  h+='<div class="sect mt">Future proofing</div>'
-   + '<div style="font-size:11px;color:#57606a;margin-bottom:6px">Rebated at 100% by both CT programs, and scored on DCFC applications. '
-   + 'The spare run shares the trench, so it is priced at the in-trench rate.</div>'
-   + (function(){ if(DATA.fpSpares==null||DATA.fpSpares==='') DATA.fpSpares=1; return ''; })()
-   + fieldHTML({k:'fpPorts',      label:'Ports the site should be able to add later', type:'number'})
-   + fieldHTML({k:'fpSpares',     label:'Spare conduits in the same trench',          type:'number'})
-   + fieldHTML({k:'fpPullSpare',  label:'Pull conductors in the spare conduit',       type:'select', options:['No','Yes']})
-   + '<button class="btn sm" onclick="priceFutureProofing()">Price future proofing</button>'
-   + '<div id="fpMsg" class="note" style="margin-top:6px">Currently '+money(fpTotal())
-   + ' in the future-proofing block, including its share of the trench.</div>';
-  var _aa=addressAudit(), _pj;
-  for(_pj=0;_pj<_aa.length;_pj++) h+='<div class="warn" style="margin-top:6px">'+_aa[_pj]+'</div>';
-  var _fp=fpAudit(), _pi;
-  for(_pi=0;_pi<_fp.length;_pi++) h+='<div class="warn" style="margin-top:6px">'+_fp[_pi]+'</div>';
+  h+= EDITOR_FEET
+    ? '<div class="ok" style="margin-top:8px">Footages measured from the site map \u2014 as-built, each length counted once'
+      + (EDITOR_FEET.trenchDrawn===false ? '. No trench was drawn, so the underground conduit route stands in for the excavation \u2014 check it.' : '.')
+      + '</div>'
+    : '<div class="warn" style="margin-top:8px">Footages inferred from the estimate lines, not measured. Those quantities '
+      + 'include the BOM\u2019s 10% contingency, so conduit and cable read high. Verify against the drawing before submitting.</div>';
   document.getElementById('siteForm').innerHTML=h;
 }
 function fieldHTML(f, tight){
@@ -3002,69 +2569,8 @@ function fieldHTML(f, tight){
 }
 function shortLabel(l){ return String(l).replace(/^#\s*of\s*/i,'# ').replace(/^Total Feet of\s*/i,'Feet — '); }
 
-/* Say where each footage came from. One banner reading "measured from the
-   site map" was true of the trench and false of the conduit on the same
-   export, which is how a zero got through looking authoritative. */
-var FEET_SRC_LABEL = {
-  'measured':'measured on the site map',
-  'lines':'read from the estimate lines (carries the BOM\u2019s 10% contingency)',
-  'split':'summed from the underground and above-ground runs',
-  'assumed underground':'measured, treated as underground',
-  'assumed turf':'measured, treated as non-continuously paved',
-  'balance':'the balance of the trench',
-  'balance of the measured run':'the balance of the measured conduit run',
-  'derived from trench':'DERIVED from the trench length \u2014 nothing was measured',
-  'conduit route':'taken as the conduit route length',
-  'none':'not measured and not in the estimate'
-};
-function feetProvenanceHTML(){
-  var rows=[['Trenching','ftTrench','trench'],['Conduit','ftConduit','conduit'],['Cable','ftCable','cable']];
-  var h='', i, s, bad=false;
-  for(i=0;i<rows.length;i++){
-    s=FEET_SRC[rows[i][2]]||'none';
-    if(s==='none' || s==='derived from trench' || s==='conduit route') bad=true;
-    h+='<div><b>'+rows[i][0]+'</b> '+num(DATA[rows[i][1]])+' LF \u2014 '+(FEET_SRC_LABEL[s]||s)+'</div>';
-  }
-  if(num(DATA.ftConduitAG)>0)
-    h+='<div>Of that conduit, '+num(DATA.ftConduitUG)+' LF underground and '+num(DATA.ftConduitAG)+' LF above ground / indoor.</div>';
-  if(EDITOR_FEET && EDITOR_FEET.trenchDrawn===false)
-    h+='<div>No trench was drawn in the editor, so the underground conduit route stands in for the excavation \u2014 check it.</div>';
-  return '<div class="'+(bad?'warn':'ok')+'" style="margin-top:8px;line-height:1.6">'+h+'</div>';
-}
-
 /* ── 12. RENDER — mapping + previews ──────────────────────────────── */
 function render(){ renderMap(); renderOutputs(); }
-
-/* What one of these costs, so it is obvious what changing the quantity will
-   do before it is changed. */
-function rateHint(l){
-  var q=num(l.qty), t=num(l.mat)+num(l.lab);
-  if(!(q>0) || !t) return '';
-  return '<span class="rate-hint">'+money(r2(t/q))+' / '+esc(l.unit||'ea')+'</span>';
-}
-
-/* Charger quantity and the plug count drive different things — the plug
-   count feeds design, activation, networking and UI's minimum-port rule —
-   so changing one and not the other is a quiet way to file a wrong
-   application. */
-function chargerQtyNote(){
-  var units=0, i, l, per=2, have=num(DATA.plugs);
-  for(i=0;i<LINES.length;i++){
-    l=LINES[i];
-    if(l.bucket==='evse' && l.row==='charger' && num(l.qty)>0) units+=num(l.qty);
-  }
-  if(!units || !have) return '';
-  try{
-    if(EDITOR_FLEET && EDITOR_FLEET.length && num(EDITOR_FLEET[0].ports)>0)
-      per=num(EDITOR_FLEET[0].ports);
-  }catch(e){}
-  var implied=Math.round(units*per);
-  if(implied===have) return '';
-  return '<div class="warn" style="margin-top:8px"><b>Charger count and plug count disagree.</b> '
-    + 'The charger lines add up to '+units+' unit'+(units===1?'':'s')+' \u2014 about '+implied+' port'+(implied===1?'':'s')
-    + ' at '+per+' per unit \u2014 but <b># of Level 2 Plugs</b> is set to '+have+'. '
-    + 'Ports drive design, activation, networking and UI\u2019s minimum-port rule, so update it in Site &amp; program if the count changed.</div>';
-}
 
 function renderMap(){
   var BL=activeBlocks();
@@ -3083,14 +2589,7 @@ function renderMap(){
     h+='<tr class="'+(l.src==='manual'?'manual':'')+(l.orphan?' orphan':'')+'">'
       +'<td><input id="d-'+l.id+'" class="desc-in" value="'+esc(l.desc)+'" oninput="setLine('+l.id+',\'desc\',this.value)">'
       +   (l.size||l.cat ? '<span class="meta">'+esc(l.cat)+(l.size?' · '+esc(l.size):'')+'</span>' : '')+'</td>'
-      +'<td class="qty-cell">'
-      +   '<input class="qty-in mono" type="number" step="any" min="0" value="'+esc(l.qty)+'" '
-      +     'title="Quantity \u2014 changing it rescales material and labour at the same unit rate" '
-      +     'onchange="setLine('+l.id+',\'qty\',this.value)">'
-      +   '<input class="unit-in mono" value="'+esc(l.unit||'')+'" placeholder="unit" '
-      +     'title="Unit of measure" onchange="setLine('+l.id+',\'unit\',this.value)">'
-      +   rateHint(l)
-      +'</td>'
+      +'<td class="mono" style="color:var(--dim);font-size:10.5px">'+esc(l.qty!==''?l.qty+' '+l.unit:'—')+'</td>'
       +'<td><select class="sel-sm" onchange="setLine('+l.id+',\'bucket\',this.value)">'+bopts+'</select></td>'
       +'<td><select class="sel-sm" onchange="setLine('+l.id+',\'row\',this.value)">'+ropts+'</select></td>'
       +'<td><input class="cell-in mono" type="number" value="'+l.fp+'" onchange="setLine('+l.id+',\'fp\',this.value)"'+(l.bucket==='fp'?' disabled':'')+'></td>'
@@ -3101,16 +2600,24 @@ function renderMap(){
   }
   tb.innerHTML=h;
   document.getElementById('mapCount').textContent = LINES.length?LINES.length+' lines':'';
-  var orph=orphanCount(), gap=chargerGap();
+  var orph=orphanCount(), gap=chargerGap(), noRun=conduitGap();
   var bad=benchCheck(), inel=eligibilityCheck(), bi2, bnote='';
+  if(noRun){
+    bnote += '<div class="warn" style="margin-top:0"><b>No conduit or cable in this estimate.</b> '
+          + 'There are chargers priced but nothing on the Conduit &amp; Cable rows, so the utility sheet '
+          + 'will show make-ready with no runs. Usually this means the site map has chargers placed but '
+          + 'no conduit drawn \u2014 go back to the editor, draw the runs, and press EV Cost Workbook again. '
+          + 'If the runs really are out of scope, add the cost by hand so the row isn\u2019t simply blank.</div>';
+  }
   if(bad.length){
-    bnote='<div class="warn" style="margin-top:8px"><b>Pricing outside the accepted band</b> \u2014 '
+    /* += not =, or this wipes any warning raised above it — the missing
+       conduit notice was being silently swallowed by the pricing one. */
+    bnote+='<div class="warn" style="margin-top:8px"><b>Pricing outside the accepted band</b> \u2014 '
         + 'rates seen on Eversource and United Illuminating submissions that cleared review:<ul style="margin:5px 0 0;padding-left:17px">';
     for(bi2=0;bi2<bad.length && bi2<6;bi2++)
       bnote += '<li>'+esc(bad[bi2].desc)+' \u2014 '+esc(bad[bi2].why)+'</li>';
     bnote += '</ul><div style="margin-top:5px">Neither direction is automatically wrong; site conditions vary. But confirm before submitting \u2014 high invites a kickback, low costs you the margin.</div></div>';
   }
-  bnote += chargerQtyNote();
   if(inel.length){
     bnote += '<div class="warn" style="margin-top:8px"><b>Usually not rebate-eligible</b> \u2014 '
           + 'these are priced in an eligible block:<ul style="margin:5px 0 0;padding-left:17px">';
@@ -3171,11 +2678,6 @@ function renderOutputs(){
     (_pv==='proposal')            ? previewProposal(buildModel(proposalForm()))
   : (_pf && _pf.writer==='eversource') ? previewFormES(buildModel(_pf), _pf)
                                   : previewForm(buildModel(_pf), _pf);
-
-  /* The application PDF belongs next to Export, not buried under a
-     sixty-row cost table where nobody scrolls to find it. */
-  var _ub=document.getElementById('btnUiPdf');
-  if(_ub) _ub.style.display = PICK['ui-ct-l2'] ? '' : 'none';
 
   document.getElementById('xlWarn').innerHTML = window._XLFAIL
     ? '<div class="warn">The Excel writer didn\'t load. Check the connection and reload — export needs it.</div>' : '';
@@ -3255,8 +2757,7 @@ function previewForm(m, form){
     }
   }
   h+=r(td(form.totalLabel,'pv-gold')+td('','pv-gold')+td(acct(m.mat),'pv-gold num')+td(acct(m.lab),'pv-gold num')+td(acct(m.total),'pv-gold num'));
-  h+='</table>';
-  return _lead + h;
+  return _lead + h+'</table>';
 }
 
 
@@ -3593,289 +3094,427 @@ window.exportEversource=exportEversource;
    ══════════════════════════════════════════════════════════════════════ */
 var ES_LOGO_B64 = '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';
 
-var ES30 = {
+/* ══════════════════════════════════════════════════════════════════════
+   EVERSOURCE CT — EV COST MATRIX, VERSION 4.0  (Rev. 04/10/25)
+   ----------------------------------------------------------------------
+   Transcribed cell-for-cell from EversourceEVCostMatrixTemplate_CT_v_4_0
+   .xlsx, tab "Version 4.0". Row numbers, labels, unit types, column
+   widths, merges, fills, borders, number formats and every formula match
+   the blank master, because a matrix that doesn't match is refused.
+
+   Three things about this form that are easy to get wrong:
+
+     · EVSE INSTALLATION (row 42) counts toward MAKE-READY CUSTOMER COST,
+       not toward Eligible EVSE — see the H53 formula. Put it in the EVSE
+       total and both numbers are wrong.
+     · ELIGIBLE EVSE COSTS IS HALVED. H55 divides by two; the invoice
+       total on row 58 adds the other half back with (H55*2). That is the
+       programme's 50% EVSE cost share, not an error to "fix".
+     · THERE IS NO NETWORKING ROW. Footnote (4) says the networking total
+       belongs on the EV application's Networking Cost field, a separate
+       form. Networking costs must not be smuggled onto this sheet.
+
+   The material columns are quantity x unit price: E is Material Quantity,
+   F is Material Unit Price and G carries =E*F. Where a line has a real
+   quantity we fill E and F and leave their formula alone; where it has
+   none we write the material total straight into G, exactly as the
+   990 Pembroke submission does on its Panels/Service Board row.
+   ══════════════════════════════════════════════════════════════════════ */
+var ES40 = {
+  /* colours and column widths straight from the master */
   green:'FF00B050', navy:'FF002060', white:'FFFFFFFF',
-  widths:[2,49,23.7,22,12,13.4,24.7,16.1,14.7,32],
-  head:[   /* label col, value col, DATA key */
-    ['B3','C3','esAppNo'],   ['B4','C4','esSiteId'], ['B5','C5','segment'],
-    ['B6','C6','address'],   ['B7','C7','city'],     ['B8','C8','plugs'],
-    ['B9','C9','stations'],  ['B10','C10','esWO'],   ['C11',null,'siteDesc'],
-    ['C12',null,'notable'],
-    ['E3',null,'company'],   ['E4',null,'contact'],  ['E5',null,'phone'],
-    ['E6',null,'billTo'],    ['E7',null,'billAddr'], ['E8',null,'email'],
-    ['E9',null,'vendorCode'],['E10',null,'vendorInv'],
-    ['I3',null,'applicant'], ['I4',null,'custPhone'],['I5',null,'custEmail']
+  grey:'FFF2F2F2',  blue:'FF0070C0', yellow:'FFFFFF00',
+  widths:[3.14, 49, 23.71, 22, 12, 13.43, 24.71, 16.14, 14.71, 32],
+
+  /* row 1: revision stamp and date */
+  rev:'Rev. 04/10/25',
+
+  /* rows 2-11, the three-up header. label column, label, value column,
+     value merge, and the DATA key the value comes from */
+  head:[
+    { r:3, l:'B', t:'Eversource Project Number:                                ESCTEV-', v:'C', k:'esProject' },
+    { r:4, l:'B', t:'Program Segment:  ',                 v:'C', k:'segment' },
+    { r:5, l:'B', t:'Project Site Street Address:',       v:'C', k:'address' },
+    { r:6, l:'B', t:'Project City, State, ZIP Code: ',    v:'C', k:'city' },
+    { r:7, l:'B', t:'Number of Ports:',                   v:'C', k:'plugs',    num:true },
+    { r:8, l:'B', t:'Number of Stations: ',               v:'C', k:'stations', num:true },
+    { r:9, l:'B', t:'Eversource Work Order (WO) Number: ',v:'C', k:'woNumber' },
+
+    { r:3, l:'D', t:'Company Name:',            v:'E', m:'E3:G3', k:'company' },
+    { r:4, l:'D', t:'Point of Contact Name: ',  v:'E', m:'E4:G4', k:'contact' },
+    { r:5, l:'D', t:'Contact Number: ',         v:'E', m:'E5:G5', k:'phone' },
+    { r:6, l:'D', t:'Bill To:',                 v:'E', m:'E6:G6', k:'billTo' },
+    { r:7, l:'D', t:'Address: ',                v:'E', m:'E7:G7', k:'cAddress' },
+    { r:8, l:'D', t:'Email:',                   v:'E', m:'E8:G8', k:'email' },
+    { r:9, l:'D', t:'Vendor Invoice Number: ',  v:'E', m:'E9:G9', k:'vendorInv' },
+
+    { r:3, l:'H', t:'Full Name: ',      v:'I', m:'I3:J3', k:'custName' },
+    { r:4, l:'H', t:'Contact Number:',  v:'I', m:'I4:J4', k:'custPhone' },
+    { r:5, l:'H', t:'Email:',           v:'I', m:'I5:J5', k:'custEmail' }
   ],
-  headLabels:{
-    B3:'Eversource Application Number:  ', B4:'Eversource Site ID Number:',
-    B5:'Program Segment:  ',               B6:'Project Site Street Address:',
-    B7:'Project City, State, ZIP Code: ',  B8:'Number of Ports:',
-    B9:'Number of Stations: ',             B10:'Eversource Work Order (WO) Number: ',
-    B11:'General Description of the Site:',B12:'Notable Details: ',
-    D3:'Company Name:',   D4:'Point of Contact Name: ', D5:'Contact Number: ',
-    D6:'Bill To:',        D7:'Address: ',               D8:'Email:',
-    D9:'Vendor Code: ',   D10:'Vendor Invoice Number: ',
-    H3:'Full Name: ',     H4:'Contact Number:',         H5:'Email:'
-  },
-  /* r, label, unit, detail placeholder, section key, model key, formulaG */
+  headBands:[
+    { m:'B2:C2', t:'Project Details' },
+    { m:'D2:G2', t:'Contractor Details' },
+    { m:'H2:J2', t:'Customer Details' }
+  ],
+  notes:[
+    { r:10, t:'General Description of the Site:', m:'C10:J10', k:'siteDesc' },
+    { r:11, t:'Notable Details: ',                m:'C11:J11', k:'notableDetails' }
+  ],
+
+  /* row 12 column headings */
+  cols:['Cost Item','Detail/Notes','Unit Type','Material Quantity',
+        'Material United Price','Material Total','Labor Total','Total Cost',
+        'Subcontracted Y/N'],
+
+  /* rows 13-49. type 'band' is a green section header; 'row' is a line.
+     mul:true  -> G carries =E*F and we fill E (quantity) and F (unit price)
+     mul:false -> G is a typed material total, as the master has it
+     k         -> the block row key this line draws from
+     sec       -> which block the key lives in: g=general/make-ready,
+                  u=utility side, f=future proofing, e=EVSE, n=ineligible  */
   rows:[
-    ['sec',14,'Eligible Design & Permitting Costs'],
-    [15,'Site Design & Engineering','Per Site','','dp','design',false],
-    [16,'> Labor Category/Role','Labor','Specify:','dp','designLab',true],
-    [17,'Permitting','Per Site','','dp','permit',false],
-    [18,'> Labor Category/Role','Labor','Specify:','dp','permitLab',true],
-    ['sec',19,'Eligible Infrastructure Make-Ready Costs - General Site & Electrical Work'],
-    [20,'Trenching & Backfill - Continuously Paved Area\n(i.e., asphalt, concrete)','Per Foot','','gen','trench',true],
-    [21,'Trenching & Backfill - Non-Continuously Paved Area\n(i.e., ground cover, turf)','Per Foot','','gen','trenchTurf',true],
-    [22,'Conduit & Cable - Underground','Per Foot','','gen','conduit',true],
-    [23,'Conduit & Cable - Above Ground/Indoor','Per Foot','','gen','wire',true],
-    [24,'Restoration and/or Remediation','Per Site','Specify:','gen','restore',true],
-    [25,'Handholes/Manholes','Per Unit','','gen','handhole',true],
-    [26,'Concrete Work/Bases/Pads','Total','','gen','concrete',true],
-    [27,'Panels/Service Board/Breakers','Total','','gen','panel',false],
-    [28,'Other (i.e., Additional Cost/Scope Deviations)','Total','Specify:','gen','boards',false],
-    ['sec',29,'Eligible Utility-Side Infrastructure Make-Ready Costs'],
-    [30,'Utility Transformer Pad','Per Unit','','util','xfmrpad',true],
-    [31,'Metering','Per Unit','','util','meter',true],
-    ['sec',32,'Eligible Future Proofing'],
-    [33,'Trenching & Backfill - Continuously Paved Area\n(i.e., asphalt, concrete)','Per Foot','','fp','trench',true],
-    [34,'Trenching & Backfill - Non-Continuously Paved Area\n(i.e., ground cover, turf)','Per Foot','','fp','trenchTurf',true],
-    [35,'Primary Conduit (concrete-encased)','Per Foot','','fp','conduit',true],
-    [36,'Restoration and/or Remediation','Per Site','Specify:','fp','wire',true],
-    [37,'Concrete Work/Bases/Pads','Total','','fp','panel',true],
-    [38,'Other (i.e., Additional Cost/Scope Deviations)','Total','Specify:','fp','xfmr',false],
-    ['sec',39,'Eligible EVSE Costs'],
-    [40,'EVSE Hardware #1','Per Unit','EVSE Type (L2, DCFC): \nEVSE Make/Model: ','evse','charger',true],
-    [41,'EVSE Hardware #2 (If different than model 1)','Per Unit','EVSE Type (L2, DCFC): \nEVSE Make/Model: ','evse','charger2',true],
-    [42,'Shipping & Handling/ Freight','Per Unit','','evse','shipping',true],
-    /* Version 4.0 moved Sales Tax out of the EVSE block and down into
-       Ineligible — the Bridgeport submission has it at row 50 reading
-       $316.87 / $158.75. Networking takes the freed EVSE slot: the
-       Springfield ESMA sheet carries an "Eligible Networking Total"
-       of its own, so Eversource treats it as eligible, unlike UI. */
-    [43,'EVSE Installation','Per Unit','','evse','install',true],
-    [44,'Other (i.e., cable management, mounting kits)','Per Unit','Specify:','evse','pedestal',true],
-    [45,'Networking/Cloud ','Total','','evse','network',false],
-    ['sec',46,'Ineligible Costs'],
-    [47,'Protective Bollards, Signs, Parking Spot Striping/Painting','Total','','inel','bollard',true],
-    [48,'Warranty/Maintenance Plan','Total','','inel','warranty',false],
-    [49,'Activation Fee','Per Unit','','inel','activation',true],
-    [50,'Sales Tax','Total','','inel','tax',true],
-    [51,'Other','Total','Specify:','inel','other',true]
+    { band:13, t:'Eligible Design & Permitting Costs' },
+    /* The master breaks design and permitting into a cost row and a labour
+       row beneath it — 990 Pembroke puts $2,000 of project management on
+       row 15 and $1,033 of permitting coordination on row 17. So the
+       material stays on 14/16 and the labour drops to 15/17. */
+    { r:14, t:'Site Design & Engineering', u:'Per Site', mul:false, k:'design', sec:'mr', part:'mat' },
+    { r:15, t:'> Labor Category/Role', c:'Specify:', u:'Labor', mul:false, k:'design', sec:'mr', part:'lab' },
+    { r:16, t:'Permitting', u:'Per Site', mul:false, k:'permit', sec:'mr', part:'mat' },
+    { r:17, t:'> Labor Category/Role', c:'Specify:', u:'Labor', mul:false, k:'permit', sec:'mr', part:'lab' },
+
+    { band:18, t:'Eligible Infrastructure Make-Ready Costs - General Site & Electrical Work' },
+    { r:19, t:'Trenching & Backfill - Continuously Paved Area\n(i.e., asphalt, concrete)',
+            u:'Per Foot', mul:true, k:'trench',     sec:'mr', qty:'ftTrenchPaved' },
+    { r:20, t:'Trenching & Backfill - Non-Continuously Paved Area\n(i.e., ground cover, turf)',
+            u:'Per Foot', mul:true, k:'trenchTurf', sec:'mr', qty:'ftTrenchTurf' },
+    /* The master has ONE row for conduit AND cable underground and one for
+       both above ground — not separate conduit and cable rows. Our model
+       tracks conduit and wire separately, so both land here and are split
+       by footage between the two rows. (990 Pembroke inserted extra rows
+       to itemise them; the blank master does not have those rows, and a
+       matrix with inserted rows is a matrix that may be refused.) */
+    { r:21, t:'Conduit & Cable - Underground',         u:'Per Foot', mul:true,
+            k:'conduit', ks:['conduit','wire'],     sec:'mr', qty:'ftConduitUG' },
+    { r:22, t:'Conduit & Cable - Above Ground/Indoor', u:'Per Foot', mul:true,
+            k:'conduitAG', ks:['conduitAG','wireAG'], sec:'mr', qty:'ftConduitAG' },
+    { r:23, t:'Restoration and/or Remediation', c:'Specify:', u:'Per Site', mul:true, k:'restore', sec:'mr', qty:'ftTrench' },
+    { r:24, t:'Handholes/Manholes',            u:'Per Unit', mul:true,  k:'handhole', sec:'mr' },
+    { r:25, t:'Concrete Work/Bases/Pads',      u:'Total',    mul:true,  k:'concrete', sec:'mr' },
+    { r:26, t:'Panels/Service Board/Breakers', u:'Total',    mul:false, k:'panel',    sec:'mr' },
+    { r:27, t:'Other (i.e., Additional Cost/Scope Deviations)', c:'Specify:', u:'Total', mul:false, k:'boards', sec:'mr' },
+
+    { band:28, t:'Eligible Utility-Side Infrastructure Make-Ready Costs' },
+    { r:29, t:'Utility Transformer Pad', u:'Per Unit', mul:true, k:'xfmrpad', sec:'util' },
+    { r:30, t:'Metering',                u:'Per Unit', mul:true, k:'meter',   sec:'util' },
+
+    { band:31, t:'Eligible Future Proofing' },
+    { r:32, t:'Trenching & Backfill - Continuously Paved Area\n(i.e., asphalt, concrete)',
+            u:'Per Foot', mul:true, k:'trench',     sec:'fp' },
+    { r:33, t:'Trenching & Backfill - Non-Continuously Paved Area\n(i.e., ground cover, turf)',
+            u:'Per Foot', mul:true, k:'trenchTurf', sec:'fp' },
+    { r:34, t:'Primary Conduit (concrete-encased)', u:'Per Foot', mul:true, k:'conduit', sec:'fp' },
+    { r:35, t:'Restoration and/or Remediation', c:'Specify:', u:'Per Site', mul:true, k:'restore', sec:'fp' },
+    { r:36, t:'Concrete Work/Bases/Pads', u:'Total', mul:true,  k:'concrete', sec:'fp' },
+    /* The master has no rows under future proofing for spare wiring, spare
+       gear or transformer capacity, so all three land on Other rather than
+       being dropped or misfiled onto Concrete. */
+    { r:37, t:'Other (i.e., Additional Cost/Scope Deviations)', c:'Specify:', u:'Total', mul:false,
+            k:'other', ks:['other','wire','panel','xfmr'], sec:'fp' },
+
+    { band:38, t:'Eligible EVSE Costs' },
+    { r:39, t:'EVSE Hardware #1', c:'EVSE Type (L2, DCFC): \nEVSE Make/Model: ', u:'Per Unit', mul:true, k:'charger',  sec:'evse', qty:'plugs' },
+    { r:40, t:'EVSE Hardware #2 (If different than model 1)', c:'EVSE Type (L2, DCFC): \nEVSE Make/Model: ', u:'Per Unit', mul:true, k:'charger2', sec:'evse' },
+    { r:41, t:'Shipping & Handling/ Freight', u:'Per Unit', mul:true, k:'shipping', sec:'evse' },
+    { r:42, t:'EVSE Installation',            u:'Per Unit', mul:true, k:'install',  sec:'mr', qty:'plugs' },
+    { r:43, t:'Other (i.e., cable management, mounting kits)', c:'Specify:', u:'Per Unit', mul:true, k:'pedestal', sec:'evse' },
+
+    { band:44, t:'Ineligible Costs' },
+    /* One master row covers bollards, signs AND striping, so all three of
+       our rows land here — otherwise signage and striping would vanish. */
+    { r:45, t:'Protective Bollards, Signs, Parking Spot Striping/Painting', u:'Total', mul:true,
+            k:'bollard', ks:['bollard','signage','striping'], sec:'ne' },
+    { r:46, t:'Warranty/Maintenance Plan', u:'Total', mul:false, k:'warranty', sec:'ne' },
+    { r:47, t:'Activation Fee',            u:'Per Unit', mul:true, k:'activation', sec:'ne', qty:'plugs' },
+    { r:48, t:'EVSE Sales Tax',            u:'Total',    mul:false, k:'_tax',      sec:'ne' },
+    { r:49, t:'Other', c:'Specify:', u:'Total', mul:false, k:'other', sec:'ne' }
   ],
+
+  /* rows 51-58. The master's own formulas, unchanged. */
   summary:[
-    [53,'Make-Ready Total','=SUM(H54:J55)'],
-    [54,'Make-Ready Utility Cost','=SUM(I30:I31)'],
-    [55,'Make-Ready Customer Cost','=SUM(I15:I18,I20:I28,I43)'],
-    [56,'Future Proofing','=SUM(I33:I38)'],
-    [57,'Eligible EVSE Costs','=SUM(I40:I42,I44:I45)/2'],
-    [58,'Total Eligible Rebate','=SUM(H53,H56,H57)'],
-    [59,'Ineligible EVSE Costs','=SUM(I47:I51)'],
-    /* esMatrix computes eight summary lines; the map stopped at seven, so the
-       invoice total — the number the reviewer actually reconciles against the
-       application — never reached the sheet. */
-    [60,'Invoice Total for Eligible & Ineligible Costs','=SUM(H58:J59)']
+    { r:51, t:'Make-Ready Total',        f:'SUM(H52:J54)' },
+    { r:52, t:'Make-Ready Utility Cost', f:'SUM(I29:I30)' },
+    { r:53, t:'Make-Ready Customer Cost',f:'SUM(I14:I17,I19:I27,I42)' },
+    { r:54, t:'Future Proofing',         f:'SUM(I32:I37)' },
+    { r:55, t:'Eligible EVSE Costs',     f:'SUM(I39:I41,I43:I43)/2' },
+    { r:56, t:'Total Eligible Rebate',   f:'SUM(H51,H55)' },
+    { r:57, t:'Ineligible EVSE Costs',   f:'SUM(I45:I49)' }
+  ],
+  invoice:{ r:58, t:'Invoice Total for Eligible & Ineligible Costs', f:'SUM(H51,(H55*2),H57)' },
+
+  foot:[
+    { r:59, t:'(1)  Customer-Side Make-Ready Total should match the amount in the Customer-Side Make Ready Infrastructure Cost field in the EV application submitted.' },
+    { r:60, t:'(2)  Utility-Side Make-Ready Total should match the amount in the Utility-Side Make Ready Infrastructure Cost field in the EV application submitted.' },
+    { r:61, t:'(3)  EVSE Total should match the amount in the EVSE Cost field in the EV application submitted.        ' },
+    { r:62, t:'(4)  Networking Total should match the amount in the Networking Cost field in the EV application submitted.        ' }
   ]
 };
 
-function sheetES30(wb, m, form, site){
-  var X=esMatrix(m, form), byKey={}, i, si, ri;
-  for(si=0; si<X.sections.length; si++)
-    for(ri=0; ri<X.sections[si].rows.length; ri++){
-      var w=X.sections[si].rows[ri];
-      byKey[X.sections[si].id+'|'+(w.key||'')]=w;
+/* Pulls one template line's material and labor out of the priced model.
+   'mr' covers both the design/permitting rows and the general make-ready
+   rows because they share a block; the row key keeps them apart. */
+function es40Cell(m, spec){
+  var bid = (spec.sec==='util' || spec.sec==='mr') ? 'mr'
+          : (spec.sec==='fp' ? 'fp' : (spec.sec==='evse' ? 'evse' : 'ne'));
+  var keys = spec.ks || [spec.k];
+  var mat=0, lab=0, note='', bi, ri, b, z;
+  for(bi=0; bi<m.blocks.length; bi++){
+    b=m.blocks[bi];
+    if(b.id!==bid) continue;
+    for(ri=0; ri<b.rows.length; ri++){
+      for(z=0; z<keys.length; z++){
+        if(b.rows[ri].k!==keys[z]) continue;
+        mat += b.rows[ri].mat; lab += b.rows[ri].lab;
+        if(!note && b.rows[ri].note) note=b.rows[ri].note;
+      }
     }
-
-  /* Their palette and rules, read off the sheet rather than guessed:
-     every border in the matrix is blue #0070C0 (medium at block edges,
-     thin between), body rows band F2F2F2 / white restarting after each
-     green section header, bands are Arial 12 bold white, the column
-     header row is white with Calibri 13 bold navy, and the summary block
-     sits on a solid blue field with thin BLACK borders. */
-  var BLU='FF0070C0', GRY='FFF2F2F2', WHT='FFFFFFFF',
-      GRN='FF00B050', NVY='FF002060', BLK='FF000000';
-  var MONEY='_($* #,##0.00_);_($* \\(#,##0.00\\);_($* \\-??_);_(@_)';
-
-  var ws=wb.addWorksheet(safeSheetName('Eversource ('+site+')'), { views:[{showGridLines:false}] });
-  for(i=0;i<ES30.widths.length;i++) ws.getColumn(i+1).width=ES30.widths[i];
-
-  function bd(l,r,t,b2,c){
-    c=c||BLU;
-    function e(st){ return st ? { style:st, color:{argb:c} } : undefined; }
-    return { left:e(l), right:e(r), top:e(t), bottom:e(b2) };
   }
-  /* ExcelJS silently drops a cached result of 0, and a formula with no cached
-     result opens BLANK — Excel only fills it after a recalculate. So a formula
-     is only worth writing when it has a non-zero value to carry; otherwise
-     write the plain number, which reads correctly and has nothing to compute. */
+  /* a row that carries only one half of a line — the design and permitting
+     pairs, where the master wants labour on its own row underneath */
+  if(spec.part==='mat') lab=0;
+  if(spec.part==='lab') mat=0;
+
+  return { mat:r2(mat), lab:r2(lab), note:note };
+}
+
+function sheetES40(wb, m, form, site){
+  var ws=wb.addWorksheet(safeSheetName('Version 4.0'), { views:[{showGridLines:false}] });
+  var i, k;
+  for(i=0;i<ES40.widths.length;i++) ws.getColumn(i+1).width=ES40.widths[i];
+  ws.getColumn(11).width=9.14;
+
+  var BLK={argb:'FF000000'};
+  function bd(l,r,t,b,col){
+    var c=col||'FF000000', o={};
+    if(l) o.left={style:l,color:{argb:c}};
+    if(r) o.right={style:r,color:{argb:c}};
+    if(t) o.top={style:t,color:{argb:c}};
+    if(b) o.bottom={style:b,color:{argb:c}};
+    return o;
+  }
+  /* one styling helper so every cell goes through the same path */
+  function es(addr, value, o){
+    o=o||{};
+    var c=ws.getCell(addr);
+    if(value!==undefined && value!==null && value!=='') c.value=value;
+    c.font={ name:o.fontName||'Calibri', size:o.size||11, bold:!!o.bold,
+             color:{argb:o.color||'FF000000'} };
+    if(o.fill) c.fill={ type:'pattern', pattern:'solid', fgColor:{argb:o.fill} };
+    c.alignment={ horizontal:o.align||null, vertical:o.valign||'middle', wrapText:!!o.wrap };
+    if(o.border) c.border=o.border;
+    if(o.fmt) c.numFmt=o.fmt;
+    return c;
+  }
+  /* a formula with no cached result opens blank; ExcelJS drops result 0,
+     so below a dollar the plain number is the honest thing to write */
   function fx(formula, value){
     var v=r2(value||0);
     return v ? { formula:formula, result:v } : v;
   }
 
-  function es(addr, value, o){
-    o=o||{};
-    var c=ws.getCell(addr);
-    c.value=(value===''||value==null)?null:value;
-    c.font={ name:o.fontName||'Calibri', size:o.size||11, bold:!!o.bold,
-             color:{argb:o.color||'FF000000'} };
-    if(o.fill) c.fill={ type:'pattern', pattern:'solid', fgColor:{argb:o.fill} };
-    c.alignment={ vertical:'middle', horizontal:o.align||'left', wrapText:!!o.wrap };
-    if(o.border) c.border=o.border;
-    if(o.fmt) c.numFmt=o.fmt;
-    return c;
-  }
-  var LET=['B','C','D','E','F','G','H','I','J'];
-  function bandRow(r, text){
-    ws.getRow(r).height=30;
-    /* Local counter: this is called from inside the row loop, and reusing the
-       outer `i` rewinds that loop — an infinite loop, not a cosmetic bug.
-
-       Style the slave cells BEFORE merging and write the master LAST: in a
-       merged range the slaves proxy to the master, so writing null to C..J
-       after B wipes the band's own label. */
-    for(var bi=1; bi<LET.length; bi++){
-      es(LET[bi]+r, null, { fill:GRN, bold:true, size:12, fontName:'Arial',
-        color:WHT, align:'center', border:bd('medium','medium','medium','medium') });
-    }
-    merge(ws,'B'+r+':J'+r);
-    es('B'+r, text, { fill:GRN, bold:true, size:12, fontName:'Arial',
-      color:WHT, align:'left', border:bd('medium','medium','medium','medium') });
-  }
-
-  /* ── row 1: mark + date ── */
+  /* ── row 1: mark, revision, date ── */
   ws.getRow(1).height=31.5;
   try{
     var imgId=wb.addImage({ base64:ES_LOGO_B64, extension:'jpeg' });
-    ws.addImage(imgId, { tl:{col:3.65,row:0.12}, ext:{width:178,height:22} });
+    ws.addImage(imgId, { tl:{col:3.05,row:0.08}, ext:{width:300,height:37} });
   }catch(e){}
-  for(var t1=0; t1<6; t1++)                       /* B..G behind the mark */
-    es(LET[t1]+'1', null, { fill:GRY, border:bd(null,null,'medium','medium') });
-  es('I1','Date:', { fill:GRN, bold:true, size:12, fontName:'Arial', color:WHT,
-                     border:bd('medium',null,'medium','medium') });
-  es('J1', new Date(), { fill:GRY, align:'center', fmt:'m/d/yyyy',
-                         border:bd('medium','medium','medium','medium') });
+  es('G1', ES40.rev, { align:'center' });
+  es('I1', 'Date:',  { fill:ES40.green, fontName:'Arial', size:12, bold:true,
+                       color:ES40.white, align:'center' });
+  es('J1', new Date(), { align:'center', fmt:'mm-dd-yy' });
 
-  /* ── row 2: the three block headers ── */
+  /* ── rows 2-11: the three-up header ── */
   ws.getRow(2).height=30;
-  merge(ws,'B2:C2'); merge(ws,'D2:G2'); merge(ws,'H2:J2');
-  var BANDOPT={ fill:GRN, bold:true, size:12, fontName:'Arial', color:WHT, align:'center',
-                wrap:true, border:bd('medium','medium','medium','medium') };
-  for(i=0;i<LET.length;i++) es(LET[i]+'2', null, BANDOPT);
-  es('B2','Project Details',BANDOPT);
-  es('D2','Contractor Details',BANDOPT);
-  es('H2','Customer Details',BANDOPT);
-
-  /* ── rows 3-12: header fields ── */
-  var HL=ES30.headLabels, k;
-  for(i=3;i<=10;i++){ merge(ws,'E'+i+':G'+i); ws.getRow(i).height=30; }
-  merge(ws,'I3:J3'); merge(ws,'I4:J4'); merge(ws,'I5:J5'); merge(ws,'H6:J10');
-  merge(ws,'C11:J11'); merge(ws,'C12:J12');
-  ws.getRow(11).height=30; ws.getRow(12).height=30;
-
-  function hdrCell(addr, val, isLabel, top, rowNo){
-    var cl=addr.charAt(0), isB=(cl==='B'), isJ=(cl==='J');
-    var hf=(((rowNo||parseInt(addr.slice(1),10))-3)%2===0)?GRY:WHT;
-    /* C closes the Project Details block and G closes Contractor Details, so
-       both take a medium right edge — that is what draws the three columns. */
-    var medRight=isJ || cl==='C' || cl==='G';
-    var medLeft =isB || cl==='D' || cl==='H';
-    es(addr, val, { fill:hf, bold:!!isLabel, size:11, wrap:true, align:'left',
-      border:bd(medLeft?'medium':'thin', medRight?'medium':'thin', top?'medium':'thin','thin') });
+  for(i=0;i<ES40.headBands.length;i++){
+    merge(ws, ES40.headBands[i].m);
+    es(ES40.headBands[i].m.split(':')[0], ES40.headBands[i].t,
+       { fill:ES40.green, fontName:'Arial', size:12, bold:true, color:ES40.white,
+         align:'center', wrap:true, border:bd('medium','medium','medium','medium') });
   }
-  for(i=3;i<=12;i++){
-    for(var q=0;q<LET.length;q++) hdrCell(LET[q]+i, null, false, i===3, i);
+  merge(ws,'H6:J9');
+  for(i=3;i<=9;i++) ws.getRow(i).height=30;
+  for(i=0;i<ES40.head.length;i++){
+    var hd=ES40.head[i];
+    es(hd.l+hd.r, hd.t, { bold:true, valign:'middle',
+        border:bd('thin','thin','thin','thin') });
+    if(hd.m) merge(ws, hd.m);
+    var hv = hd.num ? (dn(hd.k)||null) : (d(hd.k)||null);
+    es(hd.v+hd.r, hv, { align:'center', valign:'middle',
+        border:bd('thin','thin','thin','thin') });
   }
-  for(k in HL){ if(HL.hasOwnProperty(k)) hdrCell(k, HL[k], true, k.slice(1)==='3'); }
-  var HD=ES30.head;
-  for(i=0;i<HD.length;i++){
-    var ref=HD[i][1]||HD[i][0], key=HD[i][2], v=d(key);
-    if(key==='stations' && !v) v=d('plugs');
-    if(v==='' || v==null) continue;
-    var numeric=(key==='plugs'||key==='stations');
-    var rc=ref.charAt(0), medR=(rc==='J'||rc==='C'||rc==='G'), medL=(rc==='B'||rc==='D'||rc==='H');
-    var vf=((parseInt(ref.slice(1),10)-3)%2===0)?GRY:WHT;
-    es(ref, numeric?num(v):v, { fill:vf, size:11, wrap:true, align:numeric?'right':'left',
-      border:bd(medL?'medium':'thin', medR?'medium':'thin',
-                ref.slice(1)==='3'?'medium':'thin','thin') });
+  for(i=0;i<ES40.notes.length;i++){
+    var nt=ES40.notes[i];
+    ws.getRow(nt.r).height=44;
+    es('B'+nt.r, nt.t, { bold:true, wrap:true, border:bd('thin','thin','thin','thin') });
+    merge(ws, nt.m);
+    es('C'+nt.r, d(nt.k)||null, { wrap:true, align:'left',
+        border:bd('thin','thin','thin','thin') });
   }
 
-  /* ── row 13: column headers ── */
-  ws.getRow(13).height=31.5;
-  var COLH=['Cost Item','Detail/Notes','Unit Type','Material Quantity','Material United Price',
-            'Material Total','Labor Total','Total Cost','Subcontracted Y/N'];
-  for(i=0;i<COLH.length;i++)
-    es(LET[i]+'13', COLH[i], { fill:WHT, bold:true, size:13, color:NVY, align:'center',
-      wrap:true, border:bd('medium','medium','medium','medium') });
+  /* ── row 12: column headings ── */
+  ws.getRow(12).height=31.5;
+  var LET=['B','C','D','E','F','G','H','I','J'];
+  for(i=0;i<ES40.cols.length;i++){
+    es(LET[i]+'12', ES40.cols[i], { size:13, bold:true, color:ES40.navy,
+        align:'center', wrap:true, border:bd('medium','medium','medium','medium') });
+  }
 
-  /* ── body ── */
-  var banded=0, afterBand=false;
-  for(i=0;i<ES30.rows.length;i++){
-    var R=ES30.rows[i];
-    if(R[0]==='sec'){ bandRow(R[1], R[2]); banded=0; afterBand=true; continue; }
-    var r=R[0], label=R[1], unit=R[2], detail=R[3], sec=R[4], mk=R[5], gFormula=R[6];
-    var w2=byKey[sec+'|'+mk] || null;
-    var fillC=(banded%2===0)?GRY:WHT;
-    var top=afterBand?'medium':'thin';
-    ws.getRow(r).height=30;
+  /* ── rows 13-49: the cost table ── */
+  var ACCT='_("$"* #,##0.00_);_("$"* \\(#,##0.00\\);_("$"* "-"??_);_(@_)';
+  for(i=0;i<ES40.rows.length;i++){
+    var R=ES40.rows[i];
 
-    function body(colL, val, o){
-      o=o||{};
-      es(colL+r, val, { fill:fillC, size:o.size||11, bold:!!o.bold, color:o.color,
-        align:o.align||'left', wrap:o.wrap!==false,
-        fmt:o.fmt, border:bd(colL==='B'?'medium':'thin', colL==='J'?'medium':'thin', top,'thin') });
+    if(R.band){
+      ws.getRow(R.band).height=30;
+      /* style the slave cells first, merge, then write the master — in a
+         merged range the slaves proxy to the master, so writing them
+         afterwards erases the band's own label */
+      for(k=1;k<LET.length;k++){
+        es(LET[k]+R.band, null, { fill:ES40.green, fontName:'Arial', size:12,
+            bold:true, color:ES40.white, align:'center',
+            border:bd(null,(k===LET.length-1?'medium':null),'medium','medium') });
+      }
+      merge(ws,'B'+R.band+':J'+R.band);
+      es('B'+R.band, R.t, { fill:ES40.green, fontName:'Arial', size:12, bold:true,
+          color:ES40.white, align:'left',
+          border:bd('medium','medium','medium','medium') });
+      continue;
     }
-    body('B', label, { align:'left' });
-    body('C', (w2&&w2.note)?w2.note:detail, {});
-    body('D', unit, { align:'left' });
-    body('E', (w2&&w2.qty!=null)?num(w2.qty):null, { align:'center', fmt:'#,##0.##' });
-    body('F', (w2&&w2.unitPrice!=null)?r2(w2.unitPrice):null, { align:'center', fmt:MONEY });
-    /* A formula written without a cached result opens BLANK — Excel and
-       LibreOffice only fill it after a recalculate, so the sheet looks like
-       the totals never made it into the export. Always carry the value. */
-    var _gv = w2 ? r2(w2.mat) : 0;
-    var _hv = w2 ? r2(w2.lab) : 0;
-    body('G', gFormula?fx('E'+r+'*F'+r, _gv):_gv, { align:'left', fmt:MONEY });
-    body('H', _hv, { align:'center', fmt:MONEY });
-    body('I', fx('SUM(G'+r+':H'+r+')', _gv+_hv), { align:'center', fmt:MONEY });
-    body('J', (w2 && (w2.mat||w2.lab))?'Yes':null, { align:'center' });
-    banded++; afterBand=false;
+
+    var r=R.r, v=es40Cell(m, R);
+    /* the make/model rows carry two lines of text */
+    ws.getRow(r).height=((r===39||r===40) ? 38 : 30);
+
+    es('B'+r, R.t, { align:'left', wrap:true, border:bd('medium','thin','thin','thin') });
+    /* The master leaves a prompt in C39/C40; the submission overwrites it
+       with the actual make and model, keeping the two labels. */
+    var cTxt = v.note || R.c || null;
+    if((r===39 || r===40) && v.note){
+      cTxt = 'EVSE Type: ' + (chargerClass()==='dcfc' ? 'DCFC' : 'L2')
+           + '\nEVSE Make/Model: ' + v.note;
+    }
+    es('C'+r, cTxt, { wrap:true, border:bd('thin','thin','thin','thin') });
+    es('D'+r, R.u, { align:(R.u==='Labor'?'left':null), border:bd('thin','thin','thin','thin') });
+
+    /* quantity x unit price where the line has a real quantity, so the
+       master's =E*F still drives the material total */
+    var qty = R.qty ? dn(R.qty) : 0;
+    if(R.mul && qty>0 && v.mat>0){
+      es('E'+r, qty,          { align:'center', border:bd('thin','thin','thin','thin') });
+      es('F'+r, v.mat/qty,    { align:'center', border:bd('thin','thin','thin','thin'), fmt:ACCT });
+      es('G'+r, fx('E'+r+'*F'+r, v.mat), { border:bd('thin','thin','thin','thin'), fmt:ACCT });
+    } else {
+      es('E'+r, null, { align:'center', border:bd('thin','thin','thin','thin') });
+      es('F'+r, null, { align:'center', border:bd('thin','thin','thin','thin'), fmt:ACCT });
+      es('G'+r, v.mat, { border:bd('thin','thin','thin','thin'), fmt:ACCT });
+    }
+    es('H'+r, v.lab, { align:'center', border:bd('thin','thin','thin','thin'), fmt:ACCT });
+    es('I'+r, fx('SUM(G'+r+':H'+r+')', v.mat+v.lab),
+       { align:'center', border:bd('thin','thin','thin','thin'), fmt:ACCT });
+    /* sales tax isn't subcontracted work, so it carries no Y/N */
+    es('J'+r, ((v.mat||v.lab) && R.k!=='_tax' ? 'Yes' : null),
+       { align:'center', border:bd('thin','medium','thin','thin') });
   }
 
-  /* ── row 52: the solid blue rule under the matrix ── */
-  ws.getRow(52).height=15.75;
-  for(i=0;i<LET.length;i++)
-    es(LET[i]+'52', null, { color:NVY, fill:BLU, align:'center', wrap:true,
-      border:bd(LET[i]==='B'?'medium':null,null,null,null) });
+  /* ── row 50: the blue spacer band ── */
+  ws.getRow(50).height=15;
+  for(k=0;k<LET.length;k++){
+    es(LET[k]+'50', null, { fill:ES40.blue,
+        border:bd((k===0?'medium':null),(k===LET.length-1?'medium':null),null,null) });
+  }
 
-  /* ── summary: blue field left, banded G/H with thin black borders ── */
-  for(i=0;i<ES30.summary.length;i++){
-    var sr=ES30.summary[i][0];
+  /* ── rows 51-57: summary, and 58: invoice total ── */
+  var sums=[], si;
+  for(si=0;si<ES40.summary.length;si++){
+    var S=ES40.summary[si], sr=S.r;
     ws.getRow(sr).height=30;
-    var sf=(i%2===0)?GRY:WHT;
-    for(var c2=0;c2<5;c2++)                      /* B..F stay blue */
-      es(LET[c2]+sr, null, { fill:BLU, color:NVY, align:'center', wrap:true,
-        border:bd(LET[c2]==='B'?'medium':null,null,null,null) });
-    es('G'+sr, ES30.summary[i][1], { fill:sf, wrap:true,
-      border:bd('thin','thin','thin','thin',BLK) });
-    /* Style the slave cells BEFORE merging and write the master LAST. In a
-       merged range the slaves proxy to the master, so touching I or J after
-       H clears H — which is why every summary total came out empty while the
-       screen showed the right number. */
-    es('I'+sr, null, { fill:sf }); es('J'+sr, null, { fill:sf });
+    /* left of the summary block stays blue */
+    for(k=0;k<5;k++){
+      es(LET[k]+sr, null, { fill:ES40.blue,
+          border:bd((k===0?'medium':null),null,null,null) });
+    }
+    es('F'+sr, null, { fill:ES40.blue, border:bd(null,'thin',null,null) });
+    es('G'+sr, S.t, { wrap:true, border:bd('thin','thin','thin','thin') });
     merge(ws,'H'+sr+':J'+sr);
-    es('H'+sr, fx(ES30.summary[i][2].replace(/^=/,''), X.summary[i]?X.summary[i][1]:0),
-       { fill:sf, color:NVY, align:'left', fmt:MONEY,
-         border:{ left:{style:'thin',color:{argb:BLK}},
-                  right:{style:'medium',color:{argb:BLU}},
-                  top:{style:'thin',color:{argb:BLK}},
-                  bottom:{style:'thin',color:{argb:BLK}} } });
+    es('H'+sr, fx(S.f, es40Summary(m, si)),
+       { color:ES40.navy, align:'left', fmt:ACCT,
+         border:bd('thin','medium','thin','thin') });
+    sums.push(sr);
+  }
+  var IR=ES40.invoice.r;
+  ws.getRow(IR).height=30;
+  for(k=0;k<5;k++) es(LET[k]+IR, null, { fill:ES40.blue, border:bd((k===0?'medium':null),null,null,null) });
+  es('F'+IR, null, { fill:ES40.blue, border:bd(null,'thin',null,null) });
+  merge(ws,'G'+IR+':I'+IR);
+  es('G'+IR, ES40.invoice.t, { size:12, bold:true, align:'center', wrap:true,
+      border:bd('thin','thin','thin',null) });
+  es('J'+IR, fx(ES40.invoice.f, es40Invoice(m)),
+     { size:12, bold:true, color:ES40.navy, wrap:true, fmt:ACCT,
+       border:bd('thin','medium','thin',null) });
+
+  /* ── rows 59-62: the yellow footnotes ── */
+  for(i=0;i<ES40.foot.length;i++){
+    var F=ES40.foot[i], fr=F.r;
+    ws.getRow(fr).height=30;
+    for(k=1;k<LET.length;k++){
+      es(LET[k]+fr, null, { border:bd(null,(k===LET.length-1?'medium':null),
+                                       (i===0?'thick':'thin'),
+                                       (i===ES40.foot.length-1?'medium':'thin')) });
+    }
+    merge(ws,'B'+fr+':J'+fr);
+    es('B'+fr, F.t, { fill:ES40.yellow, bold:true, align:'left', wrap:true,
+        border:bd('medium','medium',(i===0?'thick':'thin'),
+                  (i===ES40.foot.length-1?'medium':'thin')) });
   }
 
-  /* A submission form that splits across two sheets of paper gets printed,
-     stapled and questioned. One page. */
-  fitPage(ws, 'B1:J'+(ES30.summary[ES30.summary.length-1][0]+1), 1);
+  fitPage(ws, 'B1:J62', 1);
 }
+
+/* The summary values, computed the way the master's own formulas do.
+   Order matches ES40.summary. */
+function es40Summary(m, idx){
+  var t=es40Totals(m);
+  return [t.mrTotal, t.mrUtility, t.mrCustomer, t.futureProof,
+          t.evseEligible, t.rebate, t.ineligible][idx] || 0;
+}
+function es40Invoice(m){ var t=es40Totals(m); return t.invoice; }
+
+function es40Totals(m){
+  var i, R, v, byRow={};
+  for(i=0;i<ES40.rows.length;i++){
+    R=ES40.rows[i];
+    if(R.band) continue;
+    v=es40Cell(m, R);
+    byRow[R.r]=r2(v.mat+v.lab);
+  }
+  function sum(list){ var s=0, z; for(z=0;z<list.length;z++) s+=(byRow[list[z]]||0); return r2(s); }
+
+  var mrUtility = sum([29,30]);
+  /* row 42, EVSE Installation, belongs to CUSTOMER make-ready on this form */
+  var mrCustomer = sum([14,15,16,17,19,20,21,22,23,24,25,26,27,42]);
+  var futureProof = sum([32,33,34,35,36,37]);
+  var mrTotal = r2(mrUtility + mrCustomer + futureProof);
+  /* the programme pays half of the EVSE equipment cost */
+  var evseEligible = r2(sum([39,40,41,43]) / 2);
+  var rebate = r2(mrTotal + evseEligible);
+  var ineligible = sum([45,46,47,48,49]);
+  var invoice = r2(mrTotal + evseEligible*2 + ineligible);
+  return { mrUtility:mrUtility, mrCustomer:mrCustomer, futureProof:futureProof,
+           mrTotal:mrTotal, evseEligible:evseEligible, rebate:rebate,
+           ineligible:ineligible, invoice:invoice };
+}
+
 
 /* ── Eversource matrix model ──────────────────────────────────────────
    ONE derivation of the Eversource layout, consumed by both the .xlsx
@@ -3967,45 +3606,65 @@ var ES_NOTES=[
 ];
 
 /* Eversource preview — the same nine columns and header trio the .xlsx gets. */
+/* The preview draws from ES40 — the same spec the writer uses — so what the
+   rep sees on screen is row-for-row what lands in the file. It used to render
+   the form's INTERNAL blocks instead, which carry rows Eversource's master
+   does not have (a sales tax line inside every section, signage, striping,
+   networking, a second Other under future proofing). The export was always
+   correct; the preview was showing a form that doesn't exist, which is worse
+   than useless because it invites a rewrite of something that isn't broken. */
 function previewFormES(m, form){
-  var X=esMatrix(m, form);
   var h='<table class="pv">';
   function r(c){ return '<tr>'+c+'</tr>'; }
   function td(v,cls,span){ return '<td'+(cls?' class="'+cls+'"':'')+(span?' colspan="'+span+'"':'')+'>'+(v===''||v==null?'&nbsp;':esc(v))+'</td>'; }
 
-  /* header trio, three label/value pairs across */
-  var G=[form.left[0],form.left[1],form.left[2]];
+  /* the master's three-up header */
   h+=r(td('Project Details','pv-es-band',3)+td('Contractor Details','pv-es-band',3)+td('Customer Details','pv-es-band',3));
-  var rows=Math.max(G[0]?G[0].fields.length:0, G[1]?G[1].fields.length:0, G[2]?G[2].fields.length:0);
-  for(var i=0;i<rows;i++){
+  var LEFT=[], MID=[], RIGHT=[], i, hd;
+  for(i=0;i<ES40.head.length;i++){
+    hd=ES40.head[i];
+    if(hd.l==='B') LEFT.push(hd); else if(hd.l==='D') MID.push(hd); else RIGHT.push(hd);
+  }
+  var n=Math.max(LEFT.length, MID.length, RIGHT.length);
+  for(i=0;i<n;i++){
     var c='';
-    for(var g=0; g<3; g++){
-      var f=(G[g]&&G[g].fields[i])||null;
-      c += f ? (td(f.label,'pv-es-lbl')+td(fieldOut(f),null,2)) : (td('')+td('',null,2));
-    }
+    [LEFT,MID,RIGHT].forEach(function(col){
+      var f=col[i];
+      c += f ? (td(f.label||f.t,'pv-es-lbl')+td(f.num?(dn(f.k)||''):d(f.k),null,2))
+             : (td('')+td('',null,2));
+    });
     h+=r(c);
+  }
+  for(i=0;i<ES40.notes.length;i++){
+    h+=r(td(ES40.notes[i].t,'pv-es-lbl',2)+td(d(ES40.notes[i].k),null,7));
   }
 
   h+=r(td('Cost Item','pv-es-hdr')+td('Detail/Notes','pv-es-hdr')+td('Unit Type','pv-es-hdr')
       +td('Material Quantity','pv-es-hdr')+td('Material United Price','pv-es-hdr')+td('Material Total','pv-es-hdr')
       +td('Labor Total','pv-es-hdr')+td('Total Cost','pv-es-hdr')+td('Subcontracted Y/N','pv-es-hdr'));
 
-  for(var s2=0; s2<X.sections.length; s2++){
-    var S=X.sections[s2];
-    h+=r(td(S.title,'pv-es-sec',9));
-    for(var ri=0; ri<S.rows.length; ri++){
-      var w=S.rows[ri];
-      h+=r(td(String(w.label).replace(/\n/g,' '))+td(w.note)+td(w.unit)
-          +td(w.qty!=null?w.qty:'','num')+td(w.unitPrice!=null?acct(w.unitPrice):'','num')
-          +td(acct(w.mat),'num')+td(acct(w.lab),'num')+td(acct(w.tot),'num')+td(w.sub));
-    }
+  for(i=0;i<ES40.rows.length;i++){
+    var R=ES40.rows[i];
+    if(R.band){ h+=r(td(R.t,'pv-es-sec',9)); continue; }
+    var v=es40Cell(m, R);
+    var qty = R.qty ? dn(R.qty) : 0;
+    var showQty = (R.mul && qty>0 && v.mat>0);
+    var cTxt = v.note || R.c || '';
+    if((R.r===39||R.r===40) && v.note)
+      cTxt = 'EVSE Type: '+(chargerClass()==='dcfc'?'DCFC':'L2')+' / EVSE Make/Model: '+v.note;
+    h+=r(td(String(R.t).replace(/\n/g,' '))+td(String(cTxt).replace(/\n/g,' '))+td(R.u)
+        +td(showQty?qty:'','num')+td(showQty?acct(v.mat/qty):'','num')
+        +td(acct(v.mat),'num')+td(acct(v.lab),'num')+td(acct(v.mat+v.lab),'num')
+        +td(((v.mat||v.lab)&&R.k!=='_tax')?'Yes':''));
   }
-  for(var q2=0; q2<X.summary.length; q2++){
-    var last=(q2===X.summary.length-1);
-    h+=r(td('',null,5)+td(X.summary[q2][0], last?'pv-gold':'pv-es-sum', 2)
-        +td(acct(X.summary[q2][1]), (last?'pv-gold ':'')+'num', 2));
+
+  var T=es40Totals(m);
+  var SUMV=[T.mrTotal,T.mrUtility,T.mrCustomer,T.futureProof,T.evseEligible,T.rebate,T.ineligible];
+  for(i=0;i<ES40.summary.length;i++){
+    h+=r(td('',null,5)+td(ES40.summary[i].t,'pv-es-sum',2)+td(acct(SUMV[i]),'num',2));
   }
-  for(var n2=0; n2<ES_NOTES.length; n2++) h+=r(td(ES_NOTES[n2],null,9));
+  h+=r(td('',null,5)+td(ES40.invoice.t,'pv-gold',2)+td(acct(T.invoice),'pv-gold num',2));
+  for(i=0;i<ES40.foot.length;i++) h+=r(td(ES40.foot[i].t,null,9));
   h+='</table>';
   /* The preview above is a readable rendering. The deliverable is Eversource's
      own workbook with our numbers written into it — formulas, cheat sheet and
@@ -4341,7 +4000,7 @@ function uiV(k, fallback){
 }
 function uiPdfValues(){
   var form=formById('ui-ct-l2'), m=buildModel(form), inc=uiIncentive(m);
-  var csz=uiSplitCSZ(d('city')||propertyCity()||d('address')||propertyAddress());
+  var csz=uiSplitCSZ(d('city')||d('address'));
   var ports=num(DATA.plugs)||0;
   var portsPer=num(uiV('ui_portsPer', 2))||2;
   var units=Math.max(1, Math.ceil(ports/portsPer));
@@ -4358,21 +4017,21 @@ function uiPdfValues(){
   return {
     m:m, inc:inc,
     applicant:d('applicant'), account:d('ui_account'), acctExec:d('ui_acctExec'),
-    custAddr:uiV('ui_custAddr', d('address')||propertyAddress()), custCity:uiV('ui_custCity', csz.city),
+    custAddr:uiV('ui_custAddr', d('address')), custCity:uiV('ui_custCity', csz.city),
     custState:uiV('ui_custState', csz.state||'CT'), custZip:uiV('ui_custZip', csz.zip),
     contact:uiV('ui_contact', d('contact')), phone:uiV('ui_phone', d('phone')), email:uiV('ui_email', d('email')),
     owner:uiV('ui_owner','Yes'), ownerName:d('ui_ownerName'), ownerAddr:d('ui_ownerAddr'),
     ownerCity:d('ui_ownerCity'), ownerState:d('ui_ownerState'), ownerZip:d('ui_ownerZip'),
-    siteAddr:uiV('ui_siteAddr', propertyAddress()||d('address')), siteCity:uiV('ui_siteCity', csz.city),
+    siteAddr:uiV('ui_siteAddr', d('address')), siteCity:uiV('ui_siteCity', csz.city),
     siteState:uiV('ui_siteState', csz.state||'CT'), siteZip:uiV('ui_siteZip', csz.zip),
     underserved:uiV('ui_underserved','No'), nevi:uiV('ui_nevi','No'),
     facility:uiV('ui_facility','Office'), facilityOther:d('ui_facilityOther'),
     klass:chargerClass(),
-    /* Unique Site Name on the application: which site map, and the address
-       on it. The box is multiline (73\u00d799pt), so the two sit on their own
-       lines and a reviewer can match the row to the drawing at a glance. */
-    siteName:uiV('ui_siteName', siteLabel(ACTIVE)||siteAutoLabel(ACTIVE)),
-    siteRowAddr:siteAddress(ACTIVE),
+    /* Unique Site Name on the application. The box is multiline (73\u00d799pt),
+       so the site label and its address sit on their own lines and a
+       reviewer can match the row to the drawing at a glance. */
+    siteName:uiV('ui_siteName', d('site')||'Site 1'),
+    siteRowAddr:d('address'),
     locType:uiV('ui_locType', (d('category')==='MUDs'?'Multi-Unit Dwelling'
              : d('category')==='Fleet'?'Fleet'
              : d('category')==='Public Parking'?'Destination Parking (Public)':'Workplace')),
@@ -4401,21 +4060,6 @@ function idxOf(list, v){
   var i; for(i=0;i<list.length;i++) if(list[i]===v) return i;
   return 0;
 }
-/* Values for every site, each built against that site's own cost lines. */
-function uiAllSites(){
-  return eachSite(function(){ return uiPdfValues(); });
-}
-/* What the whole application asks for. The cap is per site, so this is a
-   sum of capped rows, not a cap on the sum. */
-function uiAppIncentive(){
-  var t=0, cap=0, capped=0;
-  eachSite(function(){
-    var inc=uiIncentive(buildModel(formById('ui-ct-l2')));
-    t+=inc.incentive; cap+=inc.cap; if(inc.capped) capped++;
-  });
-  return { incentive:r2(t), cap:cap, cappedSites:capped };
-}
-
 function uiMoney(n){
   n=num(n);
   return '$'+n.toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2});
@@ -4469,52 +4113,40 @@ function uiPdfFill(){
     C(UI_PDF.neviYes, V.nevi==='Yes'); C(UI_PDF.neviNo, V.nevi!=='Yes');
     C(UI_PDF.facility[V.facility], true);
     if(V.facility==='Other') T(UI_PDF.facilityOther, V.facilityOther, 8);
-    /* Sections 2, 4 and 5 get one row per site — A, B, C, D down the page,
-       each with its own scope and its own cap. */
-    var SV=uiAllSites(), si, R, sv, dcS, scopeF;
-    for(si=0; si<SV.length && si<UI_PDF.rows.length; si++){
-      sv=SV[si]; R=UI_PDF.rows[si];
-      /* multiline field \u2014 map on line one, address on line two */
-      T(R.site.name, sv.siteName + (sv.siteRowAddr ? '\n' + sv.siteRowAddr : ''), 7);
-      C(R.site.locType[idxOf(UI_PDF.LOC_ORDER, sv.locType)], true);
-      C(R.site.parkType[idxOf(UI_PDF.PARK_ORDER, sv.parkType)], true);
-      T(R.site.spaces, sv.spaces, 8);
-      T(R.site.publicPlugs, sv.publicPlugs, 8);
-      T(R.site.privatePlugs, sv.privatePlugs, 8);
-      if(sv.service==='New/Upgraded Service'){ C(R.site.svcNew, true); T(R.site.svcWO, sv.wo, 8); }
-      else { C(R.site.svcExisting, true); T(R.site.svcAcct, sv.svcAcct||sv.account, 8); }
+    /* Sections 2, 4 and 5 \u2014 this project files as Site A. Rows B\u2013D of
+       their form stay blank; the field map for them is kept above so a
+       second site is a loop away if this ever needs it. */
+    var R=UI_PDF.rows[0], dcS=(V.klass==='dcfc'), scopeF;
+    T(R.site.name, V.siteName + (V.siteRowAddr ? '\n' + V.siteRowAddr : ''), 7);
+    C(R.site.locType[idxOf(UI_PDF.LOC_ORDER, V.locType)], true);
+    C(R.site.parkType[idxOf(UI_PDF.PARK_ORDER, V.parkType)], true);
+    T(R.site.spaces, V.spaces, 8);
+    T(R.site.publicPlugs, V.publicPlugs, 8);
+    T(R.site.privatePlugs, V.privatePlugs, 8);
+    if(V.service==='New/Upgraded Service'){ C(R.site.svcNew, true); T(R.site.svcWO, V.wo, 8); }
+    else { C(R.site.svcExisting, true); T(R.site.svcAcct, V.svcAcct||V.account, 8); }
 
-      /* Section 4 — the Level 2 and DCFC lines are separate rows */
-      dcS=(sv.klass==='dcfc');
-      C(dcS?R.scope.dc:R.scope.l2, true);
-      scopeF = dcS ? R.scope.dcf : R.scope.l2f;
-      T(scopeF[0], sv.mfr, 7);   T(scopeF[1], sv.model, 7); T(scopeF[2], sv.units, 7);
-      T(scopeF[3], sv.portsPer, 7); T(scopeF[4], sv.ports, 7); T(scopeF[5], sv.kw, 7);
-      C(sv.fp==='Yes'?R.scope.fpYes:R.scope.fpNo, true);
-      if(sv.fp==='Yes') T(R.scope.fpPorts, sv.fpPorts, 7);
+    /* Section 4 \u2014 the Level 2 and DCFC lines are separate rows */
+    C(dcS?R.scope.dc:R.scope.l2, true);
+    scopeF = dcS ? R.scope.dcf : R.scope.l2f;
+    T(scopeF[0], V.mfr, 7);      T(scopeF[1], V.model, 7);  T(scopeF[2], V.units, 7);
+    T(scopeF[3], V.portsPer, 7); T(scopeF[4], V.ports, 7);  T(scopeF[5], V.kw, 7);
+    C(V.fp==='Yes'?R.scope.fpYes:R.scope.fpNo, true);
+    if(V.fp==='Yes') T(R.scope.fpPorts, V.fpPorts, 7);
 
-      /* Section 5 — straight off that site's cost sheet */
-      T(R.fin[0], uiMoney(sv.m.total), 7);
-      T(R.fin[1], uiMoney(sv.inc.evse), 7);
-      T(R.fin[2], sv.mrUtil?uiMoney(sv.mrUtil):'', 7);
-      T(R.fin[3], uiMoney(sv.mrCust), 7);
-      T(R.fin[4], uiMoney(sv.mrCust+sv.mrUtil), 7);
-      if(sv.inc.fp || sv.fpUtil){
-        T(R.fin[5], sv.fpUtil?uiMoney(sv.fpUtil):'', 7);
-        T(R.fin[6], uiMoney(sv.fpCust), 7);
-        T(R.fin[7], uiMoney(sv.fpCust+sv.fpUtil), 7);
-      }
-      T(R.fin[8], uiMoney(sv.inc.incentive), 7);
+    /* Section 5 \u2014 straight off the cost sheet */
+    T(R.fin[0], uiMoney(V.m.total), 7);
+    T(R.fin[1], uiMoney(V.inc.evse), 7);
+    T(R.fin[2], V.mrUtil?uiMoney(V.mrUtil):'', 7);
+    T(R.fin[3], uiMoney(V.mrCust), 7);
+    T(R.fin[4], uiMoney(V.mrCust+V.mrUtil), 7);
+    if(V.inc.fp || V.fpUtil){
+      T(R.fin[5], V.fpUtil?uiMoney(V.fpUtil):'', 7);
+      T(R.fin[6], uiMoney(V.fpCust), 7);
+      T(R.fin[7], uiMoney(V.fpCust+V.fpUtil), 7);
     }
+    T(R.fin[8], uiMoney(V.inc.incentive), 7);
 
-    /* Section 4 — scope */
-    T(UI_PDF.contractor, V.company); T(UI_PDF.cContact, V.cContact);
-    T(UI_PDF.cPhone, V.cPhone); T(UI_PDF.cEmail, V.cEmail, 8);
-    var caddr=uiSplitCSZ(V.cAddr);
-    T(UI_PDF.cAddr, V.cAddr);
-    T(UI_PDF.cCity, uiV('ui_cCity', caddr.city)); T(UI_PDF.cState, uiV('ui_cState', caddr.state));
-    T(UI_PDF.cZip, uiV('ui_cZip', caddr.zip));
-    T(UI_PDF.network, V.network);
     /* Page 4 — status */
     C(UI_PDF.status[V.status], true);
     T(UI_PDF.activation, uiDate(V.activation));
@@ -4591,31 +4223,14 @@ function uiPdfCard(){
 
   if(V){
     var inc=V.inc;
-    /* Every site that will land on the application, so what the PDF is
-       about to say is visible before it is written. */
-    var all=uiAllSites(), app=uiAppIncentive(), ai2;
-    h+='<table class="pv" style="margin-top:10px;width:100%;font-size:11px">'
-      +'<tr><th>ID</th><th>Site</th><th class="num">Ports</th><th class="num">EVSE</th>'
-      +'<th class="num">Make-ready</th><th class="num">Future proofing</th><th class="num">Total</th><th class="num">Incentive</th></tr>';
-    for(ai2=0; ai2<all.length; ai2++){
-      var A=all[ai2];
-      h+='<tr'+(ai2===ACTIVE?' style="font-weight:600"':'')+'><td>'+siteLetter(ai2)+'</td><td>'+esc(A.siteName)+'</td>'
-        +'<td class="num">'+A.ports+'</td><td class="num">'+uiMoney(A.inc.evse)+'</td>'
-        +'<td class="num">'+uiMoney(A.inc.mr)+'</td><td class="num">'+uiMoney(A.inc.fp)+'</td>'
-        +'<td class="num">'+uiMoney(A.m.total)+'</td><td class="num">'+uiMoney(A.inc.incentive)+'</td></tr>';
-    }
-    if(all.length>1)
-      h+='<tr class="pv-gold"><td></td><td><b>All sites</b></td><td class="num"></td><td class="num"></td>'
-        +'<td class="num"></td><td class="num"></td><td class="num"></td><td class="num"><b>'+uiMoney(app.incentive)+'</b></td></tr>';
-    h+='</table>';
-    h+='<div style="margin-top:8px;font-size:12px;line-height:1.7">'
-      +'<div><b>Requested incentive</b> '+uiMoney(app.incentive)+' \u2014 50% of EVSE plus make-ready and future proofing'
-      +(all.length>1 ? ', each site against its own '+uiMoney(inc.cap)+' ceiling' : (inc.capped?', capped at the '+uiMoney(inc.cap)+' per-site ceiling':''))
-      +'.</div></div>';
-    if(all.length>1 && app.cappedSites)
-      h+='<div class="note" style="margin-top:6px">'+app.cappedSites+' of '+all.length
-        +' sites are at the cap. The ceiling applies per site, so the application can request more than one site\u2019s worth \u2014 '
-        +'but each site must have its own service panel, junction boxes and conduit to count as separate under the Terms &amp; Conditions.</div>';
+    h+='<div style="margin-top:10px;font-size:12px;line-height:1.7">'
+      +'<div><b>Total site cost</b> '+uiMoney(V.m.total)+' &nbsp;\u00b7&nbsp; <b>EVSE</b> '+uiMoney(inc.evse)
+      +' &nbsp;\u00b7&nbsp; <b>Make-ready</b> '+uiMoney(inc.mr)
+      +' &nbsp;\u00b7&nbsp; <b>Future proofing</b> '+uiMoney(inc.fp)+'</div>'
+      +'<div><b>Requested incentive</b> '+uiMoney(inc.incentive)
+      +' \u2014 50% of EVSE plus make-ready and future proofing'
+      +(inc.capped?', capped at the '+uiMoney(inc.cap)+' per-site ceiling':'')+'.</div>'
+      +'</div>';
     if(inc.fp<=0)
       h+='<div class="warn" style="margin-top:8px">No future-proofing cost is priced. UI rebates it at 100%'
         +(chargerClass()==='dcfc'?' and Appendix B scores it 10 of 100 selection points':'')
@@ -4701,31 +4316,7 @@ function exportWorkbook(){
   }
   if(PICK.proposal) jobs.push({ kind:'proposal' });
   if(!jobs.length){ alert('Pick at least one sheet to build.'); return; }
-  sitesInit(); saveActive();
-  var _work=0, _si;
-  for(_si=0;_si<SITES.length;_si++) if(siteHasWork(_si)) _work++;
-  if(!_work && !confirm('There are no cost lines on any site. Export anyway?')) return;
-
-  /* A sheet that reports zero conduit next to a drawn trench comes straight
-     back from review, so it does not leave here quietly — and with more
-     than one site the check runs on every one of them, since it is the
-     quiet empty site that gets exported by accident. */
-  var _audit=[];
-  eachSite(function(ix){
-    var a=feetAudit().concat(fpAudit()), ai;
-    if(!siteHasWork(ix) && SITES.length>1)
-      a.push('No cost lines at all \u2014 it would export as an empty row on the application.');
-    for(ai=0;ai<a.length;ai++)
-      _audit.push((SITES.length>1 ? siteLetter(ix)+' \u00b7 '+siteLabel(ix)+': ' : '')
-        + String(a[ai]).replace(/<[^>]+>/g,'').replace(/&amp;/g,'&').replace(/&\w+;/g,''));
-  });
-  var _ad=addressAudit(), _adi;
-  for(_adi=0;_adi<_ad.length;_adi++) _audit.push(String(_ad[_adi]).replace(/<[^>]+>/g,''));
-  if(_audit.length){
-    var _msg='Before this goes to the utility:\n\n', _ai;
-    for(_ai=0;_ai<_audit.length;_ai++) _msg += '  \u2022 ' + _audit[_ai] + '\n';
-    if(!confirm(_msg+'\nExport anyway?')) return;
-  }
+  if(!LINES.length && !confirm('There are no cost lines. Export anyway?')) return;
 
   var btn=document.getElementById('btnExport');
   btn.disabled=true; btn.textContent='Building\u2026';
@@ -4741,31 +4332,22 @@ function exportWorkbook(){
       btn.disabled=false; btn.textContent='Export workbook';
       var st=document.getElementById('xlWarn');
       if(st) st.innerHTML='<div class="warn" style="background:#e8f5e9;border-color:#a5d6a7;color:#1b5e20">'
-        +made.length+' file'+(made.length===1?'':'s')+' exported: '+made.join(', ')
-        +(PICK['ui-ct-l2']?' \u2014 building the UI application PDF\u2026':'')+'</div>';
-      /* The cost sheet and the application go out together, so the export
-         button produces the whole submittal rather than half of it. */
-      if(PICK['ui-ct-l2']) setTimeout(function(){ uiPdfFill(); }, 800);
+        +made.length+' file'+(made.length===1?'':'s')+' exported: '+made.join(', ')+'</div>';
       return;
     }
     var j=jobs[ix], wb=_newBook(), name;
     try{
-      /* Every site goes into the SAME workbook, one worksheet each, so what
-         gets emailed to the program is a single file the reviewer can page
-         through rather than four attachments to reconcile by hand. */
-      eachSite(function(ix2){
-        var tab=(SITES.length>1 ? siteLetter(ix2)+' \u2014 ' : '')+(siteLabel(ix2)||site);
-        /* safeSheetName trims to Excel's 31 chars, so the address rides
-           along only when there is room for it */
-        if(SITES.length>1 && siteAddress(ix2) && (tab+' '+siteAddress(ix2)).length<=31) tab+=' '+siteAddress(ix2);
-        if(j.kind==='proposal')            sheetProposal(wb, buildModel(proposalForm()), tab);
-        else if(j.form.writer==='eversource') sheetES30(wb, buildModel(j.form), j.form, tab);
-        else                                sheetForm(wb, buildModel(j.form), j.form, tab);
-      });
-      if(j.kind==='proposal')                name='Proposal_'+slug+'_'+stamp+'.xlsx';
-      else if(j.form.writer==='eversource')  name='Eversource_Cost_Estimate_Matrix_'+slug+'_'+stamp+'.xlsx';
-      else name=String(j.form.utility||'Utility').replace(/[^A-Za-z0-9]+/g,'_')
+      if(j.kind==='proposal'){
+        sheetProposal(wb, buildModel(proposalForm()), site);
+        name='Proposal_'+slug+'_'+stamp+'.xlsx';
+      } else if(j.form.writer==='eversource'){
+        sheetES40(wb, buildModel(j.form), j.form, site);
+        name='Eversource_Cost_Estimate_Matrix_'+slug+'_'+stamp+'.xlsx';
+      } else {
+        sheetForm(wb, buildModel(j.form), j.form, site);
+        name=String(j.form.utility||'Utility').replace(/[^A-Za-z0-9]+/g,'_')
              +'_EV_Costs_'+slug+'_'+stamp+'.xlsx';
+      }
     }catch(err){
       btn.disabled=false; btn.textContent='Export workbook';
       alert('Could not build '+(j.kind==='proposal'?'the proposal':j.form.utility)+': '
@@ -5133,6 +4715,8 @@ function boot(){
   onFormChange();
   renderPicker();
   renderSiteForm();
+  renderFPPanel();
+  syncFPLines();
   noteClass();
 
   var q=readQueryContractor();
@@ -5204,10 +4788,17 @@ window.addEventListener('message', function(ev){
       + ') and was ignored. Paste the CSV instead.','warn');
     return;
   }
-  if(x.payload && (x.payload.lines || x.payload.sites)){
-    /* Straight to loadPayload, this overwrote whichever site was open: press
-       the button on Site Map 2 and Site Map 1's costs were gone. */
-    try{ receivePayload(x.payload); }catch(e){}
+  var pay=x.payload;
+  if(!pay) return;
+  /* The editor walks every site map tab and sends {sites:[…]} when there is
+     more than one. Ignoring that shape means the rep presses the button and
+     nothing happens, so keep the set and load the first. */
+  if(pay.sites && pay.sites.length){
+    try{ loadSiteSet(pay.sites); }catch(e){}
+    return;
+  }
+  if(pay.lines){
+    try{ SITE_SET=null; loadPayload(pay); renderSitePicker(); }catch(e){}
   }
 }, false);
 
@@ -5215,9 +4806,7 @@ window.addEventListener('message', function(ev){
 function pingOpener(){
   try{
     if(window.opener && !window.opener.closed){
-      /* wantAllSites lets an editor that knows about tabs hand over every
-         site map at once; older builds ignore it and send the open one. */
-      window.opener.postMessage({ type:'OMEGA_EV_COST_READY', wantAllSites:true, maxSites:MAX_SITES }, '*');
+      window.opener.postMessage({ type:'OMEGA_EV_COST_READY' }, '*');
       return true;
     }
   }catch(e){}
