@@ -1754,6 +1754,22 @@ function applyChargerCosts(c){
 
 /* A submission with $0 charger hardware is the kind of thing a reviewer
    catches, not the rep — so say it loudly rather than let it export. */
+/* A make-ready submission with chargers but no conduit and no cable is
+   almost certainly incomplete — the conduit runs are what make-ready IS.
+   It happens when the site map has chargers placed but no conduit drawn,
+   so the estimate never carries a Conduit or Wire/Cable line and the
+   utility rows come out blank without anything looking broken. */
+function conduitGap(){
+  var i, l, hasCharger=false, hasRun=false;
+  for(i=0;i<LINES.length;i++){
+    l=LINES[i];
+    if(l.bucket==='evse' && l.row==='charger' && (num(l.mat)||num(l.lab))) hasCharger=true;
+    if((l.row==='conduit'||l.row==='wire'||l.row==='conduitAG'||l.row==='wireAG')
+       && (num(l.mat)||num(l.lab))) hasRun=true;
+  }
+  return (hasCharger && !hasRun);
+}
+
 function chargerGap(){
   var i, l, n=0;
   for(i=0;i<LINES.length;i++){
@@ -2572,10 +2588,19 @@ function renderMap(){
   }
   tb.innerHTML=h;
   document.getElementById('mapCount').textContent = LINES.length?LINES.length+' lines':'';
-  var orph=orphanCount(), gap=chargerGap();
+  var orph=orphanCount(), gap=chargerGap(), noRun=conduitGap();
   var bad=benchCheck(), inel=eligibilityCheck(), bi2, bnote='';
+  if(noRun){
+    bnote += '<div class="warn" style="margin-top:0"><b>No conduit or cable in this estimate.</b> '
+          + 'There are chargers priced but nothing on the Conduit &amp; Cable rows, so the utility sheet '
+          + 'will show make-ready with no runs. Usually this means the site map has chargers placed but '
+          + 'no conduit drawn \u2014 go back to the editor, draw the runs, and press EV Cost Workbook again. '
+          + 'If the runs really are out of scope, add the cost by hand so the row isn\u2019t simply blank.</div>';
+  }
   if(bad.length){
-    bnote='<div class="warn" style="margin-top:8px"><b>Pricing outside the accepted band</b> \u2014 '
+    /* += not =, or this wipes any warning raised above it — the missing
+       conduit notice was being silently swallowed by the pricing one. */
+    bnote+='<div class="warn" style="margin-top:8px"><b>Pricing outside the accepted band</b> \u2014 '
         + 'rates seen on Eversource and United Illuminating submissions that cleared review:<ul style="margin:5px 0 0;padding-left:17px">';
     for(bi2=0;bi2<bad.length && bi2<6;bi2++)
       bnote += '<li>'+esc(bad[bi2].desc)+' \u2014 '+esc(bad[bi2].why)+'</li>';
