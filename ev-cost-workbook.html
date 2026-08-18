@@ -1570,12 +1570,12 @@ function classify(cat, desc, size){
   var above = /\brmc\b|\bemt\b|above.?ground|indoor|interior|surface|exposed/.test(t);
   if(/conduit|fitting/.test(c)){
     if(future) return {b:'fp', r:'conduit', fp:0};
-    if(above && rowExists('mr','conduitAG')) return {b:'mr', r:'conduitAG', fp:0};
+    if(above) return {b:'mr', r:'conduitAG', fp:0};
     return {b:'mr', r:'conduit', fp:0};
   }
   if(/wire|cable/.test(c)){
     if(future) return {b:'fp', r:'wire', fp:0};
-    if(above && rowExists('mr','wireAG')) return {b:'mr', r:'wireAG', fp:0};
+    if(above) return {b:'mr', r:'wireAG', fp:0};
     return {b:'mr', r:'wire', fp:0};
   }
   if(/civil/.test(c))           return {b:'mr', r:'trench', fp:nval('p_fp')};
@@ -2261,6 +2261,12 @@ function buildModel(form){
      — the old code jumped to the last block entirely, so a future-proofing
      concrete pad on a form without a concrete row landed in Ineligible and
      quietly moved money out of the rebate. */
+  /* Some forms split a category the others keep whole: Eversource has
+     separate above-ground conduit and cable rows, United Illuminating has
+     one "Conduit & Conductors". Fold to the coarser row rather than to
+     Other, so a UI sheet reads correctly instead of burying the run. */
+  var ROW_ALIAS = { conduitAG:'conduit', wireAG:'wire', restore:'trench',
+                    concrete:'panel', install:'other', trenchTurf:'trench' };
   function blockOther(bid){
     var b=null, z, rows;
     for(z=0;z<BL.length;z++){ if(BL[z].id===bid) b=BL[z]; }
@@ -2274,7 +2280,9 @@ function buildModel(form){
       bid=BL[BL.length-1].id;
       k=BL[BL.length-1].rows[BL[BL.length-1].rows.length-1].k;
     } else if(!grid[bid][k]){
-      k=blockOther(bid) || k;
+      var alias=ROW_ALIAS[k];
+      if(alias && grid[bid][alias]) k=alias;
+      else k=blockOther(bid) || k;
     }
     if(!grid[bid] || !grid[bid][k]) return;
     grid[bid][k].mat+=mat; grid[bid][k].lab+=lab;
