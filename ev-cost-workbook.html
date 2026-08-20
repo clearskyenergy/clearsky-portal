@@ -1434,6 +1434,15 @@ function syncField(k){
   if(e && e.value!==d(k)) e.value=d(k);
 }
 
+/* Switching site maps swaps the whole DATA object, so every input on screen
+   has to be re-pointed at the new one. */
+function syncAllFields(){
+  var k;
+  for(k in DATA) if(DATA.hasOwnProperty(k)) syncField(k);
+  if(typeof renderSiteForm==='function') renderSiteForm();
+  if(typeof render==='function') render();
+}
+
 /* ── 5. CONTRACTOR PROFILES ───────────────────────────────────────── */
 var PKEY='OMEGA_CONTRACTOR_PROFILES';
 var CFIELDS=['company','contact','email','phone','license','cAddress'];
@@ -1788,20 +1797,91 @@ function chargerGap(){
    forms are per-site documents. */
 var SITE_SET = null, SITE_IX = 0;
 
+/* The working state of each site map: cost mapping, footages, future
+   proofing. Without this, switching sites re-ran the payload and quietly
+   discarded every edit made on the one being left — and the application
+   PDF would report the raw estimate rather than what was actually priced. */
+var SITE_STATE = [];
+
+function siteSnap(){
+  return { DATA:DATA, LINES:LINES, nid:_nid, feet:EDITOR_FEET,
+           fleet:EDITOR_FLEET, basis:EDITOR_BASIS, evt:EDITOR_EVT };
+}
+function siteWake(st){
+  DATA=st.DATA; LINES=st.LINES; _nid=st.nid||1; EDITOR_FEET=st.feet||null;
+  EDITOR_FLEET=st.fleet||null; EDITOR_BASIS=st.basis||null; EDITOR_EVT=st.evt||null;
+}
+
 function loadSiteSet(sites){
   SITE_SET = sites;
+  SITE_STATE = [];
   SITE_IX = 0;
   loadSite(0);
 }
 function loadSite(ix){
   if(!SITE_SET || !SITE_SET[ix]) return;
+  /* Park the site being left — but never into the slot about to be loaded,
+     which on the very first call would have stored the empty starting state
+     over site 1 and then "restored" it instead of reading the payload. */
+  if(ix!==SITE_IX && (SITE_STATE[SITE_IX] || LINES.length)) SITE_STATE[SITE_IX]=siteSnap();
   SITE_IX = ix;
-  var p = SITE_SET[ix];
-  loadPayload(p);
-  if(p.site && p.site.name) { DATA.site = p.site.name; syncField('site'); }
+  if(SITE_STATE[ix]) siteWake(SITE_STATE[ix]);            /* been here before */
+  else {
+    var p = SITE_SET[ix];
+    DATA={}; LINES=[];
+    var k;
+    /* the application-level answers belong to the whole submittal */
+    if(SITE_STATE.length) for(k in SHARED_APP_KEYS){
+      var src=firstState();
+      if(src && src.DATA && src.DATA[k]!=null && src.DATA[k]!=='') DATA[k]=src.DATA[k];
+    }
+    loadPayload(p);
+    if(p.site && p.site.name) DATA.site = p.site.name;
+    if(p.site && p.site.address && !DATA.address) DATA.address = p.site.address;
+    SITE_STATE[ix]=siteSnap();
+  }
+  syncAllFields();
   renderSitePicker();
   msg('srcMsg', 'Loaded <b>'+esc(d('site')||('Site '+(ix+1)))+'</b> \u2014 site '
-    + (ix+1)+' of '+SITE_SET.length+'. Check the mapping, export, then switch to the next.','ok');
+    + (ix+1)+' of '+SITE_SET.length+'. All '+SITE_SET.length
+    +' go onto one United Illuminating application as rows A\u2013'+'ABCD'.charAt(SITE_SET.length-1)+'.','ok');
+}
+function firstState(){
+  var i; for(i=0;i<SITE_STATE.length;i++) if(SITE_STATE[i]) return SITE_STATE[i];
+  return null;
+}
+/* Answered once for the submittal: UI's form has one applicant, one
+   contractor and one payee no matter how many sites are listed. */
+var SHARED_APP_KEYS={
+  applicant:1, company:1, contact:1, phone:1, email:1, cAddress:1, license:1,
+  start:1, end:1, ui_account:1, ui_acctExec:1, ui_custAddr:1, ui_custCity:1,
+  ui_custState:1, ui_custZip:1, ui_contact:1, ui_phone:1, ui_email:1,
+  ui_owner:1, ui_ownerName:1, ui_ownerAddr:1, ui_ownerCity:1, ui_ownerState:1, ui_ownerZip:1,
+  ui_underserved:1, ui_nevi:1, ui_facility:1, ui_facilityOther:1, ui_network:1,
+  ui_cCity:1, ui_cState:1, ui_cZip:1, ui_status:1, ui_activation:1, ui_newCon:1,
+  ui_payee:1, ui_payeeRel:1, ui_payeeAddr:1, ui_payeeCity:1, ui_payeeState:1,
+  ui_payeeZip:1, ui_payeeEmail:1, ui_completedBy:1, ui_completedPhone:1, ui_installDate:1
+};
+
+/* Run something against another site's state and put everything back — how
+   the application PDF prices rows B, C and D without disturbing the screen. */
+function withSiteIx(ix, fn){
+  if(!SITE_SET || ix===SITE_IX || !SITE_STATE[ix]) return fn();
+  var keep=siteSnap(), out;
+  siteWake(SITE_STATE[ix]);
+  try{ out=fn(); } finally { siteWake(keep); }
+  return out;
+}
+/* Every site map, each valued against its own cost lines. */
+function eachSiteIx(fn){
+  if(!SITE_SET || !SITE_SET.length) return [fn(0)];
+  var out=[], i;
+  SITE_STATE[SITE_IX]=siteSnap();
+  for(i=0;i<SITE_SET.length && i<4;i++){
+    if(!SITE_STATE[i]){ out.push(null); continue; }   /* never opened */
+    out.push(withSiteIx(i, function(){ return fn(i); }));
+  }
+  return out;
 }
 function renderSitePicker(){
   var host=document.getElementById('sitePicker');
@@ -4030,7 +4110,7 @@ function uiPdfValues(){
     /* Unique Site Name on the application. The box is multiline (73\u00d799pt),
        so the site label and its address sit on their own lines and a
        reviewer can match the row to the drawing at a glance. */
-    siteName:uiV('ui_siteName', d('site')||'Site 1'),
+    siteName:uiV('ui_siteName', d('site')||('Site Map '+((typeof SITE_IX!=='undefined'?SITE_IX:0)+1))),
     siteRowAddr:d('address'),
     locType:uiV('ui_locType', (d('category')==='MUDs'?'Multi-Unit Dwelling'
              : d('category')==='Fleet'?'Fleet'
@@ -4054,6 +4134,24 @@ function uiPdfValues(){
     completedBy:uiV('ui_completedBy', d('contact')), completedPhone:uiV('ui_completedPhone', d('phone')),
     installDate:uiV('ui_installDate', d('end'))
   };
+}
+
+/* One value set per site map. Sites that were received but never opened
+   come back null — they have no priced state to report. */
+function uiAllSiteValues(){
+  if(typeof SITE_SET==='undefined' || !SITE_SET || !SITE_SET.length) return [uiPdfValues()];
+  return eachSiteIx(function(){ return uiPdfValues(); });
+}
+/* The cap applies per site, so this is a sum of capped rows, not a cap on
+   the sum — two qualifying sites are worth two ceilings. */
+function uiAppIncentive(){
+  var all=uiAllSiteValues(), t=0, capped=0, n=0, i;
+  for(i=0;i<all.length;i++){
+    if(!all[i]) continue;
+    t+=all[i].inc.incentive; n++;
+    if(all[i].inc.capped) capped++;
+  }
+  return { incentive:r2(t), sites:n, cappedSites:capped };
 }
 
 function idxOf(list, v){
@@ -4113,39 +4211,45 @@ function uiPdfFill(){
     C(UI_PDF.neviYes, V.nevi==='Yes'); C(UI_PDF.neviNo, V.nevi!=='Yes');
     C(UI_PDF.facility[V.facility], true);
     if(V.facility==='Other') T(UI_PDF.facilityOther, V.facilityOther, 8);
-    /* Sections 2, 4 and 5 \u2014 this project files as Site A. Rows B\u2013D of
-       their form stay blank; the field map for them is kept above so a
-       second site is a loop away if this ever needs it. */
-    var R=UI_PDF.rows[0], dcS=(V.klass==='dcfc'), scopeF;
-    T(R.site.name, V.siteName + (V.siteRowAddr ? '\n' + V.siteRowAddr : ''), 7);
-    C(R.site.locType[idxOf(UI_PDF.LOC_ORDER, V.locType)], true);
-    C(R.site.parkType[idxOf(UI_PDF.PARK_ORDER, V.parkType)], true);
-    T(R.site.spaces, V.spaces, 8);
-    T(R.site.publicPlugs, V.publicPlugs, 8);
-    T(R.site.privatePlugs, V.privatePlugs, 8);
-    if(V.service==='New/Upgraded Service'){ C(R.site.svcNew, true); T(R.site.svcWO, V.wo, 8); }
-    else { C(R.site.svcExisting, true); T(R.site.svcAcct, V.svcAcct||V.account, 8); }
+    /* Sections 2, 4 and 5 take one row per site map — A, B, C, D down the
+       page, each with its own scope and its own incentive cap. A site map
+       that was received but never opened has no priced state, so it is
+       skipped rather than filed as a row of zeros. */
+    var SV=uiAllSiteValues(), si, R, sv, dcS, scopeF;
+    for(si=0; si<SV.length && si<UI_PDF.rows.length; si++){
+      sv=SV[si]; if(!sv) continue;
+      R=UI_PDF.rows[si];
+      T(R.site.name, sv.siteName + (sv.siteRowAddr ? '\n' + sv.siteRowAddr : ''), 7);
+      C(R.site.locType[idxOf(UI_PDF.LOC_ORDER, sv.locType)], true);
+      C(R.site.parkType[idxOf(UI_PDF.PARK_ORDER, sv.parkType)], true);
+      T(R.site.spaces, sv.spaces, 8);
+      T(R.site.publicPlugs, sv.publicPlugs, 8);
+      T(R.site.privatePlugs, sv.privatePlugs, 8);
+      if(sv.service==='New/Upgraded Service'){ C(R.site.svcNew, true); T(R.site.svcWO, sv.wo, 8); }
+      else { C(R.site.svcExisting, true); T(R.site.svcAcct, sv.svcAcct||sv.account, 8); }
 
-    /* Section 4 \u2014 the Level 2 and DCFC lines are separate rows */
-    C(dcS?R.scope.dc:R.scope.l2, true);
-    scopeF = dcS ? R.scope.dcf : R.scope.l2f;
-    T(scopeF[0], V.mfr, 7);      T(scopeF[1], V.model, 7);  T(scopeF[2], V.units, 7);
-    T(scopeF[3], V.portsPer, 7); T(scopeF[4], V.ports, 7);  T(scopeF[5], V.kw, 7);
-    C(V.fp==='Yes'?R.scope.fpYes:R.scope.fpNo, true);
-    if(V.fp==='Yes') T(R.scope.fpPorts, V.fpPorts, 7);
+      /* Section 4 — the Level 2 and DCFC lines are separate rows */
+      dcS=(sv.klass==='dcfc');
+      C(dcS?R.scope.dc:R.scope.l2, true);
+      scopeF = dcS ? R.scope.dcf : R.scope.l2f;
+      T(scopeF[0], sv.mfr, 7);      T(scopeF[1], sv.model, 7);  T(scopeF[2], sv.units, 7);
+      T(scopeF[3], sv.portsPer, 7); T(scopeF[4], sv.ports, 7);  T(scopeF[5], sv.kw, 7);
+      C(sv.fp==='Yes'?R.scope.fpYes:R.scope.fpNo, true);
+      if(sv.fp==='Yes') T(R.scope.fpPorts, sv.fpPorts, 7);
 
-    /* Section 5 \u2014 straight off the cost sheet */
-    T(R.fin[0], uiMoney(V.m.total), 7);
-    T(R.fin[1], uiMoney(V.inc.evse), 7);
-    T(R.fin[2], V.mrUtil?uiMoney(V.mrUtil):'', 7);
-    T(R.fin[3], uiMoney(V.mrCust), 7);
-    T(R.fin[4], uiMoney(V.mrCust+V.mrUtil), 7);
-    if(V.inc.fp || V.fpUtil){
-      T(R.fin[5], V.fpUtil?uiMoney(V.fpUtil):'', 7);
-      T(R.fin[6], uiMoney(V.fpCust), 7);
-      T(R.fin[7], uiMoney(V.fpCust+V.fpUtil), 7);
+      /* Section 5 — straight off that site's cost sheet */
+      T(R.fin[0], uiMoney(sv.m.total), 7);
+      T(R.fin[1], uiMoney(sv.inc.evse), 7);
+      T(R.fin[2], sv.mrUtil?uiMoney(sv.mrUtil):'', 7);
+      T(R.fin[3], uiMoney(sv.mrCust), 7);
+      T(R.fin[4], uiMoney(sv.mrCust+sv.mrUtil), 7);
+      if(sv.inc.fp || sv.fpUtil){
+        T(R.fin[5], sv.fpUtil?uiMoney(sv.fpUtil):'', 7);
+        T(R.fin[6], uiMoney(sv.fpCust), 7);
+        T(R.fin[7], uiMoney(sv.fpCust+sv.fpUtil), 7);
+      }
+      T(R.fin[8], uiMoney(sv.inc.incentive), 7);
     }
-    T(R.fin[8], uiMoney(V.inc.incentive), 7);
 
     /* Page 4 — status */
     C(UI_PDF.status[V.status], true);
@@ -4223,14 +4327,45 @@ function uiPdfCard(){
 
   if(V){
     var inc=V.inc;
-    h+='<div style="margin-top:10px;font-size:12px;line-height:1.7">'
-      +'<div><b>Total site cost</b> '+uiMoney(V.m.total)+' &nbsp;\u00b7&nbsp; <b>EVSE</b> '+uiMoney(inc.evse)
-      +' &nbsp;\u00b7&nbsp; <b>Make-ready</b> '+uiMoney(inc.mr)
-      +' &nbsp;\u00b7&nbsp; <b>Future proofing</b> '+uiMoney(inc.fp)+'</div>'
-      +'<div><b>Requested incentive</b> '+uiMoney(inc.incentive)
-      +' \u2014 50% of EVSE plus make-ready and future proofing'
-      +(inc.capped?', capped at the '+uiMoney(inc.cap)+' per-site ceiling':'')+'.</div>'
-      +'</div>';
+    var _all=uiAllSiteValues(), _ai, _A, _multi=(_all.length>1);
+    if(_multi){
+      var _app=uiAppIncentive();
+      h+='<table class="pv" style="margin-top:10px;width:100%;font-size:11px">'
+        +'<tr><th>Row</th><th>Site map</th><th class="num">Ports</th><th class="num">EVSE</th>'
+        +'<th class="num">Make-ready</th><th class="num">Future proofing</th>'
+        +'<th class="num">Total</th><th class="num">Incentive</th></tr>';
+      for(_ai=0; _ai<_all.length && _ai<4; _ai++){
+        _A=_all[_ai];
+        if(!_A){
+          h+='<tr><td>'+'ABCD'.charAt(_ai)+'</td><td colspan="7" style="color:var(--dim)">'
+            +esc((SITE_SET[_ai].site&&SITE_SET[_ai].site.name)||('Site '+(_ai+1)))
+            +' \u2014 not opened yet, so it has no priced costs. Open it from '
+            +'<b>Site maps received</b> and check the mapping, or it will be left off the application.</td></tr>';
+          continue;
+        }
+        h+='<tr'+(_ai===SITE_IX?' style="font-weight:600"':'')+'>'
+          +'<td>'+'ABCD'.charAt(_ai)+'</td><td>'+esc(_A.siteName)+'</td>'
+          +'<td class="num">'+_A.ports+'</td><td class="num">'+uiMoney(_A.inc.evse)+'</td>'
+          +'<td class="num">'+uiMoney(_A.inc.mr)+'</td><td class="num">'+uiMoney(_A.inc.fp)+'</td>'
+          +'<td class="num">'+uiMoney(_A.m.total)+'</td><td class="num">'+uiMoney(_A.inc.incentive)+'</td></tr>';
+      }
+      h+='<tr class="pv-gold"><td></td><td><b>All site maps</b></td>'
+        +'<td class="num"></td><td class="num"></td><td class="num"></td><td class="num"></td>'
+        +'<td class="num"></td><td class="num"><b>'+uiMoney(_app.incentive)+'</b></td></tr></table>'
+        +'<div class="note" style="margin-top:6px">One application, '+_app.sites
+        +' site rows. The ceiling applies to each site separately, so the submittal can request more '
+        +'than one site\u2019s worth \u2014 but each site needs its own service panel, junction boxes and '
+        +'conduit to count as separate under the Terms &amp; Conditions.</div>';
+    } else {
+      h+='<div style="margin-top:10px;font-size:12px;line-height:1.7">'
+        +'<div><b>Total site cost</b> '+uiMoney(V.m.total)+' &nbsp;\u00b7&nbsp; <b>EVSE</b> '+uiMoney(inc.evse)
+        +' &nbsp;\u00b7&nbsp; <b>Make-ready</b> '+uiMoney(inc.mr)
+        +' &nbsp;\u00b7&nbsp; <b>Future proofing</b> '+uiMoney(inc.fp)+'</div>'
+        +'<div><b>Requested incentive</b> '+uiMoney(inc.incentive)
+        +' \u2014 50% of EVSE plus make-ready and future proofing'
+        +(inc.capped?', capped at the '+uiMoney(inc.cap)+' per-site ceiling':'')+'.</div>'
+        +'</div>';
+    }
     if(inc.fp<=0)
       h+='<div class="warn" style="margin-top:8px">No future-proofing cost is priced. UI rebates it at 100%'
         +(chargerClass()==='dcfc'?' and Appendix B scores it 10 of 100 selection points':'')
