@@ -97,6 +97,9 @@ table.map tr.orphan td:first-child{box-shadow:inset 3px 0 0 var(--gold)}
 table.map tr:hover td{background:#F7F4EF}
 .cell-in{width:100%;padding:5px 6px;font-size:11.5px;text-align:right}
 .desc-in{width:100%;padding:4px 6px;font-size:11.5px;border-color:transparent;background:transparent}
+/* Held out, not deleted: visible in the mapping, absent from the totals */
+tr.held{opacity:.5}
+tr.held td:first-child{box-shadow:inset 3px 0 0 #c9a227}
 .desc-in:hover{border-color:#CFC8BC}
 .meta{display:block;color:var(--dim);font-size:9.5px;margin-top:1px;padding-left:6px}
 .sel-sm{padding:5px 6px;font-size:11px;background-position:calc(100% - 12px) 12px,calc(100% - 8px) 12px}
@@ -595,8 +598,14 @@ function applyBaselineFromSite(opts){
     L('EVSE','EVSE installation', ports,'EA', 0, B.perPort.install.lab*ports, 'mr','other');
   L('Soft cost','Design & engineering', ports,'EA', 0, B.perPort.design.lab*ports, 'mr','design');
   L('Soft cost','Permitting & inspections', 1,'LS', 0, B.perSite.permit.lab, 'mr','permit');
-  L('Electrical','Distribution equipment / panel', 1,'LS',
-    B.perSite.panel.mat, B.perSite.panel.lab, 'mr','panel');
+  /* No panel line by default. Most make-ready jobs land on existing gear,
+     and a baseline that always billed a new distribution panel put several
+     thousand dollars of equipment nobody had specified onto the sheet —
+     which the utility then asks to see an invoice for. Turn on
+     "New panel / service equipment" in Site & program if the site needs it. */
+  if(d('needPanel')==='Yes')
+    L('Electrical','Distribution equipment / panel', 1,'LS',
+      B.perSite.panel.mat, B.perSite.panel.lab, 'mr','panel');
   L('Civil','Trenching & backfill \u2014 '+(turf?'non-continuously paved':'continuously paved'),
     ft.trench,'LF', trn.mat*ft.trench, trn.lab*ft.trench, 'mr','trench');
   L('Civil','Restoration and/or remediation', ft.trench,'LF',
@@ -2322,6 +2331,40 @@ function autofillPlugs(){
 }
 
 /* ── 10. MODEL ────────────────────────────────────────────────────── */
+/* True when this line is panel / service equipment on a site that is not
+   getting any. Future-proofing spare gear is deliberately exempt: that is
+   capacity the developer chose to add, not a panel the estimate assumed. */
+function panelHeldOut(l){
+  if(!l || l.bucket!=='mr' || l.row!=='panel') return false;
+  return d('needPanel')!=='Yes';
+}
+/* Held-out money is never silently dropped: say what it is, say what it is
+   worth, and put the switch to reinstate it one click away. */
+function panelHeldNote(){
+  var sum=panelHeldSummary(), i, l, names=[];
+  if(!sum.n) return '';
+  for(i=0;i<LINES.length;i++){
+    l=LINES[i];
+    if(panelHeldOut(l) && (num(l.mat)||num(l.lab))) names.push(esc(l.desc));
+  }
+  return '<div class="warn" style="margin-top:-4px;margin-bottom:12px">'
+    + '<b>'+sum.n+' panel / service line'+(sum.n===1?'':'s')+' held out \u2014 '+money(sum.total)+'.</b> '
+    + 'The estimate priced ' + names.slice(0,4).join(', ')
+    + (names.length>4 ? ' and '+(names.length-4)+' more' : '')
+    + '. They stay in the mapping below and are excluded from every sheet and the application. '
+    + '<button class="btn sm" style="margin-top:6px" onclick="setD(\'needPanel\',\'Yes\');renderSiteForm()">'
+    + 'This site does need new gear \u2014 include them</button></div>';
+}
+
+function panelHeldSummary(){
+  var i, l, n=0, t=0;
+  for(i=0;i<LINES.length;i++){
+    l=LINES[i];
+    if(panelHeldOut(l) && (num(l.mat)||num(l.lab))){ n++; t+=num(l.mat)+num(l.lab); }
+  }
+  return { n:n, total:r2(t) };
+}
+
 function buildModel(form){
   form = form || proposalForm();
   var BL=form.blocks;
@@ -2376,6 +2419,13 @@ function buildModel(form){
   var i, l, fp, mm, ll, mirror;
   for(i=0;i<LINES.length;i++){
     l=LINES[i];
+    /* Switchgear, MDP lugs and service equipment come across from the
+       estimate and map to Electrical Panel. On a site reusing existing
+       gear that is thousands of dollars of scope nobody asked for, so it
+       is held out unless the site is marked as needing new panel/service
+       equipment. The lines are not deleted — they stay visible in the
+       mapping, and switching the control back puts them straight in. */
+    if(panelHeldOut(l)) continue;
     mm=num(l.mat)*mk; ll=num(l.lab)*mk;
     fp=Math.max(0, Math.min(100, num(l.fp)))/100;
     if(fp>0 && l.bucket!=='fp' && grid.fp){
@@ -2594,6 +2644,17 @@ function renderSiteForm(){
    + '<div id="classMsg" class="note" style="margin-top:-4px;margin-bottom:12px"></div>';
   h+='<label class="f"><span>Site label (used in the sheet tab name)</span>'
     +'<input type="text" id="f-site" value="'+esc(d('site')||'Site 1')+'" oninput="setD(\'site\',this.value)"></label>';
+
+  /* Off by default: most make-ready work lands on existing gear. */
+  if(!d('needPanel')) DATA.needPanel='No';
+  h+=fieldHTML({ k:'needPanel', label:'New panel / service equipment needed', type:'select',
+                 options:['No','Yes'] })
+   + '<div class="note" style="margin-top:-4px;margin-bottom:12px">'
+   + (d('needPanel')==='Yes'
+      ? 'Panel, switchgear and service-equipment lines are priced into Make-Ready.'
+      : 'Panel and switchgear costs are left out. Switch to Yes only when the site actually needs new gear \u2014 the utility asks for an invoice against anything claimed here.')
+   + '</div>'
+   + panelHeldNote();
   /* With no utility form there's no form-defined field list, so ask for the
      handful the proposal itself prints. */
   var LEFT  = FORM ? FORM.left  : PROPOSAL_FIELDS;
@@ -2666,7 +2727,9 @@ function renderMap(){
     for(ri=0;ri<b.rows.length;ri++){
       ropts+='<option value="'+b.rows[ri].k+'"'+(b.rows[ri].k===l.row?' selected':'')+'>'+esc(b.rows[ri].l)+'</option>';
     }
-    h+='<tr class="'+(l.src==='manual'?'manual':'')+(l.orphan?' orphan':'')+'">'
+    h+='<tr class="'+(l.src==='manual'?'manual':'')+(l.orphan?' orphan':'')
+      +(panelHeldOut(l)?' held':'')+'" '
+      +(panelHeldOut(l)?'title="Held out \u2014 this site is not marked as needing new panel or service equipment"':'')+'>'
       +'<td><input id="d-'+l.id+'" class="desc-in" value="'+esc(l.desc)+'" oninput="setLine('+l.id+',\'desc\',this.value)">'
       +   (l.size||l.cat ? '<span class="meta">'+esc(l.cat)+(l.size?' · '+esc(l.size):'')+'</span>' : '')+'</td>'
       +'<td class="mono" style="color:var(--dim);font-size:10.5px">'+esc(l.qty!==''?l.qty+' '+l.unit:'—')+'</td>'
@@ -4993,6 +5056,15 @@ var DEV_HOSTS = ['localhost','127.0.0.1',''];   /* '' covers file:// */
    Firestore rules treat as isAdmin(). */
 var INTERNAL_DOMAINS = ['clearsky-usa.com','csebuilders.com'];
 
+/* Tenants licensed to run this tool on their own projects. Kept separate
+   from INTERNAL_DOMAINS on purpose: these accounts are NOT ClearSky staff
+   and must not inherit anything else that keys off "internal". Adding a
+   tenant here is the whole of granting access — the sign-in wall is the
+   boundary, and it now admits this list as well. */
+var TENANT_DOMAINS = (window.OMEGA_WORKBOOK_TENANTS && window.OMEGA_WORKBOOK_TENANTS.length)
+  ? window.OMEGA_WORKBOOK_TENANTS
+  : ['concordenergyusa.com'];
+
 var FB = {
   apiKey:            "AIzaSyABoM1lgOYUnd5ZadaoTMhYmA9cHa8Tyo0",
   authDomain:        "clearsky-portal.firebaseapp.com",
@@ -5023,10 +5095,20 @@ function isInternal(email){
   for(i=0;i<INTERNAL_DOMAINS.length;i++){ if(dom===INTERNAL_DOMAINS[i]) return true; }
   return false;
 }
+function isTenant(email){
+  var dom=domainOf(email), i;
+  for(i=0;i<TENANT_DOMAINS.length;i++){ if(dom===TENANT_DOMAINS[i]) return true; }
+  return false;
+}
+function mayUse(email){ return isInternal(email) || isTenant(email); }
 function hostOk(){
   var h=String(location.hostname||'').toLowerCase(), i;
   for(i=0;i<ALLOWED_HOSTS.length;i++){ if(h===ALLOWED_HOSTS[i]) return true; }
   for(i=0;i<DEV_HOSTS.length;i++){ if(h===DEV_HOSTS[i]) return true; }
+  /* Every tenant portal is its own <name>.csebuilders.com deployment, so the
+     host check has to admit the family, not one hostname. The identity check
+     below is what actually decides. */
+  if(/\.csebuilders\.com$/.test(h)) return true;
   return false;
 }
 
@@ -5079,16 +5161,15 @@ window.__gateSignOut=function(){ auth.signOut(); };
 
 auth.onAuthStateChanged(function(user){
   if(!user){
-    show('Internal tool',
-         'Sign in with your ClearSky account to build project intake workbooks.',
+    show('Sign in required',
+         'Sign in with your ClearSky or licensed tenant account to build project workbooks.',
          '<button class="btn p" onclick="window.__gateSignIn()">Sign in with Google</button>');
     return;
   }
-  if(!isInternal(user.email)){
+  if(!mayUse(user.email)){
     show('No access',
-         '<b>'+String(user.email||'')+'</b> isn\'t a ClearSky staff account. This tool is '
-       + 'for internal reps completing customer intakes. If you need access, '
-       + 'contact dev@clearsky-usa.com.',
+         '<b>'+String(user.email||'')+'</b> is not on an account licensed for this tool. '
+       + 'If you need access, contact dev@clearsky-usa.com.',
          '<button class="btn" onclick="window.__gateSignOut()">Sign in as someone else</button>');
     return;
   }
