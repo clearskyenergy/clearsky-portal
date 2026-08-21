@@ -1043,9 +1043,10 @@ function proposalForm(){
      that form was active. Touch the knob on the Eversource tab and the
      proposal moved $547 away from the UI sheet with nothing on screen saying
      why. One source now: whatever the active program form resolves to. */
+  var prog = pickedForm() || ((FORM && formAppliesToClass(FORM)) ? FORM : null);
   var tax;
-  if(mirror && FORM.tax) tax = FORM.tax;
-  else if(FORM && formAppliesToClass(FORM)) tax = effectiveTax(FORM);
+  if(mirror && FORM && FORM.tax) tax = FORM.tax;
+  else if(prog) tax = effectiveTax(prog);
   else tax = { rate:nval('p_tax'), label:'Sales Tax', onLabor:val('p_taxlab')==='1' };
   return { id: mirror ? ('proposal-'+FORM.id) : ('proposal-'+chargerClass()),
            blocks: mirror ? FORM.blocks : profile().blocks,
@@ -2468,16 +2469,20 @@ function buildModel(form){
     for(z=0;z<list.length;z++){ if(list[z]===k) return true; }
     return false;
   }
-  /* the single tax line's base, gathered across every block */
+  /* The single tax line's base, read off the COST LINES rather than this
+     form's grid. Off the grid it moved with the layout: the proposal
+     aliases EVSE installation into Other, so 'install' never matched there
+     and the same job taxed differently on the two documents. The lines
+     carry the canonical row key, so every form computes an identical base
+     and the sheets foot to the same number. */
   var singleMat=0, singleLab=0;
   if(single){
-    for(bi=0;bi<BL.length;bi++){
-      b=BL[bi];
-      for(ri=0;ri<b.rows.length;ri++){
-        var kk=b.rows[ri].k, gg=grid[b.id][kk];
-        if(inList(taxCfg.matRows, kk)) singleMat += gg.mat;
-        if(inList(taxCfg.labRows, kk)) singleLab += gg.mat + gg.lab;
-      }
+    var q, ln;
+    for(q=0;q<LINES.length;q++){
+      ln=LINES[q];
+      if(panelHeldOut(ln)) continue;
+      if(inList(taxCfg.matRows, ln.row)) singleMat += num(ln.mat)*mk;
+      if(inList(taxCfg.labRows, ln.row)) singleLab += (num(ln.mat)+num(ln.lab))*mk;
     }
     singleMat=r2(singleMat); singleLab=r2(singleLab);
   }
@@ -2563,9 +2568,26 @@ function setMirror(on){
   if(el) el.value = on ? '1' : '0';
   render();
 }
+/* The utility this job is being submitted to. One at a time is how these
+   go out, and the contractor quote has to price the same way as whichever
+   one it is \u2014 so the proposal reads this, not FORM. FORM is only updated
+   when a box is ticked, so un-ticking used to leave it pointing at a
+   programme that was no longer being built. */
+function pickedForm(){
+  var out=null, i, f, n=0;
+  for(i=0;i<FORMS.length;i++){
+    f=FORMS[i];
+    if(PICK[f.id] && formAppliesToClass(f)){ out=f; n++; }
+  }
+  return n===1 ? out : null;
+}
 function setPick(id, on){
   PICK[id]=!!on;
   if(id!=='proposal' && on){ FORM=formById(id); onFormChange(); reconcileToForm(); }
+  /* Whatever the toggle was, if exactly one utility is left ticked then that
+     is the one being submitted \u2014 follow it. */
+  var only=pickedForm();
+  if(only && (!FORM || FORM.id!==only.id)){ FORM=only; onFormChange(); reconcileToForm(); }
   renderPicker(); renderSiteForm(); render();
 }
 /* The tax a form actually prices at: its program default unless the rep has
@@ -2574,9 +2596,16 @@ function setPick(id, on){
 function effectiveTax(form){
   if(!form) return { rate:nval('p_tax'), label:'Sales Tax', onLabor:val('p_taxlab')==='1' };
   var ov=TAXOV[form.id];
-  return { rate: ov ? ov.rate : (form.tax?form.tax.rate:0),
-           label: (form.tax && form.tax.label) || 'Sales Tax',
-           onLabor: ov ? !!ov.onLabor : !!(form.tax && form.tax.onLabor) };
+  var cfg=form.tax||{};
+  /* mode/section/matRows/labRows travel with the rate. Carrying only the
+     rate meant the proposal taxed the whole job while the programme sheet
+     taxed the rows its matrix names — and the two documents disagreed by
+     exactly that difference. */
+  return { rate: ov ? ov.rate : (cfg.rate||0),
+           label: cfg.label || 'Sales Tax',
+           onLabor: ov ? !!ov.onLabor : !!cfg.onLabor,
+           mode: cfg.mode, section: cfg.section,
+           matRows: cfg.matRows, labRows: cfg.labRows };
 }
 function taxKnob(){
   var id = FORM ? FORM.id : proposalForm().id;
@@ -2849,7 +2878,13 @@ function totalsReconcile(){
     if(lo===null || r2(m.total)<lo) lo=r2(m.total);
     if(hi===null || r2(m.total)>hi) hi=r2(m.total);
   }
-  if(r2(hi-lo)<0.01) return '';
+  /* Say so when they tie. These two documents go to the same reviewer and
+     the whole point is that they agree \u2014 silence leaves you wondering
+     whether it was checked. */
+  if(r2(hi-lo)<0.01)
+    return '<div class="note" style="margin:8px 0 0">Contractor quote and '
+      + esc(rows.length>1?rows[1].name:'the utility sheet')
+      + ' agree at <b>'+money(rows[0].total)+'</b>.</div>';
 
   /* knob drift = two sheets pricing the same scope at different tax */
   for(i=1;i<rows.length;i++){
