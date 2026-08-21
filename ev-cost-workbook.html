@@ -4971,9 +4971,19 @@ var HANDOFF_ORIGINS = [
   'https://alpha.clearskyomega.com',
   'https://tools.csebuilders.com'
 ];
+/* Tenant portals are each their own <name>.csebuilders.com deployment, and
+   the editor there is the same editor. Without this, a licensed tenant
+   presses EV Cost Workbook and the estimate is dropped as coming from an
+   unrecognised site — the button appears to do nothing. HTTPS and the
+   exact suffix only: 'evil-csebuilders.com' and 'csebuilders.com.bad.net'
+   must not match. */
+function tenantOrigin(o){
+  return /^https:\/\/[a-z0-9-]+(\.[a-z0-9-]+)*\.csebuilders\.com$/.test(String(o||'').toLowerCase());
+}
 function originTrusted(o){
   var i;
   for(i=0;i<HANDOFF_ORIGINS.length;i++){ if(o===HANDOFF_ORIGINS[i]) return true; }
+  if(tenantOrigin(o)) return true;
   if(/^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(String(o||''))) return true;
   return false;
 }

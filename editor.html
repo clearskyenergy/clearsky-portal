@@ -1729,7 +1729,12 @@ window.onerror = function(msg, src, line, col, err) {
     <!-- Sizing / configuration tools -->
     <div class="rpanel">
       <div class="rpanel-body">
-        <button class="rbtn" onclick="openBessModal(null)" title="BESS Config &mdash; size the battery, set chemistry, run the value stack. Being retired; the BESS Sizer replaces it." style="position:relative"><span class="rb-ico" style="color:#00D4FF">&#9881;</span><span class="rb-lbl">BESS<br>Config</span><span style="position:absolute;top:2px;right:3px;font-size:6.5px;font-weight:800;letter-spacing:.3px;background:rgba(239,68,68,.9);color:#FFF1F1;padding:1px 3px;border-radius:3px;line-height:1.2">LEAVING SOON</span></button>
+        <!-- BESS Config: hidden from the ribbon, NOT removed. openBessModal() is
+     still reached from the Build flyout and called from other code, so
+     deleting the button would be fine but deleting the tool would not.
+     It was already marked LEAVING SOON and the BESS Sizer beside it does
+     the same job; the ribbon slot is worth more than the second door. -->
+        <button class="rbtn" id="rb-bess-config" hidden aria-hidden="true" onclick="openBessModal(null)" title="BESS Config &mdash; size the battery, set chemistry, run the value stack. Being retired; the BESS Sizer replaces it." style="display:none;position:relative"><span class="rb-ico" style="color:#00D4FF">&#9881;</span><span class="rb-lbl">BESS<br>Config</span><span style="position:absolute;top:2px;right:3px;font-size:6.5px;font-weight:800;letter-spacing:.3px;background:rgba(239,68,68,.9);color:#FFF1F1;padding:1px 3px;border-radius:3px;line-height:1.2">LEAVING SOON</span></button>
         <button class="rbtn" onclick="openBessSizer()" title="BESS Sizer &mdash; size, screen and qualify a site from the utility bill and site details. Analysis only, nothing is placed." style="position:relative"><span class="rb-ico" style="color:#00D4FF">&#9878;</span><span class="rb-lbl">BESS<br>Sizer</span></button>
         <button class="rbtn" onclick="openSolarBessSizer()" title="Solar &rarr; BESS Sizer &mdash; size storage from the solar drawn on the sitemap"><span class="rb-ico" style="color:#FBBF24">&#9788;</span><span class="rb-lbl">Solar BESS<br>Sizer</span></button>
         <button class="rbtn" onclick="homeStartWizard('BTM')" title="Behind-the-meter guided flow &mdash; coming soon" style="display:none;position:relative;opacity:.72"><span class="rb-ico">&#9644;</span><span class="rb-lbl">BESS<br>BTM</span><span style="position:absolute;top:2px;right:3px;font-size:6.5px;font-weight:800;letter-spacing:.3px;background:rgba(245,158,11,.9);color:#1A1206;padding:1px 3px;border-radius:3px;line-height:1.2">SOON</span></button>
@@ -65109,11 +65114,17 @@ window._elecPrint=function(){
    any estimator overrides) into localStorage and opens the workbook tool,
    which maps the lines into the utility application and customer proposal.
    ---------------------------------------------------------------------- */
-/* The editor is served to every tenant through the shared rewrite, but the
-   cost workbook lives only on the internal OMEGA portal. Show the button
-   there and nowhere else, so a tenant never sees a control that leads to a
-   locked page. */
+/* The editor is served to every tenant through the shared rewrite. The cost
+   workbook used to be internal-only, so the button was shown on the OMEGA
+   portal and nowhere else — a tenant who found it got a locked page.
+
+   Tenants are now licensed to run the workbook, so the button follows the
+   licence: the internal portal, plus any tenant portal on the
+   <name>.csebuilders.com family. The workbook still checks identity at the
+   door, so showing the button is not granting anything — it only stops a
+   licensed tenant being told the tool does not exist. */
 var _EV_WB_HOSTS  = ['alpha.clearskyomega.com','localhost','127.0.0.1'];
+function _evTenantHost(h){ return /\.csebuilders\.com$/.test(String(h||'').toLowerCase()); }
 /* The workbook lives on the shared tools host with everything else, and the
    console has no rewrite for it — so this is an absolute URL. */
 var _EV_WB_ORIGIN = 'https://tools.csebuilders.com';
@@ -65121,6 +65132,7 @@ var _EV_WB_URL    = _EV_WB_ORIGIN + '/ev-cost-workbook.html';
 window._elecWorkbookHost = function(){
   var h = String(location.hostname||'').toLowerCase(), i;
   for(i=0;i<_EV_WB_HOSTS.length;i++){ if(h===_EV_WB_HOSTS[i]) return true; }
+  if(_evTenantHost(h)) return true;
   return false;
 };
 
@@ -95799,12 +95811,25 @@ button[style*="linear-gradient"][aria-disabled="true"]{
 .omega-beta-tag{ color:#1A1206; background:var(--amber) }
 /* NEW is a signpost, not a warning — the accent, quieter than amber. */
 .omega-new-tag{ color:var(--on-accent); background:var(--accent) }
-.rbtn.omega-beta .rb-lbl{ padding-top:1px }
+/* A TAG IS ABSOLUTELY POSITIONED, SO IT NEEDS NO LAYOUT SPACE.
+   These rules used to give it 3px anyway — 1px of label padding and 2px of
+   icon margin — and .rpanel-body .rbtn is capped at (--ribbon-h - 22px)
+   with the label set to overflow:hidden. So a tagged button clipped its
+   second label line THREE PIXELS BEFORE a plain one did, and since
+   --ribbon-h is set at runtime from the UI scale, a user below 100% lost
+   "Sheet Manager", "Permit Sheet" and "Takeoff & Budget" to it while the
+   untagged buttons beside them stayed readable.
 
-/* A tagged button needs room for the badge; without this the corner tag
-   sits on top of the label on a narrow button. */
+   The horizontal padding is kept: the tag really does occupy the top-right
+   corner and a narrow button needs the room. The vertical space does not
+   exist and is no longer reserved. */
 .rbtn.omega-beta{ padding-right:6px }
-.rbtn.omega-beta .rb-ico{ margin-top:2px }
+
+/* And a floor under the label itself. The cap exists so an oversized icon
+   cannot eat the panel caption; it was never meant to eat the label. Two
+   lines of 9px text need about 22px, so the icon gives way first. */
+.rpanel-body .rbtn .rb-lbl{ min-height:2.3em; flex:0 0 auto }
+.rpanel-body .rbtn .rb-ico{ min-height:0; overflow:hidden }
 
 </style>
 <script id="omega-ui-js">
@@ -116742,13 +116767,19 @@ SEL.split(', ').map(function (s) { return s + ' label, ' + s + ' td, ' + s + ' t
       if (/load/i.test(cp.component_type || '')) b.loadKw += +np.kw || 0;
       if (+np.aic_a) b.aicAmps = +np.aic_a;
     });
+    /* THE EXPORTER CALLS THEM from_key AND to_key.
+       Reading from_node_key gave undefined on every branch, so every bus
+       looked unconnected and the check reported a fully wired site as
+       "no connections at all" — with the branch COUNT printed correctly
+       right above it, which is the tell. Accept both spellings so a
+       rename on either side cannot silently disconnect the graph again. */
     var branches = (graph.branches || []).map(function (br) {
-      return { from: br.from_node_key, to: br.to_node_key,
+      return { from: (br.from_key != null ? br.from_key : br.from_node_key), to: (br.to_key != null ? br.to_key : br.to_node_key),
                conductor: (br.conductor && br.conductor.size) || null,
                sets: (br.conductor && br.conductor.sets) || 1,
-               lengthFt: +br.length_ft || 0,
-               transformerKva: +br.transformer_kva || 0,
-               transformerZPct: +br.transformer_z_pct || 0 };
+               lengthFt: +(br.length_ft != null ? br.length_ft : br.lengthFt) || 0,
+               transformerKva: +(br.transformer_kva != null ? br.transformer_kva : br.kva) || 0,
+               transformerZPct: +(br.transformer_z_pct != null ? br.transformer_z_pct : br.z_pct) || 0 };
     });
     return { ok: true, buses: buses, branches: branches };
   }
@@ -118278,6 +118309,20 @@ SEL.split(', ').map(function (s) { return s + ' label, ' + s + ' td, ' + s + ' t
       var k = CT_KIND[String(cp.component_type || '').toLowerCase()];
       if (k === 'xfmr' && cp.node_key) busHasXfmr[cp.node_key] = true;
     });
+    /* A transformer can be a BRANCH type as well as a component on a bus.
+       The exporter emits addBranch(poi, main, 'transformer', ...) for the
+       main step-down, so a rule that only looked at bus-mounted
+       transformers reported "13.8 kV feeds 480 V with no transformer" on a
+       site whose transformer sat on the branch between them. Collected here,
+       BEFORE the buses are built, because the flag is read as each bus is
+       created — setting it afterwards is setting it too late. */
+    (graph.branches || []).forEach(function (b) {
+      if (!/xfmr|transformer/i.test(String(b.branch_type || b.type || ''))) return;
+      var fk = (b.from_key != null ? b.from_key : b.from_node_key);
+      var tk = (b.to_key != null ? b.to_key : b.to_node_key);
+      if (fk) busHasXfmr[fk] = true;
+      if (tk) busHasXfmr[tk] = true;
+    });
 
     var nodes = [], edges = [], seen = {};
     graph.nodes.forEach(function (nd) {
@@ -118323,9 +118368,15 @@ SEL.split(', ').map(function (s) { return s + ' label, ' + s + ' td, ' + s + ' t
         }
       }
     });
+    /* THE EXPORTER CALLS THEM from_key AND to_key.
+       Reading from_node_key gave undefined on every branch, so every bus
+       looked unconnected and the check reported a fully wired site as
+       "no connections at all" — with the branch COUNT printed correctly
+       right above it, which is the tell. Accept both spellings so a
+       rename on either side cannot silently disconnect the graph again. */
     (graph.branches || []).forEach(function (b) {
-      if (!seen[b.from_node_key] || !seen[b.to_node_key]) return;
-      edges.push({ from: b.from_node_key, to: b.to_node_key,
+      if (!seen[(b.from_key != null ? b.from_key : b.from_node_key)] || !seen[(b.to_key != null ? b.to_key : b.to_node_key)]) return;
+      edges.push({ from: (b.from_key != null ? b.from_key : b.from_node_key), to: (b.to_key != null ? b.to_key : b.to_node_key),
                    conductor: (b.conductor && b.conductor.size) || null,
                    sets: (b.conductor && b.conductor.sets) || 1,
                    ocpdAmps: +b.rating_a || null });
@@ -120864,14 +120915,61 @@ SEL.split(', ').map(function (s) { return s + ' label, ' + s + ' td, ' + s + ' t
   /* ------------------------------------------------------------------ *
    *  RENDER                                                             *
    * ------------------------------------------------------------------ */
-  function sizeCanvas() {
-    if (!el.cv) return;
+  /* The backing store has to match the box, ALWAYS.
+     This ran on window resize only. The canvas box also changes without
+     the window changing at all: the command log fills and .arch-cmd is
+     flex-shrink:0, so the drawing area gives up the height; a side panel
+     grows; the browser zoom moves devicePixelRatio. When that happens the
+     bitmap keeps its old size and the browser squashes it into the new box
+     — an 1800px-tall bitmap in a 100px box is a 9x vertical squash, which
+     is a band of converging lines and piled-up rotated text along the
+     bottom of the screen. It looks like a rendering bug in the drawing.
+     It is a stale backing store. */
+  var _lastSize = { w: 0, h: 0, dpr: 0 };
+  function sizeCanvas(force) {
+    if (!el.cv) return false;
     var dpr = window.devicePixelRatio || 1;
-    var w = el.cv.clientWidth || 900, h = el.cv.clientHeight || 600;
+    var w = el.cv.clientWidth, h = el.cv.clientHeight;
+    /* A zero here means the workspace is hidden or mid-layout. Falling back
+       to 900x600 then would bake in a size that matches nothing, so leave
+       the bitmap alone and re-size when it has a real box. */
+    if (!(w > 0) || !(h > 0)) return false;
+    if (!force && w === _lastSize.w && h === _lastSize.h && dpr === _lastSize.dpr) {
+      return false;
+    }
+    _lastSize = { w: w, h: h, dpr: dpr };
     el.cv.width = Math.round(w * dpr);
     el.cv.height = Math.round(h * dpr);
     var ctx = el.cv.getContext('2d');
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    return true;
+  }
+
+  /* Watch the BOX, not the window. */
+  function watchCanvasBox() {
+    if (!el.cv || ST._roAttached) return;
+    var target = el.cv.parentNode || el.cv;
+    if (typeof ResizeObserver === 'function') {
+      ST._ro = new ResizeObserver(function () {
+        if (sizeCanvas()) draw();
+      });
+      try { ST._ro.observe(target); ST._roAttached = true; } catch (e) {}
+    }
+    /* devicePixelRatio does not fire the observer, and browser zoom changes
+       it. matchMedia on the resolution is the documented way to hear it. */
+    if (typeof window.matchMedia === 'function') {
+      var arm = function () {
+        var mq = window.matchMedia('(resolution: ' +
+                 (window.devicePixelRatio || 1) + 'dppx)');
+        var on = function () {
+          if (sizeCanvas(true)) draw();
+          arm();                     /* the query is for the OLD ratio; re-arm */
+        };
+        if (mq.addEventListener) mq.addEventListener('change', on, { once: true });
+        else if (mq.addListener) mq.addListener(on);
+      };
+      try { arm(); } catch (e) {}
+    }
   }
 
   function gridStep() {
@@ -124034,7 +124132,7 @@ SEL.split(', ').map(function (s) { return s + ' label, ' + s + ' td, ' + s + ' t
     el.cv.addEventListener('dblclick', function () { zoomExtents(); });
     window.addEventListener('keydown', onKey, true);
     window.addEventListener('resize', function () {
-      if (el.root && el.root.classList.contains('on')) { sizeCanvas(); draw(); }
+      if (el.root && el.root.classList.contains('on')) { sizeCanvas(true); draw(); }
     });
 
     setLayer(ST.doc.layer);
@@ -124050,7 +124148,8 @@ SEL.split(', ').map(function (s) { return s + ' label, ' + s + ' td, ' + s + ' t
     el.root.classList.add('on');
     el.root.style.display = 'flex';
     setTimeout(function () {
-      sizeCanvas();
+      sizeCanvas(true);
+      watchCanvasBox();
       if (!ST.doc.ents.length) { ST.V = { x: 0, y: 0, z: 0.06 }; } else zoomExtents();
       refresh();
       if (el.input) el.input.focus();
@@ -124121,6 +124220,7 @@ SEL.split(', ').map(function (s) { return s + ' label, ' + s + ' td, ' + s + ' t
        entry point without either, so a command can be driven by a script
        or a test the way a person drives it with the mouse. */
     pick: function (x, y) { addPoint({ x: +x, y: +y }); return ST.cmd; },
+    sizeCanvasForTest: function (f) { return sizeCanvas(f); },
     drawPreviewForTest: function (ctx) { return drawPreview(ctx); },
     importSite: importSite, zoomExtents: zoomExtents,
     placeOnMap: placeOnMap, unplace: unplace, siteFit: siteFit, stamp: stamp,
