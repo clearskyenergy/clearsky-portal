@@ -328,6 +328,7 @@ table.pv td.num{text-align:right;font-variant-numeric:tabular-nums}
     <div class="card">
       <h3>Workbook preview<span class="hint">what lands in the .xlsx</span></h3>
       <div class="tot-strip" id="totStrip"></div>
+      <div id="totRecon"></div>
       <div class="pvtabs" id="pvTabs"></div>
       <div class="body">
         <div class="pvwrap" id="pvHost"></div>
@@ -1035,8 +1036,17 @@ function mirroringForm(){
 }
 function proposalForm(){
   var mirror=mirroringForm();
-  var tax = (mirror && FORM.tax) ? FORM.tax
-          : { rate:nval('p_tax'), label:'Sales Tax', onLabor:val('p_taxlab')==='1' };
+  /* The proposal and the utility sheet price the SAME job under the same
+     state tax rules \u2014 only the layout differs. They used to read tax from
+     two places: the proposal took the live knob, while the utility form kept
+     its program default unless taxKnob() happened to have been pressed while
+     that form was active. Touch the knob on the Eversource tab and the
+     proposal moved $547 away from the UI sheet with nothing on screen saying
+     why. One source now: whatever the active program form resolves to. */
+  var tax;
+  if(mirror && FORM.tax) tax = FORM.tax;
+  else if(FORM && formAppliesToClass(FORM)) tax = effectiveTax(FORM);
+  else tax = { rate:nval('p_tax'), label:'Sales Tax', onLabor:val('p_taxlab')==='1' };
   return { id: mirror ? ('proposal-'+FORM.id) : ('proposal-'+chargerClass()),
            blocks: mirror ? FORM.blocks : profile().blocks,
            tax: tax };
@@ -2372,7 +2382,7 @@ function buildModel(form){
   /* Each form carries its own rate and labor rule. The knob overrides only
      the form it was edited against, so exporting two programs at once can't
      apply one utility's tax treatment to the other's sheet. */
-  var t = TAXOV[form.id] || { rate:(form.tax?form.tax.rate:0), onLabor:!!(form.tax&&form.tax.onLabor) };
+  var t = effectiveTax(form);
   var rate=num(t.rate)/100;
   var taxLab=!!t.onLabor;
   var taxCfg=form.tax||null;
@@ -2558,9 +2568,25 @@ function setPick(id, on){
   if(id!=='proposal' && on){ FORM=formById(id); onFormChange(); reconcileToForm(); }
   renderPicker(); renderSiteForm(); render();
 }
+/* The tax a form actually prices at: its program default unless the rep has
+   overridden it. Single resolver so nothing reads form.tax directly and
+   drifts from what buildModel used. */
+function effectiveTax(form){
+  if(!form) return { rate:nval('p_tax'), label:'Sales Tax', onLabor:val('p_taxlab')==='1' };
+  var ov=TAXOV[form.id];
+  return { rate: ov ? ov.rate : (form.tax?form.tax.rate:0),
+           label: (form.tax && form.tax.label) || 'Sales Tax',
+           onLabor: ov ? !!ov.onLabor : !!(form.tax && form.tax.onLabor) };
+}
 function taxKnob(){
   var id = FORM ? FORM.id : proposalForm().id;
   TAXOV[id]={ rate:nval('p_tax'), onLabor:val('p_taxlab')==='1' };
+  /* Keyed to one form id, the knob moved that sheet and left every other
+     picked sheet on its own default \u2014 which is exactly how the proposal and
+     the UI workbook ended up disagreeing. Apply it to everything being
+     built, so the knob means "this job", not "this tab". */
+  var i;
+  for(i=0;i<FORMS.length;i++) if(PICK[FORMS[i].id]) TAXOV[FORMS[i].id]=TAXOV[id];
   render();
 }
 /* Forms don't share categories. When the active form changes, any line whose
@@ -2800,6 +2826,62 @@ function shortBlock(b){
   return b.title;
 }
 
+/* Every sheet the rep ticked, priced and compared. Same lines in, so any gap
+   is either the knob drifting between sheets — fixable, and the bug that
+   sent the proposal $547 away from the UI sheet — or a program that taxes a
+   restricted set of rows by its own rule, which is expected and is said
+   plainly rather than flagged as a fault. */
+function totalsReconcile(){
+  var sheets=[{ name:'Contractor proposal', form:proposalForm() }], i, f;
+  for(i=0;i<FORMS.length;i++){
+    f=FORMS[i];
+    if(PICK[f.id] && formAppliesToClass(f)) sheets.push({ name:f.utility, form:f });
+  }
+  if(sheets.length<2) return '';
+
+  var rows=[], lo=null, hi=null, knobDrift=false, restricted=[];
+  for(i=0;i<sheets.length;i++){
+    var m=buildModel(sheets[i].form), t=effectiveTax(sheets[i].form);
+    var cfg=sheets[i].form.tax||{};
+    var scoped=(cfg.mode==='single');
+    rows.push({ name:sheets[i].name, total:r2(m.total), rate:t.rate, onLabor:t.onLabor, scoped:scoped });
+    if(scoped) restricted.push(sheets[i].name);
+    if(lo===null || r2(m.total)<lo) lo=r2(m.total);
+    if(hi===null || r2(m.total)>hi) hi=r2(m.total);
+  }
+  if(r2(hi-lo)<0.01) return '';
+
+  /* knob drift = two sheets pricing the same scope at different tax */
+  for(i=1;i<rows.length;i++){
+    if(rows[i].scoped || rows[0].scoped) continue;
+    if(rows[i].rate!==rows[0].rate || rows[i].onLabor!==rows[0].onLabor) knobDrift=true;
+  }
+  var line='', j;
+  for(j=0;j<rows.length;j++) line += (j?' \u00b7 ':'') + '<b>'+esc(rows[j].name)+'</b> '+money(rows[j].total);
+
+  /* every unrestricted sheet agreeing means the only gap is the program rule */
+  var freeLo=null, freeHi=null;
+  for(j=0;j<rows.length;j++){
+    if(rows[j].scoped) continue;
+    if(freeLo===null || rows[j].total<freeLo) freeLo=rows[j].total;
+    if(freeHi===null || rows[j].total>freeHi) freeHi=rows[j].total;
+  }
+  var onlyProgramRule = restricted.length && freeLo!==null && r2(freeHi-freeLo)<0.01;
+
+  if(onlyProgramRule)
+    return '<div class="note" style="margin:8px 0 0">'+line+'. '
+      + esc(restricted.join(' and '))+' tax'+(restricted.length>1?'':'es')
+      + ' only the rows that program charges tax on, so that sheet totals less by design \u2014 '
+      + 'the other sheets agree.</div>';
+
+  return '<div class="warn" style="margin:8px 0 0">'
+    + '<b>The sheets do not agree \u2014 '+money(r2(hi-lo))+' apart.</b><br>' + line + '<br>'
+    + (knobDrift
+        ? 'They are taxing differently. Set the sales-tax knob once \u2014 it now applies to every sheet being built.'
+        : 'Same tax treatment on each, so the gap is in the mapping \u2014 check for lines parked in Other on one layout.')
+    + '</div>';
+}
+
 function renderOutputs(){
   var m=buildModel();
   document.getElementById('totStrip').innerHTML =
@@ -2807,6 +2889,12 @@ function renderOutputs(){
     + '<div><div class="k">Labor</div><div class="v mono">'+money(m.lab)+'</div></div>'
     + '<div><div class="k">Total</div><div class="v mono">'+money(m.total)+'</div></div>'
     + '<div><div class="k">Net after incentive</div><div class="v mono net">'+money(m.net)+'</div></div>';
+
+  /* Same job, same lines: every sheet being built should total the same. If
+     one drifts, say which and by how much rather than letting a rep find it
+     when the utility compares the proposal against the cost sheet. */
+  var _rec=document.getElementById('totRecon');
+  if(_rec) _rec.innerHTML=totalsReconcile();
 
   var tabs='', i, f;
   tabs+='<button class="pvtab'+(_pv==='proposal'?' on':'')+'" onclick="pvTab(\'proposal\')">Contractor proposal</button>';
