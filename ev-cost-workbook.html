@@ -4971,14 +4971,15 @@ var HANDOFF_ORIGINS = [
   'https://alpha.clearskyomega.com',
   'https://tools.csebuilders.com'
 ];
-/* Tenant portals are each their own <name>.csebuilders.com deployment, and
-   the editor there is the same editor. Without this, a licensed tenant
+/* Tenant portals are <tenant>.csebuilders.com or <tenant>.clearskyomega.com,
+   and the editor there is the same editor. Without this a licensed tenant
    presses EV Cost Workbook and the estimate is dropped as coming from an
-   unrecognised site — the button appears to do nothing. HTTPS and the
-   exact suffix only: 'evil-csebuilders.com' and 'csebuilders.com.bad.net'
-   must not match. */
+   unrecognised site — the button appears to do nothing. HTTPS and the exact
+   suffix only: 'evil-csebuilders.com' and 'csebuilders.com.bad.net' must not
+   match, and the bare platform domain is not a tenant. */
 function tenantOrigin(o){
-  return /^https:\/\/[a-z0-9-]+(\.[a-z0-9-]+)*\.csebuilders\.com$/.test(String(o||'').toLowerCase());
+  o=String(o||'').toLowerCase();
+  return /^https:\/\/[a-z0-9-]+(\.[a-z0-9-]+)*\.(csebuilders|clearskyomega)\.com$/.test(o);
 }
 function originTrusted(o){
   var i;
@@ -5115,10 +5116,11 @@ function hostOk(){
   var h=String(location.hostname||'').toLowerCase(), i;
   for(i=0;i<ALLOWED_HOSTS.length;i++){ if(h===ALLOWED_HOSTS[i]) return true; }
   for(i=0;i<DEV_HOSTS.length;i++){ if(h===DEV_HOSTS[i]) return true; }
-  /* Every tenant portal is its own <name>.csebuilders.com deployment, so the
-     host check has to admit the family, not one hostname. The identity check
-     below is what actually decides. */
-  if(/\.csebuilders\.com$/.test(h)) return true;
+  /* Every tenant portal is its own <tenant>.csebuilders.com or
+     <tenant>.clearskyomega.com deployment, so the host check has to admit
+     both families, not one hostname. The identity check below is what
+     actually decides. */
+  if(/(^|\.)(csebuilders|clearskyomega)\.com$/.test(h) && h.split('.').length>=3) return true;
   return false;
 }
 
