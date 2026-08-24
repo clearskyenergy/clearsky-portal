@@ -188,6 +188,7 @@
     <div class="lr"><span class="sw" style="background:#A900E6"></span><span>0 - 500 kW</span></div>
   </div>
   <label class="lp"><input type="checkbox" id="prospect" checked><span>Prospecting colours</span></label>
+  <label class="lp" style="border-top:0;padding-top:0;margin-top:4px"><input type="checkbox" id="fiberOn"><span>Fiber / colocation</span></label>
   <div class="lf" id="legendFoot">zoom in to 13+ to draw circuits</div>
 </div>
 
@@ -222,6 +223,10 @@
         <button class="findbtn" id="fdRun">Find sites</button>
         <button class="r-csv" id="fdPhone" disabled>☎ Find contacts</button>
         <label class="r-csv" style="cursor:pointer;display:inline-flex;align-items:center" title="Merge a phone list from Apollo, Data Axle, PropertyShark, anything">↑ Import phones<input type="file" id="fdImport" accept=".csv,text/csv" style="display:none"></label>
+        <select id="fdPlay" class="r-csv" style="padding:0 8px">
+          <option value="bess">Rank: battery deal</option>
+          <option value="compute">Rank: compute / large load</option>
+        </select>
         <button class="r-csv" id="fdView">By owner</button>
         <button class="r-csv" id="fdCsv" disabled>Download CSV</button>
       </div>
@@ -2009,11 +2014,22 @@ function sizeBattery(annualKwh,propType,feederKw){
 function dealScore(r){
   if(!r.sz) return null;
   var s=r.sz;
-  var sizeC = Math.min(s.delivKw/1000,1)*45;          /* deliverable MW-ish */
-  var loadC = Math.min(s.peakKw/2000,1)*25;           /* customer scale */
-  var headC = (r.val!=null)?Math.min(r.val/5000,1)*20:0;  /* circuit room */
-  var freeC = s.constrained?0:10;                     /* not grid-capped */
+  var sizeC = Math.min(s.delivKw/1000,1)*40;
+  var loadC = Math.min(s.peakKw/2000,1)*20;
+  var headC = (r.val!=null)?Math.min(r.val/5000,1)*15:0;
+  var freeC = s.constrained?0:5;
   return Math.round(sizeC+loadC+headC+freeC);
+}
+/* Separate score for the compute / large-load play, where fibre is
+   half the asset. A site can rank low as a demand-charge deal and
+   high as a data-centre site — they are different products and
+   collapsing them into one number hides the good ones. */
+function computeScore(r){
+  var headC = (r.val!=null)?Math.min(r.val/10000,1)*50:0;   /* raw MW available */
+  var fibC  = fiberScore(r.fb);                              /* 0-25 */
+  var landC = (r.clsLabel&&/industrial|C&I|Railroad|Vacant/i.test(r.clsLabel))?15:5;
+  var loadC = r.sz?Math.min(r.sz.peakKw/3000,1)*10:0;
+  return Math.round(headC+fibC+landC+loadC);
 }
 
 function fetchBenchmark(root,b,after){
@@ -2169,6 +2185,66 @@ document.getElementById("fdImport").addEventListener("change",function(){
   this.value="";
 });
 
+
+/* ══════════════════════════════════════════════════════════════
+   FIBER / COLOCATION PROXIMITY  (PeeringDB, 70 ComEd-area sites)
+
+   Why this belongs in a capacity tool: a data centre needs power AND
+   connectivity, and the two are priced together. Fifteen MW of feeder
+   headroom next to 350 E Cermak is a different asset from fifteen MW
+   in a cornfield — same electrons, an order of magnitude apart in
+   what a developer will pay for the land.
+
+   `nw` is the number of networks present at the facility. It is the
+   best single proxy for carrier density: Equinix CH1/CH2/CH4 carries
+   330, a regional cage carries three. Interconnection cost and
+   latency to everyone else both fall as that number rises.
+
+   Static list, deliberately. PeeringDB has an API, but facilities do
+   not move and this is 5 KB — a network round-trip to learn that
+   Cermak is still on Cermak is not worth the failure mode.
+   [lat, lon, name, operator, networks]
+   ══════════════════════════════════════════════════════════════ */
+var FIBER=[[41.85365,-87.61834,"Equinix CH1/CH2/CH4 - Chicago","Equinix, Inc.",330],[41.85365,-87.61834,"Digital Realty CHI (350 E Cermak)","Digital Realty",99],[41.87621,-87.63145,"CoreSite - Chicago (CH1)","CoreSite",73],[42.00117,-87.95488,"Equinix CH3 - Elk Grove","Equinix, Inc.",43],[41.87291,-87.63327,"Netrality Chicago - 717 S Wells","Netrality Data Centers",22],[41.87621,-87.63145,"365 Data Centers Chicago (CH6)","365 Data Centers",20],[41.89523,-87.61686,"Northwestern University co-location facility","710facility@ittns.northwestern.edu",20],[41.99427,-87.96205,"Digital Realty CH1 - Chicago","Digital Realty",18],[41.87595,-88.24898,"SBA Edge, LLC","SBA Edge, LLC",16],[41.89895,-87.64464,"Level(3) Chicago (Kingsbury)","Lumen Technologies Inc",15],[41.86255,-87.64097,"CoreSite - Chicago (CH2)","CoreSite",15],[41.8419,-87.66831,"QTS Chicago (CHI1)","QTS Realty Trust, Inc.",14],[41.87162,-87.64283,"TierPoint Chicago - Polk","TierPoint, LLC",9],[41.79675,-88.24276,"CyrusOne Aurora I","CyrusOne Inc.",9],[41.99209,-87.95802,"Centersquare Chicago (ORD2)","Centersquare",8],[41.87422,-87.62994,"Digital Realty CHI (600-780 S Federal)","Digital Realty",7],[41.85365,-87.61834,"Centersquare Chicago (ORD1)","Centersquare",6],[41.84534,-87.94152,"NYI CH1 (800 Jorie Blvd)","New York Internet",6],[41.7722,-88.21706,"DataBridge Sites Aurora","DataBridge Sites",6],[40.73899,-89.58472,"SFN IL-Peoria","South Front Networks",6],[41.84918,-88.02957,"CyrusOne Chicago (Lombard)","CyrusOne Inc.",5],[41.87091,-87.64015,"Serverfarm CH1 Chicago","Serverfarm",5],[41.80241,-88.09466,"Centersquare Chicago (ORD4)","Centersquare",5],[41.92862,-87.85877,"Digital Realty CHI (9377 Grand Ave)","Digital Realty",5],[41.87422,-87.62994,"DataBank Chicago (ORD1)","DataBank, Ltd.",4],[41.85405,-87.92092,"DataBank Chicago (ORD4)","DataBank, Ltd.",4],[41.8743,-87.62993,"Printer's Square Chicago (600 S Federal)","Printer's Square",3],[41.88044,-87.63961,"Level(3) Chicago (Canal)","Lumen Technologies Inc",3],[42.07805,-87.92355,"DataBank Chicago (ORD3)","DataBank, Ltd.",3],[41.97405,-87.96697,"Element Critical Chicago CH2","Element Critical, LLC",3],[41.8126,-87.97283,"Equinix CH7 - Westmont","Equinix, Inc.",3],[41.92688,-87.85912,"Digital Realty CHI (9333 Grand Ave)","Digital Realty",3],[41.85365,-87.61834,"CME Cermak","CME Group",2],[41.92003,-87.91216,"Ascent - CH2","Ascent, LLC",2],[41.92702,-87.85803,"TierPoint Chicago - West","TierPoint, LLC",2],[41.8537,-87.61825,"CDC1 - 350 E Cermak Rd","Colocation America Corporation",2],[41.85405,-87.92092,"CDC4 - 1808 Swift Dr","Colocation America Corporation",2],[41.97588,-87.96457,"Element Critical Chicago CH1","Element Critical, LLC",2],[41.87091,-87.64015,"DataBank Chicago (ORD2)","DataBank, Ltd.",2],[41.98857,-88.01368,"RagingWire CH1 - NTT","RagingWire Data Centers - NTT",2],[41.92766,-87.85933,"Digital Realty CHI (9355 Grand Ave)","Digital Realty",2],[42.07816,-87.91563,"NETRIX - MTP","Netrix LLC",1],[41.66272,-87.74653,"NETRIX - ALSIP","Netrix, LLC",1],[42.2029,-87.88378,"NETRIX - BBN","Netrix, LLC",1],[41.87422,-87.62994,"CDC2 - 600 S Federal st","Colocation America Corporation",1],[41.84534,-87.94152,"Serverfarm CH2 Oak Brook / Chicago","Serverfarm",1],[42.00136,-87.95263,"EdgeConneX Chicago (EDCCHI02)","EdgeConneX Inc.",1],[42.04044,-87.97615,"GigeNET CHI3","GigeNET",1],[42.07844,-87.91565,"Apotech","Apotech",1],[41.94057,-89.03381,"Rochelle Technology Center","Rochelle Municipal Utilities",1],[42.00687,-87.96457,"Forsythe Data Centers","Forsythe Data Centers",0],[41.84631,-87.93966,"US Signal - Oak Brook","US Signal",0],[42.07805,-87.92355,"CDC3 - 800 E Business Center Dr","Colocation America Corporation",0],[41.99427,-87.96205,"CDC5 - 2200 Busse Rd","Colocation America Corporation",0],[41.87262,-87.63328,"Crown Castle Chicago (725 S Wells)","Crown Castle Inc.",0],[41.99426,-87.96197,"ColoCrossing CHI1","ColoCrossing",0],[41.92027,-87.91233,"Digital Realty CHI (505 N Railroad)","Digital Realty",0],[41.7722,-88.21706,"Lincoln Rackhouse Aurora","Lincoln Rackhouse",0],[42.00259,-87.95171,"Stream Data Centers - Chicago I","Stream Data Centers",0],[41.7722,-88.21706,"Agile Aurora","Agile Data Sites",0],[42.02369,-87.97375,"T5@Chicago","T5 Data Centers",0],[41.99418,-87.95768,"Digital Realty CH2 - Chicago","Digital Realty",0],[41.99335,-87.96411,"Digital Realty CH3 - Chicago","Digital Realty",0],[41.87846,-87.63452,"Cogent Chicago 1","Cogent Communications, Inc.",0],[41.88649,-87.63214,"Cogent Chicago 2","Cogent Communications, Inc.",0],[41.99914,-87.95829,"Stream Data Centers - Chicago II","Stream Data Centers",0],[41.8762,-87.6315,"tzulo Chicago","tzulo, inc.",0],[41.91346,-87.91876,"Aligned Chicago (ORD-01)","Aligned Data Centers",0],[41.91346,-87.91876,"Aligned Chicago (ORD-02)","Aligned Data Centers",0],[41.81997,-87.7289,"Cogent Chicago 3","Cogent Communications, Inc.",0]];
+
+var fiberLayer=null;
+function drawFiber(on){
+  if(fiberLayer){ map.removeLayer(fiberLayer); fiberLayer=null; }
+  if(!on) return;
+  fiberLayer=L.layerGroup();
+  for(var i=0;i<FIBER.length;i++){
+    var f=FIBER[i];
+    /* radius carries carrier density so the majors read at a glance */
+    var r=Math.max(5,Math.min(16,4+Math.sqrt(f[4])*0.9));
+    var m=L.circleMarker([f[0],f[1]],
+      {radius:r,color:"#0a6ed1",weight:2,fillColor:"#0a6ed1",fillOpacity:.22,interactive:true});
+    m.bindTooltip("<b>"+esc(f[2])+"</b><br>"+esc(f[3])+"<br>"+f[4]+" networks",{direction:"top"});
+    fiberLayer.addLayer(m);
+  }
+  fiberLayer.addTo(map);
+}
+
+/* nearest facility to a point, in miles */
+function nearestFiber(lat,lon){
+  if(lat==null||lon==null) return null;
+  var best=null,bd=1e9;
+  for(var i=0;i<FIBER.length;i++){
+    var d=metersBetween(lat,lon,FIBER[i][0],FIBER[i][1]);
+    if(d<bd){ bd=d; best=FIBER[i]; }
+  }
+  if(!best) return null;
+  return {mi:bd/1609.34, name:best[2], op:best[3], nw:best[4]};
+}
+
+/* 0-25, folded into the deal score. Distance decays fast: fibre is
+   cheap to reach across a street and expensive across a county. */
+function fiberScore(fb){
+  if(!fb) return 0;
+  var prox = fb.mi<=0.25?1 : fb.mi<=0.5?0.85 : fb.mi<=1?0.65 : fb.mi<=2?0.4 : fb.mi<=5?0.15 : 0;
+  var dens = Math.min(fb.nw/100,1);          /* carrier density */
+  return (prox*0.7 + prox*dens*0.3) * 25;
+}
+
 /* ── PROXIMITY PHONE MATCHING ────────────────────────────────────
    Exact-address matching only finds POIs that were tagged with
    addr:housenumber AND addr:street. Plenty of businesses publish a
@@ -2278,6 +2354,12 @@ function renderSweep(acc,cls,own,feeders,total){
                owner:o.owner||"",mail:o.mail||"",asOf:o.year||"",
                feeder:a.feeder,sub:a.sub,val:a.val,bess:a.bess,pv:a.pv,ev:a.ev});
   }
+  /* fibre proximity is geometry only — no network call, so every row
+     gets it whether or not the benchmarking join found metered load */
+  for(var f=0;f<rows.length;f++){
+    rows[f].fb=nearestFiber(rows[f].lat,rows[f].lon);
+    rows[f].cscore=computeScore(rows[f]);
+  }
   rows.sort(function(x,y){ return (y.val||0)-(x.val||0) || (x.addr<y.addr?-1:1); });
   FD.rows=rows; FD.busy=false;
   document.getElementById("fdRun").disabled=false;
@@ -2306,15 +2388,18 @@ function renderSweep(acc,cls,own,feeders,total){
     '<div><span class="k">Best circuit</span><span class="big-num">'+Math.round(best).toLocaleString()+' kW</span></div></div>';
 
   /* deal score first when we have it — that is the sort a rep wants */
-  if(rows.length&&rows[0].score!=null)
+  var play=(document.getElementById("fdPlay")||{}).value||"bess";
+  if(play==="compute")
+    rows.sort(function(a,b){ return (b.cscore||0)-(a.cscore||0) || (b.val||0)-(a.val||0); });
+  else if(rows.length&&rows[0].score!=null)
     rows.sort(function(a,b){ return (b.score||0)-(a.score||0) || (b.val||0)-(a.val||0); });
-  h+='<table class="r-t"><thead><tr><th>Score</th><th>Address</th><th>Building</th>'+
-     '<th>Annual kWh</th><th>Peak kW</th><th>BESS kW</th><th>Demand $/yr</th>'+
+  h+='<table class="r-t"><thead><tr><th>'+(play==="compute"?"Compute":"Deal")+'</th><th>Address</th><th>Building</th>'+
+     '<th>Annual kWh</th><th>Peak kW</th><th>BESS kW</th><th>Fiber</th>'+
      '<th>Contact</th><th>Feeder</th><th>'+esc(useLbl)+' kW</th></tr></thead><tbody>';
   for(var r2=0;r2<rows.length;r2++){
     var R=rows[r2];
     var S=R.sz, B=R.bm, dim='<span style="color:var(--dim)">\u2014</span>';
-    var sc=(R.score!=null)?R.score:null;
+    var sc=(play==="compute")?R.cscore:(R.score!=null?R.score:null);
     var scCol=sc==null?"var(--dim)":(sc>=60?"#E8590C":sc>=35?"#C98A2B":"var(--dim)");
     h+='<tr>'+
        '<td class="n" style="color:'+scCol+';font-weight:800;font-size:15px">'+(sc==null?"\u2013":sc)+'</td>'+
@@ -2325,7 +2410,10 @@ function renderSweep(acc,cls,own,feeders,total){
        '<td class="n">'+(S?('<b>'+Math.round(S.delivKw).toLocaleString()+'</b>'+
             (S.constrained?'<div style="font-size:9px;color:#E8590C">grid-capped</div>':
              '<div style="font-size:9px;color:var(--dim)">'+Math.round(S.delivKwh).toLocaleString()+' kWh</div>')):dim)+'</td>'+
-       '<td class="n" style="font-size:11px">'+(S?("$"+Math.round(S.demandLo/1000)+"\u2013"+Math.round(S.demandHi/1000)+"k"):dim)+'</td>'+
+       '<td style="font-size:11px">'+(R.fb?(
+            '<b>'+R.fb.mi.toFixed(R.fb.mi<1?2:1)+' mi</b>'+
+            '<div style="font-size:9px;color:var(--dim)">'+esc(R.fb.name.slice(0,26))+' \u00b7 '+R.fb.nw+' nw</div>'
+          ):dim)+'</td>'+
        '<td style="font-size:11px">'+(R.people?('<b>'+esc(R.people)+'</b>'):esc(R.biz||R.owner||"\u2014"))+
          (R.phone?('<div><b>'+esc(R.phone)+'</b></div>'):
           ('<div><a href="'+esc(searchLink(R.biz||R.owner,R.addr))+'" target="_blank" rel="noopener" style="color:var(--accent);font-size:10px">search \u2197</a></div>'))+'</td>'+
@@ -2350,17 +2438,19 @@ function fdDone(msg,cls){
 function downloadFdCsv(){
   if(!FD.rows.length) return;
   if(FD_VIEW==="owner"){ downloadOwnerCsv(); return; }
-  var lines=["Deal_Score,Address,Property_Type,Class,Building_Type,Gross_SqFt,Energy_Star,Annual_kWh,Load_Factor,Est_Peak_kW,Est_Demand_Cost_Low,Est_Demand_Cost_High,Rec_BESS_kW,Rec_BESS_kWh,Deliverable_BESS_kW,Grid_Capped,Est_Savings_Low,Est_Savings_High,Owner,Business_On_Site,Named_Contacts,Phone,Phone_Source,Mailing_Address,PIN,Feeder,Substation,Circuit_kW,BESS_kW,PV_kW,EV_kW,Benchmark_Year,Tax_Year"];
+  var lines=["Deal_Score,Address,Property_Type,Class,Building_Type,Gross_SqFt,Energy_Star,Annual_kWh,Load_Factor,Est_Peak_kW,Est_Demand_Cost_Low,Est_Demand_Cost_High,Rec_BESS_kW,Rec_BESS_kWh,Deliverable_BESS_kW,Grid_Capped,Est_Savings_Low,Est_Savings_High,Owner,Business_On_Site,Named_Contacts,Phone,Phone_Source,Mailing_Address,PIN,Feeder,Substation,Circuit_kW,BESS_kW,PV_kW,EV_kW,Fiber_Miles,Fiber_Facility,Fiber_Networks,Benchmark_Year,Tax_Year"];
   for(var i=0;i<FD.rows.length;i++){ var r=FD.rows[i];
     var S=r.sz,B=r.bm;
-    lines.push([r.score!=null?r.score:"",r.addr,r.clsLabel,r.cls,
+    lines.push([r.score!=null?r.score:"",r.cscore!=null?r.cscore:"",r.addr,r.clsLabel,r.cls,
       B?(B.type||""):"", B&&B.sqft?Math.round(B.sqft):"", B?(B.star||""):"",
       B&&B.kwh?Math.round(B.kwh):"", S?S.lf:"", S?Math.round(S.peakKw):"",
       S?Math.round(S.demandLo):"", S?Math.round(S.demandHi):"",
       S?Math.round(S.recKw):"", S?Math.round(S.recKwh):"",
       S?Math.round(S.delivKw):"", S?(S.constrained?"YES":"no"):"",
       S?Math.round(S.saveLo):"", S?Math.round(S.saveHi):"",
-      r.owner,r.biz||"",r.people||"",r.phone||"",r.phoneSrc||"",r.mail,r.pin,r.feeder,r.sub,r.val,r.bess,r.pv,r.ev,B?(B.year||""):"",r.asOf].map(csvCell).join(",")); }
+      r.owner,r.biz||"",r.people||"",r.phone||"",r.phoneSrc||"",r.mail,r.pin,r.feeder,r.sub,r.val,r.bess,r.pv,r.ev,
+      r.fb?r.fb.mi.toFixed(2):"", r.fb?r.fb.name:"", r.fb?r.fb.nw:"",
+      B?(B.year||""):"",r.asOf].map(csvCell).join(",")); }
   var blob=new Blob([lines.join("\r\n")],{type:"text/csv;charset=utf-8"});
   var a=document.createElement("a"), url=URL.createObjectURL(blob);
   var d=new Date(), st=d.getFullYear()+"-"+("0"+(d.getMonth()+1)).slice(-2)+"-"+("0"+d.getDate()).slice(-2);
@@ -2392,6 +2482,7 @@ document.getElementById("fdWrap").onclick=function(e){ if(e.target===this) this.
 document.getElementById("fdRun").onclick=runFindSites;
 document.getElementById("fdCsv").onclick=downloadFdCsv;
 document.getElementById("fdPhone").onclick=findContacts;
+document.getElementById("fdPlay").onchange=function(){ if(FD.siteRerender) FD.siteRerender(); };
 document.getElementById("fdView").onclick=function(){
   if(!FD.rows.length) return;
   FD_VIEW=(FD_VIEW==="site")?"owner":"site";
@@ -2400,6 +2491,7 @@ document.getElementById("fdView").onclick=function(){
   else document.getElementById("fdOut").innerHTML=FD.siteHtml||"";
 };
 document.getElementById("prospect").onchange=function(){ PROSPECT=this.checked; repaint(); };
+document.getElementById("fiberOn").onchange=function(){ drawFiber(this.checked); };
 
 
 bootService();
