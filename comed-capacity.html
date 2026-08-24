@@ -199,13 +199,29 @@
     <div class="r-h"><span class="ti">Find Sites</span><span class="x" id="fdClose">&#10005;</span></div>
     <div class="r-c">
       <div class="r-ctl">
-        <div class="r-f"><label>Power needed</label>
+        <div class="r-f"><label>System size</label>
           <select id="fdMin">
-            <option value="1001" selected>1,001 kW or more</option>
-            <option value="2000">2,000 kW or more</option>
-            <option value="5000">5,000 kW or more</option>
-            <option value="10000">10,000 kW or more</option>
-            <option value="501">501 kW or more</option>
+            <option value="250">250 kW</option>
+            <option value="500">500 kW</option>
+            <option value="1000" selected>1 MW</option>
+            <option value="2000">2 MW</option>
+            <option value="5000">5 MW</option>
+            <option value="10000">10 MW</option>
+            <option value="20000">20 MW</option>
+          </select></div>
+        <div class="r-f"><label>Duration</label>
+          <select id="fdHrs">
+            <option value="2" selected>2 hr</option>
+            <option value="4">4 hr</option>
+            <option value="6">6 hr</option>
+            <option value="8">8 hr</option>
+          </select></div>
+        <div class="r-f"><label>Availability</label>
+          <select id="fdAvail">
+            <option value="all" selected>Any owner</option>
+            <option value="absentee">Absentee owner</option>
+            <option value="vacant">Vacant / land</option>
+            <option value="local">Owner-occupied</option>
           </select></div>
         <div class="r-f"><label>Property type</label>
           <select id="fdClass">
@@ -1432,9 +1448,11 @@ function runFindSites(){
   if(!root){ fdMsg("Site search needs the proxy (PROXY is empty).","err"); return; }
   if(!SVC.ready){ fdMsg("Still connecting to ComEd\u2026"); setTimeout(runFindSites,700); return; }
 
-  var minKw=parseFloat(document.getElementById("fdMin").value)||1001;
+  var minKw=parseFloat(document.getElementById("fdMin").value)||1000;
+  var hrs  =parseFloat(document.getElementById("fdHrs").value)||2;
   var useF =document.getElementById("fdUse").value;
-  FD.busy=true; FD.rows=[]; FD.useField=useF;
+  FD.sysKw=minKw; FD.sysHrs=hrs;
+  FD.busy=true; FD.rows=[]; FD.useField=useF; hReset();
   document.getElementById("fdRun").disabled=true;
   document.getElementById("fdCsv").disabled=true;
   document.getElementById("fdOut").innerHTML="";
@@ -1452,9 +1470,16 @@ function runFindSites(){
                           spatialReference:{wkid:4326}});
 
   fdStep('<div class="on">1 · Finding circuits in view\u2026</div>');
-  fdMsg("Searching circuits with "+minKw.toLocaleString()+"+ kW of "+
-        (useF==="ev"?"load":useF==="pv"?"export":"battery")+" headroom\u2026");
+  var szLbl=(minKw>=1000?(minKw/1000)+" MW":minKw+" kW")+" / "+
+            (minKw*hrs>=1000?((minKw*hrs)/1000)+" MWh":(minKw*hrs)+" kWh");
+  fdMsg("Circuits that can take a "+szLbl+" "+
+        (useF==="ev"?"load":useF==="pv"?"export":"battery")+", net of queued DER\u2026");
 
+  /* Ask the service for the headline, then apply the real bar locally.
+     Feeder_Q is DER already in the queue and is NOT netted out anywhere in
+     ComEd's data — a circuit advertising 15,620 kW with 4,895 queued can
+     actually take about 10,725. Filtering on the headline sends reps at
+     capacity that is already spoken for. */
   fetchJSON(rptUrl(lid,{where:col+" >= "+minKw, geometry:env,geometryType:"esriGeometryEnvelope",
                         inSR:"4326",spatialRel:"esriSpatialRelIntersects",
                         outFields:"OBJECTID,Feeder,SS_N,BESS_HC,PV_HC_kW,EV_HC_kW,Feeder_Q",
@@ -1464,20 +1489,23 @@ function runFindSites(){
         fdDone("Circuit search failed: "+(err?err.message:(j&&j.error?("service "+j.error.code):"no result")),"err"); return;
       }
       if(!j.features.length){
-        fdDone("No circuits at "+minKw.toLocaleString()+"+ kW in this view. Zoom out, pan, or lower the threshold.","err"); return;
+        fdDone("No circuit in view can take "+szLbl+" once queued DER is netted out. "+
+               "Zoom out, pan, or pick a smaller system.","err"); return;
       }
       /* collapse buffer segments to one entry per feeder, best value wins */
       var by={},order=[];
       for(var i=0;i<j.features.length;i++){
         var a=j.features[i].attributes, f=a.Feeder||("oid"+a.OBJECTID);
         var v=parseFloat(a[col]); if(isNaN(v)) v=0;
-        if(!by[f]){ by[f]={feeder:f,sub:a.SS_N||"",val:v,bess:a.BESS_HC,pv:a.PV_HC_kW,ev:a.EV_HC_kW,
-                           queue:a.Feeder_Q,oids:[a.OBJECTID]}; order.push(f); }
-        else { by[f].oids.push(a.OBJECTID); if(v>by[f].val){ by[f].val=v; by[f].bess=a.BESS_HC;
-               by[f].pv=a.PV_HC_kW; by[f].ev=a.EV_HC_kW; } }
+        var qd=parseFloat(a.Feeder_Q); if(isNaN(qd)) qd=0;
+        if(v-qd < minKw) continue;          /* net of queue is the real bar */
+        if(!by[f]){ by[f]={feeder:f,sub:a.SS_N||"",val:v,net:v-qd,bess:a.BESS_HC,pv:a.PV_HC_kW,
+                           ev:a.EV_HC_kW,queue:qd,oids:[a.OBJECTID]}; order.push(f); }
+        else { by[f].oids.push(a.OBJECTID); if(v>by[f].val){ by[f].val=v; by[f].net=v-qd;
+               by[f].bess=a.BESS_HC; by[f].pv=a.PV_HC_kW; by[f].ev=a.EV_HC_kW; by[f].queue=qd; } }
       }
       var feeders=order.map(function(k){return by[k];});
-      feeders.sort(function(x,y){ return y.val-x.val; });
+      feeders.sort(function(x,y){ return y.net-x.net; });
       var total=feeders.length;
       if(feeders.length>FD_MAX_FEEDERS) feeders=feeders.slice(0,FD_MAX_FEEDERS);
 
@@ -1510,7 +1538,9 @@ function sweepFeeders(root,feeders,i,acc,total){
                   spatialRel:"esriSpatialRelIntersects",returnIdsOnly:"true"}),
         function(e2,j2){
           if(e2||!j2||!j2.objectIds||!j2.objectIds.length){
-            diag("sweep parcels "+f.feeder+": "+(e2?e2.message:"none")); sweepFeeders(root,feeders,i+1,acc,total); return;
+            diag("sweep parcels "+f.feeder+": "+(e2?e2.message:"none"));
+            if(e2) hFail("Cook parcels",e2.message);
+            sweepFeeders(root,feeders,i+1,acc,total); return;
           }
           var ids=j2.objectIds.slice(0,FD_MAX_PARCELS), chunks=[],c;
           for(c=0;c<ids.length;c+=200) chunks.push(ids.slice(c,c+200));
@@ -1523,6 +1553,7 @@ function sweepFeeders(root,feeders,i,acc,total){
                         returnGeometry:"false",returnCentroid:"true",outSR:"4326"}),
               function(e3,j3){
                 if(!e3&&j3&&j3.features){
+                  hNote("Cook parcels","hit",j3.features.length);
                   for(var q=0;q<j3.features.length;q++){
                     if(acc.length>=FD_MAX_ROWS) break;
                     var at=j3.features[q].attributes;
@@ -1530,7 +1561,8 @@ function sweepFeeders(root,feeders,i,acc,total){
                     acc.push({addr:String(at[AD.cfg?AD.cfg.addr:"street_address"]||"").trim(),
                               pin:pin14(at[AD.cfg?AD.cfg.idField:"PIN14_dash"]),
                               lat:ctr?ctr.y:null, lon:ctr?ctr.x:null,
-                              feeder:f.feeder,sub:f.sub,val:f.val,bess:f.bess,pv:f.pv,ev:f.ev,queue:f.queue});
+                              feeder:f.feeder,sub:f.sub,val:f.val,net:f.net,
+                              bess:f.bess,pv:f.pv,ev:f.ev,queue:f.queue});
                   }
                 }
                 d++; nextChunk();
@@ -1566,10 +1598,14 @@ function enrichSweep(root,acc,feeders,total){
     fdMsg("Owner lookup \u00b7 "+Math.min((done+1)*CH,pins.length).toLocaleString()+"/"+pins.length.toLocaleString());
     var list=chunks[done];
     fetchJSON(soql("universe","pin,class,year",list),function(e1,j1){
-      if(!e1&&j1&&j1.length) keepNewest(cls,j1,function(r){return {cls:r["class"],year:r.year};});
+      if(!e1&&j1&&j1.length){ keepNewest(cls,j1,function(r){return {cls:r["class"],year:r.year};});
+                              hNote("Assessor class","hit",j1.length); }
+      else if(e1) hFail("Assessor class",e1.message);
       fetchJSON(soql("addresses","pin,year,prop_address_full,prop_address_city_name,prop_address_zipcode_1,"+
         "mail_address_name,mail_address_full,mail_address_city_name,mail_address_state,mail_address_zipcode_1,"+
         "owner_address_name",list),function(e2,j2){
+          if(!e2&&j2&&j2.length) hNote("Assessor owner","hit",j2.length);
+          else if(e2) hFail("Assessor owner",e2.message);
           if(!e2&&j2&&j2.length) keepNewest(own,j2,function(r){ return {
             owner:r.owner_address_name||r.mail_address_name||"",
             mail:[r.mail_address_full,r.mail_address_city_name,r.mail_address_state,r.mail_address_zipcode_1].filter(Boolean).join(", "),
@@ -1759,7 +1795,24 @@ function findContacts(){
   var b=map.getBounds();
   var stats={osm:0,biz:0,people:0};
 
-  /* ── 1 · OpenStreetMap ── */
+  /* ── 0 · the shipped bundle, if the host has one ── */
+  fdMsg("Loading phone data\u2026");
+  loadPhoneBundle(function(){
+    if(PB.state==="ready"){
+      for(var i=0;i<FD.rows.length;i++){
+        var R=FD.rows[i];
+        if(R.phone) continue;
+        var m=bundleLookup(R.addr,R.lat,R.lon);
+        if(m){ R.phone=m.phone; R.phoneRaw=m.raw; R.phoneSrc=m.src;
+               R.bizName=R.bizName||m.name; stats.osm++; }
+      }
+    }
+    contactsStep1(root,b,stats);
+  });
+}
+
+function contactsStep1(root,b,stats){
+  /* ── 1 · OpenStreetMap, live, for anything the bundle missed ── */
   fdMsg("1 of 3 \u00b7 published business numbers\u2026");
   var bbox=b.getSouth().toFixed(5)+","+b.getWest().toFixed(5)+","+b.getNorth().toFixed(5)+","+b.getEast().toFixed(5);
   /* no addr:* requirement — we want every POI carrying a phone, then
@@ -1803,7 +1856,7 @@ function findContacts(){
       /* second pass: anything still blank, try a nearby pin */
       stats.prox=proximityPhones(CONTACT.pois||[],FD.rows);
       stats.osm+=stats.prox;
-    } else diag("overpass "+x.status);
+    } else { diag("overpass "+x.status); hFail("Phones","Overpass HTTP "+x.status); }
     chicagoLicences(root,b,stats);
   };
   x.ontimeout=function(){ diag("overpass timeout"); chicagoLicences(root,b,stats); };
@@ -1831,6 +1884,7 @@ function chicagoLicences(root,b,stats){
     attempt("geocoded_column",function(j2){
       if(j2&&j2.length!==undefined){ useLicences(root,j2,stats); return; }
       diag("chibiz: both geo columns failed");
+      hFail("Chicago licences","bbox query failed on both geo columns");
       finishContacts(stats);
     });
   });
@@ -1913,7 +1967,8 @@ function chicagoOwners(root,accts,stats){
             var bucket=person?byAcct[acct].people:byAcct[acct].entities;
             if(bucket.indexOf(label)<0) bucket.push(label);
           }
-        } else diag("chiowner chunk "+done+": "+(err?err.message:"empty"));
+        } else { diag("chiowner chunk "+done+": "+(err?err.message:"empty"));
+                 if(err) hFail("Named owners",err.message); }
         done++; next();
       });
   })();
@@ -2047,6 +2102,7 @@ function fetchBenchmark(root,b,after){
           if(err||!j||!j.length){
             /* location column may be absent; fall back to no geo filter on year */
             diag("chibench bbox: "+(err?err.message:"empty"));
+            if(err) hFail("Metered energy",err.message);
             after(0); return;
           }
           var idx={},n;
@@ -2245,6 +2301,197 @@ function fiberScore(fb){
   return (prox*0.7 + prox*dens*0.3) * 25;
 }
 
+
+
+/* ══════════════════════════════════════════════════════════════
+   DATA HEALTH
+
+   Every failure in this tool has been silent. A bbox query truncating
+   at its row cap, an endpoint 404ing after a monthly rename, a class
+   filter dropping everything — all of them render as empty columns,
+   which is indistinguishable from "no data exists here". A rep sees
+   blanks and assumes the neighbourhood is dead.
+
+   So each source reports three numbers: attempted, matched, failed.
+   A layer at 0% with failures is broken. A layer at 0% with no
+   failures is genuinely empty — benchmarking over South Side retail
+   should be 0%, and that is correct.
+   ══════════════════════════════════════════════════════════════ */
+var HEALTH={};
+function hReset(){ HEALTH={}; }
+function hNote(src,field,n){
+  var s=HEALTH[src]||(HEALTH[src]={tried:0,hit:0,fail:0,note:""});
+  s[field]=(s[field]||0)+(n==null?1:n);
+  return s;
+}
+function hFail(src,msg){
+  var s=hNote(src,"fail",1);
+  if(!s.note) s.note=String(msg||"").slice(0,90);
+}
+/* Expected coverage, so a low number can be judged rather than feared.
+   These are what the sources can support, not targets. */
+var H_EXPECT={
+  "Cook parcels":     [80,100,"every parcel in the buffer should resolve"],
+  "Assessor class":   [80,100,"nearly every Cook parcel is classified"],
+  "Assessor owner":   [70,100,"some parcels have no current-year record"],
+  "Chicago licences": [10,45,"Chicago city limits only, and only where a business is licensed"],
+  "Named owners":     [5,30,"only licensed businesses, and only some file owner records"],
+  "Phones":           [30,60,"listings data; a vacant holding has no number to find"],
+  "Metered energy":   [0,15,"buildings over 50,000 sq ft only \u2014 0% on small retail is correct"]
+};
+function healthHtml(total){
+  var order=["Cook parcels","Assessor class","Assessor owner","Chicago licences",
+             "Named owners","Phones","Metered energy"];
+  var rows="",any=false;
+  for(var i=0;i<order.length;i++){
+    var k=order[i], s=HEALTH[k];
+    if(!s) continue;
+    any=true;
+    var pct=total?Math.round(s.hit*100/total):0;
+    var ex=H_EXPECT[k]||[0,100,""];
+    var bad=s.fail>0, low=!bad&&pct<ex[0];
+    var col=bad?"var(--red)":low?"var(--amber)":"var(--green)";
+    var verdict=bad?("FAILING \u2014 "+esc(s.note||"request errors")):
+                low?("below expected "+ex[0]+"\u2013"+ex[1]+"%"):"ok";
+    rows+='<tr><td>'+esc(k)+'</td>'+
+          '<td class="n">'+s.hit.toLocaleString()+'</td>'+
+          '<td class="n" style="color:'+col+';font-weight:700">'+pct+'%</td>'+
+          '<td class="n">'+(s.fail?s.fail.toLocaleString():"\u2014")+'</td>'+
+          '<td style="font-size:11px;color:'+(bad?"var(--red)":"var(--muted)")+'">'+verdict+
+          '<div style="font-size:10px;color:var(--dim)">'+esc(ex[2])+'</div></td></tr>';
+  }
+  if(!any) return "";
+  return '<details style="margin-top:14px"><summary style="cursor:pointer;font-family:var(--mono);'+
+         'font-size:10px;letter-spacing:.13em;text-transform:uppercase;color:var(--dim)">'+
+         'Data health \u2014 what matched and what did not</summary>'+
+         '<table class="r-t" style="margin-top:8px"><thead><tr><th>Layer</th><th>Matched</th>'+
+         '<th>Rate</th><th>Errors</th><th>Read</th></tr></thead><tbody>'+rows+'</tbody></table>'+
+         '<div class="r-note">A layer at 0% with no errors is genuinely empty for this area. '+
+         'A layer at 0% <b>with errors</b> is broken \u2014 usually an endpoint that moved or a '+
+         'row cap that truncated. Check the Diagnostics block in the Site Capacity panel for the '+
+         'raw messages.</div></details>';
+}
+
+/* ══════════════════════════════════════════════════════════════
+   AVAILABILITY — is this parcel gettable?
+
+   THERE IS NO FREE "FOR SALE" FEED. MLS is licensed; LoopNet and Crexi
+   forbid scraping. What the public record supports is MOTIVATION, and
+   the signals are already in the data we pull:
+
+   ABSENTEE   the tax bill goes somewhere other than the property. An
+              owner who does not occupy is holding an investment, and
+              investments trade. Out of state is stronger than out of town.
+   VACANT     class 1xx. Nothing to displace, no tenant to relocate,
+              carrying cost with no income.
+   OCCUPIED   the licensed business matches the owner. Usually NOT for
+              sale — but the best behind-the-meter customer there is:
+              they keep the savings and sign without a landlord.
+
+   Read as who will take a call, not as a listing.
+   ══════════════════════════════════════════════════════════════ */
+function availability(r){
+  var cls=String(r.cls||"");
+  if(/^1/.test(cls)||/vacant/i.test(r.clsLabel||"")) return {code:"vacant",label:"Vacant land",rank:3};
+  var pc=(r.propCity||"").toUpperCase().trim();
+  var mc=(r.mailCity||"").toUpperCase().trim();
+  var ms=(r.mailState||"").toUpperCase().trim();
+  if(mc&&pc){
+    if(ms&&ms!=="IL") return {code:"absentee",label:"Absentee \u00b7 out of state",rank:4};
+    if(mc!==pc)       return {code:"absentee",label:"Absentee \u00b7 out of town",rank:3};
+  }
+  var o=(r.owner||"").toUpperCase().replace(/[^A-Z0-9]/g,"");
+  var b=(r.bizLegal||r.biz||"").toUpperCase().replace(/[^A-Z0-9]/g,"");
+  if(o&&b&&(o.indexOf(b)>=0||b.indexOf(o)>=0)) return {code:"local",label:"Owner-occupied",rank:1};
+  if(mc&&pc&&mc===pc) return {code:"local",label:"Owner-occupied",rank:1};
+  return {code:"unknown",label:"",rank:2};
+}
+
+/* ══════════════════════════════════════════════════════════════
+   PHONE BUNDLE — phones ship with the tool
+
+   Reps do not import anything. A bundle generated by the harvest
+   pipeline sits next to this file on the tool host; we load it once,
+   lazily, the first time contacts are needed, and index it two ways:
+   by normalised street address, and on a coarse lat/lon grid for the
+   listings that carry a phone but no address.
+
+   Lazy on purpose. The bundle is a few hundred KB gzipped and the map
+   should paint before it arrives. If it is missing — a tenant on a
+   host without it — everything still works, just with OpenStreetMap
+   coverage only. It degrades, it does not break.
+
+   Format: [addrKey, phone10, name, src, lat, lon]
+   ══════════════════════════════════════════════════════════════ */
+var PHONE_BUNDLE_URL="comed-phones.js";     /* same origin as this page */
+var PB={state:"idle",byAddr:null,grid:null,n:0};
+var PB_SRC={o:"Overture",f:"Foursquare",m:"OpenStreetMap",i:"Imported"};
+var PB_CELL=0.0025;                          /* ~275 m grid cells */
+
+function pbCell(lat,lon){ return Math.round(lat/PB_CELL)+":"+Math.round(lon/PB_CELL); }
+
+function loadPhoneBundle(cb){
+  if(PB.state==="ready"||PB.state==="failed"){ cb(); return; }
+  if(PB.state==="loading"){ PB.queue.push(cb); return; }
+  PB.state="loading"; PB.queue=[cb];
+  var s=document.createElement("script");
+  s.src=PHONE_BUNDLE_URL;
+  s.onload=function(){
+    var raw=window.CS_PHONES||[];
+    PB.byAddr={}; PB.grid={}; PB.n=raw.length;
+    for(var i=0;i<raw.length;i++){
+      var r=raw[i];
+      if(r[0]&&!PB.byAddr[r[0]]) PB.byAddr[r[0]]=r;
+      var c=pbCell(r[4],r[5]);
+      (PB.grid[c]||(PB.grid[c]=[])).push(r);
+    }
+    PB.state="ready";
+    diag("phone bundle: "+PB.n.toLocaleString()+" numbers");
+    var q=PB.queue; PB.queue=[]; for(var k=0;k<q.length;k++) q[k]();
+  };
+  s.onerror=function(){
+    PB.state="failed";
+    diag("phone bundle not found at "+PHONE_BUNDLE_URL+" \u2014 OSM only");
+    var q=PB.queue; PB.queue=[]; for(var k=0;k<q.length;k++) q[k]();
+  };
+  document.head.appendChild(s);
+}
+
+/* address match first (confident), then the nearest point within ~60 m */
+function bundleLookup(addr,lat,lon){
+  if(PB.state!=="ready") return null;
+  var k=keyFromFull(addr);
+  if(k&&PB.byAddr[k]){
+    var e=PB.byAddr[k];
+    return {phone:prettyPhone(e[1]),raw:e[1],name:e[2],
+            src:(PB_SRC[e[3]]||"bundle")+" address"};
+  }
+  if(lat==null||lon==null) return null;
+  var best=null,bd=61;
+  var ci=Math.round(lat/PB_CELL), cj=Math.round(lon/PB_CELL);
+  for(var di=-1;di<=1;di++) for(var dj=-1;dj<=1;dj++){
+    var cell=PB.grid[(ci+di)+":"+(cj+dj)];
+    if(!cell) continue;
+    for(var n=0;n<cell.length;n++){
+      var d=metersBetween(lat,lon,cell[n][4],cell[n][5]);
+      if(d<bd){ bd=d; best=cell[n]; }
+    }
+  }
+  if(!best) return null;
+  return {phone:prettyPhone(best[1]),raw:best[1],name:best[2],
+          src:(PB_SRC[best[3]]||"bundle")+" nearby ("+Math.round(bd)+"m)"};
+}
+
+/* Click-to-call. tel: opens the rep's dialler — softphone on desktop,
+   the phone app on mobile. The number stays visible as text so it can
+   still be read aloud or copied. */
+function telLink(phone,raw,label){
+  var d=String(raw||phone||"").replace(/\D/g,"");
+  if(d.length!==10) return esc(phone||"");
+  return '<a href="tel:+1'+d+'" style="color:#E8590C;font-weight:700;text-decoration:none" '+
+         'title="Call '+esc(label||"")+'">\u260e '+esc(phone)+'</a>';
+}
+
 /* ── PROXIMITY PHONE MATCHING ────────────────────────────────────
    Exact-address matching only finds POIs that were tagged with
    addr:housenumber AND addr:street. Plenty of businesses publish a
@@ -2299,7 +2546,7 @@ function ownerRollup(rows){
     if(!by[k]){ by[k]={owner:r.owner||"(owner not on record)",mail:r.mail,n:0,best:0,
                        feeders:{},addrs:[],types:{},phone:"",phoneAddr:"",bizs:[],people:""}; order.push(k); }
     var g=by[k]; g.n++;
-    if(!g.phone&&r.phone){ g.phone=r.phone; g.phoneAddr=r.addr; }
+    if(!g.phone&&r.phone){ g.phone=r.phone; g.phoneRaw=r.phoneRaw; g.phoneAddr=r.addr; }
     if(r.biz&&g.bizs.indexOf(r.biz)<0&&g.bizs.length<6) g.bizs.push(r.biz);
     if(r.people&&!g.people) g.people=r.people;
     if((r.val||0)>g.best){ g.best=r.val; g.mail=r.mail||g.mail; }
@@ -2325,7 +2572,7 @@ function renderOwners(){
     h+='<tr><td><b>'+esc(g.owner)+'</b></td><td class="n">'+g.n+'</td>'+
        '<td class="n">'+Math.round(g.best).toLocaleString()+'</td>'+
        '<td>'+(g.people?('<b>'+esc(g.people)+'</b>'):'<span style="color:var(--dim)">\u2014</span>')+'</td>'+
-       '<td>'+(g.phone?('<b>'+esc(g.phone)+'</b>'):
+       '<td>'+(g.phone?telLink(g.phone,g.phoneRaw,g.owner):
               ('<a href="'+esc(searchLink(g.bizs[0]||g.owner,g.addrs[0]))+'" target="_blank" rel="noopener" style="color:var(--accent);font-size:11px">search \u2197</a>'))+'</td>'+
        '<td style="font-size:11px">'+esc(g.bizs.slice(0,3).join(" \u00b7 ")||"\u2014")+'</td>'+
        '<td style="font-size:11px;color:var(--muted)">'+esc(g.mail||"\u2014")+'</td></tr>';
@@ -2352,14 +2599,26 @@ function renderSweep(acc,cls,own,feeders,total){
     if(seen[k]) continue; seen[k]=1;
     rows.push({addr:addr,pin:a.pin||"",cls:c,clsLabel:classLabel(c),
                owner:o.owner||"",mail:o.mail||"",asOf:o.year||"",
-               feeder:a.feeder,sub:a.sub,val:a.val,bess:a.bess,pv:a.pv,ev:a.ev});
+               propCity:o.propCity||"",mailCity:o.mailCity||"",mailState:o.mailState||"",
+               feeder:a.feeder,sub:a.sub,val:a.val,net:a.net,queue:a.queue,
+               bess:a.bess,pv:a.pv,ev:a.ev});
   }
   /* fibre proximity is geometry only — no network call, so every row
      gets it whether or not the benchmarking join found metered load */
+  var wantAvail=(document.getElementById("fdAvail")||{}).value||"all";
+  var keep=[];
   for(var f=0;f<rows.length;f++){
-    rows[f].fb=nearestFiber(rows[f].lat,rows[f].lon);
-    rows[f].cscore=computeScore(rows[f]);
+    var R=rows[f];
+    R.fb=nearestFiber(R.lat,R.lon);
+    R.cscore=computeScore(R);
+    R.av=availability(R);
+    /* "unknown" survives an availability filter — a blank mailing city is
+       missing data, not evidence the owner is on site. Dropping it would
+       hide real prospects behind a gap in the county's file. */
+    if(wantAvail!=="all"&&R.av.code!==wantAvail&&R.av.code!=="unknown") continue;
+    keep.push(R);
   }
+  if(wantAvail!=="all") rows=keep;
   rows.sort(function(x,y){ return (y.val||0)-(x.val||0) || (x.addr<y.addr?-1:1); });
   FD.rows=rows; FD.busy=false;
   document.getElementById("fdRun").disabled=false;
@@ -2370,7 +2629,8 @@ function renderSweep(acc,cls,own,feeders,total){
 
   var uniqOwners={},uf={};
   rows.forEach(function(r){ if(r.owner) uniqOwners[r.owner]=1; uf[r.feeder]=1; });
-  var best=rows.length?rows[0].val:0;
+  var best=rows.length?rows[0].val:0, bestNet=0;
+  rows.forEach(function(r){ if((r.net||0)>bestNet) bestNet=r.net||0; });
   var useLbl={bess:"battery",ev:"load",pv:"export"}[FD.useField];
 
   fdMsg(rows.length.toLocaleString()+" sites \u00b7 "+Object.keys(uf).length+" circuits \u00b7 "+
@@ -2385,7 +2645,10 @@ function renderSweep(acc,cls,own,feeders,total){
     (withLoad?('<div><span class="k">Metered load</span><span class="big-num">'+withLoad.toLocaleString()+'</span></div>'+
      '<div><span class="k">Sellable BESS</span><span class="big-num">'+(totBess>=1000?(totBess/1000).toFixed(1)+' MW':Math.round(totBess)+' kW')+'</span></div>'+
      '<div><span class="k">Customer savings/yr</span><span class="big-num">$'+Math.round(totSave/1000).toLocaleString()+'k+</span></div>'):"")+
-    '<div><span class="k">Best circuit</span><span class="big-num">'+Math.round(best).toLocaleString()+' kW</span></div></div>';
+    '<div><span class="k">Sizing for</span><span class="big-num">'+
+      (FD.sysKw>=1000?(FD.sysKw/1000)+" MW":FD.sysKw+" kW")+'</span></div>'+
+    '<div><span class="k">Best circuit (net)</span><span class="big-num">'+
+      Math.round(bestNet).toLocaleString()+' kW</span></div></div>';
 
   /* deal score first when we have it — that is the sort a rep wants */
   var play=(document.getElementById("fdPlay")||{}).value||"bess";
@@ -2394,7 +2657,7 @@ function renderSweep(acc,cls,own,feeders,total){
   else if(rows.length&&rows[0].score!=null)
     rows.sort(function(a,b){ return (b.score||0)-(a.score||0) || (b.val||0)-(a.val||0); });
   h+='<table class="r-t"><thead><tr><th>'+(play==="compute"?"Compute":"Deal")+'</th><th>Address</th><th>Building</th>'+
-     '<th>Annual kWh</th><th>Peak kW</th><th>BESS kW</th><th>Fiber</th>'+
+     '<th>Owner type</th><th>Fits system</th><th>Peak kW</th><th>Fiber</th>'+
      '<th>Contact</th><th>Feeder</th><th>'+esc(useLbl)+' kW</th></tr></thead><tbody>';
   for(var r2=0;r2<rows.length;r2++){
     var R=rows[r2];
@@ -2405,22 +2668,33 @@ function renderSweep(acc,cls,own,feeders,total){
        '<td class="n" style="color:'+scCol+';font-weight:800;font-size:15px">'+(sc==null?"\u2013":sc)+'</td>'+
        '<td>'+esc(R.addr)+'<div style="font-size:10px;color:var(--dim)">'+esc(R.clsLabel)+'</div></td>'+
        '<td>'+(B?(esc(B.type||"\u2014")+(B.sqft?('<div style="font-size:10px;color:var(--dim)">'+Math.round(B.sqft).toLocaleString()+' sq ft'+(B.star?(" \u00b7 ES "+esc(B.star)):"")+'</div>'):"")):dim)+'</td>'+
-       '<td class="n">'+(B&&B.kwh?Math.round(B.kwh).toLocaleString():dim)+'</td>'+
+       '<td style="font-size:11px">'+(R.av&&R.av.label?
+            ('<b style="color:'+(R.av.rank>=3?"#E8590C":"var(--muted)")+'">'+esc(R.av.label)+'</b>'):dim)+'</td>'+
+       '<td class="n">'+((R.net!=null)?
+            ('<b style="color:'+(R.net>=FD.sysKw?"#2ea043":"var(--dim)")+'">'+
+             Math.round(R.net).toLocaleString()+' kW</b>'+
+             '<div style="font-size:9px;color:var(--dim)">net of '+
+             Math.round(R.queue||0).toLocaleString()+' queued</div>'):dim)+'</td>'+
        '<td class="n">'+(S?Math.round(S.peakKw).toLocaleString():dim)+'</td>'+
-       '<td class="n">'+(S?('<b>'+Math.round(S.delivKw).toLocaleString()+'</b>'+
-            (S.constrained?'<div style="font-size:9px;color:#E8590C">grid-capped</div>':
-             '<div style="font-size:9px;color:var(--dim)">'+Math.round(S.delivKwh).toLocaleString()+' kWh</div>')):dim)+'</td>'+
        '<td style="font-size:11px">'+(R.fb?(
             '<b>'+R.fb.mi.toFixed(R.fb.mi<1?2:1)+' mi</b>'+
             '<div style="font-size:9px;color:var(--dim)">'+esc(R.fb.name.slice(0,26))+' \u00b7 '+R.fb.nw+' nw</div>'
           ):dim)+'</td>'+
        '<td style="font-size:11px">'+(R.people?('<b>'+esc(R.people)+'</b>'):esc(R.biz||R.owner||"\u2014"))+
-         (R.phone?('<div><b>'+esc(R.phone)+'</b></div>'):
+         (R.phone?('<div>'+telLink(R.phone,R.phoneRaw,R.biz||R.owner)+'</div>'):
           ('<div><a href="'+esc(searchLink(R.biz||R.owner,R.addr))+'" target="_blank" rel="noopener" style="color:var(--accent);font-size:10px">search \u2197</a></div>'))+'</td>'+
        '<td style="font-family:var(--mono);font-size:11px">'+esc(R.feeder)+'</td>'+
        '<td class="n">'+(R.val!=null?Math.round(R.val).toLocaleString():"\u2014")+'</td></tr>';
   }
   h+='</tbody></table>';
+  /* per-row outcomes, counted after every join has run */
+  rows.forEach(function(r){
+    if(r.biz)        hNote("Chicago licences","hit");
+    if(r.people)     hNote("Named owners","hit");
+    if(r.phone)      hNote("Phones","hit");
+    if(r.bm&&r.bm.kwh) hNote("Metered energy","hit");
+  });
+  h+=healthHtml(rows.length);
   h+='<div class="r-note"><b>The kW is the circuit\u2019s, not the parcel\u2019s.</b> Every site on the same feeder '+
      'draws from one shared number, and it goes to whoever finishes interconnection first \u2014 so this is a '+
      'prospecting list, not an inventory. A parcel being inside the buffer means it is near the feeder, not that '+
@@ -2438,19 +2712,54 @@ function fdDone(msg,cls){
 function downloadFdCsv(){
   if(!FD.rows.length) return;
   if(FD_VIEW==="owner"){ downloadOwnerCsv(); return; }
-  var lines=["Deal_Score,Address,Property_Type,Class,Building_Type,Gross_SqFt,Energy_Star,Annual_kWh,Load_Factor,Est_Peak_kW,Est_Demand_Cost_Low,Est_Demand_Cost_High,Rec_BESS_kW,Rec_BESS_kWh,Deliverable_BESS_kW,Grid_Capped,Est_Savings_Low,Est_Savings_High,Owner,Business_On_Site,Named_Contacts,Phone,Phone_Source,Mailing_Address,PIN,Feeder,Substation,Circuit_kW,BESS_kW,PV_kW,EV_kW,Fiber_Miles,Fiber_Facility,Fiber_Networks,Benchmark_Year,Tax_Year"];
-  for(var i=0;i<FD.rows.length;i++){ var r=FD.rows[i];
-    var S=r.sz,B=r.bm;
-    lines.push([r.score!=null?r.score:"",r.cscore!=null?r.cscore:"",r.addr,r.clsLabel,r.cls,
-      B?(B.type||""):"", B&&B.sqft?Math.round(B.sqft):"", B?(B.star||""):"",
-      B&&B.kwh?Math.round(B.kwh):"", S?S.lf:"", S?Math.round(S.peakKw):"",
-      S?Math.round(S.demandLo):"", S?Math.round(S.demandHi):"",
-      S?Math.round(S.recKw):"", S?Math.round(S.recKwh):"",
-      S?Math.round(S.delivKw):"", S?(S.constrained?"YES":"no"):"",
-      S?Math.round(S.saveLo):"", S?Math.round(S.saveHi):"",
-      r.owner,r.biz||"",r.people||"",r.phone||"",r.phoneSrc||"",r.mail,r.pin,r.feeder,r.sub,r.val,r.bess,r.pv,r.ev,
-      r.fb?r.fb.mi.toFixed(2):"", r.fb?r.fb.name:"", r.fb?r.fb.nw:"",
-      B?(B.year||""):"",r.asOf].map(csvCell).join(",")); }
+  /* Header and values come from ONE table so they cannot drift apart.
+     They already did once, silently shifting every column in the export. */
+  var COLS=[
+    ["Deal_Score",     function(r){return r.score!=null?r.score:"";}],
+    ["Compute_Score",  function(r){return r.cscore!=null?r.cscore:"";}],
+    ["Owner_Type",     function(r){return r.av?r.av.label:"";}],
+    ["Fits_System",    function(r){return (r.net!=null&&r.net>=FD.sysKw)?"yes":"no";}],
+    ["Net_Available_kW",function(r){return r.net!=null?Math.round(r.net):"";}],
+    ["Queued_kW",      function(r){return r.queue!=null?Math.round(r.queue):"";}],
+    ["Address",        function(r){return r.addr;}],
+    ["Property_Type",  function(r){return r.clsLabel;}],
+    ["Class",          function(r){return r.cls;}],
+    ["Owner",          function(r){return r.owner;}],
+    ["Mailing_Address",function(r){return r.mail;}],
+    ["Business_On_Site",function(r){return r.biz||"";}],
+    ["Business_Type",  function(r){return r.bizKind||"";}],
+    ["Named_Contacts", function(r){return r.people||"";}],
+    ["Phone",          function(r){return r.phone||"";}],
+    ["Phone_Source",   function(r){return r.phoneSrc||"";}],
+    ["Website",        function(r){return r.web||"";}],
+    ["Building_Type",  function(r){return r.bm?(r.bm.type||""):"";}],
+    ["Gross_SqFt",     function(r){return (r.bm&&r.bm.sqft)?Math.round(r.bm.sqft):"";}],
+    ["Annual_kWh",     function(r){return (r.bm&&r.bm.kwh)?Math.round(r.bm.kwh):"";}],
+    ["Est_Peak_kW",    function(r){return r.sz?Math.round(r.sz.peakKw):"";}],
+    ["Rec_BESS_kW",    function(r){return r.sz?Math.round(r.sz.recKw):"";}],
+    ["Deliverable_BESS_kW",function(r){return r.sz?Math.round(r.sz.delivKw):"";}],
+    ["Grid_Capped",    function(r){return r.sz?(r.sz.constrained?"yes":"no"):"";}],
+    ["Est_Savings_Low",function(r){return r.sz?Math.round(r.sz.saveLo):"";}],
+    ["Est_Savings_High",function(r){return r.sz?Math.round(r.sz.saveHi):"";}],
+    ["Fiber_Miles",    function(r){return r.fb?r.fb.mi.toFixed(2):"";}],
+    ["Fiber_Facility", function(r){return r.fb?r.fb.name:"";}],
+    ["Fiber_Networks", function(r){return r.fb?r.fb.nw:"";}],
+    ["PIN",            function(r){return r.pin;}],
+    ["Feeder",         function(r){return r.feeder;}],
+    ["Substation",     function(r){return r.sub;}],
+    ["Circuit_kW",     function(r){return r.val;}],
+    ["BESS_kW",        function(r){return r.bess;}],
+    ["PV_kW",          function(r){return r.pv;}],
+    ["EV_kW",          function(r){return r.ev;}],
+    ["Tax_Year",       function(r){return r.asOf||"";}],
+    ["Latitude",       function(r){return r.lat;}],
+    ["Longitude",      function(r){return r.lon;}]
+  ];
+  var lines=[COLS.map(function(c){return c[0];}).join(",")];
+  for(var i=0;i<FD.rows.length;i++){
+    var r=FD.rows[i];
+    lines.push(COLS.map(function(c){ return csvCell(c[1](r)); }).join(","));
+  }
   var blob=new Blob([lines.join("\r\n")],{type:"text/csv;charset=utf-8"});
   var a=document.createElement("a"), url=URL.createObjectURL(blob);
   var d=new Date(), st=d.getFullYear()+"-"+("0"+(d.getMonth()+1)).slice(-2)+"-"+("0"+d.getDate()).slice(-2);
@@ -2483,6 +2792,7 @@ document.getElementById("fdRun").onclick=runFindSites;
 document.getElementById("fdCsv").onclick=downloadFdCsv;
 document.getElementById("fdPhone").onclick=findContacts;
 document.getElementById("fdPlay").onchange=function(){ if(FD.siteRerender) FD.siteRerender(); };
+document.getElementById("fdAvail").onchange=function(){ if(FD.rows.length) fdMsg("Re-run to apply the availability filter."); };
 document.getElementById("fdView").onclick=function(){
   if(!FD.rows.length) return;
   FD_VIEW=(FD_VIEW==="site")?"owner":"site";
