@@ -221,6 +221,7 @@
           </select></div>
         <button class="findbtn" id="fdRun">Find sites</button>
         <button class="r-csv" id="fdPhone" disabled>☎ Find contacts</button>
+        <label class="r-csv" style="cursor:pointer;display:inline-flex;align-items:center" title="Merge a phone list from Apollo, Data Axle, PropertyShark, anything">↑ Import phones<input type="file" id="fdImport" accept=".csv,text/csv" style="display:none"></label>
         <button class="r-csv" id="fdView">By owner</button>
         <button class="r-csv" id="fdCsv" disabled>Download CSV</button>
       </div>
@@ -1514,14 +1515,16 @@ function sweepFeeders(root,feeders,i,acc,total){
             fetchJSONPost(parcelUrl(root),
               formBody({where:"OBJECTID IN ("+chunks[d].join(",")+")",
                         outFields:[AD.cfg?AD.cfg.addr:"street_address",AD.cfg?AD.cfg.idField:"PIN14_dash"].join(","),
-                        returnGeometry:"false"}),
+                        returnGeometry:"false",returnCentroid:"true",outSR:"4326"}),
               function(e3,j3){
                 if(!e3&&j3&&j3.features){
                   for(var q=0;q<j3.features.length;q++){
                     if(acc.length>=FD_MAX_ROWS) break;
                     var at=j3.features[q].attributes;
+                    var ctr=j3.features[q].centroid;
                     acc.push({addr:String(at[AD.cfg?AD.cfg.addr:"street_address"]||"").trim(),
                               pin:pin14(at[AD.cfg?AD.cfg.idField:"PIN14_dash"]),
+                              lat:ctr?ctr.y:null, lon:ctr?ctr.x:null,
                               feeder:f.feeder,sub:f.sub,val:f.val,bess:f.bess,pv:f.pv,ev:f.ev,queue:f.queue});
                   }
                 }
@@ -1754,10 +1757,11 @@ function findContacts(){
   /* ── 1 · OpenStreetMap ── */
   fdMsg("1 of 3 \u00b7 published business numbers\u2026");
   var bbox=b.getSouth().toFixed(5)+","+b.getWest().toFixed(5)+","+b.getNorth().toFixed(5)+","+b.getEast().toFixed(5);
-  var q="[out:json][timeout:40];("+
-        'nwr["addr:housenumber"]["phone"]('+bbox+');'+
-        'nwr["addr:housenumber"]["contact:phone"]('+bbox+');'+
-        'nwr["addr:housenumber"]["website"]('+bbox+');'+
+  /* no addr:* requirement — we want every POI carrying a phone, then
+     match by address where possible and by distance where not */
+  var q="[out:json][timeout:45];("+
+        'nwr["phone"]('+bbox+');'+
+        'nwr["contact:phone"]('+bbox+');'+
         ");out center tags;";
   var x=new XMLHttpRequest();
   x.open("POST",OVERPASS,true); x.timeout=60000;
@@ -1766,25 +1770,34 @@ function findContacts(){
     if(x.readyState!==4) return;
     if(x.status>=200&&x.status<300){
       var data=null; try{ data=JSON.parse(x.responseText); }catch(e){}
-      var idx={},els=(data&&data.elements)||[];
+      var idx={},pois=[],els=(data&&data.elements)||[];
       for(var i=0;i<els.length;i++){
-        var t=els[i].tags||{}, k=addrKey(t["addr:housenumber"],t["addr:street"]);
+        var e=els[i], t=e.tags||{};
+        var ph=t.phone||t["contact:phone"];
+        if(!ph) continue;
+        var lat=(e.lat!=null)?e.lat:(e.center?e.center.lat:null);
+        var lon=(e.lon!=null)?e.lon:(e.center?e.center.lon:null);
+        pois.push({phone:prettyPhone(ph),name:t.name||"",lat:lat,lon:lon});
+        var k=addrKey(t["addr:housenumber"],t["addr:street"]);
         if(!k) continue;
         if(!idx[k]) idx[k]={};
-        var ph=t.phone||t["contact:phone"];
-        if(ph&&!idx[k].phone) idx[k].phone=prettyPhone(ph);
+        if(!idx[k].phone) idx[k].phone=prettyPhone(ph);
         var w=t.website||t["contact:website"];
         if(w&&!idx[k].web) idx[k].web=w;
         if(t.name&&!idx[k].name) idx[k].name=t.name;
       }
+      CONTACT.pois=pois;
       for(var r=0;r<FD.rows.length;r++){
         var k2=keyFromFull(FD.rows[r].addr);
         if(k2&&idx[k2]){
-          if(idx[k2].phone&&!FD.rows[r].phone){ FD.rows[r].phone=idx[k2].phone; FD.rows[r].phoneSrc="OpenStreetMap"; stats.osm++; }
+          if(idx[k2].phone&&!FD.rows[r].phone){ FD.rows[r].phone=idx[k2].phone; FD.rows[r].phoneSrc="OSM address"; stats.osm++; }
           if(idx[k2].web) FD.rows[r].web=idx[k2].web;
           if(idx[k2].name) FD.rows[r].bizName=FD.rows[r].bizName||idx[k2].name;
         }
       }
+      /* second pass: anything still blank, try a nearby pin */
+      stats.prox=proximityPhones(CONTACT.pois||[],FD.rows);
+      stats.osm+=stats.prox;
     } else diag("overpass "+x.status);
     chicagoLicences(root,b,stats);
   };
@@ -2053,6 +2066,148 @@ function fetchBenchmark(root,b,after){
           after(hit);
         });
     });
+}
+
+
+
+/* ══════════════════════════════════════════════════════════════
+   PHONE IMPORT — merge any purchased list
+
+   No public record carries a facility phone. Chicago's licence file
+   has 34 fields and none of them is a number; the Assessor has none;
+   tax records never do. So beyond OpenStreetMap, every phone comes
+   from a paid source, and which one you buy will change.
+
+   This importer therefore assumes NOTHING about the file. It reads
+   the header row and works out which columns hold the address, the
+   phone and the company by pattern — the same approach that saved
+   the Chicago integration when I guessed its field names wrong twice.
+   An Apollo export, a Data Axle pull and a PropertyShark download all
+   work without code changes.
+
+   Matching is by street address, normalised through the same addrKey
+   used everywhere else, so suite numbers and "1ST FLOOR" do not
+   break it. Rows that already have a phone are not overwritten —
+   an existing match came from a source we can name.
+   ══════════════════════════════════════════════════════════════ */
+function parseCsv(text){
+  var rows=[],row=[],cur="",q=false,i;
+  for(i=0;i<text.length;i++){
+    var c=text.charAt(i);
+    if(q){
+      if(c==='"'){ if(text.charAt(i+1)==='"'){cur+='"';i++;} else q=false; }
+      else cur+=c;
+    } else if(c==='"'){ q=true; }
+    else if(c===","){ row.push(cur); cur=""; }
+    else if(c==="\n"){ row.push(cur); rows.push(row); row=[]; cur=""; }
+    else if(c!=="\r"){ cur+=c; }
+  }
+  if(cur!==""||row.length){ row.push(cur); rows.push(row); }
+  return rows.filter(function(r){ return r.length>1||r[0]!==""; });
+}
+function findCol(header,pats){
+  for(var p=0;p<pats.length;p++)
+    for(var i=0;i<header.length;i++)
+      if(pats[p].test(header[i])) return i;
+  return -1;
+}
+function importPhones(file){
+  var rd=new FileReader();
+  rd.onload=function(){
+    var rows=parseCsv(String(rd.result||""));
+    if(rows.length<2){ fdMsg("That file has no rows.","err"); return; }
+    var head=rows[0].map(function(s){return String(s||"").trim();});
+    /* ORDER IS DELIBERATE. Landlines and direct dials come first and
+       mobiles last: an autodialled or prerecorded call to a mobile
+       needs prior express consent under the TCPA, and a purchased list
+       never carries consent. If a file offers both, we take the safer
+       number. */
+    var iPh  =findCol(head,[/company.*phone/i,/direct.*dial/i,/work.*phone/i,/office.*phone/i,
+                            /business.*phone/i,/main.*phone/i,/^phone$/i,/phone.*number/i,
+                            /^tel/i,/landline/i,/mobile/i,/^cell/i]);
+    var iAddr=findCol(head,[/^address$/i,/street.*address/i,/property.*address/i,/site.*address/i,
+                            /company.*address/i,/business.*address/i,/mailing.*address/i,
+                            /^street$/i,/^addr/i,/address/i]);
+    var iPin =findCol(head,[/^pin$/i,/parcel.*id/i,/^apn$/i,/pin14/i]);
+    var iCo  =findCol(head,[/company/i,/business/i,/organi[sz]ation/i,/account.*name/i,/^name$/i]);
+    if(iPh<0){ fdMsg("No phone column found. Headers seen: "+head.slice(0,10).join(", "),"err"); return; }
+    if(iAddr<0&&iPin<0){ fdMsg("No address or PIN column to match on. Headers: "+head.slice(0,10).join(", "),"err"); return; }
+
+    var byAddr={},byPin={},n;
+    for(n=1;n<rows.length;n++){
+      var r=rows[n]; if(!r||r.length<=iPh) continue;
+      var ph=prettyPhone(r[iPh]); if(!ph) continue;
+      var co=(iCo>=0&&r[iCo])?String(r[iCo]).trim():"";
+      if(iPin>=0&&r[iPin]){ var pk=pin14(r[iPin]); if(pk&&!byPin[pk]) byPin[pk]={phone:ph,co:co}; }
+      if(iAddr>=0&&r[iAddr]){ var ak=keyFromFull(r[iAddr]); if(ak&&!byAddr[ak]) byAddr[ak]={phone:ph,co:co}; }
+    }
+    var hit=0,over=0;
+    for(var q=0;q<FD.rows.length;q++){
+      var R=FD.rows[q], m=null;
+      if(R.pin&&byPin[R.pin]) m=byPin[R.pin];
+      if(!m){ var k=keyFromFull(R.addr); if(k&&byAddr[k]) m=byAddr[k]; }
+      if(!m) continue;
+      if(R.phone){ over++; continue; }         /* keep the attributed match */
+      R.phone=m.phone; R.phoneSrc="Imported: "+(file.name||"file");
+      if(m.co&&!R.biz) R.biz=m.co;
+      hit++;
+    }
+    fdMsg("Imported "+hit.toLocaleString()+" phone"+(hit===1?"":"s")+
+          " from "+(rows.length-1).toLocaleString()+" rows"+
+          (over?(" \u00b7 "+over.toLocaleString()+" already had one"):"")+
+          " \u00b7 matched on "+(iPin>=0?"PIN and address":"address"), hit?"ok":"err");
+    if(FD_VIEW==="owner") renderOwners(); else if(FD.siteRerender) FD.siteRerender();
+  };
+  rd.onerror=function(){ fdMsg("Could not read that file.","err"); };
+  rd.readAsText(file);
+}
+document.getElementById("fdImport").addEventListener("change",function(){
+  if(this.files&&this.files[0]){
+    if(!FD.rows.length){ fdMsg("Run a search first, then import phones to merge into it.","err"); }
+    else importPhones(this.files[0]);
+  }
+  this.value="";
+});
+
+/* ── PROXIMITY PHONE MATCHING ────────────────────────────────────
+   Exact-address matching only finds POIs that were tagged with
+   addr:housenumber AND addr:street. Plenty of businesses publish a
+   phone with no address tags at all — a pin on the building and
+   nothing else. Those are invisible to an address join but sit
+   metres from the parcel centroid.
+
+   Matching by distance alone would be reckless in a dense retail
+   strip, so a proximity hit is capped tight (40 m) and labelled as
+   such: the rep sees WHICH source produced the number and can judge
+   it. An exact address match always wins over a nearby pin. */
+function metersBetween(la1,lo1,la2,lo2){
+  var R=6371000, t=Math.PI/180;
+  var dLa=(la2-la1)*t, dLo=(lo2-lo1)*t;
+  var a=Math.sin(dLa/2)*Math.sin(dLa/2)+
+        Math.cos(la1*t)*Math.cos(la2*t)*Math.sin(dLo/2)*Math.sin(dLo/2);
+  return 2*R*Math.atan2(Math.sqrt(a),Math.sqrt(1-a));
+}
+var PROX_M=40;
+function proximityPhones(pois,rows){
+  var hit=0;
+  for(var i=0;i<rows.length;i++){
+    var r=rows[i];
+    if(r.phone||r.lat==null||r.lon==null) continue;
+    var best=null,bestD=PROX_M+1;
+    for(var p=0;p<pois.length;p++){
+      var P=pois[p];
+      if(P.lat==null) continue;
+      /* cheap bbox reject before the trig — this loop is rows x pois */
+      if(Math.abs(P.lat-r.lat)>0.0005||Math.abs(P.lon-r.lon)>0.0007) continue;
+      var d=metersBetween(r.lat,r.lon,P.lat,P.lon);
+      if(d<bestD){ bestD=d; best=P; }
+    }
+    if(best&&best.phone){
+      r.phone=best.phone; r.phoneSrc="OSM nearby ("+Math.round(bestD)+"m)";
+      r.bizName=r.bizName||best.name; hit++;
+    }
+  }
+  return hit;
 }
 
 /* ── OWNER ROLLUP ───────────────────────────────────────────────
