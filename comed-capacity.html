@@ -1909,9 +1909,150 @@ function finishContacts(stats){
   if(stats.osm)    msg.push(stats.osm.toLocaleString()+" phone"+(stats.osm===1?"":"s"));
   if(stats.biz)    msg.push(stats.biz.toLocaleString()+" business"+(stats.biz===1?"":"es")+" at address");
   if(stats.people) msg.push(stats.people.toLocaleString()+" with named owners");
+  if(stats.load)   msg.push(stats.load.toLocaleString()+" with metered energy");
   fdMsg(msg.length?("Found "+msg.join(" \u00b7 ")+" across "+FD.rows.length.toLocaleString()+" sites")
                   :"No published contacts matched \u2014 use the search links.", msg.length?"ok":"");
   if(FD_VIEW==="owner") renderOwners(); else if(FD.siteRerender) FD.siteRerender();
+}
+
+
+/* ══════════════════════════════════════════════════════════════
+   LOAD & BATTERY SIZING
+
+   The grid side of this tool says what a CIRCUIT can take. This says
+   what a BUILDING uses — and the pitch only exists where the two meet.
+   A 12 MW feeder next to a corner store is worthless; a 1.5 MW feeder
+   next to a cold-storage warehouse paying $14/kW-month is a deal.
+
+   Source: Chicago Energy Benchmarking, metered whole-building energy
+   reported under the city ordinance for buildings over 50,000 sq ft.
+   Real meter data, not modelled.
+
+   UNITS TRAP: the dataset reports electricity in kBtu, not kWh.
+   1 kWh = 3.412 kBtu. Skip the conversion and every number is 3.4x
+   too high, which looks plausible enough to reach a customer.
+   ══════════════════════════════════════════════════════════════ */
+var KBTU_PER_KWH=3.412;
+
+/* Load factor = average load / peak load. Peak demand is what a demand
+   charge bills on, and it cannot be read off annual kWh without it.
+   Figures are typical C&I ranges, deliberately conservative — a lower
+   load factor implies a HIGHER peak, so erring low would overstate the
+   opportunity. These are screening values, not metered. */
+var LOAD_FACTOR=[
+  [/data ?cent|server/i,           0.85],
+  [/hospital|medical|health/i,     0.68],
+  [/hotel|lodging|residence hall/i,0.60],
+  [/multifamily|residential|apart/i,0.55],
+  [/manufactur|industrial|plant/i, 0.60],
+  [/refrigerat|cold storage/i,     0.72],
+  [/supermarket|grocery|food sales/i,0.70],
+  [/office|bank|financial/i,       0.50],
+  [/school|college|university|educat/i,0.42],
+  [/retail|mall|store|mercantile/i,0.45],
+  [/warehouse|distribution|storage/i,0.38],
+  [/worship|church|assembly/i,     0.30]
+];
+function loadFactorFor(type){
+  var t=String(type||"");
+  for(var i=0;i<LOAD_FACTOR.length;i++) if(LOAD_FACTOR[i][0].test(t)) return LOAD_FACTOR[i][1];
+  return 0.50;   /* mixed / unknown C&I */
+}
+
+/* ComEd C&I delivery + capacity charges land roughly here per kW of
+   monthly peak. Rate class, supply contract and PJM capacity all move
+   it, so we show a RANGE and never a single number. */
+var DEMAND_RATE_LO=8, DEMAND_RATE_HI=14;
+
+function sizeBattery(annualKwh,propType,feederKw){
+  if(!annualKwh||annualKwh<=0) return null;
+  var lf=loadFactorFor(propType);
+  var avgKw=annualKwh/8760;
+  var peakKw=avgKw/lf;
+  /* Peak shaving typically targets the top 10-20% of the demand curve;
+     going deeper needs interval data we do not have. 15% at 2 hours is
+     the standard opening assumption for a C&I screen. */
+  var recKw=peakKw*0.15;
+  var recKwh=recKw*2;
+  /* What the circuit will actually accept caps what you can sell. */
+  var delivKw=(feederKw!=null&&!isNaN(feederKw))?Math.min(recKw,feederKw):recKw;
+  var constrained=(feederKw!=null&&!isNaN(feederKw)&&feederKw<recKw);
+  return {
+    lf:lf, avgKw:avgKw, peakKw:peakKw,
+    recKw:recKw, recKwh:recKwh,
+    delivKw:delivKw, delivKwh:delivKw*2,
+    constrained:constrained,
+    demandLo:peakKw*DEMAND_RATE_LO*12,
+    demandHi:peakKw*DEMAND_RATE_HI*12,
+    /* savings from shaving the shaved kW, same rate range */
+    saveLo:delivKw*DEMAND_RATE_LO*12,
+    saveHi:delivKw*DEMAND_RATE_HI*12
+  };
+}
+
+/* 0-100. Deliberately weights DELIVERABLE size, not building size: a
+   huge load on a dead circuit is not a deal, and neither is a huge
+   circuit next to a small load. */
+function dealScore(r){
+  if(!r.sz) return null;
+  var s=r.sz;
+  var sizeC = Math.min(s.delivKw/1000,1)*45;          /* deliverable MW-ish */
+  var loadC = Math.min(s.peakKw/2000,1)*25;           /* customer scale */
+  var headC = (r.val!=null)?Math.min(r.val/5000,1)*20:0;  /* circuit room */
+  var freeC = s.constrained?0:10;                     /* not grid-capped */
+  return Math.round(sizeC+loadC+headC+freeC);
+}
+
+function fetchBenchmark(root,b,after){
+  fdMsg("4 of 4 \u00b7 metered building energy\u2026");
+  /* Newest reporting year only — the dataset is one row per building per
+     year going back to 2014, and an old row would understate a building
+     that has since expanded. */
+  fetchJSON(root+"/socrata/chibench?$select=data_year&$order=data_year DESC&$limit=1",
+    function(e0,j0){
+      var yr=(!e0&&j0&&j0.length&&j0[0].data_year)?j0[0].data_year:null;
+      var where="within_box(location, "+b.getNorth()+", "+b.getWest()+", "+
+                b.getSouth()+", "+b.getEast()+")"+(yr?(" AND data_year='"+yr+"'"):"");
+      fetchJSON(root+"/socrata/chibench?$where="+encodeURIComponent(where)+"&$limit=20000",
+        function(err,j){
+          if(err||!j||!j.length){
+            /* location column may be absent; fall back to no geo filter on year */
+            diag("chibench bbox: "+(err?err.message:"empty"));
+            after(0); return;
+          }
+          var idx={},n;
+          for(n=0;n<j.length;n++){
+            var r=j[n];
+            var full=pick(r,[/^address$/i,/address/i]);
+            var k=keyFromFull(full);
+            if(!k) continue;
+            var kbtu=parseFloat(pick(r,[/electricity_use/i,/electricity/i]));
+            var sqft=parseFloat(pick(r,[/gross_floor_area/i,/floor_area/i,/square_feet/i]));
+            var type=pick(r,[/primary_property_type/i,/property_type/i]);
+            var star=pick(r,[/energy_star_score/i,/star_score/i]);
+            var eui =pick(r,[/site_eui/i,/^eui/i]);
+            var yb  =pick(r,[/year_built/i]);
+            if(!idx[k]) idx[k]={
+              kwh: isNaN(kbtu)?null:(kbtu/KBTU_PER_KWH),
+              sqft: isNaN(sqft)?null:sqft,
+              type: type, star: star, eui: eui, built: yb,
+              name: pick(r,[/property_name/i]), year: yr
+            };
+          }
+          var hit=0;
+          for(var q=0;q<FD.rows.length;q++){
+            var k2=keyFromFull(FD.rows[q].addr);
+            if(k2&&idx[k2]){
+              var m=idx[k2];
+              FD.rows[q].bm=m;
+              FD.rows[q].sz=sizeBattery(m.kwh,m.type||FD.rows[q].bizKind||FD.rows[q].clsLabel,FD.rows[q].val);
+              FD.rows[q].score=dealScore(FD.rows[q]);
+              hit++;
+            }
+          }
+          after(hit);
+        });
+    });
 }
 
 /* ── OWNER ROLLUP ───────────────────────────────────────────────
@@ -1999,23 +2140,40 @@ function renderSweep(acc,cls,own,feeders,total){
         Object.keys(uniqOwners).length.toLocaleString()+" distinct owners"+
         (dropped?(" \u00b7 "+dropped.toLocaleString()+" filtered out"):""),"ok");
 
+  var withLoad=0,totBess=0,totSave=0;
+  rows.forEach(function(r){ if(r.sz){ withLoad++; totBess+=r.sz.delivKw; totSave+=r.sz.saveLo; } });
   var h='<div class="stat">'+
     '<div><span class="k">Sites</span><span class="big-num">'+rows.length.toLocaleString()+'</span></div>'+
     '<div><span class="k">Owners to contact</span><span class="big-num">'+Object.keys(uniqOwners).length.toLocaleString()+'</span></div>'+
-    '<div><span class="k">Best circuit</span><span class="big-num">'+Math.round(best).toLocaleString()+' kW</span></div>'+
-    '<div><span class="k">Circuits</span><span class="big-num">'+Object.keys(uf).length+'</span></div></div>';
+    (withLoad?('<div><span class="k">Metered load</span><span class="big-num">'+withLoad.toLocaleString()+'</span></div>'+
+     '<div><span class="k">Sellable BESS</span><span class="big-num">'+(totBess>=1000?(totBess/1000).toFixed(1)+' MW':Math.round(totBess)+' kW')+'</span></div>'+
+     '<div><span class="k">Customer savings/yr</span><span class="big-num">$'+Math.round(totSave/1000).toLocaleString()+'k+</span></div>'):"")+
+    '<div><span class="k">Best circuit</span><span class="big-num">'+Math.round(best).toLocaleString()+' kW</span></div></div>';
 
-  h+='<table class="r-t"><thead><tr><th>Address</th><th>Owner (title)</th><th>Business on site</th>'+
-     '<th>Named contact</th><th>Phone</th><th>Feeder</th><th>'+esc(useLbl)+' kW</th></tr></thead><tbody>';
+  /* deal score first when we have it — that is the sort a rep wants */
+  if(rows.length&&rows[0].score!=null)
+    rows.sort(function(a,b){ return (b.score||0)-(a.score||0) || (b.val||0)-(a.val||0); });
+  h+='<table class="r-t"><thead><tr><th>Score</th><th>Address</th><th>Building</th>'+
+     '<th>Annual kWh</th><th>Peak kW</th><th>BESS kW</th><th>Demand $/yr</th>'+
+     '<th>Contact</th><th>Feeder</th><th>'+esc(useLbl)+' kW</th></tr></thead><tbody>';
   for(var r2=0;r2<rows.length;r2++){
     var R=rows[r2];
-    h+='<tr><td>'+esc(R.addr)+'<div style="font-size:10px;color:var(--dim)">'+esc(R.clsLabel)+'</div></td>'+
-       '<td>'+esc(R.owner||"\u2014")+'</td>'+
-       '<td>'+(R.biz?esc(R.biz):'<span style="color:var(--dim)">\u2014</span>')+
-         (R.bizKind?('<div style="font-size:10px;color:var(--dim)">'+esc(R.bizKind)+'</div>'):'')+'</td>'+
-       '<td>'+(R.people?('<b>'+esc(R.people)+'</b>'):'<span style="color:var(--dim)">\u2014</span>')+'</td>'+
-       '<td>'+(R.phone?('<b>'+esc(R.phone)+'</b>'):
-              ('<a href="'+esc(searchLink(R.biz||R.owner,R.addr))+'" target="_blank" rel="noopener" style="color:var(--accent);font-size:11px">search \u2197</a>'))+'</td>'+
+    var S=R.sz, B=R.bm, dim='<span style="color:var(--dim)">\u2014</span>';
+    var sc=(R.score!=null)?R.score:null;
+    var scCol=sc==null?"var(--dim)":(sc>=60?"#E8590C":sc>=35?"#C98A2B":"var(--dim)");
+    h+='<tr>'+
+       '<td class="n" style="color:'+scCol+';font-weight:800;font-size:15px">'+(sc==null?"\u2013":sc)+'</td>'+
+       '<td>'+esc(R.addr)+'<div style="font-size:10px;color:var(--dim)">'+esc(R.clsLabel)+'</div></td>'+
+       '<td>'+(B?(esc(B.type||"\u2014")+(B.sqft?('<div style="font-size:10px;color:var(--dim)">'+Math.round(B.sqft).toLocaleString()+' sq ft'+(B.star?(" \u00b7 ES "+esc(B.star)):"")+'</div>'):"")):dim)+'</td>'+
+       '<td class="n">'+(B&&B.kwh?Math.round(B.kwh).toLocaleString():dim)+'</td>'+
+       '<td class="n">'+(S?Math.round(S.peakKw).toLocaleString():dim)+'</td>'+
+       '<td class="n">'+(S?('<b>'+Math.round(S.delivKw).toLocaleString()+'</b>'+
+            (S.constrained?'<div style="font-size:9px;color:#E8590C">grid-capped</div>':
+             '<div style="font-size:9px;color:var(--dim)">'+Math.round(S.delivKwh).toLocaleString()+' kWh</div>')):dim)+'</td>'+
+       '<td class="n" style="font-size:11px">'+(S?("$"+Math.round(S.demandLo/1000)+"\u2013"+Math.round(S.demandHi/1000)+"k"):dim)+'</td>'+
+       '<td style="font-size:11px">'+(R.people?('<b>'+esc(R.people)+'</b>'):esc(R.biz||R.owner||"\u2014"))+
+         (R.phone?('<div><b>'+esc(R.phone)+'</b></div>'):
+          ('<div><a href="'+esc(searchLink(R.biz||R.owner,R.addr))+'" target="_blank" rel="noopener" style="color:var(--accent);font-size:10px">search \u2197</a></div>'))+'</td>'+
        '<td style="font-family:var(--mono);font-size:11px">'+esc(R.feeder)+'</td>'+
        '<td class="n">'+(R.val!=null?Math.round(R.val).toLocaleString():"\u2014")+'</td></tr>';
   }
@@ -2037,9 +2195,17 @@ function fdDone(msg,cls){
 function downloadFdCsv(){
   if(!FD.rows.length) return;
   if(FD_VIEW==="owner"){ downloadOwnerCsv(); return; }
-  var lines=["Address,Property_Type,Class,Owner,Business_On_Site,Business_Legal_Name,Business_Type,Named_Contacts,Phone,Phone_Source,Website,Mailing_Address,PIN,Feeder,Substation,Circuit_kW,BESS_kW,PV_kW,EV_kW,Tax_Year"];
+  var lines=["Deal_Score,Address,Property_Type,Class,Building_Type,Gross_SqFt,Energy_Star,Annual_kWh,Load_Factor,Est_Peak_kW,Est_Demand_Cost_Low,Est_Demand_Cost_High,Rec_BESS_kW,Rec_BESS_kWh,Deliverable_BESS_kW,Grid_Capped,Est_Savings_Low,Est_Savings_High,Owner,Business_On_Site,Named_Contacts,Phone,Phone_Source,Mailing_Address,PIN,Feeder,Substation,Circuit_kW,BESS_kW,PV_kW,EV_kW,Benchmark_Year,Tax_Year"];
   for(var i=0;i<FD.rows.length;i++){ var r=FD.rows[i];
-    lines.push([r.addr,r.clsLabel,r.cls,r.owner,r.biz||"",r.bizLegal||"",r.bizKind||"",r.people||"",r.phone||"",r.phoneSrc||"",r.web||"",r.mail,r.pin,r.feeder,r.sub,r.val,r.bess,r.pv,r.ev,r.asOf].map(csvCell).join(",")); }
+    var S=r.sz,B=r.bm;
+    lines.push([r.score!=null?r.score:"",r.addr,r.clsLabel,r.cls,
+      B?(B.type||""):"", B&&B.sqft?Math.round(B.sqft):"", B?(B.star||""):"",
+      B&&B.kwh?Math.round(B.kwh):"", S?S.lf:"", S?Math.round(S.peakKw):"",
+      S?Math.round(S.demandLo):"", S?Math.round(S.demandHi):"",
+      S?Math.round(S.recKw):"", S?Math.round(S.recKwh):"",
+      S?Math.round(S.delivKw):"", S?(S.constrained?"YES":"no"):"",
+      S?Math.round(S.saveLo):"", S?Math.round(S.saveHi):"",
+      r.owner,r.biz||"",r.people||"",r.phone||"",r.phoneSrc||"",r.mail,r.pin,r.feeder,r.sub,r.val,r.bess,r.pv,r.ev,B?(B.year||""):"",r.asOf].map(csvCell).join(",")); }
   var blob=new Blob([lines.join("\r\n")],{type:"text/csv;charset=utf-8"});
   var a=document.createElement("a"), url=URL.createObjectURL(blob);
   var d=new Date(), st=d.getFullYear()+"-"+("0"+(d.getMonth()+1)).slice(-2)+"-"+("0"+d.getDate()).slice(-2);
