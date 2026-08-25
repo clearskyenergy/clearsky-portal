@@ -122,6 +122,16 @@ table.pv td.num{text-align:right;font-variant-numeric:tabular-nums}
 .pv-es-hdr{background:#fff;color:#1F3864;font-weight:700;text-align:center;border:1.5px solid #1F3864!important}
 .pv-es-lbl{font-weight:700}
 .pv-es-sum{font-weight:700;text-align:right}
+/* National Grid — their own brand palette, so the preview looks like the
+   workbook that gets exported rather than United Illuminating's */
+.pv-ng-band{background:#04415C;color:#fff;font-weight:700;text-align:center}
+.pv-ng-sec{background:#04415C;color:#fff;font-weight:700}
+.pv-ng-sec2{background:#437085;color:#fff;font-weight:700}
+.pv-ng-evse{background:#00B140;color:#fff;font-weight:700}
+.pv-ng-inel{background:#404040;color:#fff;font-weight:700}
+.pv-ng-hdr{background:#fff;color:#04415C;font-weight:700;text-align:center;border:1.5px solid #04415C!important}
+.pv-ng-lbl{font-weight:700}
+.pv-ng-tot{background:#437085;color:#fff;font-weight:700}
 .pvtabs{display:flex;padding:0 14px;border-bottom:1px solid var(--line2);overflow-x:auto}
 .pvtab{padding:9px 14px;font-size:11px;font-weight:600;background:none;border:none;border-bottom:2px solid transparent;color:var(--sub);cursor:pointer;white-space:nowrap}
 .pvtab.on{color:var(--ink);border-bottom-color:var(--gold)}
@@ -3167,7 +3177,8 @@ function renderOutputs(){
   var _pf=(_pv==='proposal') ? null : formById(_pv);
   document.getElementById('pvHost').innerHTML =
     (_pv==='proposal')            ? previewProposal(buildModel(proposalForm()))
-  : (_pf && _pf.writer==='eversource') ? previewFormES(buildModel(_pf), _pf)
+  : (_pf && _pf.writer==='eversource')   ? previewFormES(buildModel(_pf), _pf)
+  : (_pf && _pf.writer==='nationalgrid') ? previewFormNG(buildModel(_pf), _pf)
                                   : previewForm(buildModel(_pf), _pf);
 
   document.getElementById('xlWarn').innerHTML = window._XLFAIL
@@ -4104,6 +4115,72 @@ var ES_NOTES=[
    networking, a second Other under future proofing). The export was always
    correct; the preview was showing a form that doesn't exist, which is worse
    than useless because it invites a rewrite of something that isn't broken. */
+/* National Grid's sheet, on screen. The generic preview drew every form in
+   United Illuminating's layout and colours, so picking National Grid showed
+   a UI sheet with National Grid numbers in it — which is exactly what it
+   looked like. This walks NG_LAYOUT, the same fixed row map the exporter
+   fills, so what is previewed is what lands in the file. */
+function previewFormNG(m, form){
+  var h='<table class="pv">';
+  function r(c){ return '<tr>'+c+'</tr>'; }
+  function td(v,cls,span){ return '<td'+(cls?' class="'+cls+'"':'')+(span?' colspan="'+span+'"':'')+'>'+(v===''||v==null?'&nbsp;':esc(v))+'</td>'; }
+
+  h+=r(td('ESTIMATE','pv-ng-band',7));
+  h+=r(td('Estimate Date: '+new Date().toLocaleDateString('en-US'),'pv-ng-lbl',3)
+      +td('Project Details','pv-ng-lbl',2)+td('Contractor Details','pv-ng-lbl')+td('Customer Details','pv-ng-lbl'));
+  var L=[['National Grid Application #:', d('ngAppNo')],
+         ['National Grid WR #:',          d('ngWR')],
+         ['Program Segment (Public, Workplace, etc.):', d('category')]];
+  var M=[['Project Site Street Address:', d('address')],
+         ['Project City, State, ZIP Code:', d('city')],
+         ['Number of Ports:', num(DATA.plugs)||''],
+         ['Number of Stations:', num(DATA.stations)||num(DATA.plugs)||'']];
+  var R=[['Company Name:', d('company')], ['Telephone Number:', d('phone')], ['Email:', d('email')],
+         ['Name:', d('applicant')], ['Telephone Number:', d('custPhone')], ['Email:', d('custEmail')]];
+  var i, n=Math.max(L.length, M.length, R.length);
+  for(i=0;i<n;i++){
+    h+=r((L[i]?td(L[i][0],'pv-ng-lbl',2)+td(L[i][1]):td('',null,2)+td(''))
+        +(M[i]?td(M[i][0],'pv-ng-lbl')+td(M[i][1],null,2):td('')+td('',null,2))
+        +(R[i]?td(R[i][0],'pv-ng-lbl')+td(R[i][1]):td('')+td('')));
+  }
+
+  h+=r(td('Desciption','pv-ng-hdr')+td('Detail/Notes','pv-ng-hdr')+td('Unit Type','pv-ng-hdr')
+      +td('How Many ft/ea/ports','pv-ng-hdr')+td('Material Total $','pv-ng-hdr')
+      +td('Labor Total $','pv-ng-hdr')+td('Total Cost $','pv-ng-hdr'));
+
+  var byRow=ngRollup(m), li, rowNo, kind, label, unit, g, cls;
+  var SECCLS={ 9:'pv-ng-sec', 11:'pv-ng-sec', 20:'pv-ng-sec2', 26:'pv-ng-evse',
+               31:'pv-ng-evse', 33:'pv-ng-inel', 35:'pv-ng-inel', 41:'pv-ng-inel' };
+  for(li=0; li<NG_LAYOUT.length; li++){
+    rowNo=NG_LAYOUT[li][0]; kind=NG_LAYOUT[li][1]; label=NG_LAYOUT[li][2]; unit=NG_LAYOUT[li][3];
+    if(kind==='sec'){ h+=r(td(label, SECCLS[rowNo]||'pv-ng-sec', 7)); continue; }
+    g=byRow[rowNo] || { mat:0, lab:0, qty:0, notes:[] };
+    h+=r(td(String(label).replace(/\n/g,' '))
+        +td(uniqJoin(g.notes,' \u00b7 '),'o')
+        +td(unit)+td(r2(g.qty)||0,'num')
+        +td(acct(r2(g.mat)),'num')+td(acct(r2(g.lab)),'num')
+        +td(acct(r2(g.mat)+r2(g.lab)),'num'));
+  }
+
+  var mk=ngSum(byRow,10,19), ev=ngSum(byRow,27,30), net=ngSum(byRow,32,32),
+      stripe=ngSum(byRow,34,34), fpT=ngSum(byRow,36,40), neT=ngSum(byRow,42,46),
+      util=ngSum(byRow,21,25), tax=r2(m.taxTotal||0);
+  function tr(label, v, band){
+    h+=r(td('')+td(label,'pv-ng-lbl',5)+td(acct(r2(v)), band?'pv-ng-tot num':'num'));
+  }
+  tr('Eligible Customer-Side Make-Ready Total', mk);
+  tr('Eligible EVSE Total', ev);
+  tr('Eligible Networking Total', net);
+  tr('Total for Eligible Costs', mk+ev+net);
+  tr('Total for Ineligible Costs', stripe+fpT+neT);
+  tr('Sales Tax (need to enter tax in this field)', tax);
+  h+=r(td('')+td('Total for Eligible and Ineligible Costs','pv-ng-tot',5)
+      +td(acct(r2(mk+ev+net+stripe+fpT+neT+tax)),'pv-ng-tot num'));
+  h+=r(td('Estimate','pv-ng-lbl')+td('Total Utility Side Infrastructure Costs (Civil Work)','pv-ng-tot',5)
+      +td(acct(r2(util)),'pv-ng-tot num'));
+  return h+'</table>';
+}
+
 function previewFormES(m, form){
   var h='<table class="pv">';
   function r(c){ return '<tr>'+c+'</tr>'; }
