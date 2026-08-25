@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useEffect } from "react";
 
 /* ------------------------------------------------------------------
    EDGE FUND — Site Power Sizing for AI Compute
@@ -276,30 +276,32 @@ const Key = ({ c, o, t }) => (
   </span>
 );
 
-export default function EdgeFundPowerCalculator() {
-  const [site, setSite] = useState("Midland, TX");
-  const [pshOverride, setPshOverride] = useState("");
-  const [gridKw, setGridKw] = useState(400);
-  const [gridPrice, setGridPrice] = useState(0.07);
-  const [itKw, setItKw] = useState(1000);
-  const [pue, setPue] = useState(1.12);
-  const [platform, setPlatform] = useState("H200");
-  const [util, setUtil] = useState(70);
-  const [rate, setRate] = useState(2.5);
+export default function EdgeFundPowerCalculator(props) {
+  /* Saved state handed in by the OMEGA wrapper (toolData contract). */
+  var S = (props && props.initial && typeof props.initial === "object") ? props.initial : {};
+  const [site, setSite] = useState(S.site !== undefined ? S.site : "Midland, TX");
+  const [pshOverride, setPshOverride] = useState(S.pshOverride !== undefined ? S.pshOverride : "");
+  const [gridKw, setGridKw] = useState(S.gridKw !== undefined ? S.gridKw : 400);
+  const [gridPrice, setGridPrice] = useState(S.gridPrice !== undefined ? S.gridPrice : 0.07);
+  const [itKw, setItKw] = useState(S.itKw !== undefined ? S.itKw : 1000);
+  const [pue, setPue] = useState(S.pue !== undefined ? S.pue : 1.12);
+  const [platform, setPlatform] = useState(S.platform !== undefined ? S.platform : "H200");
+  const [util, setUtil] = useState(S.util !== undefined ? S.util : 70);
+  const [rate, setRate] = useState(S.rate !== undefined ? S.rate : 2.5);
 
-  const [derate, setDerate] = useState(85);
-  const [margin, setMargin] = useState(15);
-  const [rte, setRte] = useState(88);
-  const [dod, setDod] = useState(90);
-  const [autonomy, setAutonomy] = useState(2);
+  const [derate, setDerate] = useState(S.derate !== undefined ? S.derate : 85);
+  const [margin, setMargin] = useState(S.margin !== undefined ? S.margin : 15);
+  const [rte, setRte] = useState(S.rte !== undefined ? S.rte : 88);
+  const [dod, setDod] = useState(S.dod !== undefined ? S.dod : 90);
+  const [autonomy, setAutonomy] = useState(S.autonomy !== undefined ? S.autonomy : 2);
 
-  const [solarCost, setSolarCost] = useState(1.1);
-  const [battECost, setBattECost] = useState(200);
-  const [battPCost, setBattPCost] = useState(130);
-  const [contingency, setContingency] = useState(12);
-  const [facilityCost, setFacilityCost] = useState(400);
-  const [siteOpex, setSiteOpex] = useState(180);
-  const [wacc, setWacc] = useState(8);
+  const [solarCost, setSolarCost] = useState(S.solarCost !== undefined ? S.solarCost : 1.1);
+  const [battECost, setBattECost] = useState(S.battECost !== undefined ? S.battECost : 200);
+  const [battPCost, setBattPCost] = useState(S.battPCost !== undefined ? S.battPCost : 130);
+  const [contingency, setContingency] = useState(S.contingency !== undefined ? S.contingency : 12);
+  const [facilityCost, setFacilityCost] = useState(S.facilityCost !== undefined ? S.facilityCost : 400);
+  const [siteOpex, setSiteOpex] = useState(S.siteOpex !== undefined ? S.siteOpex : 180);
+  const [wacc, setWacc] = useState(S.wacc !== undefined ? S.wacc : 8);
 
   const region = useMemo(() => matchRegion(site), [site]);
   const psh = pshOverride !== "" ? Number(pshOverride) || 0 : region ? region.psh : 5.3;
@@ -366,6 +368,16 @@ export default function EdgeFundPowerCalculator() {
     };
   }, [itKw, pue, gridKw, psh, daylight, derate, margin, rte, dod, autonomy, platform, util, rate,
       solarCost, battECost, battPCost, contingency, facilityCost, siteOpex, gridPrice, wacc]);
+
+  /* Report state upward so the host page can persist it (OMEGA toolData). */
+  const snapKey = JSON.stringify({ site, pshOverride, gridKw, gridPrice, itKw, pue, platform,
+    util, rate, derate, margin, rte, dod, autonomy, solarCost, battECost, battPCost,
+    contingency, facilityCost, siteOpex, wacc });
+  useEffect(() => {
+    if (typeof window !== "undefined" && typeof window.__omegaOnState === "function") {
+      try { window.__omegaOnState(JSON.parse(snapKey)); } catch (e) {}
+    }
+  }, [snapKey]);
 
   const verdict = (() => {
     if (!isFinite(m.load) || m.load <= 0) return { tone: "bad", text: "Fill in a compute target and PUE to size the site." };
