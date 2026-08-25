@@ -1,9 +1,3 @@
-    /* ── A NOTE ON THE TWO INTAKE ENTRIES ──
-       'intake' is the customer-facing form: every tenant sees it.
-       'intake_admin' is the staff queue: restricted by orgs:[] above.
-       Both read the same intake_projects collection; the rules decide who
-       sees whose records. Keep them adjacent so nobody adds one and forgets
-       the other. */
 /* ══════════════════════════════════════════════════════════════════════
    CLEARSKY-OMEGA · TOOL REGISTRY  (omega-tools.js)
    ----------------------------------------------------------------------
@@ -128,6 +122,31 @@
       desc:'Size a data center by kW/MW — revenue, capex, land, substation demand, grid energy & aquifer water draw over 1-day / 1-year / 10-year.',
       file:'/datacenter-compute-calculator.html', badge:'new', tier:TIER.ALL,
       icon:'M4 4h16v6H4zM4 14h16v6H4zM8 7h.01M8 17h.01M12 7h4M12 17h4' },
+
+    /* ── COMPUTE POWER SIZER ──
+       Sizes the solar array and battery needed to reach a target compute
+       load at a site whose interconnect cannot carry it, then prices the
+       whole build against GPU hosting revenue.
+
+       tier ALL, matching gridatlas / datacenter: top-of-funnel screening
+       whose whole job is to make the paid design tools worth opening. The
+       answer it gives ("you need 4 MWdc and 13 MWh at this address") is the
+       reason a tenant then opens siteoptimizer or interconnect.
+
+       savesData true, standard contract — toolData/{orgId}/tools/computepower.
+       The tool is ~20 assumption fields deep, so reopening cold is the whole
+       difference between a scratch pad and a working model.
+
+       Sits between 'datacenter' (which sizes the load and its site demands)
+       and 'siteoptimizer' (which solves an optimal DER mix from an 8760).
+       This one answers only the narrow question in the middle: what
+       generation and storage does THIS compute target need at THIS address,
+       and what does it cost. Keep the three descs distinct or they will read
+       as duplicates in the Finance grid. */
+    { key:'computepower', name:'Compute Power Sizer', category:'finance',
+      desc:'Size the solar + battery needed to reach a target AI compute load at any address \u2014 array, storage, land, capex and payback.',
+      file:'/compute-power-sizer.html', badge:'new', tier:TIER.ALL, savesData:true,
+      icon:'M12 3v2M5.6 5.6l1.4 1.4M3 12h2M17 7l1.4-1.4M12 8a4 4 0 1 1 0 8 4 4 0 0 1 0-8M3 19h13v3H3zM18 20h2' },
 
     { key:'batterysizer', name:'Battery Sizer', category:'finance',
       desc:'Size a BESS from utility bills, bill PDFs or an 8760 \u2014 peak-shave dispatch, demand savings, payback & NPV.',
@@ -360,24 +379,17 @@
       orgs:['clearsky-usa.com','csebuilders.com'],
       icon:'M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8zM14 2v6h6M8 13h3l-1 3h3M16 13v6' },
 
+    /* ── A NOTE ON THE TWO INTAKE ENTRIES ──
+       'intake' is the customer-facing form: every tenant sees it.
+       'intake_admin' is the staff queue: restricted by orgs:[] above.
+       Both read the same intake_projects collection; the rules decide who
+       sees whose records. Keep them adjacent so nobody adds one and forgets
+       the other. */
     { key:'intake_admin', name:'Intake Queue', category:'operations',
       desc:'Work tenant-submitted sites \u2014 triage, quote, produce the packages and push progress back to the client.',
       file:'/intake-admin.html', badge:'new', tier:TIER.ALL, savesData:true,
       orgs:['clearsky-usa.com','csebuilders.com'],
-      icon:'M9 11l3 3L22 4M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11' },
-
-    /* ── NOT IN THIS REGISTRY, ON PURPOSE ──
-       intake-admin.html — the ClearSky queue where reps work submitted
-       projects. It reads intake_projects across EVERY tenant, so it is not a
-       marketplace tool and must not be discoverable from a customer portal.
-       This file is loaded by both the admin console and every customer
-       portal, so anything listed here is a customer-visible surface.
-
-       orgs:['clearsky-usa.com'] would not be a safe substitute: isVisible()
-       returns false when there is no workspace.orgId, and the admin console
-       runs without a workspace, so the entry would hide from staff and still
-       ship the path to every tenant. It lives in the sales app and is linked
-       directly from there. */
+      icon:'M9 11l3 3L22 4M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11' }
   ];
 
   /* ══════════════════════════════════════════════════════════════════
