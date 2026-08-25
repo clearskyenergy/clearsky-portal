@@ -1017,7 +1017,166 @@ var FORM_ES_CT_L2 = {
   blocks: BLOCKS_ES_L2
 };
 
-var FORMS = [ FORM_UI_L2, FORM_ES_CT_L2 ];
+/* ══════════════════════════════════════════════════════════════════════
+   NATIONAL GRID — MA EV CHARGING PROGRAM (Cost Estimate Matrix)
+
+   Rates below are back-solved from three closed Lionheart submissions
+   rather than assumed, and only where the jobs actually agree:
+
+     55-57 Vine St, Brockton      MUD   4 ports
+     35 Oxford Ave, Dudley        MUD   4 ports
+     897 East St, Wrentham              6 ports
+
+   Identical on all three — these are rates, not coincidences:
+     Protective bollards      $250 mat / $300 lab each
+     EVSE hardware            $2,200 per port
+     Mounting (pedestal etc.) $1,250 each
+     Networking               $480 per port      (matches the NG MUD chart)
+
+   Agreeing on the two most recent, with Vine St the outlier at $15/$80:
+     Trench, continuously paved   $25 mat / $120 lab per LF
+     Trench, non-continuous       $15 mat / $100 lab per LF  (East St only)
+
+   NOT consistent, so NOT hard-coded: conduit & cable ran $2.24-$2.64/LF
+   material and $2.50-$3.04/LF labor across the three, because the runs mix
+   sizes. Those come from the workbook's own per-foot rates and the drawn
+   footage. Design/permitting lands within ~$15 of the existing
+   $1,000/port + 3% model on two of the three jobs, so that model is kept
+   rather than a new one fitted to three points.
+   ══════════════════════════════════════════════════════════════════════ */
+var NG_MA_RATES = {
+  source:'3 closed National Grid MA submissions, 4-6 ports, 2026',
+  bollard:{ mat:250,  lab:300  },        /* each  — all three jobs */
+  charger:{ mat:2200, lab:0    },        /* port  — all three jobs */
+  mount:{   mat:1250, lab:0    },        /* each  — all three jobs */
+  network:{ mat:480,  lab:0    },        /* port  — all three + NG chart */
+  trenchPaved:{ mat:25, lab:120 },       /* LF    — Oxford + East St */
+  trenchTurf:{  mat:15, lab:100 }        /* LF    — East St */
+};
+
+/* The MUD incentive table, effective 15 Nov 2025 (CM8214D MUD 11/25). */
+var NG_MUD_INCENTIVE = {
+  ejcIncome:   { pct:1.00, capPerPort:3900, label:'EJC meeting income criteria' },
+  ejc:         { pct:0.75, capPerPort:2925, label:'EJC, not meeting income criteria' },
+  none:        { pct:0.50, capPerPort:1950, label:'Not in an EJC' },
+  networkPerPort:480,
+  customerSideCapPerPort:7900,
+  customerSideCapNewService:10000
+};
+
+var BLOCKS_NG_MA = [
+  { id:'mr', title:'Eligible Design and Permitting costs', fill:'FFBFBFBF', rows:[
+      {k:'design',      l:'Design/Engineering/Permitting',                 ng:{row:10, unit:'Total'}},
+      {k:'permit',      l:'Permitting (rolled into Design/Engineering)',   ng:{row:10, unit:'Total', merge:'design'}},
+      {k:'trench',      l:'Trenching & Backfill - Continuously Paved Area\n(i.e., asphalt, concrete)',
+                        ng:{row:12, unit:'Feet', qty:'ftTrenchPaved'}},
+      {k:'trenchTurf',  l:'Trenching & Backfill - Non-Continuously Paved Area\n(i.e., grass)',
+                        ng:{row:13, unit:'Feet', qty:'ftTrenchTurf'}},
+      {k:'conduit',     l:'Conduit & Cable - Underground/Above Ground/Indoor',
+                        ng:{row:14, unit:'Feet', qty:'ftConduit'}},
+      {k:'wire',        l:'Conduit & Cable (above ground / indoor)',       ng:{row:14, unit:'Feet', merge:'conduit'}},
+      {k:'bollard',     l:'Protective Bollards',                           ng:{row:15, unit:'Each'}},
+      {k:'handhole',    l:'Handholes/Manholes',                            ng:{row:16, unit:'Each'}},
+      {k:'concrete',    l:'Concrete Work/Bases/Pads',                      ng:{row:17, unit:'Total'}},
+      {k:'panel',       l:'Panels/Service Board/Breakers',                 ng:{row:18, unit:'Total'}},
+      {k:'boards',      l:'Service board / metering',                      ng:{row:18, unit:'Total', merge:'panel'}},
+      {k:'meter',       l:'Meter provision',                               ng:{row:18, unit:'Total', merge:'panel'}},
+      {k:'install',     l:'Other (EVSE installation & mounting)',          ng:{row:19, unit:'Total', qty:'plugs'}},
+      {k:'other',       l:'Other',                                         ng:{row:19, unit:'Total', merge:'install'}},
+      /* Utility-side civil, rows 21-25 — National Grid pays these at 100% */
+      {k:'trenchPri',   l:'Trenching & Backfill for Primary Conduit',      ng:{row:21, unit:'Feet', util:true}},
+      {k:'xfmrpad',     l:'Utility Transformer Pad',                       ng:{row:22, unit:'Each', util:true}},
+      {k:'bollardUtil', l:'Protective Bollards (utility side)',            ng:{row:23, unit:'Each', util:true}},
+      {k:'riser',       l:'Riser',                                         ng:{row:24, unit:'Each', util:true}},
+      {k:'otherUtil',   l:'Other (utility side)',                          ng:{row:25, unit:'Total', util:true}}
+  ]},
+  { id:'evse', title:'Eligible EVSE Costs', fill:'FFBFBFBF', rows:[
+      {k:'charger',   l:'EVSE Hardware #1',   ng:{row:27, unit:'ports/stations', qty:'plugs'}},
+      {k:'charger2',  l:'EVSE Hardware #2',   ng:{row:28, unit:'ports/stations'}},
+      {k:'pedestal',  l:'EVSE Hardware #2 (mounting hardware)', ng:{row:28, unit:'ports/stations'}},
+      {k:'shipping',  l:'EVSE Freight/Shipping', ng:{row:29, unit:'Each', qty:'plugs'}},
+      {k:'warranty',  l:'Maintenance/Warranty Plan', ng:{row:42, unit:'ports'}},
+      {k:'validation',l:'Validation',          ng:{row:44, unit:'ports'}},
+      {k:'other',     l:'Other (i.e., cable management, power management kits, mounting kits)',
+                      ng:{row:30, unit:'Each'}},
+      /* classify() books EVSE installation into the EVSE bucket, but National
+         Grid wants it on the customer-side make-ready "Other" line — which
+         is exactly where all three reference jobs put it. */
+      {k:'install',   l:'EVSE installation & mounting',  ng:{row:19, unit:'Total', qty:'plugs'}},
+      {k:'activation',l:'Activation Fee',                ng:{row:43, unit:'ports'}},
+      {k:'network',   l:'EVSE Networking (Public L2s and MUDs only)', ng:{row:32, unit:'ports', qty:'plugs'}}
+  ]},
+  { id:'fp', title:'Ineligible Infrastructure Make-Ready costs - Future Proofing', fill:'FFD9D9D9', rows:[
+      {k:'trench',   l:'Trenching & Backfill (asphalt, concrete, grass) - Future Proofing', ng:{row:36, unit:'Feet'}},
+      {k:'bollard',  l:'Protective Bollards - Future Proofing',      ng:{row:37, unit:'Each'}},
+      {k:'concrete', l:'Concrete Work/Bases/Pads - Future Proofing',  ng:{row:38, unit:'Total'}},
+      {k:'panel',    l:'Panels/Service Board/Breakers - Future Proofing', ng:{row:39, unit:'Total'}},
+      {k:'other',    l:'Other - Future Proofing',                     ng:{row:40, unit:'Total'}}
+  ]},
+  { id:'ne', title:'Ineligible Costs', fill:'FFD9D9D9', rows:[
+      {k:'striping',  l:'Parking Spot Striping/Painting/ EV Signage', ng:{row:34, unit:'Total'}},
+      {k:'signage',   l:'EV Signage',            ng:{row:34, unit:'Total', merge:'striping'}},
+      /* National Grid pays for bollards and networking; United Illuminating
+         does not, and the classifier books them the UI way. The sheet row is
+         what the reviewer reads, so they are written into the ELIGIBLE rows
+         15 and 32 even though the model carries them here. */
+      {k:'bollard',   l:'Protective Bollards (eligible on National Grid)', ng:{row:15, unit:'Each'}},
+      {k:'network',   l:'EVSE Networking (eligible on National Grid)',     ng:{row:32, unit:'ports', qty:'plugs'}},
+      {k:'warranty',  l:'Maintenance/Warranty Plan', ng:{row:42, unit:'ports'}},
+      {k:'activation',l:'Activation Fee',        ng:{row:43, unit:'ports'}},
+      {k:'validation',l:'Validation',            ng:{row:44, unit:'ports'}},
+      {k:'networkNE', l:'EVSE Networking (Workplace, Fleet, DCFC)', ng:{row:45, unit:'ports'}},
+      {k:'other',     l:'Other',                 ng:{row:46, unit:'Total'}}
+  ]}
+];
+
+var FORM_NG_MA = {
+  id:'ng-ma-l2',
+  utility:'National Grid',
+  program:'MA EV Charging Program \u2014 Cost Estimate Matrix',
+  short:'National Grid MA \u2014 L2',
+  classes:['l2'],
+  sheet:'Estimate',
+  writer:'nationalgrid',
+  pdf:null,
+  banners:{ site:'Project Details', costs:'Estimate' },
+  headers:{ type:'Desciption', desc:'Detail/Notes', mat:'Material Total $',
+            lab:'Labor Total $', tot:'Total Cost $' },
+  totalLabel:'Total for Eligible and Ineligible Costs',
+  /* Their sheet carries one Sales Tax line at row 52, below the eligible and
+     ineligible totals, and MA is 6.25%. Same shape as Eversource: one line,
+     in the ineligible section, over the taxable EVSE rows. */
+  tax:{ rate:6.25, label:'Sales Tax', mode:'single', section:'ne',
+        matRows:['charger','charger2','pedestal'], labRows:['install'] },
+  left:[
+    { title:'Project Details', fields:[
+        {k:'ngAppNo',   label:'National Grid Application #:'},
+        {k:'ngWR',      label:'National Grid WR #:'},
+        {k:'segment',   label:'Program Segment (Public, Workplace, etc.):'},
+        {k:'address',   label:'Project Site Street Address:'},
+        {k:'city',      label:'Project City, State, ZIP Code:'},
+        {k:'plugs',     label:'Number of Ports:'},
+        {k:'stations',  label:'Number of Stations:'} ]},
+    { title:'Contractor Details', fields:[
+        {k:'company',   label:'Company Name:', from:'contractor'},
+        {k:'phone',     label:'Telephone Number:', from:'contractor'},
+        {k:'email',     label:'Email:', from:'contractor'} ]},
+    { title:'Customer Details', fields:[
+        {k:'applicant', label:'Name:'},
+        {k:'custPhone', label:'Telephone Number:'},
+        {k:'custEmail', label:'Email:'} ]}
+  ],
+  right:[
+    { type:'stack', label:'Site Category', k:'category', type2:'select',
+      options:['Multi-Unit Dwelling (MUD)','Workplace','Public Parking','Fleet','Destination'] },
+    { type:'stack', label:'Total Feet of Trenching', k:'ftTrench',  type2:'number', fmt:'#,##0' },
+    { type:'stack', label:'Total Feet of Conduit',   k:'ftConduit', type2:'number', fmt:'#,##0' },
+    { type:'stack', label:'Total Feet of Cable',     k:'ftCable',   type2:'number', fmt:'#,##0' }
+  ],
+  blocks: BLOCKS_NG_MA
+};
+
+var FORMS = [ FORM_UI_L2, FORM_ES_CT_L2, FORM_NG_MA ];
 
 function formById(id){ for(var i=0;i<FORMS.length;i++){ if(FORMS[i].id===id) return FORMS[i]; } return FORMS[0]; }
 var FORM = FORMS[0];                       /* utility form driving the cost blocks (may be null) */
@@ -1595,7 +1754,23 @@ function classify(cat, desc, size){
 
   if(/ev charging/.test(c)){
     if(/make.?ready/.test(t)) return {b:'mr', r:'other', fp:0};
-    if(/pedestal|mount|stanchion/.test(t)) return {b:'evse', r:'pedestal', fp:0};
+    /* Everything under an "EV Charging" heading used to fall through to
+       'charger', so freight, networking, activation and signage all landed
+       on the EVSE Hardware row. Every programme sheet has its own line for
+       each of those — National Grid puts freight on row 29, networking on
+       32 and activation on 43 — so they are separated here, once, rather
+       than re-mapped by hand on every job. */
+    if(/freight|shipping|delivery/.test(t))             return {b:'evse', r:'shipping',   fp:0};
+    if(/network|software|ocpp|telemetr|cellular/.test(t))return {b:'evse', r:'network',    fp:0};
+    if(/activation|commission/.test(t))                 return {b:'evse', r:'activation', fp:0};
+    if(/warrant|maintenance plan/.test(t))              return {b:'evse', r:'warranty',   fp:0};
+    if(/validation/.test(t))                            return {b:'evse', r:'validation', fp:0};
+    if(/signage|striping|painting|sign\b/.test(t))       return {b:'ne',   r:'signage',    fp:0};
+    if(/bollard/.test(t))                               return {b:'ne',   r:'bollard',    fp:0};
+    /* Installation labour is its own row on every matrix and is part of the
+       sales-tax base, so it must not sit on the hardware row. */
+    if(/install/.test(t))                               return {b:'evse', r:'install',    fp:0};
+    if(/pedestal|mount|stanchion|bracket/.test(t))      return {b:'evse', r:'pedestal',   fp:0};
     return {b:'evse', r:'charger', fp:0};
   }
   /* RMC, EMT and anything called out as indoor or above grade is an
@@ -1611,7 +1786,19 @@ function classify(cat, desc, size){
     if(above) return {b:'mr', r:'wireAG', fp:0};
     return {b:'mr', r:'wire', fp:0};
   }
-  if(/civil/.test(c))           return {b:'mr', r:'trench', fp:nval('p_fp')};
+  if(/civil/.test(c)){
+    /* Concrete bases and pads are their own line on the National Grid and
+       Eversource matrices. Under Civil they were all being called trench,
+       which put equipment pads into the trenching footage. */
+    if(/base|pad|slab|footing|foundation/.test(t) && !/backfill|bedding/.test(t))
+      return future ? {b:'fp', r:'concrete', fp:0} : {b:'mr', r:'concrete', fp:0};
+    if(/handhole|manhole|pull ?box|junction box/.test(t)) return {b:'mr', r:'handhole', fp:0};
+    /* Non-continuously paved (turf, grass, landscape) is a separate row and
+       a cheaper rate than cutting asphalt. */
+    if(/turf|grass|landscap|lawn|non.?continuous|unpaved/.test(t))
+      return {b:'mr', r:'trenchTurf', fp:nval('p_fp')};
+    return {b:'mr', r:'trench', fp:nval('p_fp')};
+  }
 
   if(/bollard/.test(t))                            return {b:'ne', r:'bollard',  fp:0};
   if(/label|signage|arc.?flash/.test(t))           return {b:'ne', r:'signage',  fp:0};
@@ -2155,9 +2342,30 @@ function subtotalExcluding(skipRow){
   var t=0, i;
   for(i=0;i<LINES.length;i++){
     if(LINES[i].row===skipRow) continue;
+    /* Held-out panel gear is on no sheet, so it cannot carry permitting
+       either — counting it billed 3% of $17,035 of scope that is not in
+       the project. */
+    if(panelHeldOut(LINES[i])) continue;
     t+=num(LINES[i].mat)+num(LINES[i].lab);
   }
   return t;
+}
+
+/* Permitting is a percentage of everything else, so it goes stale the moment
+   anything else changes — a held-out panel, a deleted line, an edited
+   quantity. It was computed once when the estimate loaded and then never
+   again: 860 Colony exported $1,253.99 against a base that no longer
+   existed, $511.05 too high. Recomputed on every render, unless the rep has
+   typed over it. */
+function syncPermit(){
+  var i, l;
+  for(i=0;i<LINES.length;i++){
+    l=LINES[i];
+    if(l.row!=='permit' || l.pinned) continue;
+    if(l.src!=='standard' && !l.baseline) continue;
+    var v=permitFromSubtotal(subtotalExcluding('permit'));
+    if(r2(num(l.lab))!==r2(v)){ l.lab=r2(v); l.note='3% of project cost'; }
+  }
 }
 
 function addStandardRows(opts){
@@ -2218,7 +2426,11 @@ function setLine(id, field, v){
   var i;
   for(i=0;i<LINES.length;i++){
     if(LINES[i].id!==id) continue;
-    if(field==='mat'||field==='lab'||field==='fp') LINES[i][field]=num(v);
+    if(field==='mat'||field==='lab'||field==='fp'){
+      LINES[i][field]=num(v);
+      /* typed over: stop recomputing it */
+      if(LINES[i].row==='permit' && (field==='mat'||field==='lab')) LINES[i].pinned=true;
+    }
     else if(field==='bucket'){
       LINES[i].bucket=v; LINES[i].orphan=false;
       if(!rowExists(v, LINES[i].row)) LINES[i].row=blockById(v).rows[blockById(v).rows.length-1].k;
@@ -2227,7 +2439,10 @@ function setLine(id, field, v){
     else { LINES[i][field]=v; if(field==='row') LINES[i].orphan=false; }
     break;
   }
-  renderOutputs();
+  /* Cost and mapping changes move the permitting base, so the whole view is
+     rebuilt rather than just the totals \u2014 mat/lab fire on change, not on
+     every keystroke, so this cannot steal focus mid-edit. */
+  render();
 }
 function delLine(id){
   var out=[], i;
@@ -2392,7 +2607,7 @@ function buildModel(form){
   var grid={}, bi, ri, b;
   for(bi=0;bi<BL.length;bi++){
     b=BL[bi]; grid[b.id]={};
-    for(ri=0;ri<b.rows.length;ri++) grid[b.id][b.rows[ri].k]={ mat:0, lab:0, notes:[] };
+    for(ri=0;ri<b.rows.length;ri++) grid[b.id][b.rows[ri].k]={ mat:0, lab:0, qty:0, notes:[] };
   }
   /* Forms don't all carry the same rows. When a line's row is missing from
      the active form, keep it in ITS OWN block and fall to that block's Other
@@ -2413,7 +2628,7 @@ function buildModel(form){
     for(z=0;z<rows.length;z++){ if(rows[z].k==='other') return 'other'; }
     return rows[rows.length-1].k;
   }
-  function put(bid,k,mat,lab,note){
+  function put(bid,k,mat,lab,note,qty){
     if(!grid[bid]){
       bid=BL[BL.length-1].id;
       k=BL[BL.length-1].rows[BL[BL.length-1].rows.length-1].k;
@@ -2424,6 +2639,11 @@ function buildModel(form){
     }
     if(!grid[bid] || !grid[bid][k]) return;
     grid[bid][k].mat+=mat; grid[bid][k].lab+=lab;
+    /* National Grid's sheet asks "How many ft/ea/ports" on every row, so the
+       quantity has to survive the roll-up and the aliasing, not just the
+       money. put() is the only place that knows where a line actually
+       landed. */
+    grid[bid][k].qty = num(grid[bid][k].qty) + num(qty);
     if(note && (mat||lab)) grid[bid][k].notes.push(note);
   }
 
@@ -2441,10 +2661,10 @@ function buildModel(form){
     fp=Math.max(0, Math.min(100, num(l.fp)))/100;
     if(fp>0 && l.bucket!=='fp' && grid.fp){
       mirror=FP_MIRROR[l.row]||'other';
-      put(l.bucket, l.row, mm*(1-fp), ll*(1-fp), l.desc);
-      put('fp', mirror,    mm*fp,     ll*fp,     l.desc);
+      put(l.bucket, l.row, mm*(1-fp), ll*(1-fp), l.desc, num(l.qty)*(1-fp));
+      put('fp', mirror,    mm*fp,     ll*fp,     l.desc, num(l.qty)*fp);
     } else {
-      put(l.bucket, l.row, mm, ll, l.desc);
+      put(l.bucket, l.row, mm, ll, l.desc, num(l.qty));
     }
   }
 
@@ -2498,7 +2718,12 @@ function buildModel(form){
       var rm=r2(g.mat), rl=r2(g.lab);
       sm+=rm; sl+=rl;
       rows.push({ k:k, label:b.rows[ri].l, sub:b.rows[ri].sub||'', mat:rm, lab:rl,
-                  note:(k==='other'||k==='charger')?uniqJoin(g.notes, b.rows[ri].l):'' });
+                  qty:g.qty||0,
+                  /* the row's own definition travels with it, so a writer can
+                     place it on the sheet row its programme uses */
+                  def:b.rows[ri], es:b.rows[ri].es, ng:b.rows[ri].ng,
+                  note:(k==='other'||k==='charger')?uniqJoin(g.notes, b.rows[ri].l):
+                       uniqJoin(g.notes, '') });
     }
     sm=r2(sm); sl=r2(sl);
     var tm, tl;
@@ -2766,7 +2991,7 @@ function fieldHTML(f, tight){
 function shortLabel(l){ return String(l).replace(/^#\s*of\s*/i,'# ').replace(/^Total Feet of\s*/i,'Feet — '); }
 
 /* ── 12. RENDER — mapping + previews ──────────────────────────────── */
-function render(){ renderMap(); renderOutputs(); }
+function render(){ syncPermit(); renderMap(); renderOutputs(); }
 
 function renderMap(){
   var BL=activeBlocks();
@@ -4664,6 +4889,9 @@ function exportWorkbook(){
       } else if(j.form.writer==='eversource'){
         sheetES40(wb, buildModel(j.form), j.form, site);
         name='Eversource_Cost_Estimate_Matrix_'+slug+'_'+stamp+'.xlsx';
+      } else if(j.form.writer==='nationalgrid'){
+        sheetNG(wb, buildModel(j.form), j.form, site);
+        name='National_Grid_Cost_Estimate_Matrix_'+slug+'_'+stamp+'.xlsx';
       } else {
         sheetForm(wb, buildModel(j.form), j.form, site);
         name=String(j.form.utility||'Utility').replace(/[^A-Za-z0-9]+/g,'_')
@@ -4687,6 +4915,153 @@ function exportWorkbook(){
 }
 
 /* ── Utility program form — written from its own definition ───────── */
+/* National Grid's Estimate sheet, rebuilt with live formulas so a reviewer
+   can see the arithmetic instead of a pasted number. Every cost row carries
+   H = F + G; the six total rows carry SUM() over the ranges their own
+   template uses. Quantities in column E come from the site map takeoff, so
+   changing the drawing changes the sheet. */
+function sheetNG(wb, m, form, site){
+  var ws = wb.addWorksheet(safeSheetName('Estimate'), { views:[{showGridLines:false}] });
+  var W=[2,44,52,14,16,15,15,15], i;
+  for(i=0;i<W.length;i++) ws.getColumn(i+1).width=W[i];
+  var MONEY='"$"#,##0.00';
+  var HDR ={ fill:'FFD9D9D9', bold:true, wrap:true, align:'center' };
+  var SEC ={ fill:'FFBFBFBF', bold:true };
+  var TOT ={ fill:'FFFFC000', bold:true };
+
+  merge(ws,'B2:H2'); cell(ws,'B2','ESTIMATE',{bold:true, align:'center'});
+  cell(ws,'B3','Estimate Date: '+new Date().toLocaleDateString('en-US'),{bold:true});
+  cell(ws,'C3','Project Details',{bold:true}); merge(ws,'C3:D3');
+  cell(ws,'E3','Contractor Details',{bold:true}); merge(ws,'E3:F3');
+  cell(ws,'G3','Customer Details',{bold:true}); merge(ws,'G3:H3');
+
+  cell(ws,'B4','National Grid Application #: '+(d('ngAppNo')||''));
+  cell(ws,'B5','National Grid WR #: '+(d('ngWR')||''));
+  cell(ws,'B6','Program Segment (Public, Workplace, etc.): '+(d('category')||''));
+  merge(ws,'C4:D4'); cell(ws,'C4','Project Site Street Address: '+(d('address')||''));
+  merge(ws,'C5:D5'); cell(ws,'C5','Project City, State, ZIP Code: '+(d('city')||''));
+  merge(ws,'C6:D6'); cell(ws,'C6','Number of Ports: '+(num(DATA.plugs)||''));
+  merge(ws,'C7:D7'); cell(ws,'C7','Number of Stations: '+(num(DATA.stations)||num(DATA.plugs)||''));
+  merge(ws,'E4:F4'); cell(ws,'E4','Company Name: '+(d('company')||''));
+  merge(ws,'E5:F5'); cell(ws,'E5','Telephone Number: '+(d('phone')||''));
+  merge(ws,'E6:F6'); cell(ws,'E6','Email: '+(d('email')||''));
+  merge(ws,'G4:H4'); cell(ws,'G4','Name: '+(d('applicant')||''));
+  merge(ws,'G5:H5'); cell(ws,'G5','Telephone Number: '+(d('custPhone')||''));
+  merge(ws,'G6:H6'); cell(ws,'G6','Email: '+(d('custEmail')||''));
+
+  var H=['Desciption','Detail/Notes','Unit Type','How Many ft/ea/ports',
+         'Material Total $','Labor Total $','Total Cost $'], C='BCDEFGH'.split('');
+  for(i=0;i<H.length;i++) cell(ws, C[i]+'8', H[i], HDR);
+
+  /* Their fixed row map — the sheet is a fixed-layout form, so rows are
+     written where the reviewer expects them, not in model order. */
+  var LAYOUT = [
+    [9,  'sec','Eligible Design and Permitting costs'],
+    [10, 'row','Design/Engineering/Permitting','Total'],
+    [11, 'sec','Eligible Customer-Side Infrastructure Make-Ready costs - Site and Electrical Work'],
+    [12, 'row','Trenching & Backfill - Continuously Paved Area\n(i.e., asphalt, concrete)','Feet'],
+    [13, 'row','Trenching & Backfill - Non-Continuously Paved Area\n(i.e., grass)','Feet'],
+    [14, 'row','Conduit & Cable - Underground/Above Ground/Indoor','Feet'],
+    [15, 'row','Protective Bollards','Each'],
+    [16, 'row','Handholes/Manholes','Each'],
+    [17, 'row','Concrete Work/Bases/Pads','Total'],
+    [18, 'row','Panels/Service Board/Breakers','Total'],
+    [19, 'row','Other','Total'],
+    [20, 'sec','Civil Work - Eligible Utility-Side Infrastructure costs - Site and Electrical Work'],
+    [21, 'row','Trenching & Backfill for Primary Conduit (cost includes concrete encasement)','Feet'],
+    [22, 'row','Utility Transformer Pad','Each'],
+    [23, 'row','Protective Bollards','Each'],
+    [24, 'row','Riser','Each'],
+    [25, 'row','Other','Total'],
+    [26, 'sec','Eligible EVSE Costs'],
+    [27, 'row','EVSE Hardware #1','ports/stations'],
+    [28, 'row','EVSE Hardware #2','ports/stations'],
+    [29, 'row','EVSE Freight/Shipping','Each'],
+    [30, 'row','Other (i.e., cable management, power management kits, mounting kits)','Each'],
+    [31, 'sec','Eligible Networking Costs'],
+    [32, 'row','EVSE Networking (Public L2s and MUDs only)','ports'],
+    [33, 'sec','Ineligible Infrastructure Make-Ready costs - Infrastructure Site Work'],
+    [34, 'row','Parking Spot Striping/Painting/ EV Signage','Total'],
+    [35, 'sec','Ineligible Infrastructure Make-Ready costs - Infrastructure Site Work - Future Proofing'],
+    [36, 'row','Trenching & Backfill (asphalt, concrete, grass) - Future Proofing','Feet'],
+    [37, 'row','Protective Bollards - Future Proofing','Each'],
+    [38, 'row','Concrete Work/Bases/Pads - Future Proofing','Total'],
+    [39, 'row','Panels/Service Board/Breakers - Future Proofing','Total'],
+    [40, 'row','Other - Future Proofing','Total'],
+    [41, 'sec','Ineligible EVSE Costs'],
+    [42, 'row','Maintenance/Warranty Plan','ports'],
+    [43, 'row','Activation Fee','ports'],
+    [44, 'row','Validation','ports'],
+    [45, 'row','EVSE Networking (Workplace, Fleet, DCFC)','ports'],
+    [46, 'row','Other','Total']
+  ];
+
+  /* Roll the model's rows up to the sheet row each one belongs on. */
+  var byRow={}, bi, ri, b, r, cfg;
+  for(bi=0;bi<m.blocks.length;bi++){
+    b=m.blocks[bi];
+    for(ri=0;ri<b.rows.length;ri++){
+      r=b.rows[ri];
+      cfg=r.ng || (r.def && r.def.ng);
+      if(!cfg) continue;
+      var rr=cfg.row;
+      if(!byRow[rr]) byRow[rr]={mat:0, lab:0, qty:0, notes:[], unit:cfg.unit, qtyKey:cfg.qty};
+      byRow[rr].mat += num(r.mat); byRow[rr].lab += num(r.lab);
+      if(cfg.qty && !byRow[rr].qty) byRow[rr].qty = num(DATA[cfg.qty]) || num(r.qty) || 0;
+      else if(!cfg.qty && num(r.qty)) byRow[rr].qty += num(r.qty);
+      if(r.note) byRow[rr].notes.push(r.note);
+    }
+  }
+
+  var li, rowNo, kind, label, unit, g;
+  for(li=0; li<LAYOUT.length; li++){
+    rowNo=LAYOUT[li][0]; kind=LAYOUT[li][1]; label=LAYOUT[li][2]; unit=LAYOUT[li][3];
+    if(kind==='sec'){ merge(ws,'B'+rowNo+':H'+rowNo); cell(ws,'B'+rowNo,label,SEC); continue; }
+    g = byRow[rowNo] || {mat:0,lab:0,qty:0,notes:[]};
+    cell(ws,'B'+rowNo, label, {wrap:true});
+    cell(ws,'C'+rowNo, uniqJoin(g.notes,' \u00b7 '), {wrap:true, size:9});
+    cell(ws,'D'+rowNo, unit, {align:'center'});
+    cell(ws,'E'+rowNo, r2(g.qty)||0, {align:'center', fmt:'#,##0.##'});
+    cell(ws,'F'+rowNo, r2(g.mat), {fmt:MONEY});
+    cell(ws,'G'+rowNo, r2(g.lab), {fmt:MONEY});
+    /* live, so a reviewer editing a cost sees the row retotal */
+    fxc(ws,'H'+rowNo, 'F'+rowNo+'+G'+rowNo, r2(g.mat)+r2(g.lab), {fmt:MONEY});
+  }
+
+  /* The six totals, as SUM ranges over their own sections. */
+  cell(ws,'C47','Eligible Customer-Side Make-Ready Total',{bold:true});
+  fxc(ws,'H47','SUM(H10:H19)', sumRange(ws,10,19), {fmt:MONEY, bold:true});
+  cell(ws,'C48','Eligible EVSE Total',{bold:true});
+  fxc(ws,'H48','SUM(H27:H30)', sumRange(ws,27,30), {fmt:MONEY, bold:true});
+  cell(ws,'C49','Eligible Networking Total',{bold:true});
+  fxc(ws,'H49','H32', sumRange(ws,32,32), {fmt:MONEY, bold:true});
+  cell(ws,'C50','Total for Eligible Costs',{bold:true});
+  fxc(ws,'H50','H47+H48+H49', sumRange(ws,10,19)+sumRange(ws,27,30)+sumRange(ws,32,32), {fmt:MONEY, bold:true});
+  cell(ws,'C51','Total for Ineligible Costs',{bold:true});
+  fxc(ws,'H51','H34+SUM(H36:H40)+SUM(H42:H46)',
+      sumRange(ws,34,34)+sumRange(ws,36,40)+sumRange(ws,42,46), {fmt:MONEY, bold:true});
+  cell(ws,'C52','Sales Tax (need to enter tax in this field)',{bold:true});
+  cell(ws,'H52', r2(m.taxTotal||0), {fmt:MONEY, bold:true});
+  cell(ws,'C53','Total for Eligible and Ineligible Costs',TOT);
+  fxc(ws,'H53','H50+H51+H52',
+      sumRange(ws,10,19)+sumRange(ws,27,30)+sumRange(ws,32,32)
+      +sumRange(ws,34,34)+sumRange(ws,36,40)+sumRange(ws,42,46)+r2(m.taxTotal||0), TOT);
+  cell(ws,'B54','Estimate',{bold:true});
+  cell(ws,'C54','Total Utility Side Infrastructure Costs (Civil Work)',{bold:true});
+  fxc(ws,'H54','SUM(H21:H25)', sumRange(ws,21,25), {fmt:MONEY, bold:true});
+  return ws;
+}
+/* Cached values so the sheet reads correctly before Excel recalculates. */
+function sumRange(ws, a, b){
+  var t=0, r, c;
+  for(r=a;r<=b;r++){
+    c=ws.getCell('H'+r);
+    t += (c && typeof c.result==='number') ? c.result
+       : ((c && typeof c.value==='number') ? c.value : 0);
+  }
+  return r2(t);
+}
+
 function sheetForm(wb, m, form, site){
   var title=safeSheetName((form.sheet||'{site}').replace('{site}', site));
   var ws=wb.addWorksheet(title, { views:[{showGridLines:false}] });
