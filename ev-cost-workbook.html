@@ -4915,152 +4915,244 @@ function exportWorkbook(){
 }
 
 /* ── Utility program form — written from its own definition ───────── */
-/* National Grid's Estimate sheet, rebuilt with live formulas so a reviewer
-   can see the arithmetic instead of a pasted number. Every cost row carries
-   H = F + G; the six total rows carry SUM() over the ranges their own
-   template uses. Quantities in column E come from the site map takeoff, so
-   changing the drawing changes the sheet. */
+/* ── NATIONAL GRID ESTIMATE SHEET ─────────────────────────────────────
+   Their template, reproduced cell for cell rather than approximated: the
+   reviewer opens dozens of these and a sheet that does not look like the
+   one they issued gets read as a different document. Everything below was
+   measured off the blank template — column widths, row heights, the
+   accounting number format, the medium/thin border grid, and the palette,
+   which is National Grid's own brand theme:
+
+     accent4  #04415C  navy   — title bar and eligible section heads
+     accent4  25% tint #437085 — utility-side civil, and the totals band
+     accent2  #00B140  green  — EVSE and networking section heads
+     text 25% #404040  grey   — ineligible section heads
+     accent6  60% tint #EBF1AD lime — the networking sub-head
+
+   Values are still live formulas, so the arithmetic is auditable.
+   ──────────────────────────────────────────────────────────────────── */
+var NG_SHEET = {
+  widths:[2.62, 43.88, 43.38, 18.38, 14.5, 13.0, 13.0, 13.0],
+  navy:'FF04415C', navy25:'FF437085', green:'FF00B140', grey25:'FF404040', lime:'FFEBF1AD',
+  white:'FFFFFFFF',
+  acct:'_("$"* #,##0.00_);_("$"* \\(#,##0.00\\);_("$"* "-"??_);_(@_)',
+  /* row -> section fill; anything absent is a normal cost row */
+  heads:{ 9:'navy', 11:'navy', 20:'navy25', 26:'green', 31:'green',
+          33:'grey25', 35:'grey25', 41:'grey25' }
+};
+
 function sheetNG(wb, m, form, site){
+  var S=NG_SHEET;
   var ws = wb.addWorksheet(safeSheetName('Estimate'), { views:[{showGridLines:false}] });
-  var W=[2,44,52,14,16,15,15,15], i;
-  for(i=0;i<W.length;i++) ws.getColumn(i+1).width=W[i];
-  var MONEY='"$"#,##0.00';
-  var HDR ={ fill:'FFD9D9D9', bold:true, wrap:true, align:'center' };
-  var SEC ={ fill:'FFBFBFBF', bold:true };
-  var TOT ={ fill:'FFFFC000', bold:true };
+  var i;
+  for(i=0;i<S.widths.length;i++) ws.getColumn(i+1).width=S.widths[i];
 
-  merge(ws,'B2:H2'); cell(ws,'B2','ESTIMATE',{bold:true, align:'center'});
-  cell(ws,'B3','Estimate Date: '+new Date().toLocaleDateString('en-US'),{bold:true});
-  cell(ws,'C3','Project Details',{bold:true}); merge(ws,'C3:D3');
-  cell(ws,'E3','Contractor Details',{bold:true}); merge(ws,'E3:F3');
-  cell(ws,'G3','Customer Details',{bold:true}); merge(ws,'G3:H3');
+  function ng(addr, value, o){
+    o=o||{};
+    var c=ws.getCell(addr);
+    if(value!==undefined && value!==null) c.value=value;
+    c.font={ name:'Calibri', size:o.size||12, bold:!!o.bold,
+             color:{ argb:o.color || 'FF000000' } };
+    c.alignment={ vertical:'middle', horizontal:o.align||'left', wrapText:o.wrap!==false };
+    if(o.fill) c.fill={ type:'pattern', pattern:'solid', fgColor:{argb:o.fill} };
+    if(o.fmt)  c.numFmt=o.fmt;
+    if(o.border!==false){
+      var L=o.left||'thin', R=o.right||'thin';
+      c.border={ left:{style:L,color:{argb:'FF000000'}}, right:{style:R,color:{argb:'FF000000'}},
+                 top:{style:'thin',color:{argb:'FF000000'}}, bottom:{style:'thin',color:{argb:'FF000000'}} };
+    }
+    return c;
+  }
+  function rowH(r,h){ ws.getRow(r).height=h; }
 
-  cell(ws,'B4','National Grid Application #: '+(d('ngAppNo')||''));
-  cell(ws,'B5','National Grid WR #: '+(d('ngWR')||''));
-  cell(ws,'B6','Program Segment (Public, Workplace, etc.): '+(d('category')||''));
-  merge(ws,'C4:D4'); cell(ws,'C4','Project Site Street Address: '+(d('address')||''));
-  merge(ws,'C5:D5'); cell(ws,'C5','Project City, State, ZIP Code: '+(d('city')||''));
-  merge(ws,'C6:D6'); cell(ws,'C6','Number of Ports: '+(num(DATA.plugs)||''));
-  merge(ws,'C7:D7'); cell(ws,'C7','Number of Stations: '+(num(DATA.stations)||num(DATA.plugs)||''));
-  merge(ws,'E4:F4'); cell(ws,'E4','Company Name: '+(d('company')||''));
-  merge(ws,'E5:F5'); cell(ws,'E5','Telephone Number: '+(d('phone')||''));
-  merge(ws,'E6:F6'); cell(ws,'E6','Email: '+(d('email')||''));
-  merge(ws,'G4:H4'); cell(ws,'G4','Name: '+(d('applicant')||''));
-  merge(ws,'G5:H5'); cell(ws,'G5','Telephone Number: '+(d('custPhone')||''));
-  merge(ws,'G6:H6'); cell(ws,'G6','Email: '+(d('custEmail')||''));
+  /* ── title ──────────────────────────────────────────────────────── */
+  merge(ws,'B2:H2');
+  ng('B2','ESTIMATE',{ size:25, bold:true, align:'center', fill:S.navy, color:S.white, border:false });
+  rowH(2,48.75);
 
+  /* ── the three detail panels ────────────────────────────────────── */
+  var hdr={ size:14, bold:true, border:false };
+  ng('B3','Estimate Date: '+new Date().toLocaleDateString('en-US'), hdr);
+  merge(ws,'C3:D3'); ng('C3','Project Details', hdr);
+  merge(ws,'E3:F3'); ng('E3','Contractor Details', hdr);
+  merge(ws,'G3:H3'); ng('G3','Customer Details', hdr);
+
+  var pairs=[
+    ['B4','National Grid Application #: '+(d('ngAppNo')||'')],
+    ['B5','National Grid WR #: '+(d('ngWR')||'')],
+    ['B6','Program Segment (Public, Workplace, etc.): '+(d('category')||'')],
+    ['C4','Project Site Street Address: '+(d('address')||''),'C4:D4'],
+    ['C5','Project City, State, ZIP Code: '+(d('city')||''),'C5:D5'],
+    ['C6','Number of Ports: '+(num(DATA.plugs)||''),'C6:D6'],
+    ['C7','Number of Stations: '+(num(DATA.stations)||num(DATA.plugs)||''),'C7:D7'],
+    ['E4','Company Name: '+(d('company')||''),'E4:F4'],
+    ['E5','Telephone Number: '+(d('phone')||''),'E5:F5'],
+    ['E6','Email: '+(d('email')||''),'E6:F6'],
+    ['E7','','E7:F7'],
+    ['G4','Name: '+(d('applicant')||''),'G4:H4'],
+    ['G5','Telephone Number: '+(d('custPhone')||''),'G5:H5'],
+    ['G6','Email: '+(d('custEmail')||''),'G6:H6'],
+    ['G7','','G7:H7']
+  ];
+  for(i=0;i<pairs.length;i++){
+    if(pairs[i][2]) merge(ws,pairs[i][2]);
+    ng(pairs[i][0], pairs[i][1], hdr);
+  }
+  for(i=3;i<=7;i++) rowH(i,20.45);
+
+  /* ── column headings ────────────────────────────────────────────── */
   var H=['Desciption','Detail/Notes','Unit Type','How Many ft/ea/ports',
          'Material Total $','Labor Total $','Total Cost $'], C='BCDEFGH'.split('');
-  for(i=0;i<H.length;i++) cell(ws, C[i]+'8', H[i], HDR);
+  for(i=0;i<H.length;i++)
+    ng(C[i]+'8', H[i], { size:14, bold:true, align:'center',
+                         left:(i===0?'medium':'thin'), right:(i===6?'medium':'thin') });
+  rowH(8,51.75);
 
-  /* Their fixed row map — the sheet is a fixed-layout form, so rows are
-     written where the reviewer expects them, not in model order. */
-  var LAYOUT = [
-    [9,  'sec','Eligible Design and Permitting costs'],
-    [10, 'row','Design/Engineering/Permitting','Total'],
-    [11, 'sec','Eligible Customer-Side Infrastructure Make-Ready costs - Site and Electrical Work'],
-    [12, 'row','Trenching & Backfill - Continuously Paved Area\n(i.e., asphalt, concrete)','Feet'],
-    [13, 'row','Trenching & Backfill - Non-Continuously Paved Area\n(i.e., grass)','Feet'],
-    [14, 'row','Conduit & Cable - Underground/Above Ground/Indoor','Feet'],
-    [15, 'row','Protective Bollards','Each'],
-    [16, 'row','Handholes/Manholes','Each'],
-    [17, 'row','Concrete Work/Bases/Pads','Total'],
-    [18, 'row','Panels/Service Board/Breakers','Total'],
-    [19, 'row','Other','Total'],
-    [20, 'sec','Civil Work - Eligible Utility-Side Infrastructure costs - Site and Electrical Work'],
-    [21, 'row','Trenching & Backfill for Primary Conduit (cost includes concrete encasement)','Feet'],
-    [22, 'row','Utility Transformer Pad','Each'],
-    [23, 'row','Protective Bollards','Each'],
-    [24, 'row','Riser','Each'],
-    [25, 'row','Other','Total'],
-    [26, 'sec','Eligible EVSE Costs'],
-    [27, 'row','EVSE Hardware #1','ports/stations'],
-    [28, 'row','EVSE Hardware #2','ports/stations'],
-    [29, 'row','EVSE Freight/Shipping','Each'],
-    [30, 'row','Other (i.e., cable management, power management kits, mounting kits)','Each'],
-    [31, 'sec','Eligible Networking Costs'],
-    [32, 'row','EVSE Networking (Public L2s and MUDs only)','ports'],
-    [33, 'sec','Ineligible Infrastructure Make-Ready costs - Infrastructure Site Work'],
-    [34, 'row','Parking Spot Striping/Painting/ EV Signage','Total'],
-    [35, 'sec','Ineligible Infrastructure Make-Ready costs - Infrastructure Site Work - Future Proofing'],
-    [36, 'row','Trenching & Backfill (asphalt, concrete, grass) - Future Proofing','Feet'],
-    [37, 'row','Protective Bollards - Future Proofing','Each'],
-    [38, 'row','Concrete Work/Bases/Pads - Future Proofing','Total'],
-    [39, 'row','Panels/Service Board/Breakers - Future Proofing','Total'],
-    [40, 'row','Other - Future Proofing','Total'],
-    [41, 'sec','Ineligible EVSE Costs'],
-    [42, 'row','Maintenance/Warranty Plan','ports'],
-    [43, 'row','Activation Fee','ports'],
-    [44, 'row','Validation','ports'],
-    [45, 'row','EVSE Networking (Workplace, Fleet, DCFC)','ports'],
-    [46, 'row','Other','Total']
-  ];
+  var LAYOUT = NG_LAYOUT;
+  var byRow = ngRollup(m);
 
-  /* Roll the model's rows up to the sheet row each one belongs on. */
-  var byRow={}, bi, ri, b, r, cfg;
+  var li, r, kind, label, unit, g, fillKey;
+  for(li=0; li<LAYOUT.length; li++){
+    r=LAYOUT[li][0]; kind=LAYOUT[li][1]; label=LAYOUT[li][2]; unit=LAYOUT[li][3];
+    rowH(r, (r===27?54:(r===28?58.5:30)));
+    if(kind==='sec'){
+      fillKey=S.heads[r];
+      /* Their template does NOT merge the section rows — it fills B..H as
+         separate cells. Merging looked identical on screen and then broke
+         the column grid when a reviewer sorted or copied a range. */
+      var ci;
+      for(ci=0; ci<C.length; ci++)
+        ng(C[ci]+r, ci===0?label:'', { bold:true, fill:S[fillKey],
+             color:(fillKey==='lime'?'FF000000':S.white),
+             left:(ci===0?'medium':'thin'), right:(ci===C.length-1?'medium':'thin') });
+      continue;
+    }
+    g = byRow[r] || { mat:0, lab:0, qty:0, notes:[] };
+    ng('B'+r, label, { left:'medium' });
+    ng('C'+r, uniqJoin(g.notes,' \u00b7 '), {});
+    /* unit type and quantity run 11pt, quantity right-aligned */
+    ng('D'+r, unit, { align:'center', size:11 });
+    ng('E'+r, r2(g.qty)||0, { align:'right', fmt:'#,##0.##', size:11 });
+    /* money columns run 11pt in their template, not 12 */
+    ng('F'+r, r2(g.mat), { fmt:S.acct, align:'right', size:11 });
+    ng('G'+r, r2(g.lab), { fmt:S.acct, align:'right', size:11 });
+    var tot=r2(r2(g.mat)+r2(g.lab));
+    ng('H'+r, tot ? { formula:'F'+r+'+G'+r, result:tot } : 0,
+       { fmt:S.acct, align:'right', right:'medium', size:11 });
+  }
+
+  /* ── the six totals, as SUM ranges over their own sections ──────── */
+  function totalRow(r, label, formula, value, band){
+    rowH(r, r>=53?33:30);
+    ng('B'+r,'', { border:false });
+    ng('C'+r, label, { size:14, bold:true, fill:band?S.navy25:null,
+                       color:band?S.white:'FF000000', left:'medium' });
+    ng('D'+r,'', { fill:band?S.navy25:null });
+    ng('E'+r,'', { fill:band?S.navy25:null });
+    ng('F'+r,'', { fill:band?S.navy25:null });
+    ng('G'+r,'', { fill:band?S.navy25:null });
+    ng('H'+r, value ? { formula:formula, result:r2(value) } : 0,
+       { fmt:S.acct, size:11, align:'right', right:'medium',
+         fill:band?S.navy25:null, color:band?S.white:'FF000000' });
+  }
+  var mkTotal=ngSum(byRow,10,19), evseTotal=ngSum(byRow,27,30),
+      netTotal=ngSum(byRow,32,32), stripe=ngSum(byRow,34,34),
+      fpTotal=ngSum(byRow,36,40), neTotal=ngSum(byRow,42,46),
+      utilTotal=ngSum(byRow,21,25), taxTotal=r2(m.taxTotal||0);
+
+  totalRow(47,'Eligible Customer-Side Make-Ready Total','SUM(H10:H19)', mkTotal);
+  totalRow(48,'Eligible EVSE Total','SUM(H27:H30)', evseTotal);
+  totalRow(49,'Eligible Networking Total','H32', netTotal);
+  totalRow(50,'Total for Eligible Costs','H47+H48+H49', mkTotal+evseTotal+netTotal);
+  totalRow(51,'Total for Ineligible Costs','H34+SUM(H36:H40)+SUM(H42:H46)', stripe+fpTotal+neTotal);
+  totalRow(52,'Sales Tax (need to enter tax in this field)', null, taxTotal);
+  totalRow(53,'Total for Eligible and Ineligible Costs','H50+H51+H52',
+           mkTotal+evseTotal+netTotal+stripe+fpTotal+neTotal+taxTotal, true);
+
+  rowH(54,33);
+  ng('B54','Estimate',{ size:14, bold:true, border:false });
+  ng('C54','Total Utility Side Infrastructure Costs (Civil Work)',
+     { bold:true, fill:S.navy25, color:S.white, left:'medium' });
+  ng('D54','',{fill:S.navy25}); ng('E54','',{fill:S.navy25});
+  ng('F54','',{fill:S.navy25}); ng('G54','',{fill:S.navy25});
+  ng('H54', utilTotal ? { formula:'SUM(H21:H25)', result:r2(utilTotal) } : 0,
+     { fmt:S.acct, bold:true, align:'right', right:'medium', fill:S.navy25, color:S.white });
+
+  fitPage(ws,'B2:H54',0);
+  return ws;
+}
+
+/* Roll the model's rows onto the sheet row each one belongs on. */
+function ngRollup(m){
+  var byRow={}, bi, ri, b, r, cfg, rr;
   for(bi=0;bi<m.blocks.length;bi++){
     b=m.blocks[bi];
     for(ri=0;ri<b.rows.length;ri++){
       r=b.rows[ri];
       cfg=r.ng || (r.def && r.def.ng);
       if(!cfg) continue;
-      var rr=cfg.row;
-      if(!byRow[rr]) byRow[rr]={mat:0, lab:0, qty:0, notes:[], unit:cfg.unit, qtyKey:cfg.qty};
-      byRow[rr].mat += num(r.mat); byRow[rr].lab += num(r.lab);
-      if(cfg.qty && !byRow[rr].qty) byRow[rr].qty = num(DATA[cfg.qty]) || num(r.qty) || 0;
-      else if(!cfg.qty && num(r.qty)) byRow[rr].qty += num(r.qty);
+      rr=cfg.row;
+      if(!byRow[rr]) byRow[rr]={ mat:0, lab:0, qty:0, notes:[] };
+      byRow[rr].mat += num(r.mat);
+      byRow[rr].lab += num(r.lab);
+      /* a fixed quantity the sheet asks for (ports, stations) beats the
+         summed line quantity, which double-counts when several lines share
+         one row */
+      if(cfg.qty) byRow[rr].qty = num(DATA[cfg.qty]) || byRow[rr].qty;
+      else if(num(r.qty)) byRow[rr].qty += num(r.qty);
       if(r.note) byRow[rr].notes.push(r.note);
     }
   }
-
-  var li, rowNo, kind, label, unit, g;
-  for(li=0; li<LAYOUT.length; li++){
-    rowNo=LAYOUT[li][0]; kind=LAYOUT[li][1]; label=LAYOUT[li][2]; unit=LAYOUT[li][3];
-    if(kind==='sec'){ merge(ws,'B'+rowNo+':H'+rowNo); cell(ws,'B'+rowNo,label,SEC); continue; }
-    g = byRow[rowNo] || {mat:0,lab:0,qty:0,notes:[]};
-    cell(ws,'B'+rowNo, label, {wrap:true});
-    cell(ws,'C'+rowNo, uniqJoin(g.notes,' \u00b7 '), {wrap:true, size:9});
-    cell(ws,'D'+rowNo, unit, {align:'center'});
-    cell(ws,'E'+rowNo, r2(g.qty)||0, {align:'center', fmt:'#,##0.##'});
-    cell(ws,'F'+rowNo, r2(g.mat), {fmt:MONEY});
-    cell(ws,'G'+rowNo, r2(g.lab), {fmt:MONEY});
-    /* live, so a reviewer editing a cost sees the row retotal */
-    fxc(ws,'H'+rowNo, 'F'+rowNo+'+G'+rowNo, r2(g.mat)+r2(g.lab), {fmt:MONEY});
-  }
-
-  /* The six totals, as SUM ranges over their own sections. */
-  cell(ws,'C47','Eligible Customer-Side Make-Ready Total',{bold:true});
-  fxc(ws,'H47','SUM(H10:H19)', sumRange(ws,10,19), {fmt:MONEY, bold:true});
-  cell(ws,'C48','Eligible EVSE Total',{bold:true});
-  fxc(ws,'H48','SUM(H27:H30)', sumRange(ws,27,30), {fmt:MONEY, bold:true});
-  cell(ws,'C49','Eligible Networking Total',{bold:true});
-  fxc(ws,'H49','H32', sumRange(ws,32,32), {fmt:MONEY, bold:true});
-  cell(ws,'C50','Total for Eligible Costs',{bold:true});
-  fxc(ws,'H50','H47+H48+H49', sumRange(ws,10,19)+sumRange(ws,27,30)+sumRange(ws,32,32), {fmt:MONEY, bold:true});
-  cell(ws,'C51','Total for Ineligible Costs',{bold:true});
-  fxc(ws,'H51','H34+SUM(H36:H40)+SUM(H42:H46)',
-      sumRange(ws,34,34)+sumRange(ws,36,40)+sumRange(ws,42,46), {fmt:MONEY, bold:true});
-  cell(ws,'C52','Sales Tax (need to enter tax in this field)',{bold:true});
-  cell(ws,'H52', r2(m.taxTotal||0), {fmt:MONEY, bold:true});
-  cell(ws,'C53','Total for Eligible and Ineligible Costs',TOT);
-  fxc(ws,'H53','H50+H51+H52',
-      sumRange(ws,10,19)+sumRange(ws,27,30)+sumRange(ws,32,32)
-      +sumRange(ws,34,34)+sumRange(ws,36,40)+sumRange(ws,42,46)+r2(m.taxTotal||0), TOT);
-  cell(ws,'B54','Estimate',{bold:true});
-  cell(ws,'C54','Total Utility Side Infrastructure Costs (Civil Work)',{bold:true});
-  fxc(ws,'H54','SUM(H21:H25)', sumRange(ws,21,25), {fmt:MONEY, bold:true});
-  return ws;
+  return byRow;
 }
-/* Cached values so the sheet reads correctly before Excel recalculates. */
-function sumRange(ws, a, b){
-  var t=0, r, c;
-  for(r=a;r<=b;r++){
-    c=ws.getCell('H'+r);
-    t += (c && typeof c.result==='number') ? c.result
-       : ((c && typeof c.value==='number') ? c.value : 0);
-  }
+function ngSum(byRow, a, b){
+  var t=0, r;
+  for(r=a;r<=b;r++) if(byRow[r]) t += r2(byRow[r].mat)+r2(byRow[r].lab);
   return r2(t);
 }
+
+/* National Grid's sheet is a fixed-layout form: rows go where the reviewer
+   expects them, not in model order. */
+var NG_LAYOUT = [
+  [9,  'sec','Eligible Design and Permitting costs'],
+  [10, 'row','Design/Engineering/Permitting','Total'],
+  [11, 'sec','Eligible Customer-Side Infrastructure Make-Ready costs - Site and Electrical Work'],
+  [12, 'row','Trenching & Backfill - Continuously Paved Area\n(i.e., asphalt, concrete)','Feet'],
+  [13, 'row','Trenching & Backfill - Non-Continuously Paved Area\n(i.e., grass)','Feet'],
+  [14, 'row','Conduit & Cable - Underground/Above Ground/Indoor','Feet'],
+  [15, 'row','Protective Bollards','Each'],
+  [16, 'row','Handholes/Manholes','Each'],
+  [17, 'row','Concrete Work/Bases/Pads','Total'],
+  [18, 'row','Panels/Service Board/Breakers','Total'],
+  [19, 'row','Other','Total'],
+  [20, 'sec','Civil Work - Eligible Utility-Side Infrastructure costs - Site and Electrical Work'],
+  [21, 'row','Trenching & Backfill for Primary Conduit (cost includes concrete encasement)','Feet'],
+  [22, 'row','Utility Transformer Pad','Each'],
+  [23, 'row','Protective Bollards','Each'],
+  [24, 'row','Riser','Each'],
+  [25, 'row','Other','Total'],
+  [26, 'sec','Eligible EVSE Costs'],
+  [27, 'row','EVSE Hardware #1','ports/stations'],
+  [28, 'row','EVSE Hardware #2','ports/stations'],
+  [29, 'row','EVSE Freight/Shipping','Each'],
+  [30, 'row','Other (i.e., cable management, power management kits, mounting kits)','Each'],
+  [31, 'sec','Eligible Networking Costs'],
+  [32, 'row','EVSE Networking (Public L2s and MUDs only)','ports'],
+  [33, 'sec','Ineligible Infrastructure Make-Ready costs - Infrastructure Site Work'],
+  [34, 'row','Parking Spot Striping/Painting/ EV Signage','Total'],
+  [35, 'sec','Ineligible Infrastructure Make-Ready costs - Infrastructure Site Work - Future Proofing'],
+  [36, 'row','Trenching & Backfill (asphalt, concrete, grass) - Future Proofing','Feet'],
+  [37, 'row','Protective Bollards - Future Proofing','Each'],
+  [38, 'row','Concrete Work/Bases/Pads - Future Proofing','Total'],
+  [39, 'row','Panels/Service Board/Breakers - Future Proofing','Total'],
+  [40, 'row','Other - Future Proofing','Total'],
+  [41, 'sec','Ineligible EVSE Costs'],
+  [42, 'row','Maintenance/Warranty Plan','ports'],
+  [43, 'row','Activation Fee','ports'],
+  [44, 'row','Validation','ports'],
+  [45, 'row','EVSE Networking (Workplace, Fleet, DCFC)','ports'],
+  [46, 'row','Other','Total']
+];
 
 function sheetForm(wb, m, form, site){
   var title=safeSheetName((form.sheet||'{site}').replace('{site}', site));
