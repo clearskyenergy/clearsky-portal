@@ -2687,12 +2687,14 @@ function addStandardRows(opts){
     if(!rowExists(bucket,row)) continue;          /* form may not have that row */
     have=false; existing=null;
     for(j=0;j<LINES.length;j++){
+      if(civilHeldOut(LINES[j])) continue;      /* superseded by the drawing */
       if(LINES[j].bucket===bucket && LINES[j].row===row){ have=true; existing=LINES[j]; }
     }
     /* Rows that describe the same physical work: if a sibling already
        carries it, this row must not add it again. */
     if(!have && scopeGroup(row)){
       for(j=0;j<LINES.length;j++){
+        if(civilHeldOut(LINES[j])) continue;   /* superseded — does not block the card */
         if(LINES[j].bucket===bucket && scopeGroup(LINES[j].row)===scopeGroup(row)
            && (num(LINES[j].mat)||num(LINES[j].lab))){ have=true; existing=null; break; }
       }
@@ -2895,6 +2897,36 @@ function autofillPlugs(){
 /* True when this line is panel / service equipment on a site that is not
    getting any. Future-proofing spare gear is deliberately exempt: that is
    capacity the developer chose to add, not a panel the estimate assumed. */
+/* ── CIVIL COMES FROM THE DRAWING ──────────────────────────────────
+   The map measures the run: linear feet of trench, and the conduit and
+   cable inside it. That footage times the rate card IS the civil work.
+
+   The editor also prices its own trenching, warning tape and bedding as
+   line items, and those were winning. On 112 Willow that meant $9.44/LF of
+   trench labour against the $80/LF every one of the five filed Eversource
+   sheets carries — a $12,000 understatement on 156 ft, flagged by the
+   band warning but still exported.
+
+   So when the drawing has measured footage, the card prices the civil rows
+   and the estimate's own civil lines are held out. They stay visible in the
+   mapping and can be reinstated by switching the source. */
+var CIVIL_ROWS={ trench:1, trenchTurf:1, conduit:1, wire:1, restore:1 };
+function civilFromCard(){ return String(d('civilSource')||'').indexOf('estimate')<0; }
+function civilMeasured(){ return num(DATA.ftTrench)>0 || num(DATA.ftConduit)>0; }
+function civilHeldOut(l){
+  if(!l || l.bucket!=='mr' || !CIVIL_ROWS[l.row]) return false;
+  if(l.src==='standard' || l.baseline) return false;   /* the card's own rows */
+  return civilFromCard() && civilMeasured();
+}
+function civilHeldSummary(){
+  var i,l,n=0,t=0,names=[];
+  for(i=0;i<LINES.length;i++){
+    l=LINES[i];
+    if(civilHeldOut(l) && (num(l.mat)||num(l.lab))){ n++; t+=num(l.mat)+num(l.lab); names.push(l.desc); }
+  }
+  return { n:n, total:r2(t), names:names };
+}
+
 function panelHeldOut(l){
   if(!l || l.bucket!=='mr' || l.row!=='panel') return false;
   /* The tie-in to existing service is work every job does; it sits on the
@@ -2906,6 +2938,26 @@ function panelHeldOut(l){
 }
 /* Held-out money is never silently dropped: say what it is, say what it is
    worth, and put the switch to reinstate it one click away. */
+/* Say what the drawing superseded and what it is worth, so the swap is
+   never silent. */
+function civilHeldNote(){
+  if(!civilFromCard()) 
+    return '<div class="warn" style="margin-top:-4px;margin-bottom:12px">'
+      + 'Civil is coming from the estimate\u2019s own lines, not the drawing. '
+      + 'Check them against the accepted band before submitting.</div>';
+  var sum=civilHeldSummary();
+  if(!sum.n)
+    return '<div class="note" style="margin-top:-4px;margin-bottom:12px">'
+      + num(DATA.ftTrench)+' LF of trench and '+num(DATA.ftConduit)
+      + ' LF of conduit &amp; cable from the drawing, priced at the rate card.</div>';
+  return '<div class="note" style="margin-top:-4px;margin-bottom:12px">'
+    + '<b>Civil priced from the drawing:</b> '+num(DATA.ftTrench)+' LF trench, '
+    + num(DATA.ftConduit)+' LF conduit &amp; cable. '
+    + 'The estimate\u2019s own civil lines ('+esc(sum.names.slice(0,3).join(', '))
+    + (sum.names.length>3?' and '+(sum.names.length-3)+' more':'')
+    + ', '+money(sum.total)+') are superseded so nothing is counted twice.</div>';
+}
+
 function panelHeldNote(){
   var sum=panelHeldSummary(), i, l, names=[];
   if(!sum.n) return '';
@@ -2997,6 +3049,7 @@ function buildModel(form){
        equipment. The lines are not deleted — they stay visible in the
        mapping, and switching the control back puts them straight in. */
     if(panelHeldOut(l)) continue;
+    if(civilHeldOut(l)) continue;
     mm=num(l.mat)*mk; ll=num(l.lab)*mk;
     fp=Math.max(0, Math.min(100, num(l.fp)))/100;
     if(fp>0 && l.bucket!=='fp' && grid.fp){
@@ -3264,6 +3317,11 @@ function renderSiteForm(){
    + '<div id="classMsg" class="note" style="margin-top:-4px;margin-bottom:12px"></div>';
   h+='<label class="f"><span>Site label (used in the sheet tab name)</span>'
     +'<input type="text" id="f-site" value="'+esc(d('site')||'Site 1')+'" oninput="setD(\'site\',this.value)"></label>';
+
+  if(!d('civilSource')) DATA.civilSource='The drawing \u00d7 rate card';
+  h+=fieldHTML({ k:'civilSource', label:'Civil work priced from', type:'select',
+                 options:['The drawing \u00d7 rate card','The estimate\u2019s own lines'] })
+   + civilHeldNote();
 
   /* Off by default: most make-ready work lands on existing gear. */
   if(!d('needPanel')) DATA.needPanel='No';
