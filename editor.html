@@ -6882,6 +6882,17 @@ function renderCtypes(){
     + '</div>';
 }
 
+/* Both confirmation banners omitted asphalt and fell through to "in-ground
+   trench", so setting a run to sawcut-asphalt reported it as in-ground and
+   looked like the change had not taken. The drawing tag and the BOM both
+   label asphalt correctly — only the banners lied. */
+function _routeWord(mode){
+  return mode==='surface'         ? 'surface mount'
+       : mode==='trench-concrete' ? 'sawcut-concrete trench'
+       : mode==='trench-asphalt'  ? 'sawcut-asphalt trench'
+       :                            'in-ground trench';
+}
+
 // Set S.condRoute -> route + trenchIn fields on a conduit object.
 function _applyRouteToConduit(c, mode){
   if(mode==='trench-ground'){ c.route='trench'; c.trenchIn='ground'; }
@@ -6903,7 +6914,7 @@ function applyRouteToAll(scope){
   });
   if(typeof _updateConduitSchedule==='function') _updateConduitSchedule();
   if(typeof updCondStat==='function') updCondStat();
-  if(typeof showBanner==='function') showBanner('cond','OK Routing applied to '+n+' run'+(n===1?'':'s')+' -- '+(mode==='surface'?'surface mount':mode==='trench-concrete'?'sawcut-concrete trench':'in-ground trench'));
+  if(typeof showBanner==='function') showBanner('cond','OK Routing applied to '+n+' run'+(n===1?'':'s')+' -- '+_routeWord(mode));
 }
 
 // Cycle a single conduit's routing method (surface -> ground -> concrete).
@@ -6922,7 +6933,7 @@ function cycleConduitRoute(id){
   var g=document.querySelector('[data-cid="'+c.id+'"]'); if(g&&g.parentNode) g.parentNode.removeChild(g);
   renderConduit(c);
   if(typeof _updateConduitSchedule==='function') _updateConduitSchedule();
-  if(typeof showBanner==='function') showBanner('cond','Conduit routing: '+(next==='surface'?'surface mount':next==='trench-concrete'?'sawcut-concrete trench':'in-ground trench'));
+  if(typeof showBanner==='function') showBanner('cond','Conduit routing: '+_routeWord(next));
 }
 
 // == WIZARD ==================================================
@@ -65151,7 +65162,7 @@ window._elecWorkbookHost = function(){
    by route, because they price at different rates. */
 function _evFeetFromCanvas(){
   var list=[]; try{ list=(typeof S!=='undefined' && S.conduits)?S.conduits:[]; }catch(e){}
-  var ug=0, ag=0, cable=0, pavedRuns=0, i, c, lf;
+  var ug=0, ag=0, cable=0, pavedRuns=0, turfRuns=0, i, c, lf;
   for(i=0;i<list.length;i++){
     c=list[i];
     /* stamp first: _cdEstLf reads the riser allowance it sets */
@@ -65159,17 +65170,31 @@ function _evFeetFromCanvas(){
     lf = (typeof _cdEstLf==='function') ? _cdEstLf(c) : (+c.ftLen||0);
     if(c.route==='trench') ug+=lf; else ag+=lf;
     cable += (typeof _cdCableLf==='function') ? _cdCableLf(c) : 0;
-    if(c.route==='trench' && (c.trenchIn==='concrete'||c.trenchIn==='asphalt'))
-      pavedRuns += (+c.ftLen||0);
+    /* Surface type comes from the TRENCHED runs only, and both kinds are
+       counted. Taking turf as "corridor total minus paved" invented 7 ft of
+       unpaved trench on a job whose only non-paved footage was a 7.2 ft
+       INTERIOR run: the corridor total counts that run, an interior conduit
+       is not a trench, and the workbook then priced excavation nobody digs. */
+    if(c.route==='trench'){
+      if(c.trenchIn==='concrete'||c.trenchIn==='asphalt') pavedRuns += (+c.ftLen||0);
+      else turfRuns += (+c.ftLen||0);
+    }
   }
   /* Trench counts each shared corridor once — never the sum of the conduit
      lengths in it. trenchTotals() is the same function the schedule uses. */
   var tt=(typeof trenchTotals==='function')?trenchTotals():{ft:0,corridors:0};
-  var paved=Math.min(pavedRuns, tt.ft);   /* runs share corridors; cap it */
+  /* Runs share corridors, so the corridor total is the truth for HOW MUCH
+     trench there is and the runs are the truth for WHAT KIND. Split the
+     corridor total in the runs' own proportion rather than by subtraction. */
+  var kind=pavedRuns+turfRuns, paved, turf;
+  if(kind>0){
+    paved = tt.ft * (pavedRuns/kind);
+    turf  = tt.ft * (turfRuns /kind);
+  } else { paved = tt.ft; turf = 0; }   /* nothing said: treat as paved */
   return {
     trench:      Math.round(tt.ft),
     trenchPaved: Math.round(paved),
-    trenchTurf:  Math.round(Math.max(0, tt.ft-paved)),
+    trenchTurf:  Math.round(turf),
     conduitUG:   Math.round(ug),
     conduitAG:   Math.round(ag),
     conduit:     Math.round(ug+ag),
