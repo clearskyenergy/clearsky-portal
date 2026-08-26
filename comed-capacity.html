@@ -141,6 +141,31 @@
   #authBox .a-msg.ok{color:#2ea043}
   #authBox .a-note{font-size:10.5px;color:var(--muted);margin-top:14px;line-height:1.5}
   #authBox .a-note b{color:#0a6ed1}
+  /* ── PIPELINE POPUP EDITOR ──────────────────────────────────── */
+  .crmpop{min-width:214px}
+  .crmpop-edit{margin-top:9px;border-top:1px solid var(--line);padding-top:9px;
+    display:flex;flex-direction:column;gap:6px}
+  .crmpop-owned{font-size:11px;color:#8a5a00;background:#FFF8E6;border:1px solid #F5D98A;
+    border-radius:6px;padding:6px 8px;line-height:1.4}
+  .crmpop-stage{height:30px;border:1px solid var(--line);border-radius:6px;
+    padding:0 7px;font-size:12px;background:#fff;outline:none;width:100%;
+    font-family:inherit;color:inherit}
+  .crmpop-note{border:1px solid var(--line);border-radius:6px;padding:6px 8px;
+    font-size:12px;font-family:inherit;resize:vertical;outline:none;width:100%;
+    min-height:38px;color:inherit}
+  .crmpop-stage:focus,.crmpop-note:focus{border-color:#0a6ed1}
+  .crmpop-row{display:flex;gap:6px}
+  .crmpop-save,.crmpop-take{height:30px;border-radius:6px;font:600 12px/1 inherit;
+    cursor:pointer;border:1px solid transparent;padding:0 12px}
+  .crmpop-save{background:#0a6ed1;color:#fff;flex:1}
+  .crmpop-save:hover{background:#0959ab}
+  .crmpop-take{background:#fff;color:#8a5a00;border-color:#F5D98A}
+  .crmpop-take:hover{background:#FFF8E6}
+  .crmpop-save:disabled,.crmpop-take:disabled{opacity:.55;cursor:default}
+  .crmpop-msg{font-size:11px;color:var(--dim);min-height:13px}
+  .crmpop-msg.bad{color:#c0392b}
+  /* Leaflet caps popup height on small screens; let the editor breathe. */
+  .leaflet-popup-content{margin:12px 14px}
   #repWrap{position:fixed;inset:0;z-index:1700;background:rgba(26,39,51,.55);display:none;
     align-items:center;justify-content:center;padding:24px}
   #repWrap.open{display:flex}
@@ -2786,10 +2811,7 @@ function crmPush(pin,body,cb){
      be" is the whole reason claims are visible. The note carries its own
      author, so the help is still attributed. First rep to stage a site
      owns it; later reps appear in the note log. */
-  if(fsUser&&body&&body.claim){
-    doc.repEmail=(fsUser.email||"").toLowerCase();
-    doc.repName=REP||(fsUser.email||"").split("@")[0];
-  }
+  /* repEmail is written below, inside the claim guard — see mayClaim. */
 
   /* Enough of the row to draw a pin without re-running the sweep. */
   if(row){
@@ -2802,10 +2824,20 @@ function crmPush(pin,body,cb){
     if(row.addr) doc.siteName=row.addr;
   }
 
-  /* A claim is taken when a rep first puts a stage on a site. */
-  if(body&&body.claim&&fsUser){
+  /* A claim is taken when a rep first puts a stage on a site — but ONLY if
+     the site is unowned or already theirs. Without that guard, a colleague
+     nudging the stage on your account silently took it off you, which is
+     the opposite of what visible claims are for. Taking somebody else's
+     account is possible, but it has to be deliberate: the popup shows the
+     current owner and offers an explicit Take over. */
+  var owner=(existing.repEmail||"").toLowerCase();
+  var me=(fsUser&&(fsUser.email||"").toLowerCase())||"";
+  var mayClaim=!owner||owner===me||(body&&body.takeover);
+  if(body&&body.claim&&fsUser&&mayClaim){
+    doc.repEmail=me;
+    doc.repName=REP||(fsUser.email||"").split("@")[0];
     doc.claimedBy=REP||(fsUser.email||"").split("@")[0];
-    doc.claimedByEmail=(fsUser.email||"").toLowerCase();
+    doc.claimedByEmail=me;
     doc.claimedAt=firebase.firestore.FieldValue.serverTimestamp();
   }
   if(patch.stage==="contacted") doc.contactedAt=firebase.firestore.FieldValue.serverTimestamp();
@@ -2838,7 +2870,7 @@ function crmPush(pin,body,cb){
 function crmSaveLocal(){}
 function crmSave(){}
 function crmGet(pin){ return (pin&&CRM.data[pin])||null; }
-function crmSet(pin,patch,row,cb){
+function crmSet(pin,patch,row,cb,takeover){
   if(!pin) return;
   var e=CRM.data[pin]||{}, k;
   for(k in patch){ if(patch.hasOwnProperty(k)) e[k]=patch[k]; }
@@ -2855,11 +2887,12 @@ function crmSet(pin,patch,row,cb){
   }
   CRM.data[pin]=e;                       /* optimistic; the stream repaints */
   crmPush(pin,{pin:pin,rep:REP,patch:patch,row:row,
-               claim:(patch&&patch.stage)?true:undefined},cb);
+               claim:(patch&&patch.stage)?true:undefined,
+               takeover:takeover?true:undefined},cb);
 }
 /* Notes are an append-only log, not a single field. A rep needs to see
    what the last person said and when, and an editable box loses that. */
-function crmNote(pin,text,row){
+function crmNote(pin,text,row,cb){
   if(!pin) return;
   var t=String(text||"").trim(); if(!t) return;
   var e=CRM.data[pin]||{};
@@ -2867,7 +2900,7 @@ function crmNote(pin,text,row){
   e.notes.unshift({ts:Date.now(),rep:REP||"unattributed",t:t.slice(0,600)});
   if(e.notes.length>40) e.notes=e.notes.slice(0,40);
   CRM.data[pin]=e;                       /* optimistic; the stream repaints */
-  crmPush(pin,{pin:pin,rep:REP,note:t,row:row},null);
+  crmPush(pin,{pin:pin,rep:REP,note:t,row:row},cb||null);
 }
 function noteAge(ts){
   var d=Math.floor((Date.now()-ts)/86400000);
@@ -2913,6 +2946,75 @@ function crmCount(stage){
   return n;
 }
 
+/* ── POPUP EDITING ───────────────────────────────────────────────
+   One save writes both the stage and the note, because that is how a call
+   actually ends: "moved them to Qualified, they want pricing by Friday."
+   Two separate buttons would mean two writes and, reliably, one of them
+   forgotten.
+
+   Nothing here updates CRM.data by hand — the snapshot listener repaints
+   from Firestore, so what a rep sees after saving is what was actually
+   stored rather than what we hoped was stored. */
+function wireCrmPopup(popup,pin){
+  var el=popup.getElement?popup.getElement():null;
+  if(!el) return;
+  var sel =el.querySelector(".crmpop-stage");
+  var note=el.querySelector(".crmpop-note");
+  var save=el.querySelector(".crmpop-save");
+  var take=el.querySelector(".crmpop-take");
+  var msg =el.querySelector(".crmpop-msg");
+  if(!sel||!save) return;
+
+  /* Leaflet treats the popup as part of the map: without this, typing a
+     space scrolls the map and a double-click zooms it. */
+  L.DomEvent.disableClickPropagation(el);
+  L.DomEvent.disableScrollPropagation(el);
+
+  function say(t,bad){ if(msg){ msg.textContent=t||""; msg.className="crmpop-msg"+(bad?" bad":""); } }
+
+  function commit(takeover){
+    var stage=sel.value;
+    var text=(note.value||"").trim();
+    var cur=CRM.data[pin]||{};
+    if(stage===(cur.stage||"")&&!text&&!takeover){ say("Nothing to save."); return; }
+    save.disabled=true; if(take) take.disabled=true;
+    say("Saving\u2026");
+
+    var pending=0, failed=false;
+    function done(err){
+      if(err) failed=true;
+      if(--pending>0) return;
+      save.disabled=false; if(take) take.disabled=false;
+      if(failed){ say("Could not save \u2014 check your connection.",true); return; }
+      note.value="";
+      say("Saved.");
+      setTimeout(function(){ if(popup&&popup._map) popup._map.closePopup(popup); },700);
+    }
+
+    if(stage!==(cur.stage||"")||takeover){
+      pending++;
+      crmSet(pin,{stage:stage},null,done,takeover);
+      if(takeover){
+        /* Recorded, not silent. Taking an account off a colleague should
+           leave a trace they can see in the note log. */
+        pending++;
+        crmNote(pin,"Took over this account.",null,done);
+      }
+    }
+    if(text){
+      pending++;
+      crmNote(pin,text,null,done);
+    }
+    if(!pending){ save.disabled=false; if(take) take.disabled=false; say(""); }
+  }
+
+  save.onclick=function(){ commit(false); };
+  if(take) take.onclick=function(){ commit(true); };
+  note.addEventListener("keydown",function(ev){
+    if(ev.key==="Enter"&&(ev.metaKey||ev.ctrlKey)){ ev.preventDefault(); commit(false); }
+  });
+}
+
 var crmLayer=null;
 function drawCrm(on){
   if(crmLayer){ map.removeLayer(crmLayer); crmLayer=null; }
@@ -2928,7 +3030,18 @@ function drawCrm(on){
       {pane:"pipePane",renderer:pipeRenderer,
        radius:7,color:"#fff",weight:2,fillColor:st.color,fillOpacity:.95,interactive:true});
     var last=(e.notes&&e.notes[0])?e.notes[0]:null;
-    var body='<div style="min-width:190px"><b>'+esc(e.addr||pin)+'</b>'+
+    var mine=!e.repEmail||((fsUser&&(fsUser.email||"").toLowerCase())===e.repEmail);
+
+    /* Stage options. Rendered from CRM_STAGES so the dropdown can never
+       drift from the legend, the KPI strip or the colours on the map. */
+    var opts="";
+    for(var si=0;si<CRM_STAGES.length;si++){
+      var so=CRM_STAGES[si];
+      opts+='<option value="'+esc(so.k)+'"'+(so.k===e.stage?' selected':'')+'>'+
+            esc(so.k?so.label:"\u2014 no stage")+'</option>';
+    }
+
+    var body='<div class="crmpop" data-pin="'+esc(pin)+'"><b>'+esc(e.addr||pin)+'</b>'+
       '<div style="color:'+st.color+';font-weight:700;font-size:12px">'+esc(st.label)+
       (e.rep?(' \u00b7 <span style="color:var(--muted);font-weight:400">'+esc(e.rep)+'</span>'):'')+'</div>'+
       (e.owner?('<div style="font-size:11px;color:var(--muted)">'+esc(e.owner)+'</div>'):'')+
@@ -2937,8 +3050,27 @@ function drawCrm(on){
       (last?('<div style="margin-top:6px;border-top:1px solid #eee;padding-top:5px;font-size:11px">'+
              '<span style="font-family:var(--mono);font-size:9px;color:var(--dim)">'+esc(last.rep)+
              ' \u00b7 '+esc(noteAge(last.ts))+'</span><br>'+esc(last.t.slice(0,140))+'</div>'):'')+
+      /* ── EDIT ──────────────────────────────────────────────────────
+         A rep working a call needs the stage and the note where they are
+         already looking. Sending them to a side panel to record what just
+         happened on the phone is how call logs stop getting written. */
+      '<div class="crmpop-edit">'+
+        (mine?'':'<div class="crmpop-owned">Worked by <b>'+esc(e.rep||"another rep")+'</b>. '+
+                 'Add a note to help, or take it over.</div>')+
+        '<select class="crmpop-stage">'+opts+'</select>'+
+        '<textarea class="crmpop-note" rows="2" maxlength="600" '+
+          'placeholder="Log a call or a note\u2026"></textarea>'+
+        '<div class="crmpop-row">'+
+          '<button class="crmpop-save">Save</button>'+
+          (mine?'':'<button class="crmpop-take">Take over</button>')+
+        '</div>'+
+        '<div class="crmpop-msg"></div>'+
+      '</div>'+
       '</div>';
-    mk.bindPopup(body);
+    mk.bindPopup(body,{minWidth:236});
+    /* Handlers are wired on open, not on build: the popup markup does not
+       exist in the DOM until Leaflet renders it. */
+    (function(p){ mk.on("popupopen",function(ev){ wireCrmPopup(ev.popup,p); }); })(pin);
     crmLayer.addLayer(mk);
   }
   crmLayer.addTo(map);
