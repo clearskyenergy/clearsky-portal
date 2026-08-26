@@ -2390,6 +2390,60 @@ function scopeNote(row, qty, ports){
   }
 }
 
+/* ══════════════════════════════════════════════════════════════════════
+   MASTER RATE CARD — back-solved from submitted cost matrices
+
+   Every figure here was read out of a sheet that was actually filed, not
+   chosen. The count after each rate is how many of the five Eversource MA
+   submissions carry it identically:
+
+     10 Village Green Way (10 port) · 11 Marble St (4) · 17 Calhoun St (4)
+     298 Kingstown (10)             · 29 Spring St (6)
+
+   Nothing in a cost matrix should be a number somebody typed. Quantities
+   come from the site map, rates come from here, and the sheet multiplies
+   the two — which is why the QUANTITY FORMULAS below matter as much as the
+   prices. All three were verified against every one of the five jobs:
+
+     pedestals          = ports / 2        (dual-port units)
+     breaker positions  = ports + 3        (three service positions + one/port)
+     freight            = $250 + $100/port (4p $650 · 6p $850 · 10p $1,250)
+
+   Where the jobs disagree, the rate is NOT hard-coded and the reason is
+   recorded instead. Above-ground conduit labor ran $2.50-$5.13 per foot
+   across four jobs, and distribution equipment tracks service size rather
+   than port count, so both stay driven by the estimate.
+   ══════════════════════════════════════════════════════════════════════ */
+var RATE_CARD = {
+  source:'5 Eversource MA submissions, 4-10 ports, 2026',
+
+  /* per foot of run ─────────────────────────────────────────────────── */
+  trenchPaved:   { mat:15.00, lab:80.00, n:5, note:'continuously paved (asphalt/concrete)' },
+  trenchTurf:    { mat:10.00, lab:60.00, n:1, note:'non-continuously paved (grass/ground cover)' },
+  conduitCableUG:{ mat:1.95,  lab:2.50,  n:5, note:'conduit + conductors, underground' },
+  conduitCableAG:{ mat:1.95,  lab:3.85,  n:4, note:'above ground/indoor; labor ran 2.50-5.13, mid used' },
+
+  /* each ────────────────────────────────────────────────────────────── */
+  bollard:       { mat:250,  lab:300,  n:5 },
+  concreteBase:  { mat:800,  lab:400,  n:4, note:'one per dual-port pedestal' },
+  xfmrPad:       { mat:1200, lab:1300, n:3, note:"3'x5' utility transformer pad" },
+  mountKit:      { mat:1250, lab:500,  n:4, note:'pedestal / mounting kit per unit' },
+
+  /* per port ────────────────────────────────────────────────────────── */
+  charger:       { mat:2200, lab:0,    n:5 },
+  install:       { mat:0,    lab:1250, n:5, note:'EVSE installation labor' },
+  network:       { mat:480,  lab:0,    n:5, note:'matches the National Grid MUD chart too' },
+
+  /* per site ────────────────────────────────────────────────────────── */
+  housePanel:    { mat:0,    lab:1250, n:2, note:'house/owner panel upgrade' },
+  metering:      { mat:210,  lab:2000, n:3, note:'meter socket; 788 on a CT-cabinet service' },
+
+  /* formulas, not prices ────────────────────────────────────────────── */
+  pedestalsFor:  function(ports){ return Math.max(1, Math.ceil(num(ports)/2)); },
+  breakersFor:   function(ports){ return num(ports)+3; },
+  freightFor:    function(ports){ return 250 + 100*num(ports); }
+};
+
 function standardRate(row, bucket){
   var B=L2_BASELINE, ST=STANDARD_ITEMS.l2;
   var ports=Math.max(1, num(DATA.plugs)||1);
@@ -2397,7 +2451,11 @@ function standardRate(row, bucket){
   var ftT  =num(DATA.ftTrench), ftC=num(DATA.ftConduit), ftW=num(DATA.ftCable);
   var ftUG =num(DATA.ftConduitUG) || ftC, ftAG=num(DATA.ftConduitAG);
   var ftTurf=num(DATA.ftTrenchTurf);
-  if(ftTurf>0 && ftT>=ftTurf) ftT=r2(ftT-ftTurf);   /* paved is the balance */
+  /* Paved footage when it is measured; only derive it as the balance when
+     nobody has said. Subtracting from an already-explicit paved figure left
+     11 Marble with 0.24 LF of trench against a filed 44.12. */
+  if(num(DATA.ftTrenchPaved)>0) ftT=num(DATA.ftTrenchPaved);
+  else if(ftTurf>0 && ftT>=ftTurf) ftT=r2(ftT-ftTurf);
   var MA   =String(DATA.city||DATA.state||'').toUpperCase().indexOf('MA')>=0;
 
   switch(row){
@@ -2408,8 +2466,20 @@ function standardRate(row, bucket){
     case 'permit':     return { qty:1, unit:'LS', mat:0, lab:permitFromSubtotal(subtotalExcluding('permit')),
                                 note:'3% of project cost' };
     case 'activation': return { qty:ports, unit:'EA', mat:395*ports, lab:0, note:'$395/port' };
-    case 'shipping':   return { qty:ports, unit:'EA', mat:0, lab:ST.freight.lab*ports,
-                                note:'freight, $162.50/port' };
+    /* Both per port, identical on all five submitted jobs. They were the
+       only cost lines with no rate at all \u2014 they arrived from the estimate
+       or not at all, so a hand-built job silently lost them. */
+    case 'charger':    return ports>0 ? { qty:ports, unit:'EA',
+                                mat:RATE_CARD.charger.mat*ports, lab:0,
+                                note:ports+' ports \u00d7 $'+RATE_CARD.charger.mat+'/port' } : null;
+    case 'install':    return ports>0 ? { qty:ports, unit:'EA', mat:0,
+                                lab:RATE_CARD.install.lab*ports,
+                                note:'EVSE installation \u2014 '+ports+' ports \u00d7 $'+RATE_CARD.install.lab } : null;
+    /* $250 + $100/port, exact on every submitted job (4p $650, 6p $850,
+       10p $1,250) \u2014 it was a flat per-port figure before. */
+    case 'shipping':   return ports>0 ? { qty:ports, unit:'EA', mat:0,
+                                lab:RATE_CARD.freightFor(ports),
+                                note:ports+' port freight \u2014 $250 mobilisation + $100/port' } : null;
     case 'network':    return { qty:ports, unit:'EA', mat:ST.networking.mat*ports, lab:0,
                                 note:'$480/port \u2014 public L2 / MUD only' };
     case 'warranty':   return { qty:ports, unit:'EA', mat:0, lab:0,
@@ -2437,23 +2507,25 @@ function standardRate(row, bucket){
        to carry a matching line. Underground and above ground price
        separately — an indoor run costs more per foot and less to dig. */
     case 'conduit':    return ftUG>0 ? { qty:ftUG, unit:'LF',
-                                        mat:B.perFoot.conduitCableUG.mat*ftUG,
-                                        lab:B.perFoot.conduitCableUG.lab*ftUG,
+                                        mat:RATE_CARD.conduitCableUG.mat*ftUG,
+                                        lab:RATE_CARD.conduitCableUG.lab*ftUG,
                                         note:scopeNote('conduit', ftUG) } : null;
     case 'wire':       return ftAG>0 ? { qty:ftAG, unit:'LF',
-                                        mat:B.perFoot.conduitCableAG.mat*ftAG,
-                                        lab:B.perFoot.conduitCableAG.lab*ftAG,
+                                        mat:RATE_CARD.conduitCableAG.mat*ftAG,
+                                        lab:RATE_CARD.conduitCableAG.lab*ftAG,
                                         note:scopeNote('wire', ftAG) } : null;
     case 'trench':     return ftT>0 ? { qty:ftT, unit:'LF',
-                                        mat:(MA?B.perFoot.trenchMA:B.perFoot.trenchCT).mat*ftT,
-                                        lab:(MA?B.perFoot.trenchMA:B.perFoot.trenchCT).lab*ftT,
+                                        mat:RATE_CARD.trenchPaved.mat*ftT,
+                                        lab:RATE_CARD.trenchPaved.lab*ftT,
                                         note:scopeNote('trench', ftT) } : null;
     case 'trenchTurf': return ftTurf>0 ? { qty:ftTurf, unit:'LF',
-                                        mat:B.perFoot.trenchTurf.mat*ftTurf,
-                                        lab:B.perFoot.trenchTurf.lab*ftTurf,
+                                        mat:RATE_CARD.trenchTurf.mat*ftTurf,
+                                        lab:RATE_CARD.trenchTurf.lab*ftTurf,
                                         note:scopeNote('trenchTurf', ftTurf) } : null;
-    case 'concrete':   return { qty:peds, unit:'EA', mat:800*peds, lab:400*peds,
-                                note:scopeNote('concrete', peds, ports) };
+    case 'concrete':   return peds>0 ? { qty:peds, unit:'EA',
+                                mat:RATE_CARD.concreteBase.mat*peds,
+                                lab:RATE_CARD.concreteBase.lab*peds,
+                                note:scopeNote('concrete', peds, ports) } : null;
     default: return null;
   }
 }
@@ -2597,8 +2669,16 @@ function autofillFeet(){
   if(EDITOR_FEET){
     var E=EDITOR_FEET;
     DATA.ftTrench      = Math.round(num(E.trench));
-    DATA.ftTrenchPaved = Math.round(num(E.trenchPaved));
-    DATA.ftTrenchTurf  = Math.round(num(E.trenchTurf!=null?E.trenchTurf:E.trench));
+    /* When the editor sends a split, use it. When it sends only a total,
+       the trench is CONTINUOUSLY PAVED \u2014 which is where the classifier puts
+       the trench line and where all four reference sheets carry it. The old
+       default sent the whole run to the turf row while the money stayed on
+       the paved row, so the sheet showed $1,046 against 0 ft on one line and
+       550 ft against $0 on the next. */
+    DATA.ftTrenchPaved = Math.round(num(E.trenchPaved!=null ? E.trenchPaved
+                                     : (E.trenchTurf!=null ? Math.max(0, num(E.trench)-num(E.trenchTurf))
+                                                           : num(E.trench))));
+    DATA.ftTrenchTurf  = Math.round(num(E.trenchTurf));
     DATA.ftConduit     = Math.round(num(E.conduit));
     DATA.ftConduitUG   = Math.round(num(E.conduitUG!=null?E.conduitUG:E.conduit));
     DATA.ftConduitAG   = Math.round(num(E.conduitAG));
@@ -2610,7 +2690,7 @@ function autofillFeet(){
     return;
   }
 
-  var trench=0, paved=0, cond=0, cable=0, egc=0, i, l, t;
+  var trench=0, paved=0, turf=0, cond=0, cable=0, egc=0, i, l, t;
   var haveDrawnTrench=false;
   for(i=0;i<LINES.length;i++){
     t=String(LINES[i].desc||'').toLowerCase();
@@ -2626,8 +2706,9 @@ function autofillFeet(){
          excavation as a drawn trench run. Count the drawn runs only. */
       if(haveDrawnTrench && !/\(in-ground\)|sawcut/.test(t)) continue;
       trench+=num(l.qty);
+      if(/turf|grass|landscap|lawn|non.?continuous|unpaved/.test(t)) turf+=num(l.qty);
       /* a sawcut is by definition through paving */
-      if(/sawcut|concrete/.test(t)) paved+=num(l.qty);
+      else if(/sawcut|concrete/.test(t)) paved+=num(l.qty);
     }
     else if(/conduit/i.test(l.cat)) cond+=num(l.qty);
     else if(/wire|cable/i.test(l.cat)){
@@ -2639,8 +2720,11 @@ function autofillFeet(){
     }
   }
   DATA.ftTrench=Math.round(trench);
-  DATA.ftTrenchPaved=Math.round(paved);
-  DATA.ftTrenchTurf=Math.round(trench-paved);
+  /* Only a run whose description says turf/grass is non-continuously paved;
+     everything else is paved, which is where the trench line and all four
+     reference sheets carry it. */
+  DATA.ftTrenchTurf =Math.round(Math.max(0, turf));
+  DATA.ftTrenchPaved=Math.round(Math.max(0, trench-turf));
   DATA.ftConduit=Math.round(cond);
   /* No per-run data in a pasted CSV, so treat the conduit as underground —
      the common case on a make-ready job, and the row a reviewer expects. */
@@ -5578,7 +5662,11 @@ function ngRollup(m){
       /* a fixed quantity the sheet asks for (ports, stations) beats the
          summed line quantity, which double-counts when several lines share
          one row */
-      if(cfg.qty) byRow[rr].qty = num(DATA[cfg.qty]) || byRow[rr].qty;
+      /* Prefer the measured footage the sheet asks for, but never let an
+         unset key blank out a row that plainly has work on it — that is how
+         550 ft of trench ended up on a row with no money next to money on a
+         row with no feet. */
+      if(cfg.qty) byRow[rr].qty = num(DATA[cfg.qty]) || num(r.qty) || byRow[rr].qty;
       else if(num(r.qty)) byRow[rr].qty += num(r.qty);
       if(r.note) byRow[rr].notes.push(r.note);
     }
