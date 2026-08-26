@@ -65207,6 +65207,39 @@ function _evFeetFromCanvas(){
   };
 }
 
+/* What is actually PLACED on the drawing. The takeoff sent footage and
+   chargers but never the equipment, so bollards, concrete pads, transformer
+   pads, handholes and the meter had to be typed into the cost sheet by hand
+   on every job — the drawing knew all of it. Counting them here closes the
+   last gap between the map and the matrix. */
+function _evCountsFromCanvas(){
+  var els=[]; try{ els=(typeof S!=='undefined' && S.elements)?S.elements:[]; }catch(e){}
+  var c={ bollard:0, pad:0, xfmrpad:0, handhole:0, meter:0, panel:0, disco:0, charger:0 };
+  var i, t;
+  for(i=0;i<els.length;i++){
+    t=String((els[i]&&(els[i].type||els[i].eqId))||'').toLowerCase();
+    if(!t) continue;
+    if(t.indexOf('bollard')>=0)                       c.bollard++;
+    else if(t.indexOf('jbox')>=0||t.indexOf('handhole')>=0||t.indexOf('pull')>=0) c.handhole++;
+    /* a pad under a transformer is the utility's pad, not an EVSE base */
+    else if(t.indexOf('xfmr')>=0||t.indexOf('transformer')>=0) c.xfmrpad++;
+    else if(t.indexOf('pad')>=0)                      c.pad++;
+    else if(t.indexOf('meter')>=0)                    c.meter++;
+    else if(t.indexOf('panel')>=0||t.indexOf('mdp')>=0||t.indexOf('switchgear')>=0) c.panel++;
+    else if(t.indexOf('disco')>=0)                    c.disco++;
+    else if(t.indexOf('charger')>=0||t.indexOf('evse')>=0) c.charger++;
+  }
+  /* Whether the service is new is a drawing fact too: an existing meter bank
+     on the map means the service is there already. */
+  var existing=false;
+  for(i=0;i<els.length;i++){
+    var lbl=String((els[i]&&(els[i].label||els[i].name))||'').toLowerCase();
+    if(lbl.indexOf('existing')>=0 && (lbl.indexOf('meter')>=0||lbl.indexOf('service')>=0)) existing=true;
+  }
+  c.existingService = existing;
+  return c;
+}
+
 /* Pack whatever is on the canvas right now into one workbook payload. */
 function _evPackSite(name){
   var e = (typeof buildEstimate==='function') ? buildEstimate() : _EST;
@@ -65248,6 +65281,8 @@ function _evPackSite(name){
     /* measured geometry — without this the workbook derives conduit from
        the trench and labels it DERIVED on the utility sheet */
     feet: _evFeetFromCanvas(),
+    /* placed equipment, so the sheet does not have to be told twice */
+    counts: _evCountsFromCanvas(),
     chargers: chargers,
     priceBasis: (typeof OMEGA_PRICE_BASIS!=='undefined') ? OMEGA_PRICE_BASIS : 'cost',
     evTotals: evT ? { ports:evT.ports, l2Units:evT.l2Units, dcfcUnits:evT.dcfcUnits,

@@ -1616,7 +1616,7 @@ function setCustomBand(){
    numbers that came from a build that was no longer the code — the same
    export pasted twice, identical to the byte, while the fix sat undeployed.
    A visible build id ends that argument in one glance. */
-var OMEGA_BUILD = 'wb-2026-08-26f';
+var OMEGA_BUILD = 'wb-2026-08-26h';
 try{ window.OMEGA_BUILD = OMEGA_BUILD; }catch(e){}
 
 var LINES = [];
@@ -1955,7 +1955,7 @@ function packEstimate(est, w){
 /* Charger fleet handed over by the editor: real models, part numbers and
    price-book figures. Held here so the baseline rows and the port count
    use what is on the drawing rather than a generic port. */
-var EDITOR_FLEET = null, EDITOR_BASIS = null, EDITOR_EVT = null;
+var EDITOR_FLEET = null, EDITOR_BASIS = null, EDITOR_EVT = null, EDITOR_COUNTS = null;
 
 function loadPayload(pay){
   LINES=[];
@@ -1983,6 +1983,20 @@ function loadPayload(pay){
     if(!d('site')) DATA.site = pay.site.name || pay.site.mapName || pay.site.label || '';
   }
   EDITOR_FEET = pay.feet || null;
+  /* What the drawing actually has on it — bollards, pads, handholes, the
+     meter. Without this the sheet could price the run but not the equipment
+     standing in it, and every one of those rows was typed by hand. */
+  EDITOR_COUNTS = pay.counts || null;
+  if(EDITOR_COUNTS){
+    if(num(EDITOR_COUNTS.bollard)>0)  DATA.nBollard  = num(EDITOR_COUNTS.bollard);
+    if(num(EDITOR_COUNTS.pad)>0)      DATA.nPad      = num(EDITOR_COUNTS.pad);
+    if(num(EDITOR_COUNTS.xfmrpad)>0)  DATA.nXfmrPad  = num(EDITOR_COUNTS.xfmrpad);
+    if(num(EDITOR_COUNTS.handhole)>0) DATA.nHandhole = num(EDITOR_COUNTS.handhole);
+    if(num(EDITOR_COUNTS.meter)>0)    DATA.nMeter    = num(EDITOR_COUNTS.meter);
+    /* an existing meter bank on the drawing answers the service question */
+    if(!d('serviceScenario') && EDITOR_COUNTS.existingService)
+      DATA.serviceScenario = SERVICE_SCENARIOS[0];
+  }
   if(pay.chargers) applyChargerCosts(pay.chargers);
   if(pay.contractor) applyContractor(pay.contractor);
   if(applyDetectedClass()) setClass(DATA['class']);
@@ -2371,6 +2385,14 @@ var STANDARD=[
      Gated on footage, so nothing appears without something drawn. */
   ['Conduit & Conductors','mr','conduit',true],
   ['Wiring','mr','wire',true],
+  /* Every one of the three filed jobs on a new service carries a utility
+     transformer pad; the two on existing services carry none. Gated on the
+     scenario rather than assumed, and standardRate returns nothing unless a
+     new service is selected. */
+  ['Concrete Work \u2014 Utility Transformer Pad','mr','xfmrpad',true],
+  /* placed on the drawing, so priced from it */
+  ['Protective Bollards','ne','bollard',true],
+  ['Concrete Work/Bases/Pads','mr','concrete',true],
   /* Trenching is measured too, but it is ONE excavation with two possible
      rows. The estimate's own trench line lands on the paved row while the
      measured footage would add the turf row — the same ditch billed twice,
@@ -2522,8 +2544,9 @@ function standardRate(row, bucket){
   var _ts=trenchSplit(), ftTurf=_ts.turf;
   /* A new service is a fact about the site, not a price. Explicit flag first;
      otherwise a site being given new panel/service gear implies one. */
-  var newSvc = (d('newService')==='Yes') ||
-               (d('newService')!=='No' && d('needPanel')==='Yes');
+  /* the $735 lateral structure and the utility pad belong to a NEW service,
+     not to an upgrade that reuses the existing one */
+  var newSvc = isNewService();
   /* Paved footage when it is measured; only derive it as the balance when
      nobody has said. Subtracting from an already-explicit paved figure left
      11 Marble with 0.24 LF of trench against a filed 44.12. */
@@ -2557,8 +2580,12 @@ function standardRate(row, bucket){
     case 'warranty':   return { qty:ports, unit:'EA', mat:0, lab:0,
                                 note:'quote from the OEM \u2014 not carried on the reference jobs' };
     case 'striping':   return { qty:ports, unit:'EA', mat:0, lab:0, note:'' };
-    case 'bollard':    return { qty:peds, unit:'EA', mat:ST.bollard.mat*peds, lab:ST.bollard.lab*peds,
-                                note:scopeNote('bollard', peds) };
+    /* Counted on the drawing, not assumed from port count: a job that drew
+       five bollards prices five, and a job that drew none prices none. */
+    case 'bollard':    var nb=num(DATA.nBollard)||0;
+                       return nb ? { qty:nb, unit:'EA',
+                                mat:RATE_CARD.bollard.mat*nb, lab:RATE_CARD.bollard.lab*nb,
+                                note:scopeNote('bollard', nb) } : null;
     case 'pedestal':   return { qty:peds, unit:'EA', mat:ST.pedestal.mat*peds, lab:ST.pedestal.lab*peds,
                                 note:peds+' dual-port pedestals' };
     case 'meter':      return { qty:1, unit:'LS', mat:ST.metering.mat, lab:ST.metering.lab, note:'' };
@@ -2568,8 +2595,9 @@ function standardRate(row, bucket){
     case 'mount':      return { qty:ports, unit:'EA', mat:ST.wallMount.mat*ports,
                                 lab:ST.wallMount.lab*ports, note:ports+' \u00d7 wall-mount kits' };
     case 'housePanel': return { qty:1, unit:'LS', mat:0, lab:ST.housePanel.lab, note:'' };
-    case 'xfmrpad':    return { qty:1, unit:'EA', mat:ST.xfmrPad.mat, lab:ST.xfmrPad.lab,
-                                note:scopeNote('xfmrpad', 1) };
+    case 'xfmrpad':    return isNewService() ? { qty:1, unit:'EA',
+                                mat:RATE_CARD.xfmrPad.mat, lab:RATE_CARD.xfmrPad.lab,
+                                note:scopeNote('xfmrpad', 1) } : null;
     case 'restore':    return ftT>0 ? { qty:ftT, unit:'LF', mat:B.perFoot.restoration.mat*ftT,
                                         lab:B.perFoot.restoration.lab*ftT, note:scopeNote('restore', ftT) } : null;
     /* The rate card has carried per-foot conduit, cable and trench rates all
@@ -2604,10 +2632,11 @@ function standardRate(row, bucket){
                                         mat:RATE_CARD.trenchTurf.mat*ftTurf,
                                         lab:RATE_CARD.trenchTurf.lab*ftTurf,
                                         note:scopeNote('trenchTurf', ftTurf) } : null;
-    case 'concrete':   return peds>0 ? { qty:peds, unit:'EA',
-                                mat:RATE_CARD.concreteBase.mat*peds,
-                                lab:RATE_CARD.concreteBase.lab*peds,
-                                note:scopeNote('concrete', peds, ports) } : null;
+    case 'concrete':   var np=num(DATA.nPad)||0;
+                       return np ? { qty:np, unit:'EA',
+                                mat:RATE_CARD.concreteBase.mat*np,
+                                lab:RATE_CARD.concreteBase.lab*np,
+                                note:scopeNote('concrete', np, ports) } : null;
     default: return null;
   }
 }
@@ -3001,6 +3030,30 @@ function civilHeldSummary(){
   return { n:n, total:r2(t), names:names };
 }
 
+/* ── ELECTRIC SERVICE SCENARIO ─────────────────────────────────────
+   One answer that several rows depend on, and the same question both
+   utilities ask: UI's Section 2 wants "New/Upgraded Service" or "Existing
+   Service", and Eversource prices a service pad, a distribution assembly
+   and the new-service structure off it.
+
+   It replaces the old New panel Yes/No, which could not tell an upgrade
+   (new gear on an existing service, no utility pad, no lateral) from a
+   genuinely new service — and those differ by the $735 structure and a
+   $2,500 transformer pad. */
+var SERVICE_SCENARIOS = [
+  'Existing service — no new gear',
+  'Service upgrade — new gear on existing service',
+  'New service'
+];
+function serviceScenario(){
+  var v=d('serviceScenario');
+  if(v) return v;
+  /* honour a job saved before this control existed */
+  return d('needPanel')==='Yes' ? SERVICE_SCENARIOS[1] : SERVICE_SCENARIOS[0];
+}
+function isNewService(){  return serviceScenario()===SERVICE_SCENARIOS[2]; }
+function serviceNeedsGear(){ return serviceScenario()!==SERVICE_SCENARIOS[0]; }
+
 function panelHeldOut(l){
   if(!l || l.bucket!=='mr' || l.row!=='panel') return false;
   /* The tie-in to existing service is work every job does; it sits on the
@@ -3008,7 +3061,7 @@ function panelHeldOut(l){
      the site is marked as needing no new panel. */
   if(/service point|poi tie|tie.?in|service board|service entrance/i.test(String(l.desc||'')))
     return false;
-  return d('needPanel')!=='Yes';
+  return !serviceNeedsGear();
 }
 /* Held-out money is never silently dropped: say what it is, say what it is
    worth, and put the switch to reinstate it one click away. */
@@ -3408,10 +3461,21 @@ function renderSiteForm(){
                  options:['The drawing \u00d7 rate card','The estimate\u2019s own lines'] })
    + civilHeldNote();
 
-  /* Off by default: most make-ready work lands on existing gear. */
-  if(!d('needPanel')) DATA.needPanel='No';
-  h+=fieldHTML({ k:'needPanel', label:'New panel / service equipment needed', type:'select',
-                 options:['No','Yes'] })
+  /* Existing service by default: most make-ready lands on existing gear. */
+  if(!d('serviceScenario')) DATA.serviceScenario=serviceScenario();
+  h+=fieldHTML({ k:'serviceScenario', label:'Electric service', type:'select',
+                 options:SERVICE_SCENARIOS })
+   + '<div class="note" style="margin-top:-4px;margin-bottom:12px">'
+   + (isNewService()
+      ? 'New service: panel and switchgear are priced, the $735 lateral structure rides on the '
+        + 'above-ground conduit row, and a utility transformer pad is included \u2014 all three of the '
+        + 'filed new-service jobs carry one.'
+      : serviceNeedsGear()
+      ? 'Upgrade: panel and switchgear are priced. No utility pad and no new-service structure \u2014 '
+        + 'those belong to a genuinely new service.'
+      : 'Existing service: panel and switchgear costs are left out. The utility asks for an invoice '
+        + 'against anything claimed here.')
+   + '</div>'
    + '<div class="note" style="margin-top:-4px;margin-bottom:12px">'
    + (d('needPanel')==='Yes'
       ? 'Panel, switchgear and service-equipment lines are priced into Make-Ready.'
@@ -5138,7 +5202,10 @@ function uiPdfValues(){
              : d('category')==='Public Parking'?'Destination Parking (Public)':'Workplace')),
     parkType:uiV('ui_parkType','Grade Level'),
     spaces:uiV('ui_spaces', ports), publicPlugs:uiV('ui_publicPlugs', 0), privatePlugs:uiV('ui_privatePlugs', ports),
-    service:uiV('ui_service','Existing Service'), wo:d('ui_wo'), svcAcct:d('ui_svcAcct'),
+    /* UI's Section 2 asks the same question, so it is answered from the
+       same place rather than typed twice and disagreeing. */
+    service:uiV('ui_service', serviceNeedsGear()?'New/Upgraded Service':'Existing Service'),
+    wo:d('ui_wo'), svcAcct:d('ui_svcAcct'),
     company:d('company'), cContact:d('contact'), cPhone:d('phone'), cEmail:d('email'),
     cAddr:d('cAddress'), network:d('ui_network'),
     mfr:uiV('ui_mfr', mfr), model:uiV('ui_model', model),
