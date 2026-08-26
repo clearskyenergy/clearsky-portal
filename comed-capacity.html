@@ -86,6 +86,14 @@
   #legend .lp{display:flex;align-items:center;gap:7px;margin-top:9px;padding-top:9px;
     border-top:1px solid var(--line);font-size:11px;color:var(--muted);cursor:pointer;user-select:none}
   #legend .lp input{margin:0;cursor:pointer}
+  #legend .st{display:flex;align-items:center;gap:7px;padding:3px 5px;font-size:11px;cursor:pointer;
+    border-radius:5px;color:var(--muted);user-select:none}
+  #legend .st:hover{background:var(--panel2)}
+  #legend .st.off{opacity:.32}
+  #legend .st.on{background:var(--panel2);color:var(--ink);font-weight:600}
+  #legend .st .dot{width:11px;height:11px;border-radius:50%;flex:0 0 auto;border:2px solid #fff;
+    box-shadow:0 0 0 1px rgba(0,0,0,.12)}
+  #legend .st .ct{margin-left:auto;font-family:var(--mono);font-size:10px}
   #legend .lf{font-size:10px;color:var(--dim);margin-top:8px;font-family:var(--mono)}
   #status{position:absolute;left:50%;transform:translateX(-50%);top:72px;z-index:1100;background:#fff;border:1px solid var(--line);
     border-radius:8px;padding:8px 12px;font-family:var(--mono);font-size:11px;color:var(--muted);display:flex;gap:9px;align-items:center;box-shadow:0 4px 14px rgba(26,39,51,.08);max-width:70vw}
@@ -103,6 +111,9 @@
     font-size:13px;font-weight:700;cursor:pointer;white-space:nowrap;box-shadow:0 1px 3px rgba(232,89,12,.35)}
   .findbtn:hover{background:#d24f08}
   .findbtn[disabled]{opacity:.55;cursor:default}
+  .sizebtn{background:#fff;border:1px solid var(--accent);color:var(--accent);border-radius:6px;
+    padding:4px 10px;font-size:11px;font-weight:600;cursor:pointer;white-space:nowrap}
+  .sizebtn:hover{background:var(--accent);color:#fff}
   .big-num{font-size:26px;font-weight:800;letter-spacing:-.02em}
   .stat{display:flex;gap:22px;margin:2px 0 14px;flex-wrap:wrap}
   .stat div{display:flex;flex-direction:column}
@@ -113,6 +124,29 @@
   .rptbtn{background:var(--panel2);border:1px solid var(--line);color:var(--ink);border-radius:7px;
     padding:8px 13px;font-size:12px;font-weight:600;cursor:pointer;white-space:nowrap}
   .rptbtn:hover{border-color:var(--accent);color:var(--accent)}
+  #dealWrap{position:fixed;inset:0;z-index:1600;background:rgba(26,39,51,.5);display:none;
+    align-items:center;justify-content:center;padding:24px}
+  #dealWrap.open{display:flex}
+  #dealWrap .r-f input{width:104px}
+  .tsheet{display:grid;grid-template-columns:1fr auto;gap:5px 18px;font-size:13px;margin:6px 0 4px}
+  .tsheet .lab{color:var(--muted)}
+  .tsheet .val{font-family:var(--mono);font-weight:600;text-align:right}
+  .sf{display:flex;justify-content:space-between;gap:16px;align-items:flex-start;
+    padding:6px 0;border-bottom:1px solid #f0f2f5;font-size:13px}
+  .sf .k{color:var(--muted);flex:0 0 auto}
+  .sf .v{text-align:right}
+  .sf .s{font-size:10px;color:var(--dim);font-family:var(--mono)}
+  .sgrp{font-family:var(--mono);font-size:10px;letter-spacing:.14em;text-transform:uppercase;
+    color:var(--dim);margin:15px 0 4px;padding-top:9px;border-top:1px solid var(--line)}
+  .sgrp:first-child{margin-top:0;padding-top:0;border-top:0}
+  .snote{font-size:11px;color:var(--muted);background:var(--panel2);border-radius:6px;
+    padding:7px 9px;margin-top:6px;line-height:1.45}
+  .tabs{display:flex;gap:4px;margin-bottom:12px;border-bottom:1px solid var(--line)}
+  .tabs button{background:none;border:0;border-bottom:2px solid transparent;padding:7px 13px;
+    font-size:12px;font-weight:600;color:var(--muted);cursor:pointer}
+  .tabs button.on{color:var(--accent);border-bottom-color:var(--accent)}
+  .tsheet .hd{grid-column:1/-1;font-family:var(--mono);font-size:10px;letter-spacing:.13em;
+    text-transform:uppercase;color:var(--dim);margin-top:12px;border-top:1px solid var(--line);padding-top:9px}
   #fdWrap{position:fixed;inset:0;z-index:1450;background:rgba(26,39,51,.42);display:none;
     align-items:center;justify-content:center;padding:24px}
   #fdWrap.open{display:flex}
@@ -189,10 +223,78 @@
   </div>
   <label class="lp"><input type="checkbox" id="prospect" checked><span>Prospecting colours</span></label>
   <label class="lp" style="border-top:0;padding-top:0;margin-top:4px"><input type="checkbox" id="fiberOn"><span>Fiber / colocation</span></label>
+  <label class="lp"><input type="checkbox" id="ciOn" checked><span><b>C&amp;I accounts</b> (<span id="ciCount">0</span>)</span></label>
+  <div id="ciKey" style="display:none;padding:2px 0 4px 22px">
+    <div class="st" style="cursor:default"><span class="dot" style="background:#E8590C"></span><span>has a phone</span></div>
+    <div class="st" style="cursor:default"><span class="dot" style="background:#0a6ed1"></span><span>named contact</span></div>
+    <div class="st" style="cursor:default"><span class="dot" style="background:#9aa7b4"></span><span>owner only</span></div>
+  </div>
+  <label class="lp" style="border-top:0;padding-top:0;margin-top:4px"><input type="checkbox" id="crmOn" checked><span>Pipeline (<span id="crmCount">0</span>)</span></label>
+  <div id="crmRep" style="margin-top:7px">
+    <input id="repName" placeholder="Your name" style="width:100%;height:26px;border:1px solid var(--line);
+      border-radius:6px;padding:0 8px;font-size:11px;background:var(--panel2);outline:none">
+  </div>
+  <div id="crmLegend" style="margin-top:7px"></div>
   <div class="lf" id="legendFoot">zoom in to 13+ to draw circuits</div>
 </div>
 
 
+
+
+<div id="dealWrap">
+  <div id="rptBox">
+    <div class="r-h"><span class="ti" id="dealTitle">Size a project</span><span class="x" id="dealClose">&#10005;</span></div>
+    <div class="r-c">
+      <div id="dealAddr" class="addr" style="margin-bottom:12px"></div>
+      <div class="tabs"><button id="tabSite" class="on">Site info</button><button id="tabPrice">Pricing</button></div>
+      <div id="siteCard"></div>
+      <div class="r-ctl" style="align-items:flex-end">
+        <div class="r-f"><label>System kW</label><input id="dkW" type="number" step="25"></div>
+        <div class="r-f"><label>Duration hr</label>
+          <select id="dHrs"><option>2</option><option selected>4</option><option>6</option><option>8</option></select></div>
+        <div class="r-f"><label>Installed $/kWh</label><input id="dCapex" type="number" step="25" value="450"></div>
+        <div class="r-f"><label>ITC %</label><input id="dItc" type="number" step="5" value="30"></div>
+      </div>
+      <div class="r-ctl" style="align-items:flex-end">
+        <div class="r-f"><label>Structure</label>
+          <select id="dStruct">
+            <option value="ppa" selected>PPA — $/kWh delivered + peak shaving</option>
+            <option value="esa">Shared-savings ESA — % of demand savings</option>
+            <option value="cap">Capacity payment — $/kW-month</option>
+          </select></div>
+        <div class="r-f"><label>Demand rate $/kW-mo</label><input id="dRate" type="number" step="0.5" value="11"></div>
+        <div class="r-f"><label>Term (yr)</label><input id="dTerm" type="number" step="1" value="10"></div>
+        <div class="r-f"><label>Escalator %/yr</label><input id="dEsc" type="number" step="0.5" value="2"></div>
+        <div class="r-f"><label>Customer share %</label><input id="dShare" type="number" step="5" value="30"></div>
+        <div class="r-f"><label>O&amp;M $/kW-yr</label><input id="dOm" type="number" step="1" value="12"></div>
+      </div>
+      <div class="r-ctl" id="ppaRow" style="align-items:flex-end">
+        <div class="r-f"><label>PPA rate $/kWh</label><input id="dPpa" type="number" step="0.005" value="0.115"></div>
+        <div class="r-f"><label>Charge cost $/kWh</label><input id="dChg" type="number" step="0.005" value="0.045"></div>
+        <div class="r-f"><label>Round-trip eff %</label><input id="dRte" type="number" step="1" value="87"></div>
+        <div class="r-f"><label>Cycles / yr</label><input id="dCyc" type="number" step="10" value="300"></div>
+        <div class="r-f"><label>Depth of discharge %</label><input id="dDod" type="number" step="5" value="90"></div>
+        <div class="r-f"><label>Customer retail $/kWh</label><input id="dRetail" type="number" step="0.005" value="0.145"></div>
+        <button class="findbtn" id="dCalc">Recalculate</button>
+        <button class="r-csv" id="dCopy">Copy term sheet</button>
+        <div class="r-f"><label>Pipeline stage</label><span id="dStageWrap"></span></div>
+      </div>
+      <div class="r-msg" id="dealMsg"></div>
+      <div id="dealNotes" style="border:1px solid var(--line);border-radius:9px;padding:11px 13px;margin:6px 0 12px">
+        <div style="font-family:var(--mono);font-size:10px;letter-spacing:.13em;text-transform:uppercase;
+             color:var(--dim);margin-bottom:7px">Account notes <span id="dNoteRep"></span></div>
+        <div style="display:flex;gap:8px;margin-bottom:9px">
+          <input id="dNote" placeholder="Log a call, a contact, an objection…"
+            style="flex:1;height:30px;border:1px solid var(--line);border-radius:7px;padding:0 10px;
+                   font-size:12px;background:var(--panel2);outline:none">
+          <button class="r-csv" id="dNoteAdd" style="height:30px">Add</button>
+        </div>
+        <div id="dNoteList" style="max-height:150px;overflow:auto"></div>
+      </div>
+      <div id="dealOut"></div>
+    </div>
+  </div>
+</div>
 
 <div id="fdWrap">
   <div id="rptBox">
@@ -223,6 +325,11 @@
             <option value="vacant">Vacant / land</option>
             <option value="local">Owner-occupied</option>
           </select></div>
+        <div class="r-f"><label>Search for</label>
+          <select id="fdSrc">
+            <option value="biz" selected>Businesses to call</option>
+            <option value="parcel">Property owners</option>
+          </select></div>
         <div class="r-f"><label>Property type</label>
           <select id="fdClass">
             <option value="ci_mud" selected>C&amp;I + multifamily</option>
@@ -245,6 +352,7 @@
         </select>
         <button class="r-csv" id="fdView">By owner</button>
         <button class="r-csv" id="fdCsv" disabled>Download CSV</button>
+        <button class="r-csv" id="fdPipe">↓ Pipeline CSV</button>
       </div>
       <div class="r-msg" id="fdMsg">Pan the map to the area you want, then run. Everything visible on screen is searched.</div>
       <div class="r-bar"><i id="fdBar"></i></div>
@@ -795,13 +903,23 @@ function showResult(ll,info,rendLabel,layerId,all){
 
   h+='<div class="sec">Bankable Decision</div>';
   h+='<div class="note">ComEd\u2019s published estimate of remaining feeder capacity, resolved to your address. Screening-grade: a formal <b>interconnection / load study</b> confirms the deliverable number before you buy. ComEd\u2019s own service metadata states <b>Update Frequency: Annually</b> \u2014 treat the month in the service name as a publication date, not a guarantee of freshness.</div>';
-  h+='<a class="cta" href="'+COMED_APP+'" target="_blank" rel="noopener">Open ComEd\u2019s official map \u2197</a>';
+  if(info&&info.bess!=null){
+    h+='<button class="cta" id="pSize" style="border:0;cursor:pointer;width:100%">\u26a1 Size a project here</button>';
+  }
+  h+='<a class="cta" href="'+COMED_APP+'" target="_blank" rel="noopener" style="background:var(--panel2);color:var(--muted)">Open ComEd\u2019s official map \u2197</a>';
 
   if(info&&info.raw){
     h+='<div class="sec">Raw feeder record</div><div class="diag">'+esc(JSON.stringify(info.raw)).slice(0,1200)+'</div>';
   }
   h+='<div class="sec">Diagnostics</div><div class="diag">'+esc(DIAG.slice(-12).join("\n"))+'</div>';
   document.getElementById("pBody").innerHTML=h;
+  var ps=document.getElementById("pSize");
+  if(ps) ps.onclick=function(){
+    var q=parseFloat(info.queue); if(isNaN(q)) q=0;
+    openDeal({addr:(ll.lat.toFixed(5)+", "+ll.lng.toFixed(5)),feeder:info.feeder,sub:info.sub,
+              val:info.bess,net:(info.bess!=null?info.bess-q:null),queue:q,
+              bess:info.bess,pv:info.pv,ev:info.ev,owner:""});
+  };
 }
 function row(k,v){return '<div class="row"><span class="k">'+esc(k)+'</span><span class="v">'+esc(v)+'</span></div>';}
 function esc(s){s=(s==null?"":""+s);return s.replace(/[&<>]/g,function(c){return{"&":"&amp;","<":"&lt;",">":"&gt;"}[c];});}
@@ -1042,6 +1160,11 @@ function renderReport(){
   var ths=out.getElementsByTagName("th");
   for(var t=0;t<ths.length;t++)
     ths[t].onclick=(function(kk){return function(){rptSort(kk);};})(ths[t].getAttribute("data-k"));
+  var byPin={}; rows.forEach(function(x){ if(x.pin) byPin[x.pin]=x; });
+  wireCrm(out,byPin);
+  var sb=out.getElementsByClassName("sizebtn");
+  for(var y=0;y<sb.length;y++)
+    sb[y].onclick=(function(rr){return function(e){ e.stopPropagation(); openDeal(rr); };})(rows[parseInt(sb[y].getAttribute("data-i"),10)]);
   var trs=out.getElementsByClassName("r-row");
   for(var z=0;z<trs.length;z++)
     trs[z].onclick=(function(rr){return function(){ addrDrill(rr); };})(rows[parseInt(trs[z].getAttribute("data-i"),10)]);
@@ -1509,10 +1632,32 @@ function runFindSites(){
       var total=feeders.length;
       if(feeders.length>FD_MAX_FEEDERS) feeders=feeders.slice(0,FD_MAX_FEEDERS);
 
+      var mode=(document.getElementById("fdSrc")||{}).value||"biz";
       fdStep('<div class="ok">1 \u00b7 '+total+' circuit'+(total===1?"":"s")+' found'+
              (total>FD_MAX_FEEDERS?(" \u2014 working the top "+FD_MAX_FEEDERS+" by capacity"):"")+'</div>'+
-             '<div class="on">2 \u00b7 Pulling parcels\u2026</div>');
-      sweepFeeders(root,feeders,0,[],total);
+             '<div class="on">2 \u00b7 '+(mode==="biz"?"Pulling licensed businesses":"Pulling parcels")+'\u2026</div>');
+      if(mode==="biz") loadFeederRings(root,feeders,0,function(){ sweepBusinesses(root,feeders,total); });
+      else sweepFeeders(root,feeders,0,[],total);
+    });
+}
+
+/* The business path needs polygons but no parcels, so pull geometry once
+   per feeder and stop there. */
+function loadFeederRings(root,feeders,i,done){
+  if(i>=feeders.length){ done(); return; }
+  fdBar(.05+.12*(i/feeders.length));
+  fetchJSON(rptUrl(detailLayer(),{where:"OBJECTID IN ("+feeders[i].oids.join(",")+")",
+            outFields:"OBJECTID",returnGeometry:"true",geometryPrecision:"5",
+            maxAllowableOffset:"0.00025",outSR:"4326"}),
+    function(err,j){
+      var rings=[];
+      if(!err&&j&&j.features)
+        for(var n=0;n<j.features.length;n++){
+          var g=j.features[n].geometry;
+          if(g&&g.rings) rings=rings.concat(g.rings);
+        }
+      feeders[i].rings=rings;
+      loadFeederRings(root,feeders,i+1,done);
     });
 }
 
@@ -2303,6 +2448,932 @@ function fiberScore(fb){
 
 
 
+
+
+/* ══════════════════════════════════════════════════════════════
+   CRM — pipeline state that survives a reload
+
+   Keyed by PIN, the only identifier stable across runs. Addresses get
+   reformatted and feeders get re-derived, but a parcel number is a
+   parcel number.
+
+   STORAGE IS PLUGGABLE AND THE DEFAULT IS PER-BROWSER. localStorage
+   gives each rep a PRIVATE pipeline — fine for one person, wrong for a
+   team, because two reps will call the same owner. Point CRM_ENDPOINT
+   at a Firestore-backed route on the OMEGA portal to make it shared;
+   the read/write surface is two functions so that swap stays small.
+   ══════════════════════════════════════════════════════════════ */
+/* Shared pipeline. Scoped by ?org= so tenants never see each other's
+   accounts. Blank it to fall back to per-browser storage. */
+var CRM_ENDPOINT=(function(){
+  var root=(typeof PROXY==="string"&&PROXY)?PROXY.replace(/\/comed\/?$/,""):"";
+  if(!root) return "";
+  var org=(location.search.match(/[?&]org=([^&]+)/)||[])[1]||"default";
+  return root+"/crm?org="+encodeURIComponent(org);
+})();
+var CRM_KEY="clearsky_crm_v1";
+var REP_KEY="clearsky_rep";
+var CRM={data:{},mode:"local"};
+
+/* Who is working the account. Stamped on every stage change and every
+   note, because "Contacted" with no name attached is worthless on a
+   team — nobody knows who called or what was said. */
+var REP="";
+function repLoad(){
+  try{ REP=window.localStorage.getItem(REP_KEY)||""; }catch(e){ REP=""; }
+  return REP;
+}
+function repSet(v){
+  REP=String(v||"").trim();
+  try{ window.localStorage.setItem(REP_KEY,REP); }catch(e){}
+}
+/* A filter over stages. Empty set means show everything. */
+var CRM_FILTER={};
+function crmFilterActive(){ for(var k in CRM_FILTER){ if(CRM_FILTER[k]) return true; } return false; }
+function crmVisible(stage){ return !crmFilterActive() || !!CRM_FILTER[stage]; }
+
+var CRM_STAGES=[
+  {k:"",         label:"\u2014",       color:"#c9cdd2"},
+  {k:"target",   label:"Target",       color:"#0a6ed1"},
+  {k:"contacted",label:"Contacted",    color:"#c98a2b"},
+  {k:"qualified",label:"Qualified",    color:"#8a5cd1"},
+  {k:"proposal", label:"Proposal out", color:"#E8590C"},
+  {k:"won",      label:"Signed",       color:"#2ea043"},
+  {k:"lost",     label:"Lost",         color:"#9aa7b4"},
+  {k:"dnc",      label:"Do not call",  color:"#e0533d"}
+];
+function crmStage(k){
+  for(var i=0;i<CRM_STAGES.length;i++) if(CRM_STAGES[i].k===k) return CRM_STAGES[i];
+  return CRM_STAGES[0];
+}
+
+/* Storage can be unavailable — private browsing, embedded frames, strict
+   policies. Fall back to memory rather than throwing: losing history on
+   reload is bad, a tool that white-screens is worse. */
+function crmLoad(cb){
+  if(CRM_ENDPOINT){
+    CRM.mode="shared";
+    fetchJSON(CRM_ENDPOINT,function(err,j){
+      CRM.data=(!err&&j&&typeof j==="object")?j:{};
+      if(err) diag("crm: shared load failed, memory only");
+      if(cb) cb();
+    });
+    return;
+  }
+  try{
+    var raw=window.localStorage.getItem(CRM_KEY);
+    CRM.data=raw?JSON.parse(raw):{}; CRM.mode="local";
+  }catch(e){ CRM.data={}; CRM.mode="memory"; diag("crm: storage unavailable"); }
+  if(cb) cb();
+}
+/* Writes go ONE RECORD AT A TIME. Posting the whole pipeline would mean
+   the last rep to save wins and everyone else's calls disappear — on a
+   floor of reps that is a silent data-loss bug, not an edge case. */
+function crmPush(pin,body,cb){
+  if(!CRM_ENDPOINT){ crmSaveLocal(); if(cb) cb(null,{ok:true}); return; }
+  var url=CRM_ENDPOINT.replace("/crm?","/crm/record?");
+  var x=new XMLHttpRequest();
+  x.open("POST",url,true);
+  x.setRequestHeader("Content-Type","application/json");
+  x.onreadystatechange=function(){
+    if(x.readyState!==4) return;
+    var j=null; try{ j=JSON.parse(x.responseText); }catch(e){}
+    if(x.status>=200&&x.status<300&&j&&j.record){ CRM.data[pin]=j.record; if(cb) cb(null,j); }
+    else if(x.status===409&&j){ if(cb) cb(null,j); }            /* claimed by someone else */
+    else { diag("crm push "+x.status); if(cb) cb(new Error("HTTP "+x.status)); }
+  };
+  x.onerror=function(){ diag("crm push failed"); if(cb) cb(new Error("network")); };
+  x.send(JSON.stringify(body));
+}
+function crmSaveLocal(){
+  try{ window.localStorage.setItem(CRM_KEY,JSON.stringify(CRM.data)); }
+  catch(e){ CRM.mode="memory"; }
+}
+function crmSave(){ if(!CRM_ENDPOINT) crmSaveLocal(); }
+function crmGet(pin){ return (pin&&CRM.data[pin])||null; }
+function crmSet(pin,patch,row,cb){
+  if(!pin) return;
+  var e=CRM.data[pin]||{}, k;
+  for(k in patch){ if(patch.hasOwnProperty(k)) e[k]=patch[k]; }
+  e.ts=Date.now();
+  /* first rep to touch it owns it; later reps show up in the note log */
+  if(REP&&!e.rep) e.rep=REP;
+  /* snapshot enough to draw a pin without re-running the sweep */
+  if(row){
+    e.addr=e.addr||row.addr; e.owner=e.owner||row.owner;
+    e.feeder=e.feeder||row.feeder;
+    if(e.net==null) e.net=row.net;
+    if(row.lat!=null){ e.lat=row.lat; e.lon=row.lon; }
+    if(row.phone) e.phone=row.phone;
+  }
+  CRM.data[pin]=e;
+  if(CRM_ENDPOINT) crmPush(pin,{pin:pin,rep:REP,patch:patch,claim:(patch&&patch.stage)?true:undefined},cb);
+  else { crmSave(); if(cb) cb(null,{ok:true}); }
+}
+/* Notes are an append-only log, not a single field. A rep needs to see
+   what the last person said and when, and an editable box loses that. */
+function crmNote(pin,text,row){
+  if(!pin) return;
+  var t=String(text||"").trim(); if(!t) return;
+  var e=CRM.data[pin]||{};
+  e.notes=e.notes||[];
+  e.notes.unshift({ts:Date.now(),rep:REP||"unattributed",t:t.slice(0,600)});
+  if(e.notes.length>40) e.notes=e.notes.slice(0,40);
+  CRM.data[pin]=e;
+  if(CRM_ENDPOINT) crmPush(pin,{pin:pin,rep:REP,note:t},null);
+  else crmSave();
+}
+function noteAge(ts){
+  var d=Math.floor((Date.now()-ts)/86400000);
+  return d<=0?"today":(d===1?"1 day ago":(d+" days ago"));
+}
+function notesHtml(pin){
+  var e=crmGet(pin);
+  if(!e||!e.notes||!e.notes.length)
+    return '<div style="font-size:11px;color:var(--dim)">No notes yet.</div>';
+  var h="";
+  for(var i=0;i<e.notes.length&&i<12;i++){
+    var n=e.notes[i];
+    h+='<div style="border-left:2px solid var(--line);padding:4px 0 4px 9px;margin-bottom:6px">'+
+       '<div style="font-family:var(--mono);font-size:10px;color:var(--dim)">'+
+       esc(n.rep)+' \u00b7 '+esc(noteAge(n.ts))+'</div>'+
+       '<div style="font-size:12px">'+esc(n.t)+'</div></div>';
+  }
+  return h;
+}
+
+/* Claims expire after 8 hours so a rep who grabbed 400 leads and went
+   home does not freeze them for the floor. */
+var CLAIM_MS=8*3600*1000;
+function claimHeldBy(e){
+  if(!e||!e.claimedBy||!e.claimedAt) return null;
+  if(Date.now()-e.claimedAt>CLAIM_MS) return null;
+  return e.claimedBy;
+}
+function claimedByOther(pin){
+  var who=claimHeldBy(crmGet(pin));
+  return (who&&who!==REP)?who:null;
+}
+/* A floor sees each other's work only if we re-read. Cheap: one GET of
+   this tenant's records. */
+function crmPoll(){
+  if(!CRM_ENDPOINT) return;
+  fetchJSON(CRM_ENDPOINT,function(err,j){
+    if(err||!j||typeof j!=="object") return;
+    CRM.data=j; crmRefresh();
+  });
+}
+
+function crmCount(stage){
+  var n=0,p;
+  for(p in CRM.data){ if(CRM.data.hasOwnProperty(p)&&(!stage||CRM.data[p].stage===stage)) n++; }
+  return n;
+}
+
+var crmLayer=null;
+function drawCrm(on){
+  if(crmLayer){ map.removeLayer(crmLayer); crmLayer=null; }
+  if(!on) return;
+  crmLayer=L.layerGroup();
+  for(var pin in CRM.data){
+    if(!CRM.data.hasOwnProperty(pin)) continue;
+    var e=CRM.data[pin];
+    if(e.lat==null||!e.stage) continue;
+    if(!crmVisible(e.stage)) continue;
+    var st=crmStage(e.stage);
+    var mk=L.circleMarker([e.lat,e.lon],
+      {radius:7,color:"#fff",weight:2,fillColor:st.color,fillOpacity:.95,interactive:true});
+    var last=(e.notes&&e.notes[0])?e.notes[0]:null;
+    var body='<div style="min-width:190px"><b>'+esc(e.addr||pin)+'</b>'+
+      '<div style="color:'+st.color+';font-weight:700;font-size:12px">'+esc(st.label)+
+      (e.rep?(' \u00b7 <span style="color:var(--muted);font-weight:400">'+esc(e.rep)+'</span>'):'')+'</div>'+
+      (e.owner?('<div style="font-size:11px;color:var(--muted)">'+esc(e.owner)+'</div>'):'')+
+      (e.net!=null?('<div style="font-size:11px">'+Math.round(e.net).toLocaleString()+' kW available</div>'):'')+
+      (e.phone?('<div style="margin-top:4px">'+telLink(e.phone,e.phone,e.owner)+'</div>'):'')+
+      (last?('<div style="margin-top:6px;border-top:1px solid #eee;padding-top:5px;font-size:11px">'+
+             '<span style="font-family:var(--mono);font-size:9px;color:var(--dim)">'+esc(last.rep)+
+             ' \u00b7 '+esc(noteAge(last.ts))+'</span><br>'+esc(last.t.slice(0,140))+'</div>'):'')+
+      '</div>';
+    mk.bindPopup(body);
+    crmLayer.addLayer(mk);
+  }
+  crmLayer.addTo(map);
+}
+
+
+/* ── interactive pipeline legend ─────────────────────────────────
+   Clicking a stage filters the map to it. Multiple stages can be on
+   at once, and clicking the last active one clears back to "show
+   everything" — so a rep can never end up staring at an empty map
+   wondering where their pins went. */
+function renderCrmLegend(){
+  var el=document.getElementById("crmLegend"); if(!el) return;
+  var h="",any=false;
+  for(var i=1;i<CRM_STAGES.length;i++){          /* skip the blank stage */
+    var s=CRM_STAGES[i], n=crmCount(s.k);
+    if(!n) continue;
+    any=true;
+    var on=!!CRM_FILTER[s.k], dim=crmFilterActive()&&!on;
+    h+='<div class="st'+(on?" on":(dim?" off":""))+'" data-st="'+s.k+'">'+
+       '<span class="dot" style="background:'+s.color+'"></span>'+
+       '<span>'+esc(s.label)+'</span><span class="ct">'+n+'</span></div>';
+  }
+  el.innerHTML=any?h:'<div style="font-size:10px;color:var(--dim);padding:2px 5px">'+
+    'Set a stage on a result to start tracking</div>';
+  var rows=el.getElementsByClassName("st");
+  for(var r=0;r<rows.length;r++){
+    rows[r].onclick=(function(k){ return function(){
+      CRM_FILTER[k]=!CRM_FILTER[k];
+      if(!CRM_FILTER[k]) delete CRM_FILTER[k];
+      renderCrmLegend();
+      if(document.getElementById("crmOn").checked) drawCrm(true);
+    };})(rows[r].getAttribute("data-st"));
+  }
+}
+function crmRefresh(){
+  var c=document.getElementById("crmCount"); if(c) c.textContent=crmCount();
+  renderCrmLegend();
+  if(document.getElementById("crmOn").checked) drawCrm(true);
+  /* claim locks and DNC change how a prospect pin looks, so repaint */
+  var ci=document.getElementById("ciOn");
+  if(ci&&ci.checked) drawProspects(true);
+}
+
+function crmSelect(pin){
+  var other=claimedByOther(pin);
+  var cur=(crmGet(pin)||{}).stage||"", o="";
+  for(var i=0;i<CRM_STAGES.length;i++){
+    var s=CRM_STAGES[i];
+    o+='<option value="'+s.k+'"'+(s.k===cur?" selected":"")+'>'+esc(s.label)+'</option>';
+  }
+  var sel='<select class="crmsel" data-pin="'+esc(pin)+'" style="font-size:11px;padding:3px 4px;'+
+         'border:1px solid '+(other?"var(--red)":"var(--line)")+';border-radius:5px;background:'+
+         (cur?(crmStage(cur).color+"22"):"#fff")+'">'+o+'</select>';
+  /* Show WHO has it, not just that it is taken. A rep needs to know
+     whether to walk over and ask or leave it alone. */
+  if(other) sel+='<div style="font-size:9px;color:var(--red);font-weight:700;margin-top:2px">'+
+                 '\ud83d\udd12 '+esc(other)+'</div>';
+  return sel;
+}
+function wireCrm(scope,byPin){
+  var sel=scope.getElementsByClassName("crmsel"), i;
+  for(i=0;i<sel.length;i++){
+    sel[i].onclick=function(e){ e.stopPropagation(); };
+    sel[i].onchange=(function(el){ return function(e){
+      e.stopPropagation();
+      var pin=el.getAttribute("data-pin");
+      if(!REP){ alert("Enter your name in the legend before working accounts."); el.value=(crmGet(pin)||{}).stage||""; return; }
+      var other=claimedByOther(pin);
+      if(other){ alert(pin+" is being worked by "+other+".\n\nClaims release after 8 hours."); 
+                 el.value=(crmGet(pin)||{}).stage||""; return; }
+      crmSet(pin,{stage:el.value},byPin[pin],function(err,res){
+        if(res&&res.ok===false&&res.reason==="claimed"){
+          alert("Just claimed by "+res.claimedBy+" \u2014 someone got there first.");
+          crmRefresh();
+        }
+      });
+      el.style.background=el.value?(crmStage(el.value).color+"22"):"#fff";
+      crmRefresh();
+    };})(sel[i]);
+  }
+}
+function exportCrm(){
+  var rows=[["PIN","Stage","Assigned_Rep","Address","Owner","Phone","Feeder","Net_kW",
+             "Notes","Latest_Note","Latest_Note_By","Updated"]], p;
+  for(p in CRM.data){
+    if(!CRM.data.hasOwnProperty(p)) continue;
+    var e=CRM.data[p];
+    var ln=(e.notes&&e.notes[0])?e.notes[0]:null;
+    rows.push([p,crmStage(e.stage).label,e.rep||"",e.addr||"",e.owner||"",e.phone||"",e.feeder||"",
+               e.net!=null?Math.round(e.net):"",(e.notes?e.notes.length:0),
+               ln?ln.t:"", ln?ln.rep:"",
+               e.ts?new Date(e.ts).toISOString().slice(0,10):""]);
+  }
+  if(rows.length<2){ fdMsg("Nothing in the pipeline yet \u2014 set a stage on a row first.","err"); return; }
+  var blob=new Blob([rows.map(function(r){return r.map(csvCell).join(",");}).join("\r\n")],
+                    {type:"text/csv;charset=utf-8"});
+  var a=document.createElement("a"), u=URL.createObjectURL(blob);
+  a.href=u; a.download="clearsky-pipeline.csv";
+  document.body.appendChild(a); a.click();
+  setTimeout(function(){document.body.removeChild(a);URL.revokeObjectURL(u);},250);
+}
+
+
+
+
+/* ══════════════════════════════════════════════════════════════
+   BUSINESS-FIRST SEARCH
+
+   The parcel path starts from land and hopes a business matches by
+   address. On a real run that produced ONE business across 113
+   parcels, and the "owners" it did return — 1122 SOUTH WABASH LLC,
+   DIYA 55TH ST LLC — are title-holding entities. They do not operate
+   anything, do not have a demand charge, and have nobody to answer a
+   phone.
+
+   This inverts it. Chicago publishes every ACTIVE licensed business
+   with coordinates. Ask which of those fall inside a high-capacity
+   feeder and every single result is, by construction, a trading
+   business with a name, a street address and a licence category.
+
+   Fewer requests too: one bbox query for the whole view instead of a
+   per-feeder parcel walk.
+
+   The tradeoff, stated plainly: licences are CITY OF CHICAGO ONLY.
+   A feeder in Cicero, Evanston or Naperville returns nothing here,
+   and for those the parcel path is still the only option.
+   ══════════════════════════════════════════════════════════════ */
+
+/* even-odd ray casting across every ring; ArcGIS holes are opposite
+   winding, which even-odd handles for free */
+function pointInRings(lon,lat,rings){
+  var inside=false;
+  for(var r=0;r<rings.length;r++){
+    var ring=rings[r];
+    for(var i=0,j=ring.length-1;i<ring.length;j=i++){
+      var xi=ring[i][0], yi=ring[i][1], xj=ring[j][0], yj=ring[j][1];
+      if(((yi>lat)!==(yj>lat)) && (lon < (xj-xi)*(lat-yi)/(yj-yi)+xi)) inside=!inside;
+    }
+  }
+  return inside;
+}
+
+/* Licence categories that are not sellable C&I load. Home occupations
+   and itinerant vendors have no building and no meter worth shaving. */
+var BIZ_SKIP=new RegExp(["home occupation","itinerant","peddler","mobile food",
+  "street performer","expediter","raffle","charitable games","day care home"].join("|"),"i");
+
+function sweepBusinesses(root,feeders,total){
+  var b=map.getBounds();
+  fdStep('<div class="ok">1 \u00b7 '+total+' circuit'+(total===1?"":"s")+' found</div>'+
+         '<div class="on">2 \u00b7 Pulling licensed businesses\u2026</div>');
+  fdMsg("Finding active businesses inside those circuits\u2026");
+  fdBar(.2);
+
+  function attempt(col,after){
+    var where="within_box("+col+", "+b.getNorth()+", "+b.getWest()+", "+
+              b.getSouth()+", "+b.getEast()+") AND license_status='AAI'";
+    fetchJSON(root+"/socrata/chibiz?$where="+encodeURIComponent(where)+"&$limit=50000",
+      function(err,j){ after((err||!j||j.error||j.length===undefined)?null:j); });
+  }
+  attempt("location",function(j){
+    if(j){ placeBusinesses(root,j,feeders,total); return; }
+    attempt("geocoded_column",function(j2){
+      if(j2){ placeBusinesses(root,j2,feeders,total); return; }
+      hFail("Chicago licences","bbox query failed on both geo columns");
+      fdDone("Could not reach Chicago business licences. Switch Search for to "+
+             "\u201cProperty owners\u201d, or check the health panel.","err");
+    });
+  });
+}
+
+function placeBusinesses(root,recs,feeders,total){
+  hNote("Chicago licences","hit",recs.length);
+  fdMsg(recs.length.toLocaleString()+" active licences in view \u2014 matching to circuits\u2026");
+  fdBar(.4);
+
+  /* one point-in-polygon pass; feeders are few, businesses are many */
+  var acc=[],seen={},i,f,k;
+  for(i=0;i<recs.length;i++){
+    var r=recs[i];
+    var lat=parseFloat(r.latitude), lon=parseFloat(r.longitude);
+    if(isNaN(lat)||isNaN(lon)){
+      var loc=r.location&&r.location.coordinates;
+      if(loc){ lon=loc[0]; lat=loc[1]; } else continue;
+    }
+    var kind=(r.business_activity||r.license_description||"");
+    if(BIZ_SKIP.test(kind)) continue;
+    for(f=0;f<feeders.length;f++){
+      if(!feeders[f].rings) continue;
+      if(!pointInRings(lon,lat,feeders[f].rings)) continue;
+      /* one row per business per feeder; a chain with several licences at
+         one address is still one conversation */
+      k=(r.account_number||r.legal_name||"")+"|"+feeders[f].feeder;
+      if(seen[k]) break;
+      seen[k]=1;
+      acc.push({
+        addr:(r.address||"").trim(),
+        biz:r.doing_business_as_name||r.legal_name||"",
+        bizLegal:r.legal_name||"",
+        bizKind:kind,
+        acct:r.account_number||"",
+        owner:r.legal_name||"",
+        pin:"biz"+(r.account_number||i),      /* CRM key when there is no parcel */
+        lat:lat, lon:lon, zip:r.zip_code||"",
+        feeder:feeders[f].feeder, sub:feeders[f].sub, val:feeders[f].val,
+        net:feeders[f].net, queue:feeders[f].queue,
+        bess:feeders[f].bess, pv:feeders[f].pv, ev:feeders[f].ev
+      });
+      break;
+    }
+  }
+  if(!acc.length){
+    fdDone("No licensed businesses inside these circuits. Chicago licences cover the "+
+           "city only \u2014 outside it, switch Search for to \u201cProperty owners\u201d.","err");
+    return;
+  }
+  fdStep('<div class="ok">2 \u00b7 '+acc.length.toLocaleString()+' businesses on high-capacity circuits</div>'+
+         '<div class="on">3 \u00b7 Looking up owners and numbers\u2026</div>');
+  enrichBusinesses(root,acc,feeders,total);
+}
+
+function enrichBusinesses(root,acc,feeders,total){
+  var accts={},list=[],i;
+  for(i=0;i<acc.length;i++) if(acc[i].acct&&!accts[acc[i].acct]){ accts[acc[i].acct]=1; list.push(acc[i].acct); }
+  var CH=80, chunks=[];
+  for(i=0;i<list.length;i+=CH) chunks.push(list.slice(i,i+CH));
+  var byAcct={},done=0;
+
+  (function next(){
+    if(done>=chunks.length){
+      for(var q=0;q<acc.length;q++){
+        var g=acc[q].acct?byAcct[acc[q].acct]:null;
+        if(g&&(g.people.length||g.entities.length)){
+          acc[q].people=g.people.concat(g.entities).slice(0,4).join("; ");
+          hNote("Named owners","hit");
+        }
+      }
+      FD.rows=acc;
+      finishBusinessSweep(acc,feeders,total);
+      return;
+    }
+    fdMsg("Named owners \u00b7 "+Math.min((done+1)*CH,list.length)+"/"+list.length);
+    fdBar(.45+.35*(done/chunks.length));
+    var where="account_number in ('"+chunks[done].join("','")+"')";
+    fetchJSON(root+"/socrata/chiowner?$where="+encodeURIComponent(where)+"&$limit=20000",
+      function(err,j){
+        if(!err&&j&&j.length){
+          for(var n=0;n<j.length;n++){
+            var o=j[n], a=o.account_number; if(!a) continue;
+            var first=o.owner_first_name, mid=o.owner_middle_initial, last=o.owner_last_name;
+            var person=[titleCase(first),(mid?titleCase(mid).charAt(0)+".":""),titleCase(last)]
+                       .filter(Boolean).join(" ").trim();
+            var entity=titleCase(o.owner_name||"");
+            var nm=person||entity; if(!nm) continue;
+            var label=nm+(o.owner_title?(" \u00b7 "+titleCase(o.owner_title)):"");
+            if(!byAcct[a]) byAcct[a]={people:[],entities:[]};
+            var bucket=person?byAcct[a].people:byAcct[a].entities;
+            if(bucket.indexOf(label)<0) bucket.push(label);
+          }
+        } else if(err) hFail("Named owners",err.message);
+        done++; next();
+      });
+  })();
+}
+
+/* ══════════════════════════════════════════════════════════════
+   C&I PROSPECTS ON THE MAP
+
+   A rep works the map, not a table. Every result from Find Sites drops
+   as a pin: click it, read the account, dial from the popup.
+
+   Colour is the ACTION, not the score. A rep clicking around needs to
+   know what they can do right now:
+     orange   has a phone — dial it
+     blue     has a named contact but no number — worth a search
+     grey     owner only — research or skip
+     red ring someone on the floor is already working it
+     hollow   do not call
+
+   Sized by available capacity so the big circuits read at a glance.
+   ══════════════════════════════════════════════════════════════ */
+var prospectLayer=null, PROSPECT_BY_PIN={};
+
+function prospectStyle(r){
+  var e=crmGet(r.pin)||{}, held=claimHeldBy(e);
+  var dnc=(e.stage==="dnc");
+  var fill = r.phone ? "#E8590C" : (r.people ? "#0a6ed1" : "#9aa7b4");
+  var rad  = 5 + Math.min(Math.sqrt(Math.max(r.net||0,0))/22, 9);
+  return {
+    radius: rad,
+    color: dnc ? "#e0533d" : (held && held!==REP ? "#e0533d" : "#fff"),
+    weight: (held&&held!==REP) ? 3 : 2,
+    fillColor: fill,
+    fillOpacity: dnc ? 0.10 : 0.9,
+    interactive: true
+  };
+}
+
+function prospectPopup(r){
+  var e=crmGet(r.pin)||{}, held=claimHeldBy(e), S=r.sz;
+  var kwl=function(n){ return n==null?"\u2014":(Math.round(n).toLocaleString()+" kW"); };
+  var h='<div style="min-width:236px">';
+  h+='<div style="font-weight:700;font-size:13px">'+esc(r.biz||r.owner||r.addr)+'</div>';
+  h+='<div style="font-size:11px;color:var(--muted);margin-bottom:6px">'+esc(r.addr||"")+'</div>';
+
+  if(held&&held!==REP)
+    h+='<div style="background:#fdecea;color:#b32d1c;border-radius:5px;padding:4px 7px;'+
+       'font-size:11px;font-weight:700;margin-bottom:6px">\ud83d\udd12 '+esc(held)+' is working this</div>';
+  if(e.stage==="dnc")
+    h+='<div style="background:#fdecea;color:#b32d1c;border-radius:5px;padding:4px 7px;'+
+       'font-size:11px;font-weight:700;margin-bottom:6px">DO NOT CALL</div>';
+  else if(e.stage)
+    h+='<div style="font-size:11px;font-weight:700;color:'+crmStage(e.stage).color+
+       ';margin-bottom:6px">'+esc(crmStage(e.stage).label)+(e.rep?(" \u00b7 "+esc(e.rep)):"")+'</div>';
+
+  /* the three things a rep needs before dialling */
+  h+='<div style="font-size:12px;line-height:1.6">';
+  if(r.people) h+='<div><b>'+esc(r.people)+'</b></div>';
+  else if(r.owner&&r.biz) h+='<div style="color:var(--muted)">Owner: '+esc(r.owner)+'</div>';
+  h+='<div>'+kwl(r.net)+' available'+(S?(' \u00b7 fits '+kwl(S.delivKw)+' battery'):'')+'</div>';
+  if(r.av&&r.av.label) h+='<div style="color:var(--muted)">'+esc(r.av.label)+'</div>';
+  h+='</div>';
+
+  if(e.stage!=="dnc"){
+    h+='<div style="margin:8px 0 6px;font-size:15px">'+
+       (r.phone?telLink(r.phone,r.phoneRaw,r.biz||r.owner)
+              :('<a href="'+esc(searchLink(r.biz||r.owner,r.addr))+'" target="_blank" rel="noopener" '+
+                'style="color:var(--accent);font-size:12px">search for a number \u2197</a>'))+'</div>';
+  }
+  if(r.pin&&!(held&&held!==REP)){
+    h+='<div style="margin:6px 0 2px">'+crmSelect(r.pin)+'</div>';
+  }
+  h+='<button class="pcard" data-pin="'+esc(r.pin||"")+'" style="width:100%;margin-top:4px;'+
+     'background:var(--accent);border:0;color:#fff;border-radius:6px;padding:7px;font-size:12px;'+
+     'font-weight:600;cursor:pointer">Site details &amp; pricing</button>';
+  h+='</div>';
+  return h;
+}
+
+function drawProspects(on){
+  if(prospectLayer){ map.removeLayer(prospectLayer); prospectLayer=null; }
+  var el=document.getElementById("ciCount");
+  if(el) el.textContent=(FD.rows?FD.rows.length:0);
+  if(!on||!FD.rows||!FD.rows.length) return;
+  prospectLayer=L.layerGroup();
+  PROSPECT_BY_PIN={};
+  for(var i=0;i<FD.rows.length;i++){
+    var r=FD.rows[i];
+    if(r.lat==null||r.lon==null) continue;
+    if(r.pin) PROSPECT_BY_PIN[r.pin]=r;
+    var mk=L.circleMarker([r.lat,r.lon],prospectStyle(r));
+    mk.bindPopup(prospectPopup(r));
+    prospectLayer.addLayer(mk);
+  }
+  prospectLayer.addTo(map);
+}
+
+/* Popup HTML is a string, so the button is wired when the popup opens. */
+map.on("popupopen",function(e){
+  var el=e.popup.getElement(); if(!el) return;
+  wireCrm(el,PROSPECT_BY_PIN);
+  var b=el.getElementsByClassName("pcard");
+  for(var i=0;i<b.length;i++){
+    b[i].onclick=(function(pin){ return function(){
+      var row=PROSPECT_BY_PIN[pin];
+      if(row){ map.closePopup(); openDeal(row); }
+    };})(b[i].getAttribute("data-pin"));
+  }
+});
+
+/* ══════════════════════════════════════════════════════════════
+   SITE CARD — everything known about one C&I account
+
+   A rep on a call needs the whole picture on one screen, not five
+   columns in a wide table. Grouped the way a conversation actually
+   goes: who am I calling, what do they use, what can the grid take,
+   what can I offer, what has already been said.
+
+   Fields render only when populated. A card padded with em-dashes
+   reads as a broken tool; a short card reads as a thin account, which
+   is the truth.
+   ══════════════════════════════════════════════════════════════ */
+function fld(k,v,sub){
+  if(v==null||v===""||v==="\u2014") return "";
+  return '<div class="sf"><span class="k">'+esc(k)+'</span><span class="v">'+v+
+         (sub?('<div class="s">'+esc(sub)+'</div>'):'')+'</span></div>';
+}
+function siteCardHtml(r){
+  var e=crmGet(r.pin)||{}, S=r.sz, B=r.bm;
+  var kwl=function(n){ return n==null?"":(Math.round(n).toLocaleString()+" kW"); };
+  var h='';
+
+  h+='<div class="sgrp">Who</div>';
+  h+=fld("Owner of record",esc(r.owner||""),r.mail||"");
+  h+=fld("Owner type",r.av?esc(r.av.label):"");
+  h+=fld("Business on site",esc(r.biz||""),r.bizKind||"");
+  h+=fld("Named contacts",r.people?("<b>"+esc(r.people)+"</b>"):"");
+  h+=fld("Phone",r.phone?telLink(r.phone,r.phoneRaw,r.biz||r.owner):
+         '<a href="'+esc(searchLink(r.biz||r.owner,r.addr))+'" target="_blank" rel="noopener" '+
+         'style="color:var(--accent);font-size:11px">search \u2197</a>',r.phoneSrc||"");
+
+  h+='<div class="sgrp">Property</div>';
+  h+=fld("Address",esc(r.addr||""));
+  h+=fld("PIN",'<span style="font-family:var(--mono);font-size:11px">'+esc(r.pin||"")+'</span>');
+  h+=fld("Class",esc(r.clsLabel||"")+(r.cls?(' <span style="color:var(--dim);font-family:var(--mono);font-size:10px">'+esc(r.cls)+'</span>'):''));
+  if(B){
+    h+=fld("Building type",esc(B.type||""));
+    h+=fld("Gross floor area",B.sqft?(Math.round(B.sqft).toLocaleString()+" sq ft"):"");
+    h+=fld("ENERGY STAR",B.star?esc(B.star):"");
+  }
+
+  h+='<div class="sgrp">Energy</div>';
+  h+=fld("Annual consumption",(B&&B.kwh)?("<b>"+Math.round(B.kwh).toLocaleString()+" kWh</b>"):"",
+         (B&&B.kwh)?("metered \u00b7 city benchmarking "+(B.year||"")):"");
+  h+=fld("Estimated peak demand",S?("<b>"+kwl(S.peakKw)+"</b>"):"",
+         S?("modelled \u00b7 load factor "+S.lf.toFixed(2)):"");
+  h+=fld("Demand charge exposure",S?("$"+Math.round(S.demandLo/1000)+"k\u2013"+Math.round(S.demandHi/1000)+"k /yr"):"");
+  if(!B) h+='<div class="snote">No metered energy on file \u2014 city benchmarking covers buildings '+
+            'over 50,000 sq ft only. Ask for 12 months of bills on the call.</div>';
+
+  h+='<div class="sgrp">Grid</div>';
+  h+=fld("Feeder",esc(r.feeder||""),r.sub?("substation "+r.sub):"");
+  h+=fld("Circuit capacity",kwl(r.val),"ComEd published headroom");
+  h+=fld("Already queued",r.queue!=null?kwl(r.queue):"");
+  h+=fld("Available now",r.net!=null?('<b style="color:'+((r.net>=(FD.sysKw||0))?"#2ea043":"var(--amber)")+'">'+kwl(r.net)+'</b>'):"",
+         "net of queued DER");
+  h+=fld("PV / EV headroom",(r.pv!=null||r.ev!=null)?(kwl(r.pv)+" / "+kwl(r.ev)):"",
+         "generation side / load side");
+  h+=fld("Fibre",r.fb?("<b>"+r.fb.mi.toFixed(r.fb.mi<1?2:1)+" mi</b>"):"",
+         r.fb?(r.fb.name+" \u00b7 "+r.fb.nw+" networks"):"");
+
+  h+='<div class="sgrp">Fit</div>';
+  h+=fld("Deliverable battery",S?("<b>"+kwl(S.delivKw)+" / "+Math.round(S.delivKwh).toLocaleString()+" kWh</b>"):"",
+         S&&S.constrained?"capped by the circuit":"");
+  h+=fld("Battery deal score",r.score!=null?("<b>"+r.score+"</b> / 100"):"");
+  h+=fld("Compute site score",r.cscore!=null?("<b>"+r.cscore+"</b> / 100"):"");
+
+  if(e.stage||e.rep||(e.notes&&e.notes.length)){
+    h+='<div class="sgrp">Pipeline</div>';
+    h+=fld("Stage",e.stage?('<b style="color:'+crmStage(e.stage).color+'">'+esc(crmStage(e.stage).label)+'</b>'):"");
+    h+=fld("Assigned",esc(e.rep||""));
+    var held=claimHeldBy(e);
+    if(held) h+=fld("Working now",'<b style="color:'+(held===REP?"var(--green)":"var(--red)")+'">'+esc(held)+'</b>');
+  }
+  return h;
+}
+
+/* ══════════════════════════════════════════════════════════════
+   PROJECT SIZING & TERM SHEET
+
+   A standalone battery does NOT take a PPA. A PPA sells kWh from a
+   generator; storage does not generate, it shifts. What gets signed on
+   a C&I battery is one of:
+
+     shared-savings ESA   developer owns and operates, customer pays a
+                          share of the demand charges actually avoided.
+                          Zero capex for the customer, and the developer
+                          keeps the ITC and the depreciation.
+     capacity payment     fixed $/kW-month for availability, regardless
+                          of how much gets shaved.
+     tolling              customer buys the right to dispatch it.
+
+   Pair solar with it and the solar half is a PPA; the storage half is
+   still an ESA. Calling it a PPA in front of a sophisticated customer
+   or their counsel is a tell.
+
+   EVERY NUMBER BELOW IS AN INPUT, NOT A FACT. The defaults are
+   plausible mid-2026 screening values and are wrong for any specific
+   deal. Capex moves with chemistry, siting and interconnection scope;
+   the demand rate moves with rate class; the ITC moves with tax law,
+   adders and transferability. Verify before anything reaches a
+   customer.
+   ══════════════════════════════════════════════════════════════ */
+var DEAL={row:null};
+
+function openDeal(row){
+  DEAL.row=row;
+  document.getElementById("dealTitle").textContent=(row.biz||row.owner||"Account");
+  document.getElementById("dealAddr").textContent=
+    (row.addr||"")+"  \u00b7  feeder "+(row.feeder||"?")+
+    "  \u00b7  "+(row.net!=null?Math.round(row.net).toLocaleString():"?")+" kW available (net of queue)";
+  /* Open at the deliverable size the screen already worked out, capped by
+     what the circuit will actually take. */
+  var kw=row.sz?Math.round(row.sz.delivKw):Math.min(Math.round((row.net||0)*0.25),1000);
+  if(row.net!=null) kw=Math.min(kw,Math.round(row.net));
+  document.getElementById("dkW").value=Math.max(kw,25);
+  var sw=document.getElementById("dStageWrap");
+  if(sw&&row.pin){
+    sw.innerHTML=crmSelect(row.pin);
+    var m={}; m[row.pin]=row; wireCrm(sw,m);
+  } else if(sw){ sw.innerHTML='<span style="font-size:11px;color:var(--dim)">no PIN</span>'; }
+  var nr=document.getElementById("dNoteRep");
+  nr.innerHTML=REP?('\u00b7 as <b style="color:var(--ink)">'+esc(REP)+'</b>')
+                  :'<span style="color:var(--red)">\u00b7 set your name in the legend first</span>';
+  document.getElementById("dNoteList").innerHTML=row.pin?notesHtml(row.pin):"";
+  document.getElementById("dNote").value="";
+  document.getElementById("siteCard").innerHTML=siteCardHtml(row);
+  showDealTab("site");
+  document.getElementById("dealWrap").className="open";
+  calcDeal();
+}
+
+function money(n){ return "$"+Math.round(n).toLocaleString(); }
+
+function calcDeal(){
+  var r=DEAL.row; if(!r) return;
+  var g=function(id){ return parseFloat(document.getElementById(id).value)||0; };
+  var struct=document.getElementById("dStruct").value;
+  var kw=g("dkW"), hrs=g("dHrs"), capexKwh=g("dCapex"), itc=g("dItc")/100,
+      rate=g("dRate"), term=g("dTerm"), escal=g("dEsc")/100, share=g("dShare")/100, om=g("dOm");
+  var ppaRate=g("dPpa"), chgCost=g("dChg"), rte=g("dRte")/100,
+      cycles=g("dCyc"), dod=g("dDod")/100, retail=g("dRetail");
+  if(kw<=0||term<=0){ document.getElementById("dealOut").innerHTML=""; return; }
+  var kwh=kw*hrs;
+  document.getElementById("ppaRow").style.display=(struct==="ppa")?"":"none";
+
+  var capex=kwh*capexKwh, itcVal=capex*itc, net=capex-itcVal;
+
+  /* ── ARBITRAGE ──────────────────────────────────────────────
+     Charge off-peak, discharge into the customer's load on-peak.
+     Round-trip losses fall on the DEVELOPER: to deliver one kWh you
+     must buy 1/RTE. At 87% that is 1.15 kWh purchased per kWh sold,
+     and forgetting it overstates margin by roughly 15%. */
+  var dischargeKwh = kwh*dod*cycles;          /* delivered to the customer */
+  var chargeKwh    = rte>0 ? dischargeKwh/rte : 0;   /* bought from the grid */
+  var energyRev    = dischargeKwh*ppaRate;
+  var energyCost   = chargeKwh*chgCost;
+  var arbMargin    = energyRev-energyCost;
+  var custEnergySave = dischargeKwh*(retail-ppaRate);   /* their retail minus your rate */
+  var spreadOk = (ppaRate*rte) > chgCost;
+  var custWins = retail > ppaRate;
+
+  /* ── DEMAND ─────────────────────────────────────────────── */
+  var demandTotal = kw*rate*12;
+
+  var devYr1, custYr1, label;
+  if(struct==="ppa"){
+    /* Developer takes the energy margin and the demand-charge reduction;
+       the customer's return is cheaper energy plus a lower peak bill. */
+    devYr1  = arbMargin + demandTotal*(1-share);
+    custYr1 = custEnergySave + demandTotal*share;
+    label   = "PPA \u00b7 "+term+" yr, "+Math.round(escal*100)+"% escalator";
+  } else if(struct==="cap"){
+    devYr1  = kw*rate*12;                 /* rate reused as $/kW-mo availability */
+    custYr1 = demandTotal-devYr1;
+    label   = "Capacity payment \u00b7 "+term+" yr";
+  } else {
+    devYr1  = demandTotal*(1-share);
+    custYr1 = demandTotal*share;
+    label   = "Shared-savings ESA \u00b7 "+term+" yr, "+Math.round(escal*100)+"% escalator";
+  }
+  var omYr=kw*om;
+
+  var dev=0, cust=0, i;
+  for(i=0;i<term;i++){ var f=Math.pow(1+escal,i); dev+=(devYr1*f)-omYr; cust+=custYr1*f; }
+  var payback=(devYr1-omYr)>0 ? net/(devYr1-omYr) : null;
+  var capped=(r.net!=null&&kw>r.net);
+
+  var h='';
+  if(capped) h+='<div class="r-note" style="border-left-color:var(--red)"><b>Over the circuit.</b> '+
+    'You have sized '+Math.round(kw).toLocaleString()+' kW against '+Math.round(r.net).toLocaleString()+
+    ' kW available net of queued DER. Interconnection will not clear this.</div>';
+
+  h+='<div class="tsheet">'+
+    '<div class="hd">System</div>'+
+    row2("Power","<b>"+Math.round(kw).toLocaleString()+" kW</b>")+
+    row2("Energy","<b>"+Math.round(kwh).toLocaleString()+" kWh</b>  ("+hrs+" hr)")+
+    row2("Circuit available (net of queue)",(r.net!=null?Math.round(r.net).toLocaleString()+" kW":"\u2014"))+
+    '<div class="hd">Capital</div>'+
+    row2("Installed @ "+money(capexKwh)+"/kWh",money(capex))+
+    row2("ITC @ "+Math.round(itc*100)+"%","\u2212 "+money(itcVal))+
+    row2("<b>Net capital</b>","<b>"+money(net)+"</b>")+
+    '<div class="hd">'+label+'</div>';
+
+  if(struct==="ppa"){
+    h+=row2("Delivered to customer",Math.round(dischargeKwh).toLocaleString()+" kWh/yr")+
+       row2("Purchased to charge (\u00f7"+Math.round(rte*100)+"% RTE)",Math.round(chargeKwh).toLocaleString()+" kWh/yr")+
+       row2("Energy revenue @ "+money(ppaRate*1000)+"/MWh",money(energyRev))+
+       row2("Charging cost @ "+money(chgCost*1000)+"/MWh","\u2212 "+money(energyCost))+
+       row2("<b>Arbitrage margin</b>","<b>"+money(arbMargin)+"</b>")+
+       row2("Peak shaving to developer ("+Math.round((1-share)*100)+"%)",money(demandTotal*(1-share)))+
+       '<div class="hd">Customer side</div>'+
+       row2("Energy saved vs "+money(retail*1000)+"/MWh retail",money(custEnergySave))+
+       row2("Demand savings retained",money(demandTotal*share))+
+       row2("<b>Customer benefit, yr 1</b>","<b>"+money(custYr1)+"</b>");
+  } else {
+    h+=row2("Avoided demand charges, yr 1",money(demandTotal))+
+       row2("Customer keeps",money(custYr1)+" /yr")+
+       row2("Developer receives",money(devYr1)+" /yr");
+  }
+
+  h+='<div class="hd">Developer economics</div>'+
+    row2("Gross, yr 1",money(devYr1))+
+    row2("O&amp;M","\u2212 "+money(omYr)+" /yr")+
+    row2("<b>Net, yr 1</b>","<b>"+money(devYr1-omYr)+"</b>")+
+    row2("Net over "+term+" yr",money(dev))+
+    row2("Return over net capital",(net>0?Math.round((dev-net)/net*100)+"%":"\u2014"))+
+    row2("Simple payback",(payback?payback.toFixed(1)+" yr":"does not pay back"))+
+    '</div>';
+
+  var warn=[];
+  if(struct==="ppa"&&!spreadOk)
+    warn.push("the spread is negative after round-trip losses \u2014 you pay "+
+              money(chgCost/rte*1000)+"/MWh to deliver energy you sell at "+money(ppaRate*1000)+"/MWh");
+  if(struct==="ppa"&&!custWins)
+    warn.push("your PPA rate is at or above the customer\u2019s retail rate \u2014 they have no reason to sign");
+  if(payback&&payback>term) warn.push("payback exceeds the term");
+  if(dev<net) warn.push("net revenue is below net capital \u2014 this loses money");
+  if(!r.sz) warn.push("no metered load here, so the demand charge is unverified");
+  if(warn.length) h+='<div class="r-note" style="border-left-color:var(--red)"><b>'+
+    esc(warn.join(" \u00b7 "))+'.</b></div>';
+
+  h+='<div class="r-note"><b>Screening only.</b> Excludes PJM capacity revenue, ancillary services, '+
+     'attribute certificates, interconnection cost, and any charge for the energy the battery draws '+
+     'through the customer\u2019s meter. Cycle count assumes the arbitrage spread is actually there on '+
+     'that many days \u2014 hourly price data is what settles it. Peak kW is modelled from annual '+
+     'consumption; 12 months of interval data supersedes it.</div>';
+  document.getElementById("dealOut").innerHTML=h;
+  document.getElementById("dealMsg").textContent="";
+  DEAL.sheet=termSheetText(r,struct,kw,kwh,hrs,capex,itcVal,net,devYr1,custYr1,omYr,term,escal,share,
+                           cust,dev,payback,dischargeKwh,ppaRate,retail,arbMargin,demandTotal);
+}
+function row2(k,v){ return '<div class="lab">'+k+'</div><div class="val">'+v+'</div>'; }
+
+function termSheetText(r,struct,kw,kwh,hrs,capex,itcVal,net,dev1,cust1,omYr,term,escal,share,
+                       cust,dev,payback,dischargeKwh,ppaRate,retail,arbMargin,demandTotal){
+  var names={ppa:"POWER PURCHASE AGREEMENT (BATTERY STORAGE)",
+             esa:"ENERGY STORAGE SERVICES AGREEMENT (SHARED SAVINGS)",
+             cap:"CAPACITY SERVICES AGREEMENT"};
+  var L=[];
+  L.push("INDICATIVE TERM SHEET \u2014 "+names[struct]);
+  L.push("Screening estimate. Not an offer. Subject to interconnection study and utility data.");
+  L.push("");
+  L.push("Site            "+(r.addr||""));
+  if(r.owner) L.push("Owner           "+r.owner);
+  L.push("Feeder          "+(r.feeder||"")+(r.sub?("  substation "+r.sub):""));
+  L.push("Circuit avail   "+(r.net!=null?Math.round(r.net).toLocaleString()+" kW (net of queued DER)":"unknown"));
+  L.push("");
+  L.push("System          "+Math.round(kw).toLocaleString()+" kW / "+Math.round(kwh).toLocaleString()+" kWh ("+hrs+" hr)");
+  L.push("Ownership       Developer owns, operates and maintains. Customer capex $0.");
+  L.push("Term            "+term+" years, "+Math.round(escal*100)+"% annual escalator");
+  L.push("");
+  if(struct==="ppa"){
+    L.push("PRICING");
+    L.push("  Energy         "+money(ppaRate*1000)+"/MWh for energy delivered from the system");
+    L.push("  Volume         ~"+Math.round(dischargeKwh).toLocaleString()+" kWh/yr discharged on site");
+    L.push("  Demand         customer retains "+Math.round(share*100)+"% of avoided demand charges");
+    L.push("");
+    L.push("CUSTOMER BENEFIT, YEAR 1");
+    L.push("  vs "+money(retail*1000)+"/MWh retail     "+money(dischargeKwh*(retail-ppaRate)));
+    L.push("  demand savings retained  "+money(demandTotal*share));
+    L.push("  total                    "+money(cust1));
+  } else {
+    L.push("PRICING");
+    L.push("  Customer share "+Math.round(share*100)+"% of avoided demand charges");
+    L.push("  Year 1 benefit "+money(cust1));
+  }
+  L.push("");
+  L.push("Term totals: customer "+money(cust)+" / developer net "+money(dev));
+  L.push("");
+  L.push("ASSUMPTIONS \u2014 verify all before issuing");
+  L.push("  Installed cost, ITC rate, demand rate, energy prices and cycle count");
+  L.push("  are screening defaults, not quotes. Peak demand is modelled from annual");
+  L.push("  consumption; 12 months of interval data supersedes it.");
+  L.push("  Excludes: interconnection cost, PJM capacity revenue, ancillary services,");
+  L.push("  energy attribute certificates, standby/demand charges on charging energy,");
+  L.push("  site control, permitting.");
+  return L.join("\n");
+}
+
+document.getElementById("dealClose").onclick=function(){ document.getElementById("dealWrap").className=""; };
+document.getElementById("dealWrap").onclick=function(e){ if(e.target===this) this.className=""; };
+function showDealTab(which){
+  var site=which==="site";
+  document.getElementById("siteCard").style.display=site?"":"none";
+  ["dealOut"].forEach(function(id){ document.getElementById(id).style.display=site?"none":""; });
+  var rows=document.getElementById("dealWrap").getElementsByClassName("r-ctl");
+  for(var i=0;i<rows.length;i++) rows[i].style.display=site?"none":"";
+  var pr=document.getElementById("ppaRow");
+  if(pr&&!site) pr.style.display=(document.getElementById("dStruct").value==="ppa")?"":"none";
+  document.getElementById("tabSite").className=site?"on":"";
+  document.getElementById("tabPrice").className=site?"":"on";
+}
+document.getElementById("tabSite").onclick=function(){ showDealTab("site"); };
+document.getElementById("tabPrice").onclick=function(){ showDealTab("price"); };
+document.getElementById("dCalc").onclick=calcDeal;
+function addDealNote(){
+  var r=DEAL.row; if(!r||!r.pin) return;
+  var inp=document.getElementById("dNote"), t=inp.value;
+  if(!t.trim()) return;
+  crmNote(r.pin,t,r);
+  inp.value="";
+  document.getElementById("dNoteList").innerHTML=notesHtml(r.pin);
+  crmRefresh();
+}
+document.getElementById("dNoteAdd").onclick=addDealNote;
+document.getElementById("dNote").addEventListener("keydown",function(e){
+  if(e.key==="Enter") addDealNote();
+});
+["dkW","dHrs","dCapex","dItc","dRate","dTerm","dEsc","dShare","dOm","dStruct","dPpa","dChg","dRte","dCyc","dDod","dRetail"].forEach(function(id){
+  document.getElementById(id).addEventListener("change",calcDeal);
+});
+document.getElementById("dCopy").onclick=function(){
+  if(!DEAL.sheet) return;
+  var ta=document.createElement("textarea");
+  ta.value=DEAL.sheet; document.body.appendChild(ta); ta.select();
+  try{ document.execCommand("copy");
+    document.getElementById("dealMsg").textContent="Term sheet copied.";
+    if(DEAL.row&&DEAL.row.pin){
+      var kw=parseFloat(document.getElementById("dkW").value)||0;
+      var hrs=parseFloat(document.getElementById("dHrs").value)||0;
+      crmSet(DEAL.row.pin,{note:"Priced "+Math.round(kw)+" kW / "+Math.round(kw*hrs)+" kWh"},DEAL.row);
+    }
+  }
+  catch(e){ document.getElementById("dealMsg").textContent="Copy failed \u2014 select the text manually."; }
+  document.body.removeChild(ta);
+};
+
 /* ══════════════════════════════════════════════════════════════
    DATA HEALTH
 
@@ -2585,6 +3656,83 @@ function renderOwners(){
   document.getElementById("fdOut").innerHTML=h;
 }
 
+/* Businesses skip the class filter — a licensed business IS the C&I
+   filter, and there is no Assessor class to test. Everything else
+   (phones, fibre, sizing, scoring, pins) is shared. */
+function finishBusinessSweep(acc,feeders,total){
+  var rows=acc;
+  for(var f=0;f<rows.length;f++){
+    var R=rows[f];
+    R.fb=nearestFiber(R.lat,R.lon);
+    R.clsLabel=R.bizKind||"Commercial";
+    R.cls="";
+    R.av={code:"local",label:"Operating business",rank:2};
+    R.cscore=computeScore(R);
+  }
+  rows.sort(function(x,y){ return (y.net||0)-(x.net||0); });
+  FD.rows=rows; FD.busy=false;
+  document.getElementById("fdRun").disabled=false;
+  document.getElementById("fdCsv").disabled=!rows.length;
+  document.getElementById("fdPhone").disabled=!rows.length;
+  fdBar(1); fdStep('');
+
+  var uf={},uo={};
+  rows.forEach(function(r){ uf[r.feeder]=1; if(r.biz) uo[r.biz]=1; });
+  fdMsg(rows.length.toLocaleString()+" businesses · "+Object.keys(uf).length+
+        " circuits · "+Object.keys(uo).length.toLocaleString()+" distinct names","ok");
+
+  var best=0; rows.forEach(function(r){ if((r.net||0)>best) best=r.net||0; });
+  var h='<div class="stat">'+
+    '<div><span class="k">Businesses</span><span class="big-num">'+rows.length.toLocaleString()+'</span></div>'+
+    '<div><span class="k">With a named owner</span><span class="big-num">'+
+      rows.filter(function(r){return r.people;}).length.toLocaleString()+'</span></div>'+
+    '<div><span class="k">Sizing for</span><span class="big-num">'+
+      (FD.sysKw>=1000?(FD.sysKw/1000)+" MW":FD.sysKw+" kW")+'</span></div>'+
+    '<div><span class="k">Best circuit (net)</span><span class="big-num">'+
+      Math.round(best).toLocaleString()+' kW</span></div></div>';
+
+  h+='<table class="r-t"><thead><tr><th>Business</th><th>Type</th><th>Named owner</th>'+
+     '<th>Phone</th><th>Address</th><th>Feeder</th><th>Available</th><th>Stage</th><th></th></tr></thead><tbody>';
+  for(var r2=0;r2<rows.length;r2++){
+    var R2=rows[r2], dim='<span style="color:var(--dim)">—</span>';
+    h+='<tr class="r-row" data-i="'+r2+'">'+
+       '<td><b>'+esc(R2.biz||"")+'</b>'+(R2.bizLegal&&R2.bizLegal!==R2.biz?
+         ('<div style="font-size:10px;color:var(--dim)">'+esc(R2.bizLegal)+'</div>'):'')+'</td>'+
+       '<td style="font-size:11px">'+esc((R2.bizKind||"").slice(0,42))+'</td>'+
+       '<td>'+(R2.people?('<b>'+esc(R2.people)+'</b>'):dim)+'</td>'+
+       '<td>'+(R2.phone?telLink(R2.phone,R2.phoneRaw,R2.biz):
+         ('<a href="'+esc(searchLink(R2.biz,R2.addr))+'" target="_blank" rel="noopener" '+
+          'style="color:var(--accent);font-size:11px">search ↗</a>'))+'</td>'+
+       '<td style="font-size:11px">'+esc(R2.addr||"")+'</td>'+
+       '<td style="font-family:var(--mono);font-size:11px">'+esc(R2.feeder||"")+'</td>'+
+       '<td class="n">'+(R2.net!=null?Math.round(R2.net).toLocaleString()+" kW":dim)+'</td>'+
+       '<td>'+crmSelect(R2.pin)+'</td>'+
+       '<td><button class="sizebtn" data-i="'+r2+'">Size</button></td></tr>';
+  }
+  h+='</tbody></table>';
+  rows.forEach(function(r){ if(r.phone) hNote("Phones","hit"); });
+  h+=healthHtml(rows.length);
+  h+='<div class="r-note"><b>These are trading businesses, not landowners.</b> Each holds a current '+
+     'Chicago licence at an address inside a high-capacity circuit. The occupier is who pays the '+
+     'demand charge and who signs a PPA — but if they lease, the landlord still has to consent '+
+     'to equipment on the site. Ask early who owns the building.</div>';
+  h+='<div class="r-note">Chicago city limits only. For a circuit in Cicero, Evanston or the '+
+     'collar counties, switch <b>Search for</b> to Property owners.</div>';
+
+  var out=document.getElementById("fdOut");
+  out.innerHTML=h;
+  var byPin={}; rows.forEach(function(x){ if(x.pin) byPin[x.pin]=x; });
+  wireCrm(out,byPin);
+  var sb=out.getElementsByClassName("sizebtn");
+  for(var y=0;y<sb.length;y++)
+    sb[y].onclick=(function(rr){return function(e){ e.stopPropagation(); openDeal(rr); };})(rows[parseInt(sb[y].getAttribute("data-i"),10)]);
+  FD.siteRerender=function(){ finishBusinessSweep(acc,feeders,total); };
+  FD.siteHtml=h;
+  var ci=document.getElementById("ciOn");
+  if(ci){ ci.checked=true; drawProspects(true);
+          document.getElementById("ciKey").style.display=rows.length?"":"none"; }
+}
+
 function renderSweep(acc,cls,own,feeders,total){
   var want=CLASS_SETS[document.getElementById("fdClass").value]||CLASS_SETS.ci_mud;
   var allMode=document.getElementById("fdClass").value==="all";
@@ -2658,7 +3806,7 @@ function renderSweep(acc,cls,own,feeders,total){
     rows.sort(function(a,b){ return (b.score||0)-(a.score||0) || (b.val||0)-(a.val||0); });
   h+='<table class="r-t"><thead><tr><th>'+(play==="compute"?"Compute":"Deal")+'</th><th>Address</th><th>Building</th>'+
      '<th>Owner type</th><th>Fits system</th><th>Peak kW</th><th>Fiber</th>'+
-     '<th>Contact</th><th>Feeder</th><th>'+esc(useLbl)+' kW</th></tr></thead><tbody>';
+     '<th>Contact</th><th>Feeder</th><th>'+esc(useLbl)+' kW</th><th>Stage</th><th></th></tr></thead><tbody>';
   for(var r2=0;r2<rows.length;r2++){
     var R=rows[r2];
     var S=R.sz, B=R.bm, dim='<span style="color:var(--dim)">\u2014</span>';
@@ -2684,7 +3832,9 @@ function renderSweep(acc,cls,own,feeders,total){
          (R.phone?('<div>'+telLink(R.phone,R.phoneRaw,R.biz||R.owner)+'</div>'):
           ('<div><a href="'+esc(searchLink(R.biz||R.owner,R.addr))+'" target="_blank" rel="noopener" style="color:var(--accent);font-size:10px">search \u2197</a></div>'))+'</td>'+
        '<td style="font-family:var(--mono);font-size:11px">'+esc(R.feeder)+'</td>'+
-       '<td class="n">'+(R.val!=null?Math.round(R.val).toLocaleString():"\u2014")+'</td></tr>';
+       '<td class="n">'+(R.val!=null?Math.round(R.val).toLocaleString():"\u2014")+'</td>'+
+       '<td>'+crmSelect(R.pin)+'</td>'+
+       '<td><button class="sizebtn" data-i="'+r2+'">Size</button></td></tr>';
   }
   h+='</tbody></table>';
   /* per-row outcomes, counted after every join has run */
@@ -2700,6 +3850,10 @@ function renderSweep(acc,cls,own,feeders,total){
      'prospecting list, not an inventory. A parcel being inside the buffer means it is near the feeder, not that '+
      'a service drop can reach it. The deliverable figure comes from the interconnection study.</div>';
   FD.siteRerender=function(){ renderSweep(acc,cls,own,feeders,total); };
+  /* pins the moment the run lands — the rep should not have to find a toggle */
+  var ci=document.getElementById("ciOn");
+  if(ci){ ci.checked=true; drawProspects(true);
+          document.getElementById("ciKey").style.display=rows.length?"":"none"; }
   if(FD_VIEW==="owner") renderOwners(); else document.getElementById("fdOut").innerHTML=h;
   FD.siteHtml=h;
 }
@@ -2790,6 +3944,7 @@ document.getElementById("fdClose").onclick=function(){ document.getElementById("
 document.getElementById("fdWrap").onclick=function(e){ if(e.target===this) this.className=""; };
 document.getElementById("fdRun").onclick=runFindSites;
 document.getElementById("fdCsv").onclick=downloadFdCsv;
+document.getElementById("fdPipe").onclick=exportCrm;
 document.getElementById("fdPhone").onclick=findContacts;
 document.getElementById("fdPlay").onchange=function(){ if(FD.siteRerender) FD.siteRerender(); };
 document.getElementById("fdAvail").onchange=function(){ if(FD.rows.length) fdMsg("Re-run to apply the availability filter."); };
@@ -2802,6 +3957,27 @@ document.getElementById("fdView").onclick=function(){
 };
 document.getElementById("prospect").onchange=function(){ PROSPECT=this.checked; repaint(); };
 document.getElementById("fiberOn").onchange=function(){ drawFiber(this.checked); };
+document.getElementById("ciOn").onchange=function(){
+  drawProspects(this.checked);
+  document.getElementById("ciKey").style.display=this.checked&&FD.rows&&FD.rows.length?"":"none";
+};
+document.getElementById("crmOn").onchange=function(){ drawCrm(this.checked); };
+crmLoad(function(){
+  crmRefresh();
+  if(CRM_ENDPOINT){
+    diag("crm: shared \u00b7 "+CRM_ENDPOINT);
+    setInterval(crmPoll,45000);          /* keep the floor roughly in sync */
+  }
+});
+(function(){
+  var ri=document.getElementById("repName");
+  ri.value=repLoad();
+  ri.addEventListener("change",function(){
+    repSet(this.value);
+    this.style.borderColor=REP?"var(--green)":"var(--line)";
+  });
+  if(REP) ri.style.borderColor="var(--green)";
+})();
 
 
 bootService();
