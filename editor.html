@@ -2832,7 +2832,7 @@ if(document.readyState==='loading'){
       <button id="btn-hidemap" onclick="toggleMapHidden()" title="Hide the map and work on a plain grid" style="flex:0 0 auto;padding:4px 8px;border-radius:4px;border:1px solid var(--border);background:var(--surface);color:var(--sub);cursor:pointer;font-size:10px">◫ Hide</button>
     </div>
     <div style="margin-top:5px">
-      <button id="btn-hideevselbl" onclick="toggleEvseLabels()" title="Ten chargers means ten overlapping label plates that all say the same thing. Collapse them to one legible plate on the cluster -- individual labels still print in permit exports." style="width:100%;padding:4px;border-radius:4px;border:1px solid var(--border);background:var(--surface);color:var(--sub);cursor:pointer;font-size:10px;margin-bottom:4px">Collapse EVSE labels</button>
+      <button id="btn-hideevselbl" onclick="toggleEvsePads()" title="Hide the orange hatched protection island drawn under each charger. Labels, bollards and the cost sheet are unaffected." style="width:100%;padding:4px;border-radius:4px;border:1px solid var(--border);background:var(--surface);color:var(--sub);cursor:pointer;font-size:10px;margin-bottom:4px">Hide charger pads</button>
       <button id="btn-hidebollards" onclick="toggleBollards()" title="Bollards can read as noise when zoomed out. Hide them on the map view -- they still print in permit exports." style="width:100%;padding:4px;border-radius:4px;border:1px solid var(--border);background:var(--surface);color:var(--sub);cursor:pointer;font-size:10px">Hide bollards</button>
     </div>
     <!-- Google Maps mode controls -->
@@ -33073,24 +33073,22 @@ function ctxToggleLabel() {
   closeCtxMenu();
 }
 
-/* == COLLAPSE THE EVSE LABELS =================================
-   Ten chargers means ten "EVSE 9 . Autel AC Pro" plates plus ten
-   "80A . 60A circuit . J1772 / NACS" sub-lines, and on a tight parking
-   run they overlap into an unreadable stack. They all say the same thing,
-   so this hides the per-unit labels and leaves one legible plate on the
-   cluster: model, count and circuit. The labels are only hidden — every
-   element keeps its own label for permit exports and for the moment you
-   switch it back. */
-function toggleEvseLabels(){
-  window._hideEvseLabels = !window._hideEvseLabels;
-  var hide = window._hideEvseLabels, i, el, touched=[];
+/* == HIDE THE CHARGER PROTECTION PADS =========================
+   Each charger draws a bollard-protection island under it: an orange
+   bordered box with diagonal hatching. On a ten-unit run those islands
+   overlap the stalls and each other until the drawing is unreadable,
+   and they are purely presentational — the bollards themselves are real
+   elements (eqId 'bollard') and are what the estimate counts, so hiding
+   the islands changes nothing on the cost sheet.
+
+   The labels stay. renderEl already honours window.OMEGA_EV_PAD, so this
+   just flips it and re-renders the chargers. */
+function toggleEvsePads(){
+  window.OMEGA_EV_PAD = (window.OMEGA_EV_PAD === false);
+  var hidden = (window.OMEGA_EV_PAD === false), i, el, touched=[];
   for(i=0;i<(S.elements||[]).length;i++){
     el=S.elements[i];
-    if(!_isEvseEl(el)) continue;
-    /* remember what the user had set, so unhiding does not resurrect a
-       label they deliberately turned off one at a time */
-    if(hide){ if(el._lblWas===undefined) el._lblWas = !!el.hideLabel; el.hideLabel = true; }
-    else    { el.hideLabel = (el._lblWas===undefined) ? false : el._lblWas; delete el._lblWas; }
+    if(String(el.eqId||'')!=='charger') continue;
     touched.push(el);
   }
   touched.forEach(function(e){
@@ -33098,56 +33096,20 @@ function toggleEvseLabels(){
     if(dom) dom.remove();
     try{ renderEl(e); }catch(err){}
   });
-  _renderEvseGroupLabel();
   var btn=document.getElementById('btn-hideevselbl');
   if(btn){
-    btn.style.background=hide?'rgba(0,212,255,.2)':'var(--surface)';
-    btn.style.color=hide?'var(--accent)':'var(--sub)';
-    btn.style.borderColor=hide?'var(--accent)':'var(--border)';
-    btn.textContent=hide?'Show EVSE labels':'Collapse EVSE labels';
+    btn.style.background=hidden?'rgba(0,212,255,.2)':'var(--surface)';
+    btn.style.color=hidden?'var(--accent)':'var(--sub)';
+    btn.style.borderColor=hidden?'var(--accent)':'var(--border)';
+    btn.textContent=hidden?'Show charger pads':'Hide charger pads';
   }
   if(typeof showBanner==='function')
-    showBanner('wiz', hide ? 'EVSE labels collapsed to one plate. Individual labels still print in exports.'
-                           : 'EVSE labels shown.');
+    showBanner('wiz', hidden
+      ? 'Charger protection pads hidden. Labels and bollard counts are unchanged.'
+      : 'Charger protection pads shown.');
+  return touched.length;
 }
-function _isEvseEl(el){
-  var t=String((el&&(el.type||el.eqId))||'').toLowerCase();
-  var l=String((el&&(el.label||el.name))||'').toLowerCase();
-  return t.indexOf('charger')>=0 || t.indexOf('evse')>=0 || l.indexOf('evse')>=0;
-}
-/* One plate at the centre of the cluster, sized to be read at the zoom a
-   ten-charger run is drawn at. */
-function _renderEvseGroupLabel(){
-  var host=document.getElementById('els');
-  var old=document.getElementById('evse-group-lbl');
-  if(old&&old.parentNode) old.parentNode.removeChild(old);
-  if(!window._hideEvseLabels || !host) return;
-  var els=(S.elements||[]).filter(_isEvseEl);
-  if(!els.length) return;
-  var sx=0, sy=0, i;
-  for(i=0;i<els.length;i++){ sx+=(+els[i].x||0); sy+=(+els[i].y||0); }
-  var cx=sx/els.length, cy=sy/els.length;
-  /* the models on the drawing, counted */
-  var byModel={}, k, parts=[];
-  for(i=0;i<els.length;i++){
-    k=String(els[i].model||els[i].label||'EVSE').replace(/^EVSE\s*\d+\s*[\u00b7.-]\s*/,'').trim();
-    byModel[k]=(byModel[k]||0)+1;
-  }
-  for(k in byModel) if(byModel.hasOwnProperty(k)) parts.push(k+' \u00d7'+byModel[k]);
-  var sub=String(els[0].sublabel||els[0].sub||'').trim();
-  var d=document.createElement('div');
-  d.id='evse-group-lbl';
-  d.setAttribute('data-noexport','1');
-  d.style.cssText='position:absolute;left:'+cx+'px;top:'+cy+'px;transform:translate(-50%,-50%);'
-    +'padding:8px 14px;border-radius:8px;background:rgba(10,12,18,.92);'
-    +'border:1px solid rgba(0,212,255,.55);color:#fff;font-weight:700;font-size:15px;'
-    +'letter-spacing:.2px;white-space:nowrap;pointer-events:none;z-index:9;'
-    +'box-shadow:0 2px 10px rgba(0,0,0,.5)';
-  d.innerHTML='<div>'+parts.join(' \u00b7 ')+'</div>'
-    + (sub?'<div style="font-weight:500;font-size:11px;opacity:.8;margin-top:2px">'+sub+'</div>':'');
-  host.appendChild(d);
-}
-window.toggleEvseLabels=toggleEvseLabels;
+window.toggleEvsePads=toggleEvsePads;
 
 function toggleElLabel(elId) {
   const el = S.elements.find(x=>x.id===elId);
@@ -82633,17 +82595,19 @@ if (_omPrevOmegaTrench) { Object.keys(_omPrevOmegaTrench).forEach(function (k) {
     /* Collapsing the EVSE plates is a VIEW decision, so it belongs on the
        View ribbon next to Labels — not buried in the Satellite Photo panel,
        where it was invisible on the tab people actually use for this. */
-    if (!document.getElementById('rb-evselbl') && typeof toggleEvseLabels === 'function') {
+    if (!document.getElementById('rb-evselbl') && typeof toggleEvsePads === 'function') {
       var e = document.createElement('button');
       e.className = 'rbtn';
       e.id = 'rb-evselbl';
-      e.title = 'Ten chargers means ten overlapping plates that all say the same thing. '
-              + 'Collapse them to one label on the cluster. Individual labels still print in exports.';
-      e.innerHTML = '<span class="rb-ico">\u29c9</span><span class="rb-lbl">EVSE labels</span>';
+      e.title = 'The orange hatched island under each charger is presentational. '
+              + 'Hide it when a long run of stalls gets unreadable \u2014 labels, bollards and '
+              + 'the cost sheet are unaffected.';
+      e.innerHTML = '<span class="rb-ico">\u25a7</span><span class="rb-lbl">Charger<br>pads</span>';
       e.onclick = function () {
-        toggleEvseLabels();
-        e.style.background = window._hideEvseLabels ? 'rgba(0,212,255,.18)' : '';
-        e.style.borderColor = window._hideEvseLabels ? 'var(--accent)' : '';
+        toggleEvsePads();
+        var off = (window.OMEGA_EV_PAD === false);
+        e.style.background = off ? 'rgba(0,212,255,.18)' : '';
+        e.style.borderColor = off ? 'var(--accent)' : '';
       };
       host.appendChild(e);
     }
