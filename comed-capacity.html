@@ -2984,7 +2984,11 @@ function loadEdc(cb){
 /* Match a listing to the circuit under it, so a rep sees grid capacity and
    existing service side by side. Falls back to whatever the sweep already
    found nearby rather than firing another query per pin. */
-function edcNearestFeeder(lat,lon){
+function edcNearestFeeder(lat,lon,approx){
+  /* A ZIP-centroid pin can sit a mile from the building. Feeders are
+     block-scale, so attributing one to an approximate pin would be
+     confidently wrong — worse than saying nothing. */
+  if(approx) return null;
   if(!FD.rows||!FD.rows.length) return null;
   var best=null,bd=1e9;
   for(var i=0;i<FD.rows.length;i++){
@@ -2999,7 +3003,7 @@ function edcNearestFeeder(lat,lon){
 }
 
 function edcPopup(e){
-  var f=edcNearestFeeder(e.lat,e.lon);
+  var f=edcNearestFeeder(e.lat,e.lon,e.approx);
   var h='<div style="min-width:250px">';
   h+='<div style="font-weight:700;font-size:13px">'+esc(e.n)+'</div>';
   h+='<div style="font-size:11px;color:var(--muted)">'+esc(e.a)+', '+esc(e.c)+'</div>';
@@ -3039,7 +3043,8 @@ function edcPopup(e){
     h+='</div>';
   }
   if(e.approx) h+='<div style="margin-top:5px;font-size:10px;color:var(--amber)">'+
-                  'Pin is the city centre \u2014 the street address would not geocode</div>';
+                  '\u26a0 Pin is a ZIP-code centre, not the building \u2014 up to a mile off. '+
+                  'Search the address above to place it exactly.</div>';
   if(e.url) h+='<div style="margin-top:6px"><a href="'+esc(e.url)+'" target="_blank" rel="noopener" '+
               'style="color:var(--accent);font-size:11px">Full listing \u2197</a></div>';
   h+='</div>';
@@ -3058,8 +3063,9 @@ function drawEdc(on){
       /* square-ish marker so listings never read as a prospect pin */
       var col=e.sale?"#E8590C":(e.lease?"#0a6ed1":"#8a5cd1");
       var mk=L.circleMarker([e.lat,e.lon],
-        {radius:e.kva?7:5, color:"#1a2733", weight:1.5,
-         fillColor:col, fillOpacity:e.approx?0.35:0.85, interactive:true});
+        {radius:e.kva?7:5, color:col, weight:e.approx?2:1.5,
+         fillColor:col, fillOpacity:e.approx?0.18:0.85,
+         dashArray:e.approx?"3,3":null, interactive:true});
       mk.bindPopup(edcPopup(e));
       edcLayer.addLayer(mk);
     }
