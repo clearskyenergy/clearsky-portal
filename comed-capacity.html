@@ -141,6 +141,29 @@
   #authBox .a-msg.ok{color:#2ea043}
   #authBox .a-note{font-size:10.5px;color:var(--muted);margin-top:14px;line-height:1.5}
   #authBox .a-note b{color:#0a6ed1}
+  /* ── ACCOUNT EDITOR (side panel) ────────────────────────────── */
+  .acct{display:flex;flex-direction:column;gap:6px;margin-bottom:4px}
+  .acct-owned{font-size:11.5px;color:#8a5a00;background:#FFF8E6;border:1px solid #F5D98A;
+    border-radius:7px;padding:7px 9px;line-height:1.45}
+  .acct-l{font-size:10px;font-weight:700;letter-spacing:.5px;text-transform:uppercase;
+    color:var(--dim);margin-top:4px}
+  .acct select,.acct input,.acct textarea{width:100%;border:1px solid var(--line);
+    border-radius:7px;padding:7px 9px;font-size:12.5px;font-family:inherit;color:inherit;
+    background:var(--panel2);outline:none}
+  .acct textarea{resize:vertical;min-height:52px}
+  .acct select:focus,.acct input:focus,.acct textarea:focus{border-color:#0a6ed1;background:#fff}
+  .acct-save{margin-top:8px;height:34px;border:0;border-radius:7px;background:#0a6ed1;
+    color:#fff;font:600 13px/1 inherit;cursor:pointer;width:100%}
+  .acct-save:hover{background:#0959ab}
+  .acct-save:disabled{opacity:.55;cursor:default}
+  .acct-msg{font-size:11.5px;color:var(--dim);min-height:14px}
+  .acct-msg.bad{color:#c0392b}
+  .acct-msg.ok{color:#2ea043}
+  .acct-hist{margin-top:8px;border-top:1px solid var(--line);padding-top:8px;
+    display:flex;flex-direction:column;gap:7px;max-height:250px;overflow:auto}
+  .acct-n{font-size:11.5px;line-height:1.45;color:var(--ink)}
+  .acct-nh{display:block;font-family:var(--mono);font-size:9px;color:var(--dim);margin-bottom:2px}
+
   /* ── PIPELINE POPUP EDITOR ──────────────────────────────────── */
   .crmpop{min-width:214px}
   .crmpop-edit{margin-top:9px;border-top:1px solid var(--line);padding-top:9px;
@@ -1041,6 +1064,11 @@ function showResult(ll,info,rendLabel,layerId,all){
   h+='<div class="addr">'+ll.lat.toFixed(5)+', '+ll.lng.toFixed(5)+'</div>';
   h+='<div class="verdict" style="background:'+b.c+'"><div class="bnd">'+esc(b.label)+'</div><div class="lab">'+esc(b.word)+'</div></div>';
 
+  /* The account goes ABOVE the capacity detail. A rep opening a site they
+     are working wants the stage and the contact first; the feeder numbers
+     matter once, at qualification, and are still a scroll away. */
+  if(PANEL_PIN&&CRM.data[PANEL_PIN]) h+=crmPanelBlock(PANEL_PIN);
+
   if(layerId!=null&&layerId!=75){
     h+='<div class="note" style="border-left:3px solid var(--amber);padding-left:9px;margin-bottom:4px">'+
        '<b>Not address-resolved.</b> This reading came from layer '+layerId+' ('+esc(LAYER_GRAIN[layerId]||"aggregate block")+
@@ -1084,6 +1112,7 @@ function showResult(ll,info,rendLabel,layerId,all){
   }
   h+='<div class="sec">Diagnostics</div><div class="diag">'+esc(DIAG.slice(-12).join("\n"))+'</div>';
   document.getElementById("pBody").innerHTML=h;
+  if(PANEL_PIN&&CRM.data[PANEL_PIN]) wireCrmPanel(PANEL_PIN);
   var ps=document.getElementById("pSize");
   if(ps) ps.onclick=function(){
     var q=parseFloat(info.queue); if(isNaN(q)) q=0;
@@ -1092,6 +1121,159 @@ function showResult(ll,info,rendLabel,layerId,all){
               bess:info.bess,pv:info.pv,ev:info.ev,owner:""});
   };
 }
+/* ══════════════════════════════════════════════════════════════════
+   ACCOUNT EDITOR IN THE SIDE PANEL                          ← ADDED
+
+   Clicking a pipeline dot opens the full panel — capacity AND the account
+   in one place. The map popup stays for a quick glance, but a rep working
+   a list needs the contact, the owner and the note history without running
+   a search to get back to a site they are already looking at.
+
+   PANEL_PIN is the bridge: showResult() rebuilds pBody from scratch on
+   every analyze, so the editor is injected there rather than written into
+   the DOM separately, which would be wiped the moment capacity resolved.
+   ══════════════════════════════════════════════════════════════════ */
+var PANEL_PIN=null;
+
+/* Reps who have worked something in this org. Firebase Auth cannot be
+   enumerated from the browser, so the assignable list is built from the
+   pipeline itself — which means a brand-new rep does not appear until
+   their first claim. The free-text option below covers that case. */
+function knownReps(){
+  var seen={},out=[],p,e;
+  for(p in CRM.data){
+    if(!CRM.data.hasOwnProperty(p)) continue;
+    e=CRM.data[p];
+    if(e.repEmail&&!seen[e.repEmail]){
+      seen[e.repEmail]=1;
+      out.push({email:e.repEmail,name:e.rep||e.repEmail.split("@")[0]});
+    }
+  }
+  if(fsUser&&!seen[(fsUser.email||"").toLowerCase()]){
+    out.push({email:(fsUser.email||"").toLowerCase(),name:REP});
+  }
+  out.sort(function(a,b){ return a.name.localeCompare(b.name); });
+  return out;
+}
+
+function crmPanelBlock(pin){
+  var e=CRM.data[pin]||{};
+  var mine=!e.repEmail||((fsUser&&(fsUser.email||"").toLowerCase())===e.repEmail);
+  var h='<div class="sec">Account</div><div class="acct" data-pin="'+esc(pin)+'">';
+
+  if(!mine){
+    h+='<div class="acct-owned">Worked by <b>'+esc(e.rep||"another rep")+'</b>. '+
+       'You can add notes, or reassign it below.</div>';
+  }
+
+  h+='<label class="acct-l">Stage</label><select class="acct-stage">';
+  for(var i=0;i<CRM_STAGES.length;i++){
+    var so=CRM_STAGES[i];
+    h+='<option value="'+esc(so.k)+'"'+(so.k===(e.stage||"")?' selected':'')+'>'+
+       esc(so.k?so.label:"\u2014 no stage")+'</option>';
+  }
+  h+='</select>';
+
+  h+='<label class="acct-l">Contact at this account</label>'+
+     '<input class="acct-cname" maxlength="120" placeholder="Name of the person you spoke to" value="'+esc(e.contactName||"")+'">'+
+     '<input class="acct-cphone" maxlength="40" placeholder="Direct line" value="'+esc(e.contactPhone||"")+'">';
+
+  var reps=knownReps();
+  h+='<label class="acct-l">Assigned rep</label><select class="acct-rep">'+
+     '<option value="">\u2014 unassigned</option>';
+  var found=false;
+  for(var r=0;r<reps.length;r++){
+    if(reps[r].email===e.repEmail) found=true;
+    h+='<option value="'+esc(reps[r].email)+'"'+(reps[r].email===e.repEmail?' selected':'')+'>'+
+       esc(reps[r].name)+'</option>';
+  }
+  if(e.repEmail&&!found){
+    h+='<option value="'+esc(e.repEmail)+'" selected>'+esc(e.rep||e.repEmail)+'</option>';
+  }
+  h+='<option value="__other">Someone else\u2026</option></select>'+
+     '<input class="acct-repother" style="display:none" maxlength="120" placeholder="their@chileasing.com">';
+
+  h+='<label class="acct-l">Add a note</label>'+
+     '<textarea class="acct-note" rows="3" maxlength="600" placeholder="What happened on this call\u2026"></textarea>'+
+     '<button class="acct-save">Save account</button>'+
+     '<div class="acct-msg"></div>';
+
+  if(e.notes&&e.notes.length){
+    h+='<div class="acct-hist"><div class="acct-l" style="margin-top:2px">History</div>';
+    for(var n=0;n<e.notes.length&&n<15;n++){
+      var nt=e.notes[n];
+      h+='<div class="acct-n"><span class="acct-nh">'+esc(nt.rep||"\u2014")+
+         ' \u00b7 '+esc(noteAge(nt.ts))+'</span>'+esc(nt.t||"")+'</div>';
+    }
+    h+='</div>';
+  }
+  h+='</div>';
+  return h;
+}
+
+function wireCrmPanel(pin){
+  var host=document.querySelector('.acct[data-pin]');
+  if(!host) return;
+  var sel  =host.querySelector(".acct-stage");
+  var cn   =host.querySelector(".acct-cname");
+  var cp   =host.querySelector(".acct-cphone");
+  var rep  =host.querySelector(".acct-rep");
+  var other=host.querySelector(".acct-repother");
+  var note =host.querySelector(".acct-note");
+  var save =host.querySelector(".acct-save");
+  var msg  =host.querySelector(".acct-msg");
+  if(!save) return;
+
+  rep.onchange=function(){
+    other.style.display=(rep.value==="__other")?"block":"none";
+    if(rep.value==="__other") other.focus();
+  };
+
+  save.onclick=function(){
+    var e=CRM.data[pin]||{};
+    var stage=sel.value;
+    var assignEmail=(rep.value==="__other")?(other.value||"").trim().toLowerCase():rep.value;
+    var text=(note.value||"").trim();
+
+    if(rep.value==="__other"&&assignEmail&&!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(assignEmail)){
+      msg.textContent="That does not look like an email address."; msg.className="acct-msg bad"; return;
+    }
+
+    var payload={pin:pin,rep:REP,patch:{stage:stage},
+                 contactName:cn.value,contactPhone:cp.value};
+    /* Only send an assignment when it actually changed. Sending it every
+       time would rewrite claimedAt on every save and make the claim look
+       newer than it is. */
+    if(assignEmail!==(e.repEmail||"")){
+      payload.assign={email:assignEmail,
+        name:(function(){ var rs=knownReps(),i;
+          for(i=0;i<rs.length;i++) if(rs[i].email===assignEmail) return rs[i].name;
+          return assignEmail?assignEmail.split("@")[0]:""; })()};
+    } else if(stage&&stage!==(e.stage||"")){
+      payload.claim=true;                 /* staging an unowned site claims it */
+    }
+
+    save.disabled=true;
+    msg.textContent="Saving\u2026"; msg.className="acct-msg";
+
+    var pending=1, bad=false;
+    function done(err){
+      if(err) bad=true;
+      if(--pending>0) return;
+      save.disabled=false;
+      if(bad){ msg.textContent="Could not save \u2014 check your connection."; msg.className="acct-msg bad"; return; }
+      note.value="";
+      msg.textContent="Saved."; msg.className="acct-msg ok";
+    }
+    crmPush(pin,payload,done);
+    if(text){ pending++; crmNote(pin,text,null,done); }
+    if(payload.assign){
+      pending++;
+      crmNote(pin,"Assigned to "+(payload.assign.name||"unassigned")+".",null,done);
+    }
+  };
+}
+
 function row(k,v){return '<div class="row"><span class="k">'+esc(k)+'</span><span class="v">'+esc(v)+'</span></div>';}
 function esc(s){s=(s==null?"":""+s);return s.replace(/[&<>]/g,function(c){return{"&":"&amp;","<":"&lt;",">":"&gt;"}[c];});}
 function openPanel(){document.getElementById("panel").className="open";document.body.className="panel-open";
@@ -1099,7 +1281,7 @@ function openPanel(){document.getElementById("panel").className="open";document.
 document.getElementById("pClose").onclick=function(){document.getElementById("panel").className="";document.body.className="";
   setTimeout(function(){map.invalidateSize();},300);};
 
-map.on("click",function(e){ analyze(e.latlng); });
+map.on("click",function(e){ PANEL_PIN=null; analyze(e.latlng); });
 map.on("moveend zoomend",function(){ refreshOverlay(); });
 
 /* ── geocode ─────────────────────────────────────────────────── */
@@ -2737,7 +2919,14 @@ function fsToEntry(d){
     addr:d.address||"", owner:d.ownerName||"", feeder:d.feeder||"",
     net:(d.hostingCapacityKw==null?null:d.hostingCapacityKw),
     lat:(d.lat==null?null:d.lat), lon:(d.lon==null?null:d.lon),
-    phone:d.ownerPhone||"", notes:d.notes||[],
+    phone:d.ownerPhone||"",
+    /* NEWEST FIRST. The tool unshifts new notes, but Firestore arrayUnion
+       APPENDS — so straight off the wire notes[0] is the oldest entry, and
+       every "last note" in this file would have shown the first call ever
+       made instead of the most recent one. Sorted on read so the two
+       conventions cannot disagree. */
+    notes:(d.notes||[]).slice().sort(function(a,b){ return (b.ts||0)-(a.ts||0); }),
+    contactName:d.contactName||"", contactPhone:d.contactPhone||"",
     claimedBy:d.claimedBy||"", claimedByEmail:d.claimedByEmail||"",
     claimedAt:d.claimedAt&&d.claimedAt.toMillis?d.claimedAt.toMillis():(d.claimedAt||0),
     calls:d.callCount||0,
@@ -2830,10 +3019,39 @@ function crmPush(pin,body,cb){
      the opposite of what visible claims are for. Taking somebody else's
      account is possible, but it has to be deliberate: the popup shows the
      current owner and offers an explicit Take over. */
+  /* Who the rep is actually talking to at the account. Stored on the site,
+     not buried in a note, because the next person to pick this up needs a
+     name and a number without reading six months of call log. */
+  if(body&&body.contactName!==undefined) doc.contactName=String(body.contactName||"").slice(0,120);
+  if(body&&body.contactPhone!==undefined) doc.contactPhone=String(body.contactPhone||"").slice(0,40);
+
+  /* EXPLICIT ASSIGNMENT. Distinct from a claim: a claim is "I picked this
+     up", an assignment is "this is yours now" — a manager routing an
+     account, or a rep handing one over. It bypasses the mayClaim guard on
+     purpose, and the caller is responsible for logging a note so the change
+     is visible to whoever held it before. */
+  if(body&&body.assign){
+    if(body.assign.email){
+      doc.repEmail=String(body.assign.email).toLowerCase();
+      doc.repName=body.assign.name||String(body.assign.email).split("@")[0];
+      doc.claimedBy=doc.repName;
+      doc.claimedByEmail=doc.repEmail;
+      doc.claimedAt=firebase.firestore.FieldValue.serverTimestamp();
+    } else {
+      /* Released back to the floor. An account nobody can hand back is an
+         account that quietly rots on whoever touched it first — the empty
+         option in the picker has to actually do something. claimedAt is
+         cleared too, so the site reads as genuinely open rather than as
+         claimed-by-nobody-since-March. */
+      doc.repEmail=""; doc.repName="";
+      doc.claimedBy=""; doc.claimedByEmail=""; doc.claimedAt=null;
+    }
+  }
+
   var owner=(existing.repEmail||"").toLowerCase();
   var me=(fsUser&&(fsUser.email||"").toLowerCase())||"";
   var mayClaim=!owner||owner===me||(body&&body.takeover);
-  if(body&&body.claim&&fsUser&&mayClaim){
+  if(body&&body.claim&&fsUser&&mayClaim&&!(body&&body.assign)){
     doc.repEmail=me;
     doc.repName=REP||(fsUser.email||"").split("@")[0];
     doc.claimedBy=REP||(fsUser.email||"").split("@")[0];
@@ -3070,7 +3288,17 @@ function drawCrm(on){
     mk.bindPopup(body,{minWidth:236});
     /* Handlers are wired on open, not on build: the popup markup does not
        exist in the DOM until Leaflet renders it. */
-    (function(p){ mk.on("popupopen",function(ev){ wireCrmPopup(ev.popup,p); }); })(pin);
+    (function(p,lat,lon){
+      mk.on("popupopen",function(ev){ wireCrmPopup(ev.popup,p); });
+      /* Clicking the dot ALSO opens the full account in the side panel, so
+         a rep never has to re-search a site they are already looking at.
+         PANEL_PIN is set before analyze() because showResult reads it. */
+      mk.on("click",function(){
+        PANEL_PIN=p;
+        openPanel();
+        analyze(L.latLng(lat,lon));
+      });
+    })(pin,e.lat,e.lon);
     crmLayer.addLayer(mk);
   }
   crmLayer.addTo(map);
