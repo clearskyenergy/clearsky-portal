@@ -179,6 +179,8 @@ table.pv td.num{text-align:right;font-variant-numeric:tabular-nums}
   <div class="tb-sub">EV Cost Workbook</div>
   <div class="tb-sp"></div>
   <span class="tb-who" id="tbWho"></span>
+  <span class="tb-who" id="tbBuild" title="Which build is running. Quote this when a number looks wrong."
+        style="opacity:.55;margin-left:10px;font-variant-numeric:tabular-nums"></span>
   <button class="btn p" id="btnExport" onclick="exportWorkbook()">Export workbook</button>
 </div>
 
@@ -1610,6 +1612,13 @@ function setCustomBand(){
 }
 
 /* ── 4. STATE + HELPERS ───────────────────────────────────────────── */
+/* Stamped in the header and on window. Four rounds were spent chasing
+   numbers that came from a build that was no longer the code — the same
+   export pasted twice, identical to the byte, while the fix sat undeployed.
+   A visible build id ends that argument in one glance. */
+var OMEGA_BUILD = 'wb-2026-08-26e';
+try{ window.OMEGA_BUILD = OMEGA_BUILD; }catch(e){}
+
 var LINES = [];
 var DATA  = {};        /* every form field, keyed — survives form switches */
 var LOGO  = null;
@@ -2510,7 +2519,7 @@ function standardRate(row, bucket){
   var peds =Math.max(1, Math.ceil(ports/2));       /* dual-port pedestals */
   var ftT  =num(DATA.ftTrench), ftC=num(DATA.ftConduit), ftW=num(DATA.ftCable);
   var ftUG =num(DATA.ftConduitUG) || ftC, ftAG=num(DATA.ftConduitAG);
-  var ftTurf=num(DATA.ftTrenchTurf);
+  var _ts=trenchSplit(), ftTurf=_ts.turf;
   /* A new service is a fact about the site, not a price. Explicit flag first;
      otherwise a site being given new panel/service gear implies one. */
   var newSvc = (d('newService')==='Yes') ||
@@ -2518,8 +2527,7 @@ function standardRate(row, bucket){
   /* Paved footage when it is measured; only derive it as the balance when
      nobody has said. Subtracting from an already-explicit paved figure left
      11 Marble with 0.24 LF of trench against a filed 44.12. */
-  if(num(DATA.ftTrenchPaved)>0) ftT=num(DATA.ftTrenchPaved);
-  else if(ftTurf>0 && ftT>=ftTurf) ftT=r2(ftT-ftTurf);
+  ftT=_ts.paved;
   var MA   =String(DATA.city||DATA.state||'').toUpperCase().indexOf('MA')>=0;
 
   switch(row){
@@ -2624,6 +2632,35 @@ function subtotalExcluding(skipRow){
    again: 860 Colony exported $1,253.99 against a base that no longer
    existed, $511.05 too high. Recomputed on every render, unless the rep has
    typed over it. */
+/* The card-priced civil rows are derived, not typed: they have to follow the
+   footage and the trench-surface switch. Without this, flipping the surface
+   left the old row priced at the old rate on the old line. */
+function syncCivil(){
+  if(!civilFromCard()) return;
+  var i, l, rate;
+  for(i=0;i<LINES.length;i++){
+    l=LINES[i];
+    if(l.src!=='standard' || !CIVIL_ROWS[l.row] || l.pinned) continue;
+    rate=standardRate(l.row, l.bucket);
+    /* Flipping the trench surface does not zero the excavation, it MOVES it:
+       the row itself migrates to the other surface rather than leaving the
+       sheet with no trench at all. */
+    if(!rate && (l.row==='trench' || l.row==='trenchTurf')){
+      var other=(l.row==='trench') ? 'trenchTurf' : 'trench';
+      var alt=standardRate(other, l.bucket);
+      if(alt && rowExists(l.bucket, other)){
+        l.row=other;
+        l.desc=(other==='trenchTurf') ? 'Trenching \u2014 non-continuously paved'
+                                      : 'Trenching/Restoration';
+        rate=alt;
+      }
+    }
+    if(!rate){ l.mat=0; l.lab=0; l.qty=''; l.note=''; continue; }
+    l.mat=r2(rate.mat); l.lab=r2(rate.lab);
+    l.qty=rate.qty; l.unit=rate.unit; l.note=rate.note||'';
+  }
+}
+
 function syncPermit(){
   var i, l;
   for(i=0;i<LINES.length;i++){
@@ -2675,7 +2712,14 @@ window.priceCivilFromDrawing=priceCivilFromDrawing;
 /* Trenching paved and trenching turf are the same ditch on two rows; either
    may carry it, but never both. */
 function scopeGroup(row){
-  if(row==='trench' || row==='trenchTurf') return 'excavation';
+  if(row==='trench' || row==='trenchTurf'){
+    /* One ditch on one row — UNLESS the drawing genuinely reports both
+       surfaces, in which case they are two different excavations at two
+       different rates and both rows belong on the sheet. */
+    var t=trenchSplit();
+    if(t.paved>0 && t.turf>0) return null;
+    return 'excavation';
+  }
   return null;
 }
 
@@ -2911,6 +2955,25 @@ function autofillPlugs(){
    and the estimate's own civil lines are held out. They stay visible in the
    mapping and can be reinstated by switching the source. */
 var CIVIL_ROWS={ trench:1, trenchTurf:1, conduit:1, wire:1, restore:1 };
+
+/* Which surface the trench goes through, and therefore which row it lands
+   on and at what rate: $15/$80 per foot paved, $10/$60 turf.
+
+   The editor's trenchIn is 'ground' | 'asphalt' | 'concrete', and 'ground'
+   is what every run gets by default — it means BURIED, not "through grass".
+   Reading it as turf put 156 ft on the non-continuously-paved row at $10/$60
+   when all five filed Eversource sheets carry their trench on the paved row
+   at $15/$80. So the surface is stated here, defaulting to paved, and the
+   editor's split is only trusted when it actually reports both kinds. */
+function trenchSurfacePaved(){
+  return String(d('trenchSurface')||'').indexOf('Non-continuously')<0;
+}
+function trenchSplit(){
+  var p=num(DATA.ftTrenchPaved), t=num(DATA.ftTrenchTurf);
+  var total=num(DATA.ftTrench) || r2(p+t);
+  if(p>0 && t>0) return { paved:p, turf:t };      /* a genuine mixed run */
+  return trenchSurfacePaved() ? { paved:total, turf:0 } : { paved:0, turf:total };
+}
 function civilFromCard(){ return String(d('civilSource')||'').indexOf('estimate')<0; }
 function civilMeasured(){ return num(DATA.ftTrench)>0 || num(DATA.ftConduit)>0; }
 function civilHeldOut(l){
@@ -3318,6 +3381,17 @@ function renderSiteForm(){
   h+='<label class="f"><span>Site label (used in the sheet tab name)</span>'
     +'<input type="text" id="f-site" value="'+esc(d('site')||'Site 1')+'" oninput="setD(\'site\',this.value)"></label>';
 
+  if(!d('trenchSurface')) DATA.trenchSurface='Continuously paved (asphalt, concrete)';
+  h+=fieldHTML({ k:'trenchSurface', label:'Trench surface', type:'select',
+                 options:['Continuously paved (asphalt, concrete)',
+                          'Non-continuously paved (ground cover, turf)'] })
+   + '<div class="note" style="margin-top:-4px;margin-bottom:12px">'
+   + 'Sets which row the excavation lands on and at what rate \u2014 '
+   + money(RATE_CARD.trenchPaved.mat)+'/'+money(RATE_CARD.trenchPaved.lab)+' per foot paved, '
+   + money(RATE_CARD.trenchTurf.mat)+'/'+money(RATE_CARD.trenchTurf.lab)+' turf. '
+   + 'The editor marks every run \u201cin-ground\u201d, which means buried, not unpaved, so it '
+   + 'cannot decide this for you.</div>';
+
   if(!d('civilSource')) DATA.civilSource='The drawing \u00d7 rate card';
   h+=fieldHTML({ k:'civilSource', label:'Civil work priced from', type:'select',
                  options:['The drawing \u00d7 rate card','The estimate\u2019s own lines'] })
@@ -3389,7 +3463,7 @@ function fieldHTML(f, tight){
 function shortLabel(l){ return String(l).replace(/^#\s*of\s*/i,'# ').replace(/^Total Feet of\s*/i,'Feet — '); }
 
 /* ── 12. RENDER — mapping + previews ──────────────────────────────── */
-function render(){ syncPermit(); renderMap(); renderOutputs(); }
+function render(){ syncCivil(); syncPermit(); renderMap(); renderOutputs(); }
 
 function renderMap(){
   var BL=activeBlocks();
@@ -6341,6 +6415,8 @@ window.__omegaSetRep = function(email){
   PREPARED_BY = email || '';
   var w=document.getElementById('tbWho');
   if(w) w.textContent = PREPARED_BY;
+  var b=document.getElementById('tbBuild');
+  if(b) b.textContent = OMEGA_BUILD;
 };
 
 /* ── CROSS-ORIGIN HANDOFF FROM THE EDITOR ─────────────────────────
