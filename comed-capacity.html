@@ -114,6 +114,33 @@
   .repchip .av{width:22px;height:22px;border-radius:50%;background:var(--accent);color:#fff;
     display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:800;flex:0 0 auto}
   .repchip.none .av{background:var(--red)}
+  /* ── SIGN-IN GATE ───────────────────────────────────────────── */
+  #authWrap{position:fixed;inset:0;z-index:2000;display:none;align-items:center;
+    justify-content:center;background:linear-gradient(135deg,#0B1E35 0%,#1B4F8A 55%,#0D2440 100%)}
+  #authWrap.open{display:flex}
+  #authBox{background:#fff;border-radius:16px;width:min(390px,94vw);padding:34px 30px;
+    box-shadow:0 30px 70px rgba(0,0,0,.35);text-align:center}
+  #authBox .a-mark{width:56px;height:56px;margin:0 auto 14px;border-radius:14px;
+    background:linear-gradient(135deg,#08384F,#006F9A);color:#fff;
+    display:flex;align-items:center;justify-content:center;font:700 28px/1 inherit}
+  #authBox .a-ti{font-size:20px;font-weight:700;color:#08384F}
+  #authBox .a-sub{font-size:12px;color:var(--muted);margin:3px 0 22px}
+  #authBox .a-f{text-align:left;margin-bottom:11px}
+  #authBox .a-f label{display:block;font-size:10px;font-weight:700;letter-spacing:.4px;
+    text-transform:uppercase;color:var(--muted);margin-bottom:4px}
+  #authBox .a-f input{width:100%;height:38px;border:1.5px solid var(--line);border-radius:9px;
+    padding:0 12px;font-size:14px;background:#fff;outline:none}
+  #authBox .a-f input:focus{border-color:#0a6ed1}
+  #authBox .a-btn{width:100%;height:40px;border:0;border-radius:9px;background:#08384F;
+    color:#fff;font:600 14px/1 inherit;cursor:pointer;margin-top:6px}
+  #authBox .a-btn:hover{background:#006F9A}
+  #authBox .a-btn:disabled{opacity:.6;cursor:default}
+  #authBox .a-link{font-size:12px;color:#0a6ed1;cursor:pointer;margin-top:11px}
+  #authBox .a-link:hover{text-decoration:underline}
+  #authBox .a-msg{font-size:12px;margin-top:11px;min-height:16px;color:#c0392b}
+  #authBox .a-msg.ok{color:#2ea043}
+  #authBox .a-note{font-size:10.5px;color:var(--muted);margin-top:14px;line-height:1.5}
+  #authBox .a-note b{color:#0a6ed1}
   #repWrap{position:fixed;inset:0;z-index:1700;background:rgba(26,39,51,.55);display:none;
     align-items:center;justify-content:center;padding:24px}
   #repWrap.open{display:flex}
@@ -222,6 +249,10 @@
     max-height:88vh;display:flex;flex-direction:column;box-shadow:0 24px 70px rgba(26,39,51,.28)}
   .a-src{font-family:var(--mono);font-size:10px;color:var(--dim);letter-spacing:.08em;text-transform:uppercase;margin-bottom:8px}
 </style>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+<script src="/config.js"></script>
 </head>
 <body>
 <div id="map"></div>
@@ -272,19 +303,46 @@
 
 
 
+<!-- ══════════════════════════════════════════════════════════════════
+     SIGN-IN GATE
+     Replaces the old "Who's working?" roster. Reps have their own
+     @chileasing.com logins now, so the token says who is working and a
+     name cannot be typed, mistyped, or inherited from whoever last sat
+     at the machine. Blocks the whole tool until somebody is signed in —
+     an unattributed call log is worse than an interrupted one, and with
+     Firestore behind it an unauthenticated session cannot read anything
+     anyway.
+     ══════════════════════════════════════════════════════════════════ -->
+<div id="authWrap">
+  <div id="authBox">
+    <div class="a-mark">S</div>
+    <div class="a-ti">Solela LLC</div>
+    <div class="a-sub">ComEd Capacity Finder</div>
+    <div class="a-f">
+      <label for="authEmail">Work email</label>
+      <input id="authEmail" type="email" autocomplete="email" placeholder="you@chileasing.com">
+    </div>
+    <div class="a-f">
+      <label for="authPass">Password</label>
+      <input id="authPass" type="password" autocomplete="current-password" placeholder="••••••••">
+    </div>
+    <button class="a-btn" id="authBtn">Sign in</button>
+    <div class="a-link" id="authForgot">Forgot password?</div>
+    <div class="a-msg" id="authMsg"></div>
+    <div class="a-note">Access restricted to <b>@chileasing.com</b> accounts</div>
+  </div>
+</div>
+
 <div id="repWrap">
   <div id="repBox">
-    <div style="font-weight:700;font-size:16px">Who's working?</div>
+    <div style="font-weight:700;font-size:16px">Signed in</div>
     <div style="font-size:12px;color:var(--muted);margin-top:4px">
-      Every stage change, note and claim is recorded under this name. Pick yourself
-      from the list so the pipeline stays consistent across the floor.
+      Every stage change, note and claim on this map is recorded against
+      your account.
     </div>
     <div class="replist" id="repList"></div>
     <div style="display:flex;gap:8px">
-      <input id="repNew" placeholder="Add a new rep…" maxlength="40"
-        style="flex:1;height:34px;border:1px solid var(--line);border-radius:8px;padding:0 11px;
-               font-size:13px;background:var(--panel2);outline:none">
-      <button class="findbtn" id="repAdd" style="padding:0 15px">Add</button>
+      <button class="findbtn" id="repSignOut" style="padding:0 15px">Sign out</button>
     </div>
     <div class="r-msg" id="repMsg"></div>
   </div>
@@ -2531,14 +2589,43 @@ function fiberScore(fb){
    at a Firestore-backed route on the OMEGA portal to make it shared;
    the read/write surface is two functions so that swap stays small.
    ══════════════════════════════════════════════════════════════ */
-/* Shared pipeline. Scoped by ?org= so tenants never see each other's
-   accounts. Blank it to fall back to per-browser storage. */
-var CRM_ENDPOINT=(function(){
-  var root=(typeof PROXY==="string"&&PROXY)?PROXY.replace(/\/comed\/?$/,""):"";
-  if(!root) return "";
-  var org=(location.search.match(/[?&]org=([^&]+)/)||[])[1]||"default";
-  return root+"/crm?org="+encodeURIComponent(org);
-})();
+/* ══════════════════════════════════════════════════════════════════
+   STORAGE IS FIRESTORE.                                    ← REWRITTEN
+
+   This used to derive /crm, /crm/record and /crm/roster from the map
+   PROXY and talk to them over XHR. THOSE ROUTES WERE NEVER BUILT — the
+   Cloudflare Worker at comed-proxy is a map-data proxy and answers
+   `{"error":{"code":400,"message":"POST allowed on /query only"}}` to
+   every one of them. The client half of a shared CRM was complete; the
+   server half did not exist. Symptoms were a roster that would not save,
+   a permanently empty pipeline, and stage changes that vanished on
+   reload with only a diag line to show for it.
+
+   Firestore replaces all three, which also puts the pipeline in the same
+   database as the Solela portal — so the dashboard's funnel and rep board
+   read the very rows a rep creates here. A KV-backed Worker would have
+   fixed the roster and left the dashboard permanently empty.
+
+   PROXY is untouched: it still serves the ComEd hosting-capacity layers,
+   which is the one job it actually does.
+   ══════════════════════════════════════════════════════════════════ */
+
+/* Tenant scope. The ?org= param is a CONVENIENCE, not a trust boundary —
+   Firestore rules derive the real org from the signed-in email domain and
+   refuse anything else, so editing this in the URL gets you nothing. */
+var ORG=(location.search.match(/[?&]org=([^&]+)/)||[])[1]||"";
+try{ ORG=decodeURIComponent(ORG); }catch(e){}
+var CRM_ENDPOINT="";          /* legacy switch — kept false so no XHR path runs */
+var FS_READY=false;           /* true once Firestore is live and streaming */
+var fsDb=null, fsAuth=null, fsUser=null, fsUnsub=null;
+
+/* Doc id is org + PIN, not PIN alone. A Cook County parcel number is
+   unique in Cook County, not in a database shared by seven tenants — two
+   of them working the same parcel would otherwise collide on one row and
+   silently overwrite each other's pipeline. */
+function siteDocId(pin){ return ORG+"__"+String(pin); }
+/* Legacy localStorage keys — retained only so an old cached copy can be
+   cleared on first run below. Nothing writes to them any more. */
 var CRM_KEY="clearsky_crm_v1";
 var REP_KEY="clearsky_rep";
 var CRM={data:{},mode:"local"};
@@ -2547,14 +2634,14 @@ var CRM={data:{},mode:"local"};
    note, because "Contacted" with no name attached is worthless on a
    team — nobody knows who called or what was said. */
 var REP="";
+/* REP is derived from the signed-in user, not stored. A name in
+   localStorage survives sign-out and follows the next person to use the
+   machine, which is the attribution bug this rewrite exists to kill. */
 function repLoad(){
-  try{ REP=window.localStorage.getItem(REP_KEY)||""; }catch(e){ REP=""; }
+  REP = fsUser ? (fsUser.displayName||(fsUser.email||"").split("@")[0]) : "";
   return REP;
 }
-function repSet(v){
-  REP=String(v||"").trim();
-  try{ window.localStorage.setItem(REP_KEY,REP); }catch(e){}
-}
+function repSet(v){ REP=String(v||"").trim(); }
 /* A filter over stages. Empty set means show everything. */
 var CRM_FILTER={};
 function crmFilterActive(){ for(var k in CRM_FILTER){ if(CRM_FILTER[k]) return true; } return false; }
@@ -2578,46 +2665,140 @@ function crmStage(k){
 /* Storage can be unavailable — private browsing, embedded frames, strict
    policies. Fall back to memory rather than throwing: losing history on
    reload is bad, a tool that white-screens is worse. */
+/* Firestore doc  ->  the in-memory shape the rest of the tool already
+   reads. Keeping CRM.data keyed by PIN means none of the map, legend,
+   filter or popup code had to change. */
+function fsToEntry(d){
+  return {
+    stage:d.status||"", rep:d.repName||"", repEmail:d.repEmail||"",
+    addr:d.address||"", owner:d.ownerName||"", feeder:d.feeder||"",
+    net:(d.hostingCapacityKw==null?null:d.hostingCapacityKw),
+    lat:(d.lat==null?null:d.lat), lon:(d.lon==null?null:d.lon),
+    phone:d.ownerPhone||"", notes:d.notes||[],
+    claimedBy:d.claimedBy||"", claimedByEmail:d.claimedByEmail||"",
+    claimedAt:d.claimedAt&&d.claimedAt.toMillis?d.claimedAt.toMillis():(d.claimedAt||0),
+    calls:d.callCount||0,
+    ts:d.updatedAt&&d.updatedAt.toMillis?d.updatedAt.toMillis():(d.updatedAt||0)
+  };
+}
+
+/* LIVE, not polled. The old build re-GET the whole pipeline every 45s;
+   a rep could spend those 45 seconds dialling an owner a colleague had
+   already claimed. onSnapshot pushes a claim to every open map the
+   moment it is written, which is the entire point of showing claims. */
 function crmLoad(cb){
-  if(CRM_ENDPOINT){
-    CRM.mode="shared";
-    fetchJSON(CRM_ENDPOINT,function(err,j){
-      CRM.data=(!err&&j&&typeof j==="object")?j:{};
-      if(err) diag("crm: shared load failed, memory only");
-      if(cb) cb();
-    });
-    return;
+  if(!FS_READY||!fsDb||!ORG){
+    CRM.data={}; CRM.mode="memory";
+    diag("crm: not signed in");
+    if(cb) cb(); return;
   }
-  try{
-    var raw=window.localStorage.getItem(CRM_KEY);
-    CRM.data=raw?JSON.parse(raw):{}; CRM.mode="local";
-  }catch(e){ CRM.data={}; CRM.mode="memory"; diag("crm: storage unavailable"); }
-  if(cb) cb();
+  CRM.mode="shared";
+  var first=true;
+  if(fsUnsub){ try{fsUnsub();}catch(e){} fsUnsub=null; }
+  fsUnsub=fsDb.collection("sites").where("orgId","==",ORG)
+    .onSnapshot(function(snap){
+      var next={};
+      snap.forEach(function(doc){
+        var d=doc.data();
+        if(d&&d.pin) next[d.pin]=fsToEntry(d);
+      });
+      CRM.data=next;
+      if(first){ first=false; if(cb) cb(); }
+      else crmRefresh();
+    },function(err){
+      console.error("sites stream failed:",err);
+      diag("crm: read refused \u2014 "+(err&&err.code||"error"));
+      CRM.data={};
+      if(first){ first=false; if(cb) cb(); }
+    });
 }
 /* Writes go ONE RECORD AT A TIME. Posting the whole pipeline would mean
    the last rep to save wins and everyone else's calls disappear — on a
    floor of reps that is a silent data-loss bug, not an edge case. */
+/* One record at a time, merged — never the whole pipeline. Posting all of
+   it would mean the last rep to save wins and everyone else's calls
+   disappear; on a floor that is silent data loss, not an edge case.
+   set({merge:true}) gives the same guarantee at the field level.
+
+   The snapshot listener repaints, so nothing here writes CRM.data. */
 function crmPush(pin,body,cb){
-  if(!CRM_ENDPOINT){ crmSaveLocal(); if(cb) cb(null,{ok:true}); return; }
-  var url=CRM_ENDPOINT.replace("/crm?","/crm/record?");
-  var x=new XMLHttpRequest();
-  x.open("POST",url,true);
-  x.setRequestHeader("Content-Type","application/json");
-  x.onreadystatechange=function(){
-    if(x.readyState!==4) return;
-    var j=null; try{ j=JSON.parse(x.responseText); }catch(e){}
-    if(x.status>=200&&x.status<300&&j&&j.record){ CRM.data[pin]=j.record; if(cb) cb(null,j); }
-    else if(x.status===409&&j){ if(cb) cb(null,j); }            /* claimed by someone else */
-    else { diag("crm push "+x.status); if(cb) cb(new Error("HTTP "+x.status)); }
+  if(!FS_READY||!fsDb||!ORG){ if(cb) cb(new Error("not signed in")); return; }
+  var patch=(body&&body.patch)||{};
+  var row=(body&&body.row)||null;
+  var doc={
+    orgId:ORG,
+    pin:String(pin),
+    updatedAt:firebase.firestore.FieldValue.serverTimestamp()
   };
-  x.onerror=function(){ diag("crm push failed"); if(cb) cb(new Error("network")); };
-  x.send(JSON.stringify(body));
+
+  /* status is what the dashboard funnels on, and the rules require it to
+     be present and non-empty on CREATE. A note left on a site nobody has
+     staged yet creates the row, so status has to be written on EVERY push,
+     not just stage changes — otherwise that first note is refused with
+     permission-denied and the rep sees nothing happen. */
+  var existing=CRM.data[pin]||{};
+  doc.status=(patch.stage!==undefined?patch.stage:existing.stage)||"target";
+
+  /* Attribution comes from the TOKEN, never a typed field — the rules pin
+     repEmail to the caller's own address on create, so a claim cannot be
+     filed in a colleague's name.
+
+     ONLY WRITTEN WHEN CLAIMING. A rep reading a colleague's account and
+     adding a note must not silently take it off them — "help or leave it
+     be" is the whole reason claims are visible. The note carries its own
+     author, so the help is still attributed. First rep to stage a site
+     owns it; later reps appear in the note log. */
+  if(fsUser&&body&&body.claim){
+    doc.repEmail=(fsUser.email||"").toLowerCase();
+    doc.repName=REP||(fsUser.email||"").split("@")[0];
+  }
+
+  /* Enough of the row to draw a pin without re-running the sweep. */
+  if(row){
+    if(row.addr) doc.address=row.addr;
+    if(row.owner) doc.ownerName=row.owner;
+    if(row.feeder) doc.feeder=row.feeder;
+    if(row.net!=null) doc.hostingCapacityKw=Number(row.net)||0;
+    if(row.lat!=null){ doc.lat=row.lat; doc.lon=row.lon; }
+    if(row.phone) doc.ownerPhone=row.phone;
+    if(row.addr) doc.siteName=row.addr;
+  }
+
+  /* A claim is taken when a rep first puts a stage on a site. */
+  if(body&&body.claim&&fsUser){
+    doc.claimedBy=REP||(fsUser.email||"").split("@")[0];
+    doc.claimedByEmail=(fsUser.email||"").toLowerCase();
+    doc.claimedAt=firebase.firestore.FieldValue.serverTimestamp();
+  }
+  if(patch.stage==="contacted") doc.contactedAt=firebase.firestore.FieldValue.serverTimestamp();
+  if(patch.stage==="won")       doc.wonAt=firebase.firestore.FieldValue.serverTimestamp();
+
+  /* A note is appended, never rewritten — a rep needs to see what the
+     last person said and when. arrayUnion is atomic, so two reps writing
+     at once cannot clobber one another's entry. */
+  if(body&&body.note){
+    doc.notes=firebase.firestore.FieldValue.arrayUnion({
+      ts:Date.now(),
+      rep:REP||(fsUser&&fsUser.email)||"unattributed",
+      t:String(body.note).slice(0,600)
+    });
+    doc.callCount=firebase.firestore.FieldValue.increment(1);
+  }
+
+  fsDb.collection("sites").doc(siteDocId(pin)).set(doc,{merge:true})
+    .then(function(){ if(cb) cb(null,{ok:true}); })
+    .catch(function(err){
+      console.error("site write failed:",err);
+      diag("crm write refused \u2014 "+(err&&err.code||"error"));
+      if(cb) cb(err);
+    });
 }
-function crmSaveLocal(){
-  try{ window.localStorage.setItem(CRM_KEY,JSON.stringify(CRM.data)); }
-  catch(e){ CRM.mode="memory"; }
-}
-function crmSave(){ if(!CRM_ENDPOINT) crmSaveLocal(); }
+/* Both are now no-ops and have no callers. Firestore is authoritative, and
+   a localStorage copy of a shared pipeline is worse than none: it survives
+   sign-out, so the next person at the machine would see a stale cache of a
+   colleague's accounts and have no way to tell it was stale. */
+function crmSaveLocal(){}
+function crmSave(){}
 function crmGet(pin){ return (pin&&CRM.data[pin])||null; }
 function crmSet(pin,patch,row,cb){
   if(!pin) return;
@@ -2634,9 +2815,9 @@ function crmSet(pin,patch,row,cb){
     if(row.lat!=null){ e.lat=row.lat; e.lon=row.lon; }
     if(row.phone) e.phone=row.phone;
   }
-  CRM.data[pin]=e;
-  if(CRM_ENDPOINT) crmPush(pin,{pin:pin,rep:REP,patch:patch,claim:(patch&&patch.stage)?true:undefined},cb);
-  else { crmSave(); if(cb) cb(null,{ok:true}); }
+  CRM.data[pin]=e;                       /* optimistic; the stream repaints */
+  crmPush(pin,{pin:pin,rep:REP,patch:patch,row:row,
+               claim:(patch&&patch.stage)?true:undefined},cb);
 }
 /* Notes are an append-only log, not a single field. A rep needs to see
    what the last person said and when, and an editable box loses that. */
@@ -2647,9 +2828,8 @@ function crmNote(pin,text,row){
   e.notes=e.notes||[];
   e.notes.unshift({ts:Date.now(),rep:REP||"unattributed",t:t.slice(0,600)});
   if(e.notes.length>40) e.notes=e.notes.slice(0,40);
-  CRM.data[pin]=e;
-  if(CRM_ENDPOINT) crmPush(pin,{pin:pin,rep:REP,note:t},null);
-  else crmSave();
+  CRM.data[pin]=e;                       /* optimistic; the stream repaints */
+  crmPush(pin,{pin:pin,rep:REP,note:t,row:row},null);
 }
 function noteAge(ts){
   var d=Math.floor((Date.now()-ts)/86400000);
@@ -2684,13 +2864,10 @@ function claimedByOther(pin){
 }
 /* A floor sees each other's work only if we re-read. Cheap: one GET of
    this tenant's records. */
-function crmPoll(){
-  if(!CRM_ENDPOINT) return;
-  fetchJSON(CRM_ENDPOINT,function(err,j){
-    if(err||!j||typeof j!=="object") return;
-    CRM.data=j; crmRefresh();
-  });
-}
+/* Obsolete. crmLoad() now holds an onSnapshot listener, so the floor sees
+   a claim the instant it is written instead of up to 45 seconds later.
+   Kept as a no-op because the boot sequence still references it. */
+function crmPoll(){}
 
 function crmCount(stage){
   var n=0,p;
@@ -2773,6 +2950,13 @@ function renderCrmLegend(){
 
    Colour is derived from the name so each rep reads the same
    everywhere without anyone assigning one. */
+/* ROSTER IS GONE.                                          ← REWRITTEN
+   It existed because a shared floor typed names into a box: reps forgot,
+   typos forked one person into three, and on a shared machine whoever sat
+   down inherited the last person's name. The answer to all three is that
+   reps now have their own logins, so REP is derived from the token and is
+   not typeable at all. ROSTER stays declared only because renderRepList()
+   reads it to show who is signed in. */
 var ROSTER=[];
 function repColor(n){
   var s=0; n=String(n||"");
@@ -2785,37 +2969,10 @@ function repInitials(n){
   if(!p.length) return "?";
   return (p[0].charAt(0)+(p.length>1?p[p.length-1].charAt(0):"")).toUpperCase();
 }
-function rosterUrl(){
-  return CRM_ENDPOINT ? CRM_ENDPOINT.replace("/crm?","/crm/roster?") : "";
-}
+/* The roster is now exactly one person: whoever holds the token. */
 function loadRoster(cb){
-  var u=rosterUrl();
-  if(!u){ ROSTER=[]; cb&&cb(); return; }
-  fetchJSON(u,function(err,j){
-    ROSTER=(!err&&j&&j.length!==undefined)?j:[];
-    cb&&cb();
-  });
-}
-function addRep(name,cb){
-  var n=String(name||"").trim().replace(/\s+/g," ").slice(0,40);
-  if(!n){ cb&&cb("Enter a name."); return; }
-  var u=rosterUrl();
-  if(!u){                                   /* no shared backend — local only */
-    if(!ROSTER.some(function(r){return r.name.toLowerCase()===n.toLowerCase();}))
-      ROSTER.push({name:n});
-    cb&&cb(null,n); return;
-  }
-  var x=new XMLHttpRequest();
-  x.open("POST",u,true);
-  x.setRequestHeader("Content-Type","application/json");
-  x.onreadystatechange=function(){
-    if(x.readyState!==4) return;
-    var j=null; try{ j=JSON.parse(x.responseText); }catch(e){}
-    if(x.status>=200&&x.status<300&&j&&j.ok){ ROSTER=j.roster||ROSTER; cb&&cb(null,j.name); }
-    else cb&&cb("Could not save that name.");
-  };
-  x.onerror=function(){ cb&&cb("Could not reach the roster."); };
-  x.send(JSON.stringify({name:n}));
+  ROSTER = fsUser ? [{name:REP,email:(fsUser.email||"")}] : [];
+  cb&&cb();
 }
 function paintChip(){
   var c=document.getElementById("repChip");
@@ -2830,52 +2987,32 @@ function paintChip(){
 }
 function renderRepList(){
   var el=document.getElementById("repList");
-  if(!ROSTER.length){
-    el.innerHTML='<div style="font-size:12px;color:var(--dim);padding:10px 2px">'+
-      'Nobody on the roster yet \u2014 add yourself below.</div>';
-    return;
-  }
-  var h="";
-  for(var i=0;i<ROSTER.length;i++){
-    var n=ROSTER[i].name;
-    h+='<button data-n="'+esc(n)+'"'+(n===REP?' class="on"':'')+'>'+
-       '<span class="av" style="background:'+repColor(n)+'">'+esc(repInitials(n))+'</span>'+
-       '<span>'+esc(n)+'</span>'+(n===REP?'<span style="margin-left:auto;color:var(--green);font-size:11px">signed in</span>':'')+
-       '</button>';
-  }
-  el.innerHTML=h;
-  var bs=el.getElementsByTagName("button");
-  for(var b=0;b<bs.length;b++){
-    bs[b].onclick=(function(n){ return function(){
-      repSet(n); paintChip(); crmRefresh();
-      document.getElementById("repWrap").className="";
-    };})(bs[b].getAttribute("data-n"));
-  }
+  if(!el) return;
+  if(!fsUser){ el.innerHTML=""; return; }
+  var n=REP, em=fsUser.email||"";
+  el.innerHTML='<div style="display:flex;align-items:center;gap:10px;padding:10px 2px">'+
+    '<span class="av" style="background:'+repColor(n)+'">'+esc(repInitials(n))+'</span>'+
+    '<span><span style="font-weight:600">'+esc(n)+'</span>'+
+    '<br><span style="font-size:11px;color:var(--dim)">'+esc(em)+'</span></span></div>';
 }
+/* The chip now opens an account panel. When nobody is signed in it opens
+   the sign-in gate instead, which is the only thing that can fix it. */
 function openRepPicker(){
-  document.getElementById("repMsg").textContent="";
-  document.getElementById("repNew").value="";
+  if(!fsUser){ showAuth(); return; }
+  var m=document.getElementById("repMsg"); if(m) m.textContent="";
   document.getElementById("repWrap").className="open";
   loadRoster(renderRepList);
-  renderRepList();
 }
 document.getElementById("repChip").onclick=openRepPicker;
 document.getElementById("repWrap").onclick=function(e){
-  /* only dismissable once somebody is signed in */
-  if(e.target===this&&REP) this.className="";
+  if(e.target===this) this.className="";
 };
-document.getElementById("repAdd").onclick=function(){
-  var v=document.getElementById("repNew").value;
-  document.getElementById("repMsg").textContent="Saving\u2026";
-  addRep(v,function(err,name){
-    if(err){ document.getElementById("repMsg").textContent=err; return; }
-    repSet(name); paintChip(); crmRefresh();
-    document.getElementById("repWrap").className="";
-  });
+document.getElementById("repSignOut").onclick=function(){
+  document.getElementById("repWrap").className="";
+  if(fsAuth) fsAuth.signOut();
 };
-document.getElementById("repNew").addEventListener("keydown",function(e){
-  if(e.key==="Enter") document.getElementById("repAdd").click();
-});
+/* The add-a-rep handler is gone with the roster — repNew and repAdd no
+   longer exist in the markup, and leaving this would throw on load. */
 
 /* ── KPI STRIP ────────────────────────────────────────────────────
    Pipeline counts in the header, clickable to filter the map to that
@@ -4535,21 +4672,105 @@ document.getElementById("ciOn").onchange=function(){
   document.getElementById("ciKey").style.display=this.checked&&FD.rows&&FD.rows.length?"":"none";
 };
 document.getElementById("crmOn").onchange=function(){ drawCrm(this.checked); };
-crmLoad(function(){
-  crmRefresh();
-  if(CRM_ENDPOINT){
-    diag("crm: shared \u00b7 "+CRM_ENDPOINT);
-    setInterval(crmPoll,45000);          /* keep the floor roughly in sync */
+/* ══════════════════════════════════════════════════════════════════
+   AUTH + BOOT                                              ← REWRITTEN
+
+   Nothing loads until somebody is signed in. That is not a UX choice —
+   the Firestore rules refuse every read on `sites` to an unauthenticated
+   caller, so an anonymous session would show an empty map and a stream of
+   permission errors with no way to act on either.
+   ══════════════════════════════════════════════════════════════════ */
+
+/* Domains that may use this tool. Keep in step with WORKSPACES in the
+   portal's index.html — the rules gate on the email domain regardless,
+   so this only decides how early the user is told. */
+var ALLOWED_DOMAINS=["chileasing.com","csebuilders.com","clearsky-usa.com"];
+function domainOf(e){ return String(e||"").split("@")[1]?String(e).split("@")[1].toLowerCase():""; }
+function domainAllowed(e){ return ALLOWED_DOMAINS.indexOf(domainOf(e))>=0; }
+
+function showAuth(){ document.getElementById("authWrap").className="open"; }
+function hideAuth(){ document.getElementById("authWrap").className=""; }
+function authMsg(t,ok){
+  var el=document.getElementById("authMsg");
+  if(!el) return;
+  el.textContent=t||""; el.className="a-msg"+(ok?" ok":"");
+}
+
+function fsInit(){
+  if(typeof firebase==="undefined"||!window.CLEARSKY_CONFIG){
+    setTimeout(fsInit,120); return;
   }
-});
-(function(){
-  repLoad(); paintChip();
-  loadRoster(function(){
-    /* Block on identity. A note or a claim with nobody attached is
-       worse on a floor than an extra click at the start of a shift. */
-    if(!REP) openRepPicker();
+  try{ firebase.initializeApp(window.CLEARSKY_CONFIG.firebase); }
+  catch(e){ if(!/already exists/.test(e.message)) console.error("firebase init:",e); }
+  fsAuth=firebase.auth();
+  fsDb=firebase.firestore();
+
+  fsAuth.onAuthStateChanged(function(u){
+    if(u&&domainAllowed(u.email)){
+      fsUser=u;
+      /* The org is the email domain, which is what the rules enforce.
+         Any ?org= in the URL is ignored for anything that matters. */
+      ORG=domainOf(u.email)==="chileasing.com"?"chileasing.com":
+          (ORG||domainOf(u.email));
+      if(domainOf(u.email)!=="chileasing.com"&&!ORG) ORG=domainOf(u.email);
+      FS_READY=true;
+      hideAuth();
+      repLoad(); paintChip();
+      crmLoad(function(){ crmRefresh(); diag("crm: firestore \u00b7 "+ORG); });
+    } else {
+      if(u&&!domainAllowed(u.email)){
+        authMsg("That account is not provisioned for this workspace.");
+        fsAuth.signOut();
+      }
+      fsUser=null; FS_READY=false; REP="";
+      if(fsUnsub){ try{fsUnsub();}catch(e){} fsUnsub=null; }
+      CRM.data={}; paintChip(); crmRefresh();
+      showAuth();
+    }
   });
+}
+
+(function wireAuth(){
+  var btn=document.getElementById("authBtn");
+  var em=document.getElementById("authEmail");
+  var pw=document.getElementById("authPass");
+  function submit(){
+    authMsg("");
+    var e=(em.value||"").trim(), p=pw.value||"";
+    if(!e||!p){ authMsg("Enter your email and password."); return; }
+    if(!domainAllowed(e)){ authMsg("Use your @chileasing.com account."); return; }
+    btn.disabled=true; btn.textContent="Signing in\u2026";
+    fsAuth.signInWithEmailAndPassword(e,p)["catch"](function(err){
+      var c=(err&&err.code)||"";
+      authMsg(c==="auth/invalid-email"?"That email address looks invalid.":
+              c==="auth/too-many-requests"?"Too many attempts. Try again shortly.":
+              "Incorrect email or password.");
+      btn.disabled=false; btn.textContent="Sign in";
+    });
+  }
+  btn.onclick=submit;
+  [em,pw].forEach(function(f){
+    f.addEventListener("keydown",function(ev){ if(ev.key==="Enter") submit(); });
+  });
+  document.getElementById("authForgot").onclick=function(){
+    var e=(em.value||"").trim();
+    if(!e){ authMsg("Enter your email above first."); return; }
+    if(!domainAllowed(e)){ authMsg("Use your @chileasing.com account."); return; }
+    fsAuth.sendPasswordResetEmail(e)
+      .then(function(){ authMsg("Reset email sent to "+e+".",true); })
+      ["catch"](function(){ authMsg("Could not send the reset email."); });
+  };
 })();
+
+/* Clear the pre-Firestore cache once. A rep upgrading mid-shift would
+   otherwise keep a private copy of a pipeline that is now shared, and the
+   two would disagree with no indication which was real. */
+try{
+  window.localStorage.removeItem("clearsky_crm_v1");
+  window.localStorage.removeItem("clearsky_rep");
+}catch(e){}
+
+fsInit();
 
 
 bootService();
