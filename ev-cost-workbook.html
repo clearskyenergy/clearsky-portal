@@ -314,6 +314,8 @@ table.pv td.num{text-align:right;font-variant-numeric:tabular-nums}
         <div class="row-btn">
           <button class="btn sm" onclick="addManual()">Add cost line</button>
           <button class="btn sm" onclick="addStandardRows()">Add permitting, design, activation…</button>
+          <button class="btn sm" onclick="priceCivilFromDrawing()"
+                  title="Prices trenching, conduit and wiring from the measured footage — only rows the estimate has not already priced">Price civil from the drawing</button>
           <button class="btn sm" onclick="reclassifyAll()">Re-run auto mapping</button>
         </div>
       </div>
@@ -2353,10 +2355,17 @@ var STANDARD=[
   ['Activation','evse','activation'], ['Shipping','evse','shipping'],
   ['EVSE Networking/Software','ne','network'], ['EVSE Warranty','ne','warranty'],
   ['Signage','ne','signage'], ['Striping','ne','striping'],
-  ['Trenching/Restoration','mr','trench',true],
-  ['Trenching \u2014 non-continuously paved','mr','trenchTurf',true],
-  ['Conduit & Conductors','mr','conduit',true],
-  ['Wiring','mr','wire',true],
+  /* Civil work is NOT on this list. The button says "Add permitting, design,
+     activation" and a rep pressing it expects soft costs — instead it was
+     adding trenching, turf excavation, conduit and wiring priced off the
+     takeoff, which on 112 Willow put $10,920 of non-continuously-paved
+     trench onto a job that has none. Excavation is never a side effect of
+     pressing a button about permitting.
+
+     The editor already prices its own trench and conduit lines, and those
+     now land on the right rows, so nothing is lost by leaving them out.
+     Use "Price civil from the drawing" when the estimate genuinely has no
+     civil lines and the footage should carry them. */
   /* NOT auto-added, on purpose:
        Restoration  — $0 on all five filed sheets. Surface repair is inside
                        the trench rate there, so adding a separate row bills
@@ -2620,6 +2629,40 @@ function syncPermit(){
     if(r2(num(l.lab))!==r2(v)){ l.lab=r2(v); l.note='3% of project cost'; }
   }
 }
+
+/* Explicit, and named for what it does. Prices the measured civil rows from
+   the takeoff — only the ones with footage behind them, only where no line
+   already covers that row, and only when asked. */
+function priceCivilFromDrawing(){
+  var want=[['Trenching/Restoration','mr','trench'],
+            ['Trenching \u2014 non-continuously paved','mr','trenchTurf'],
+            ['Conduit & Conductors','mr','conduit'],
+            ['Wiring','mr','wire']];
+  var added=0, skipped=[], i, j, l, rate, have;
+  for(i=0;i<want.length;i++){
+    var label=want[i][0], bucket=want[i][1], row=want[i][2];
+    if(!rowExists(bucket,row)) continue;
+    have=false;
+    for(j=0;j<LINES.length;j++){
+      l=LINES[j];
+      if(l.bucket===bucket && l.row===row && (num(l.mat)||num(l.lab))){ have=true; break; }
+    }
+    if(have){ skipped.push(label+' \u2014 already priced by the estimate'); continue; }
+    rate=standardRate(row,bucket);
+    if(!rate){ continue; }                     /* nothing measured for it */
+    LINES.push({ id:_nid++, desc:label, size:'', cat:'', qty:rate.qty, unit:rate.unit,
+                 mat:r2(rate.mat), lab:r2(rate.lab), note:rate.note||'',
+                 bucket:bucket, row:row, fp:0, src:'standard' });
+    added++;
+  }
+  render();
+  msg('mapMsg', added
+      ? added+' civil row'+(added===1?'':'s')+' priced from the drawing.'
+        + (skipped.length? ' Left alone: '+esc(skipped.join('; '))+'.' : '')
+      : 'Nothing to price: the drawing has no unpriced footage.', added?'ok':'note');
+  return added;
+}
+window.priceCivilFromDrawing=priceCivilFromDrawing;
 
 function addStandardRows(opts){
   opts=opts||{};
