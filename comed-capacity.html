@@ -141,6 +141,18 @@
   #authBox .a-msg.ok{color:#2ea043}
   #authBox .a-note{font-size:10.5px;color:var(--muted);margin-top:14px;line-height:1.5}
   #authBox .a-note b{color:#0a6ed1}
+  /* ── INDUSTRIAL PARCEL POPUP ────────────────────────────────── */
+  .cipop{min-width:214px}
+  .cipop-act{margin-top:9px;border-top:1px solid var(--line);padding-top:9px}
+  .cipop-claim{width:100%;height:32px;border:0;border-radius:7px;background:#7C3AED;
+    color:#fff;font:600 12.5px/1 inherit;cursor:pointer}
+  .cipop-claim:hover{background:#6D28D9}
+  .cipop-claim:disabled{opacity:.55;cursor:default}
+  .cipop-in{font-size:11.5px;font-weight:600}
+  .cipop-msg{font-size:11px;color:var(--dim);min-height:13px;margin-top:5px}
+  .cipop-msg.bad{color:#c0392b}
+  .cipop-msg.ok{color:#2ea043}
+
   /* ── ACCOUNT EDITOR (side panel) ────────────────────────────── */
   .acct{display:flex;flex-direction:column;gap:6px;margin-bottom:4px}
   .acct-owned{font-size:11.5px;color:#8a5a00;background:#FFF8E6;border:1px solid #F5D98A;
@@ -337,6 +349,12 @@
   <label class="lp" style="border-top:0;padding-top:0;margin-top:4px"><input type="checkbox" id="ciOn" checked><span>Find Sites results (<span id="ciCount">0</span>)</span></label>
   <label class="lp" style="border-top:0;padding-top:0;margin-top:4px"><input type="checkbox" id="edcOn"><span>For sale / lease (<span id="edcCount">–</span>)</span></label>
   <label class="lp" style="border-top:0;padding-top:0;margin-top:4px"><input type="checkbox" id="ilsOn"><span>Illinois Shines solar (<span id="ilsCount">–</span>)</span></label>
+  <label class="lp" style="border-top:0;padding-top:0;margin-top:4px"><input type="checkbox" id="ciOn"><span>Industrial parcels (<span id="ciCount">–</span>)</span></label>
+  <div id="ciKey" style="display:none;padding:2px 0 4px 22px">
+    <div class="st" style="cursor:default"><span class="dot" style="background:#7C3AED"></span><span>in a park</span></div>
+    <div class="st" style="cursor:default"><span class="dot" style="background:#A78BFA"></span><span>standalone site</span></div>
+    <div style="font-family:var(--mono);font-size:9px;color:var(--dim);padding-top:2px">zoom to 13+ to draw</div>
+  </div>
   <div id="ilsKey" style="display:none;padding:2px 0 4px 22px">
     <div class="st" style="cursor:default"><span class="dot" style="background:#F59E0B"></span><span>energized</span></div>
     <div class="st" style="cursor:default"><span class="dot" style="background:#94A3B8"></span><span>under development</span></div>
@@ -4059,6 +4077,180 @@ function loadEdc(cb){
    attribute a feeder to one of these: see edcNearestFeeder(), which
    refuses the same thing for the same reason.
    ══════════════════════════════════════════════════════════════════ */
+/* ══════════════════════════════════════════════════════════════════
+   INDUSTRIAL PARCELS  —  built by build_ci_layer.py
+   ══════════════════════════════════════════════════════════════════
+   Every parcel the county assessor classes industrial, with the owner of
+   record, acreage and assessed value. DuPage is 5,507 parcels / 19,788
+   acres; Cook and the rest follow as their registry entries are verified.
+
+   `park` groups parcels that sit together; `parkN` is how many are in the
+   group. Parks are DERIVED, not published — no assessor keeps a registry
+   of industrial parks, so they are clusters of industrially-classed
+   parcels split at municipal boundaries. See the script for why.
+
+   ── CLAIM STRAIGHT INTO THE PIPELINE ────────────────────────────────
+   The point of this layer is not to look at parcels. It is that a rep can
+   see an owner, decide to work it, and have the site in their pipeline in
+   one click — owner, address, acreage and assessed value carried across
+   so nobody retypes what the county already told us.
+
+   The claimed site keys on the PARCEL PIN, so claiming the same parcel
+   twice updates one record instead of making two. A parcel already in the
+   pipeline shows its stage instead of a claim button.
+
+   ── DRAWN BY VIEWPORT, NOT ALL AT ONCE ──────────────────────────────
+   5,507 markers across a county is a smear at low zoom and slow on an
+   older laptop. Only parcels in the current view are drawn, and only at
+   zoom 13+, where a rep is actually looking at a specific area.
+   ══════════════════════════════════════════════════════════════════ */
+var CI_URL="ci-industrial.js";
+var CI={state:"idle",rows:[],queue:[]};
+var ciLayer=null, CI_MINZOOM=13;
+
+function loadCI(cb){
+  if(CI.state==="ready"||CI.state==="failed"){ cb&&cb(); return; }
+  if(CI.state==="loading"){ if(cb) CI.queue.push(cb); return; }
+  CI.state="loading"; CI.queue=cb?[cb]:[];
+  var hi=0;
+  (function tryHost(){
+    if(hi>=DATA_HOSTS.length){
+      CI.state="failed";
+      diag("ci: ci-industrial.js not found on this host or tools.csebuilders.com");
+      var el=document.getElementById("ciCount");
+      if(el){ el.textContent="!"; el.title="ci-industrial.js not deployed"; }
+      var q0=CI.queue; CI.queue=[]; q0.forEach(function(f){f();});
+      return;
+    }
+    var url=DATA_HOSTS[hi++]+CI_URL;
+    var sc=document.createElement("script");
+    sc.src=url;
+    sc.onload=function(){
+      if(!window.CS_CI){ tryHost(); return; }
+      CI.rows=window.CS_CI; CI.state="ready";
+      diag("ci: "+CI.rows.length+" parcels from "+(url||"same origin"));
+      var el=document.getElementById("ciCount"); if(el) el.textContent=CI.rows.length.toLocaleString();
+      var q=CI.queue; CI.queue=[]; q.forEach(function(f){f();});
+    };
+    sc.onerror=function(){ diag("ci: miss "+url); tryHost(); };
+    document.head.appendChild(sc);
+  })();
+}
+
+function ciRadius(ac){
+  var a=Number(ac)||0;
+  return Math.max(4, Math.min(12, 4+Math.sqrt(a)*1.6));
+}
+
+function drawCI(on){
+  if(ciLayer){ map.removeLayer(ciLayer); ciLayer=null; }
+  var key=document.getElementById("ciKey");
+  if(key) key.style.display=on?"block":"none";
+  if(!on) return;
+  loadCI(function(){
+    if(CI.state!=="ready") return;
+    renderCI();
+  });
+}
+
+function renderCI(){
+  var box=document.getElementById("ciOn");
+  if(!box||!box.checked||CI.state!=="ready") return;
+  if(ciLayer){ map.removeLayer(ciLayer); ciLayer=null; }
+  if(map.getZoom()<CI_MINZOOM){
+    diag("ci: zoom to "+CI_MINZOOM+"+ to draw parcels");
+    return;
+  }
+  var b=map.getBounds(), drawn=0;
+  ciLayer=L.layerGroup();
+  for(var i=0;i<CI.rows.length;i++){
+    var r=CI.rows[i];
+    if(r.lat==null||!b.contains([r.lat,r.lon])) continue;
+    var inPark=(r.parkN||0)>=3;
+    var col=inPark?"#7C3AED":"#A78BFA";
+    var mk=L.circleMarker([r.lat,r.lon],
+      {pane:"dataPane",renderer:dataRenderer,
+       radius:ciRadius(r.acres), color:"#fff", weight:1.4,
+       fillColor:col, fillOpacity:.85, interactive:true});
+    mk.bindPopup(ciPopup(r),{minWidth:236});
+    (function(row){
+      mk.on("popupopen",function(ev){ wireCiPopup(ev.popup,row); });
+    })(r);
+    ciLayer.addLayer(mk);
+    drawn++;
+  }
+  ciLayer.addTo(map);
+  diag("ci: drew "+drawn+" of "+CI.rows.length+" in view");
+}
+
+function ciPopup(r){
+  var existing=CRM.data[r.pin];
+  var st=existing?crmStage(existing.stage):null;
+  var acres=(Number(r.acres)||0);
+  var val=(Number(r.val)||0);
+  return '<div class="cipop" data-pin="'+esc(r.pin)+'">'+
+    '<b>'+esc(r.addr||r.pin)+'</b>'+
+    (r.city?('<div style="font-size:11px;color:var(--muted)">'+esc(r.city.title?r.city:r.city)+'</div>'):'')+
+    '<div style="font-size:12px;font-weight:600;margin-top:3px">'+esc(r.owner||"owner unknown")+'</div>'+
+    '<div style="font-size:11px;margin-top:3px">'+
+      (acres?(acres.toFixed(2)+' acres'):'')+
+      (acres&&val?' \u00b7 ':'')+
+      (val?('$'+val.toLocaleString()+' assessed'):'')+
+    '</div>'+
+    ((r.parkName||((r.parkN||0)>=3))
+      ? ('<div style="font-size:11px;color:var(--muted);margin-top:3px">'+
+         esc(r.parkName||"Industrial park")+' \u00b7 '+(r.parkN||0)+' parcels</div>')
+      : '<div style="font-size:11px;color:var(--muted);margin-top:3px">Standalone site</div>')+
+    '<div class="cipop-act">'+
+      (existing
+        ? ('<div class="cipop-in" style="color:'+(st?st.color:'#666')+'">Already in your pipeline \u00b7 '+
+           esc(st?st.label:"tracked")+(existing.rep?(' \u00b7 '+esc(existing.rep)):'')+'</div>')
+        : '<button class="cipop-claim">Add to pipeline</button>')+
+      '<div class="cipop-msg"></div>'+
+    '</div></div>';
+}
+
+/* One click: parcel -> pipeline, with everything the county already knows
+   carried across. A rep retyping an owner name off a popup is a rep who
+   stops using the tool. */
+function wireCiPopup(popup,r){
+  var el=popup.getElement?popup.getElement():null;
+  if(!el) return;
+  L.DomEvent.disableClickPropagation(el);
+  var btn=el.querySelector(".cipop-claim");
+  var msg=el.querySelector(".cipop-msg");
+  if(!btn) return;
+  btn.onclick=function(){
+    if(!FS_READY){ msg.textContent="Sign in first."; msg.className="cipop-msg bad"; return; }
+    btn.disabled=true; msg.textContent="Adding\u2026"; msg.className="cipop-msg";
+    crmPush(r.pin,{
+      pin:r.pin, rep:REP,
+      patch:{stage:"target"}, claim:true,
+      row:{addr:r.addr,owner:r.owner,lat:r.lat,lon:r.lon},
+      /* Sent as `fields`, which pins them against the map layers. That is
+         deliberate: the county assessor is the owner OF RECORD, and the
+         scraped listing data this tool otherwise carries is a guess. Once a
+         parcel is claimed, the assessor's answer wins until a rep corrects
+         it from the panel. */
+      fields:{
+        siteName:r.addr||r.pin,
+        address:(r.addr||"")+(r.city?(", "+r.city):""),
+        ownerName:r.owner||""
+      }
+    },function(err){
+      if(err){ btn.disabled=false; msg.textContent="Could not add \u2014 check your connection."; msg.className="cipop-msg bad"; return; }
+      msg.textContent="Added to your pipeline."; msg.className="cipop-msg ok";
+      /* Note the provenance so it is obvious later where this came from
+         and that the acreage/value were the county's, not a rep's guess. */
+      crmNote(r.pin,"Added from the industrial parcel layer \u00b7 "+
+        ((Number(r.acres)||0).toFixed(2))+" acres"+
+        ((Number(r.val)||0)?(" \u00b7 $"+Number(r.val).toLocaleString()+" assessed"):"")+
+        (r.parkName?(" \u00b7 "+r.parkName):""),null,null);
+      setTimeout(function(){ if(popup&&popup._map) popup._map.closePopup(popup); },900);
+    });
+  };
+}
+
 var ILS_URL="ilshines-sites.js";
 var ILS={state:"idle",rows:[],queue:[]};
 var ilsLayer=null;
@@ -5314,6 +5506,13 @@ map.on("moveend",scheduleAuto);
 setTimeout(function(){ if(SVC.ready) autoLoad(); else setTimeout(autoLoad,2500); },1800);
 document.getElementById("edcOn").onchange=function(){ drawEdc(this.checked); };
 document.getElementById("ilsOn").onchange=function(){ drawIlshines(this.checked); };
+document.getElementById("ciOn").onchange=function(){ drawCI(this.checked); };
+/* Redraw on pan/zoom: the layer is viewport-scoped, so a stale draw would
+   show parcels from wherever the rep used to be looking. */
+map.on("moveend zoomend",function(){
+  var b=document.getElementById("ciOn");
+  if(b&&b.checked&&CI.state==="ready") renderCI();
+});
 loadEdc();
 document.getElementById("ciOn").onchange=function(){
   drawProspects(this.checked);
