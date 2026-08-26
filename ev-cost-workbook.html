@@ -1616,7 +1616,7 @@ function setCustomBand(){
    numbers that came from a build that was no longer the code — the same
    export pasted twice, identical to the byte, while the fix sat undeployed.
    A visible build id ends that argument in one glance. */
-var OMEGA_BUILD = 'wb-2026-08-26e';
+var OMEGA_BUILD = 'wb-2026-08-26f';
 try{ window.OMEGA_BUILD = OMEGA_BUILD; }catch(e){}
 
 var LINES = [];
@@ -2711,6 +2711,17 @@ window.priceCivilFromDrawing=priceCivilFromDrawing;
 
 /* Trenching paved and trenching turf are the same ditch on two rows; either
    may carry it, but never both. */
+/* Quantity for a footage-driven row. The raw DATA field is not enough:
+   the editor reports the split by its own 'in-ground' default, while the
+   trench surface decides which row the excavation actually lands on. The
+   sheet showed $2,340 / $12,480 of trenching against a BLANK quantity and
+   no unit price, because it read ftTrenchPaved (0) instead of the split. */
+function esRowQty(key){
+  if(key==='ftTrenchPaved') return trenchSplit().paved;
+  if(key==='ftTrenchTurf')  return trenchSplit().turf;
+  return num(DATA[key]);
+}
+
 function scopeGroup(row){
   if(row==='trench' || row==='trenchTurf'){
     /* One ditch on one row — UNLESS the drawing genuinely reports both
@@ -4397,7 +4408,7 @@ function sheetES40(wb, m, form, site){
 
     /* quantity x unit price where the line has a real quantity, so the
        master's =E*F still drives the material total */
-    var qty = R.qty ? dn(R.qty) : 0;
+    var qty = R.qty ? r2(esRowQty(R.qty)) : 0;
     if(R.mul && qty>0 && v.mat>0){
       es('E'+r, qty,          { align:'center', border:bd('thin','thin','thin','thin') });
       es('F'+r, v.mat/qty,    { align:'center', border:bd('thin','thin','thin','thin'), fmt:ACCT });
@@ -4549,7 +4560,7 @@ function esMatrix(m, form){
   function qtyFor(meta){
     if(!meta || !meta.qty) return null;
     if(meta.qty==='one') return 1;
-    var v=num(DATA[meta.qty]);
+    var v=esRowQty(meta.qty);
     return v>0 ? v : null;
   }
 
@@ -4737,7 +4748,7 @@ function previewFormES(m, form){
     var R=ES40.rows[i];
     if(R.band){ h+=r(td(R.t,'pv-es-sec',9)); continue; }
     var v=es40Cell(m, R);
-    var qty = R.qty ? dn(R.qty) : 0;
+    var qty = R.qty ? r2(esRowQty(R.qty)) : 0;
     var showQty = (R.mul && qty>0 && v.mat>0);
     var cTxt = v.note || R.c || '';
     if((R.r===39||R.r===40) && v.note)

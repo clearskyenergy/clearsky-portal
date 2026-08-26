@@ -6873,7 +6873,13 @@ function renderCtypes(){
     + '<div style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:var(--sub);margin-bottom:5px">Routing / Trenching</div>'
     + '<select id="cond-route-mode" onchange="S.condRoute=this.value" style="width:100%;background:var(--surface);border:1px solid var(--border);color:var(--text);border-radius:4px;padding:5px 8px;font-size:10px;font-family:inherit;margin-bottom:6px">'
     +   '<option value="surface"'+((S.condRoute||'surface')==='surface'?' selected':'')+'>Surface mount (above grade)</option>'
-    +   '<option value="trench-ground"'+(S.condRoute==='trench-ground'?' selected':'')+'>Trench -- in-ground</option>'
+    +   '<option value="trench-ground"'+(S.condRoute==='trench-ground'?' selected':'')+'>Trench -- in-ground (turf, ground cover)</option>'
+    /* Sawcut asphalt was missing from both selectors even though the model,
+       the drawing tag and the BOM all support it. With no way to pick it,
+       every run stayed in-ground and the utility sheet reported turf
+       excavation at $10/$60 per foot on jobs that are actually cut through
+       pavement at $15/$80 — a real difference on the submitted matrix. */
+    +   '<option value="trench-asphalt"'+(S.condRoute==='trench-asphalt'?' selected':'')+'>Trench -- sawcut asphalt</option>'
     +   '<option value="trench-concrete"'+(S.condRoute==='trench-concrete'?' selected':'')+'>Trench -- sawcut concrete</option>'
     + '</select>'
     + '<div style="font-size:8.5px;color:var(--sub);line-height:1.5;margin-bottom:6px">Applies to conduits you draw or auto-wire next. Click any conduit\u2019s label to cycle its routing.</div>'
@@ -6883,9 +6889,8 @@ function renderCtypes(){
 }
 
 /* Both confirmation banners omitted asphalt and fell through to "in-ground
-   trench", so setting a run to sawcut-asphalt reported it as in-ground and
-   looked like the change had not taken. The drawing tag and the BOM both
-   label asphalt correctly — only the banners lied. */
+   trench", so a run set to sawcut-asphalt reported itself as in-ground and
+   looked like the change had not taken. */
 function _routeWord(mode){
   return mode==='surface'         ? 'surface mount'
        : mode==='trench-concrete' ? 'sawcut-concrete trench'
@@ -62800,7 +62805,8 @@ function openConduitMenu(){
       +'<label style="'+lbl+'">Trenching method</label>'
       +'<select id="cd-route" style="'+sel+'">'
         +'<option value="surface"'+(routeMode==='surface'?' selected':'')+'>Surface mount (above grade)</option>'
-        +'<option value="trench-ground"'+(routeMode==='trench-ground'?' selected':'')+'>Trench \u2014 in-ground</option>'
+        +'<option value="trench-ground"'+(routeMode==='trench-ground'?' selected':'')+'>Trench \u2014 in-ground (turf, ground cover)</option>'
+        +'<option value="trench-asphalt"'+(routeMode==='trench-asphalt'?' selected':'')+'>Trench \u2014 sawcut asphalt</option>'
         +'<option value="trench-concrete"'+(routeMode==='trench-concrete'?' selected':'')+'>Trench \u2014 sawcut concrete</option>'
       +'</select>'
       +'<div style="display:flex;gap:10px">'
@@ -65170,11 +65176,11 @@ function _evFeetFromCanvas(){
     lf = (typeof _cdEstLf==='function') ? _cdEstLf(c) : (+c.ftLen||0);
     if(c.route==='trench') ug+=lf; else ag+=lf;
     cable += (typeof _cdCableLf==='function') ? _cdCableLf(c) : 0;
-    /* Surface type comes from the TRENCHED runs only, and both kinds are
-       counted. Taking turf as "corridor total minus paved" invented 7 ft of
-       unpaved trench on a job whose only non-paved footage was a 7.2 ft
-       INTERIOR run: the corridor total counts that run, an interior conduit
-       is not a trench, and the workbook then priced excavation nobody digs. */
+    /* Surface type from the TRENCHED runs only, counting both kinds. Turf
+       taken as "corridor total minus paved" invented 7 ft of excavation on a
+       job whose only non-paved footage was a 7.2 ft INTERIOR run — the
+       corridor total counts that run, and an interior conduit is not a
+       trench. */
     if(c.route==='trench'){
       if(c.trenchIn==='concrete'||c.trenchIn==='asphalt') pavedRuns += (+c.ftLen||0);
       else turfRuns += (+c.ftLen||0);
@@ -65187,10 +65193,8 @@ function _evFeetFromCanvas(){
      trench there is and the runs are the truth for WHAT KIND. Split the
      corridor total in the runs' own proportion rather than by subtraction. */
   var kind=pavedRuns+turfRuns, paved, turf;
-  if(kind>0){
-    paved = tt.ft * (pavedRuns/kind);
-    turf  = tt.ft * (turfRuns /kind);
-  } else { paved = tt.ft; turf = 0; }   /* nothing said: treat as paved */
+  if(kind>0){ paved=tt.ft*(pavedRuns/kind); turf=tt.ft*(turfRuns/kind); }
+  else { paved=tt.ft; turf=0; }
   return {
     trench:      Math.round(tt.ft),
     trenchPaved: Math.round(paved),
