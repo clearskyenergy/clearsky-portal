@@ -1773,7 +1773,10 @@ function contractorToBrand(){
 }
 
 /* ── 6. CLASSIFIER ────────────────────────────────────────────────── */
-function classify(cat, desc, size){
+/* Estimates spell linear feet four different ways. */
+function isFootUnit(u){ return /^(lf|lft|lnft|ln ft|ft|feet|foot|linear ?f(ee)?t)$/.test(String(u||'').toLowerCase().replace(/\./g,'')); }
+
+function classify(cat, desc, size, unit){
   var c=String(cat||'').toLowerCase();
   var t=String(desc||'').toLowerCase()+' '+String(size||'').toLowerCase();
   var future=/spare|future.?proof/.test(t);
@@ -1803,12 +1806,21 @@ function classify(cat, desc, size){
   /* RMC, EMT and anything called out as indoor or above grade is an
      above-ground run; Eversource prices those on their own line. */
   var above = /\brmc\b|\bemt\b|above.?ground|indoor|interior|surface|exposed/.test(t);
-  if(/conduit|fitting/.test(c)){
+  /* Category first, then the description for per-foot lines. The editor
+     files conduit under 'Electrical', so matching only on category sent a
+     1,168 LF run of 2" PVC to Other \u2014 and the rate card then priced the
+     same run again on the Conduit & Conductors row, billing it twice. The
+     per-foot guard keeps a lump-sum 'conduit stubs' line out of it. */
+  var perFootLine = isFootUnit(unit) && !/civil/.test(c)
+                 && !/trench|sawcut|backfill|restorat|bedding|warning tape/.test(t);
+  if(/conduit|raceway|fitting/.test(c) ||
+     (perFootLine && /\b(conduit|emt|rmc|imc|pvc|sch ?40|sch ?80|innerduct|liquidtight|sealtite)\b/.test(t))){
     if(future) return {b:'fp', r:'conduit', fp:0};
     if(above) return {b:'mr', r:'conduitAG', fp:0};
     return {b:'mr', r:'conduit', fp:0};
   }
-  if(/wire|cable/.test(c)){
+  if(/wire|cable|conductor/.test(c) ||
+     (perFootLine && /\b(thhn|thwn|xhhw|conductor|feeder cable)\b/.test(t))){
     if(future) return {b:'fp', r:'wire', fp:0};
     if(above) return {b:'mr', r:'wireAG', fp:0};
     return {b:'mr', r:'wire', fp:0};
@@ -1868,7 +1880,7 @@ function classify(cat, desc, size){
 
 /* ── 7. IMPORT PATHS ──────────────────────────────────────────────── */
 function addLine(o){
-  var cls=classify(o.category, o.description, o.size);
+  var cls=classify(o.category, o.description, o.size, o.unit);
   LINES.push({
     id:_nid++, desc:o.description||'(unnamed)', size:o.size||'', cat:o.category||'',
     qty:(o.qty==null?'':o.qty), unit:o.unit||'',
@@ -1940,11 +1952,24 @@ function loadPayload(pay){
   EDITOR_FLEET = (pay.chargers && pay.chargers.length) ? pay.chargers : null;
   EDITOR_BASIS = pay.priceBasis || null;
   EDITOR_EVT   = pay.evTotals   || null;
+  /* Ports and STATIONS are different numbers and both are asked for: a
+     National Grid sheet wants ports on one line and stations on the next.
+     The station count was arriving from the editor and being dropped. */
+  if(EDITOR_EVT){
+    var _st = num(EDITOR_EVT.l2Units) + num(EDITOR_EVT.dcfcUnits);
+    if(_st>0 && !num(DATA.stations)) DATA.stations=_st;
+    if(num(EDITOR_EVT.ports)>0)      DATA.plugs=num(EDITOR_EVT.ports);
+  }
   for(i=0;i<pay.lines.length;i++) addLine(pay.lines[i]);
   if(pay.crewRate) document.getElementById('p_crew').value=pay.crewRate;
   if(pay.site){
     if(!d('applicant') && pay.site.applicant) DATA.applicant=pay.site.applicant;
     if(!d('address')   && pay.site.address)   DATA.address  =pay.site.address;
+    if(!d('city')      && pay.site.city)      DATA.city     =pay.site.city;
+    /* The drawing's own name. A single-site pull never set it, so the sheet
+       tab and National Grid's Unique Site Name came out blank \u2014 only the
+       multi-site path was filling it in. */
+    if(!d('site')) DATA.site = pay.site.name || pay.site.mapName || pay.site.label || '';
   }
   EDITOR_FEET = pay.feet || null;
   if(pay.chargers) applyChargerCosts(pay.chargers);
@@ -2606,7 +2631,7 @@ function reclassifyAll(){
   var i, c;
   for(i=0;i<LINES.length;i++){
     if(LINES[i].src!=='estimate') continue;
-    c=classify(LINES[i].cat, LINES[i].desc, LINES[i].size);
+    c=classify(LINES[i].cat, LINES[i].desc, LINES[i].size, LINES[i].unit);
     LINES[i].bucket=c.b; LINES[i].row=c.r; LINES[i].fp=c.fp;
   }
   render();
