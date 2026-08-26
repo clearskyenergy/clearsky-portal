@@ -2355,17 +2355,22 @@ var STANDARD=[
   ['Activation','evse','activation'], ['Shipping','evse','shipping'],
   ['EVSE Networking/Software','ne','network'], ['EVSE Warranty','ne','warranty'],
   ['Signage','ne','signage'], ['Striping','ne','striping'],
-  /* Civil work is NOT on this list. The button says "Add permitting, design,
-     activation" and a rep pressing it expects soft costs — instead it was
-     adding trenching, turf excavation, conduit and wiring priced off the
-     takeoff, which on 112 Willow put $10,920 of non-continuously-paved
-     trench onto a job that has none. Excavation is never a side effect of
-     pressing a button about permitting.
-
-     The editor already prices its own trench and conduit lines, and those
-     now land on the right rows, so nothing is lost by leaving them out.
-     Use "Price civil from the drawing" when the estimate genuinely has no
-     civil lines and the footage should carry them. */
+  /* Conduit and wiring ARE measured scope. If the map has 3 runs then the
+     sheet has conduit, full stop — the estimate does not always itemise it
+     (112 Willow drew 156 ft and priced no conduit line at all), so leaving
+     this to a button meant a real run silently missing from a submission.
+     Gated on footage, so nothing appears without something drawn. */
+  ['Conduit & Conductors','mr','conduit',true],
+  ['Wiring','mr','wire',true],
+  /* Trenching is measured too, but it is ONE excavation with two possible
+     rows. The estimate's own trench line lands on the paved row while the
+     measured footage would add the turf row — the same ditch billed twice,
+     which is where $10,920 of "non-continuously paved" came from on a job
+     whose only trench is 156 ft in-ground. scopeGroup() below keeps the two
+     rows as one scope: whichever is already priced wins, the other stays
+     out. */
+  ['Trenching/Restoration','mr','trench',true],
+  ['Trenching \u2014 non-continuously paved','mr','trenchTurf',true],
   /* NOT auto-added, on purpose:
        Restoration  — $0 on all five filed sheets. Surface repair is inside
                        the trench rate there, so adding a separate row bills
@@ -2645,7 +2650,10 @@ function priceCivilFromDrawing(){
     have=false;
     for(j=0;j<LINES.length;j++){
       l=LINES[j];
-      if(l.bucket===bucket && l.row===row && (num(l.mat)||num(l.lab))){ have=true; break; }
+      if(!(num(l.mat)||num(l.lab)) || l.bucket!==bucket) continue;
+      /* same row, or a sibling row describing the same physical work — the
+         paved and turf trench rows are one ditch */
+      if(l.row===row || (scopeGroup(row) && scopeGroup(l.row)===scopeGroup(row))){ have=true; break; }
     }
     if(have){ skipped.push(label+' \u2014 already priced by the estimate'); continue; }
     rate=standardRate(row,bucket);
@@ -2664,6 +2672,13 @@ function priceCivilFromDrawing(){
 }
 window.priceCivilFromDrawing=priceCivilFromDrawing;
 
+/* Trenching paved and trenching turf are the same ditch on two rows; either
+   may carry it, but never both. */
+function scopeGroup(row){
+  if(row==='trench' || row==='trenchTurf') return 'excavation';
+  return null;
+}
+
 function addStandardRows(opts){
   opts=opts||{};
   var i, j, have, existing, rate, filled=0, added=0;
@@ -2673,6 +2688,15 @@ function addStandardRows(opts){
     have=false; existing=null;
     for(j=0;j<LINES.length;j++){
       if(LINES[j].bucket===bucket && LINES[j].row===row){ have=true; existing=LINES[j]; }
+    }
+    /* Rows that describe the same physical work: if a sibling already
+       carries it, this row must not add it again. */
+    if(!have && scopeGroup(row)){
+      for(j=0;j<LINES.length;j++){
+        if(LINES[j].bucket===bucket && scopeGroup(LINES[j].row)===scopeGroup(row)
+           && (num(LINES[j].mat)||num(LINES[j].lab))){ have=true; existing=null; break; }
+      }
+      if(have) continue;      /* sibling has it — nothing to add or fill */
     }
     rate=standardRate(row, bucket);
     /* nothing measured to price it with — leave the row out rather than
@@ -4409,6 +4433,27 @@ function esMatrix(m, form){
                  tot:r2(it.mat+it.lab), sub:(it.mat||it.lab)?'Yes':'' });
       sm+=it.mat; sl+=it.lab;
     }
+    /* One excavation, one row: the measured trench footage belongs on
+       whichever surface row actually carries the cost. The paved row was
+       showing the money with a blank quantity while the turf row showed 156
+       ft with no money — two half-rows describing one ditch, and a reviewer
+       cannot price either. */
+    (function(){
+      var paved=null, turf=null, k;
+      for(k=0;k<out.length;k++){
+        if(out[k].key==='trench')     paved=out[k];
+        if(out[k].key==='trenchTurf') turf =out[k];
+      }
+      if(!paved || !turf) return;
+      var total=num(DATA.ftTrench) || (num(DATA.ftTrenchPaved)+num(DATA.ftTrenchTurf));
+      if(!total) return;
+      var pHas=(paved.mat||paved.lab), tHas=(turf.mat||turf.lab);
+      if(pHas && !tHas){ paved.qty=total; turf.qty=null;
+                         if(paved.mat) paved.unitPrice=r2(paved.mat/total); }
+      else if(tHas && !pHas){ turf.qty=total; paved.qty=null;
+                         if(turf.mat) turf.unitPrice=r2(turf.mat/total); }
+    })();
+
     totals[S2.id]={ mat:r2(sm), lab:r2(sl), tot:r2(sm+sl) };
     sections.push({ id:S2.id, title:S2.title, rows:out, totals:totals[S2.id] });
   }
