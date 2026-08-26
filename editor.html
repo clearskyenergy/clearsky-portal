@@ -82618,17 +82618,35 @@ if (_omPrevOmegaTrench) { Object.keys(_omPrevOmegaTrench).forEach(function (k) {
   }
 
   function addButton() {
-    if (document.getElementById('rb-labels')) return true;
     var host = document.getElementById('rb-crosshair');
     host = host && host.parentNode;
     if (!host) return false;
-    var b = document.createElement('button');
-    b.className = 'rbtn';
-    b.id = 'rb-labels';
-    b.title = 'Hide the text on the drawing. The legend, schedule and takeoff are unaffected.';
-    b.innerHTML = '<span class="rb-ico">\u1d40</span><span class="rb-lbl">Labels</span>';
-    b.onclick = function () { set(mode === 'on' ? 'off' : 'on'); };
-    host.appendChild(b);
+    if (!document.getElementById('rb-labels')) {
+      var b = document.createElement('button');
+      b.className = 'rbtn';
+      b.id = 'rb-labels';
+      b.title = 'Hide the text on the drawing. The legend, schedule and takeoff are unaffected.';
+      b.innerHTML = '<span class="rb-ico">\u1d40</span><span class="rb-lbl">Labels</span>';
+      b.onclick = function () { set(mode === 'on' ? 'off' : 'on'); };
+      host.appendChild(b);
+    }
+    /* Collapsing the EVSE plates is a VIEW decision, so it belongs on the
+       View ribbon next to Labels — not buried in the Satellite Photo panel,
+       where it was invisible on the tab people actually use for this. */
+    if (!document.getElementById('rb-evselbl') && typeof toggleEvseLabels === 'function') {
+      var e = document.createElement('button');
+      e.className = 'rbtn';
+      e.id = 'rb-evselbl';
+      e.title = 'Ten chargers means ten overlapping plates that all say the same thing. '
+              + 'Collapse them to one label on the cluster. Individual labels still print in exports.';
+      e.innerHTML = '<span class="rb-ico">\u29c9</span><span class="rb-lbl">EVSE labels</span>';
+      e.onclick = function () {
+        toggleEvseLabels();
+        e.style.background = window._hideEvseLabels ? 'rgba(0,212,255,.18)' : '';
+        e.style.borderColor = window._hideEvseLabels ? 'var(--accent)' : '';
+      };
+      host.appendChild(e);
+    }
     return true;
   }
 
