@@ -43,7 +43,7 @@
   .logo .t span{color:var(--accent)}
   .seprt{width:1px;height:24px;background:var(--line)}
   .sub{font-family:var(--mono);font-size:11px;color:var(--muted);letter-spacing:.1em;text-transform:uppercase}
-  #search{margin-left:auto;position:relative;width:min(420px,46vw)}
+  #search{position:relative;width:min(420px,46vw)}
   #search input{width:100%;height:34px;border:1px solid var(--line);background:var(--panel2);color:var(--ink);
     border-radius:8px;padding:0 60px 0 12px;font-size:13px;outline:none}
   #search input:focus{border-color:var(--accent)}
@@ -107,6 +107,32 @@
   @media(max-width:720px){body.panel-open .leaflet-bottom.leaflet-right{right:0}#panel{width:calc(100vw - 20px);right:10px;top:auto;bottom:10px;height:56vh}#search{width:44vw}.sub{display:none}}
 
   /* ── HIGH-CAPACITY REPORT ── */
+  .repchip{display:flex;align-items:center;gap:7px;background:var(--panel2);border:1px solid var(--line);
+    border-radius:20px;padding:4px 12px 4px 4px;cursor:pointer;font-size:12px;font-weight:600;color:var(--ink)}
+  .repchip:hover{border-color:var(--accent)}
+  .repchip.none{border-color:var(--red);color:var(--red)}
+  .repchip .av{width:22px;height:22px;border-radius:50%;background:var(--accent);color:#fff;
+    display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:800;flex:0 0 auto}
+  .repchip.none .av{background:var(--red)}
+  #repWrap{position:fixed;inset:0;z-index:1700;background:rgba(26,39,51,.55);display:none;
+    align-items:center;justify-content:center;padding:24px}
+  #repWrap.open{display:flex}
+  #repBox{background:#fff;border-radius:14px;width:min(420px,94vw);padding:22px;
+    box-shadow:0 24px 70px rgba(26,39,51,.3)}
+  .replist{max-height:250px;overflow:auto;margin:12px 0}
+  .replist button{width:100%;display:flex;align-items:center;gap:10px;background:none;border:0;
+    border-radius:8px;padding:9px 10px;cursor:pointer;font-size:13px;text-align:left;color:var(--ink)}
+  .replist button:hover{background:var(--panel2)}
+  .replist button.on{background:var(--panel2);font-weight:700}
+  .replist .av{width:26px;height:26px;border-radius:50%;color:#fff;display:flex;align-items:center;
+    justify-content:center;font-size:11px;font-weight:800;flex:0 0 auto}
+  .kpibar{display:flex;gap:13px;align-items:center;margin-left:auto;margin-right:4px}
+  .kpibar .k{display:flex;flex-direction:column;align-items:center;line-height:1.15;cursor:pointer;
+    padding:2px 7px;border-radius:6px}
+  .kpibar .k:hover{background:var(--panel2)}
+  .kpibar .k .n{font-size:16px;font-weight:800;letter-spacing:-.02em}
+  .kpibar .k .l{font-family:var(--mono);font-size:8px;letter-spacing:.1em;text-transform:uppercase;color:var(--dim)}
+  @media(max-width:1180px){.kpibar{display:none}}
   .findbtn{background:#E8590C;border:0;color:#fff;border-radius:7px;padding:9px 16px;
     font-size:13px;font-weight:700;cursor:pointer;white-space:nowrap;box-shadow:0 1px 3px rgba(232,89,12,.35)}
   .findbtn:hover{background:#d24f08}
@@ -207,6 +233,10 @@
     <input id="q" placeholder="Enter a ComEd-territory address…" autocomplete="off">
     <button class="go" id="goBtn">Check</button>
   </div>
+  <button id="repChip" class="repchip" title="Switch rep">
+    <span class="av" id="repAv">?</span><span id="repLbl">Not signed in</span>
+  </button>
+  <div id="kpi" class="kpibar"></div>
   <button class="findbtn" id="findOpen">⚡ Find Sites</button>
   <button class="rptbtn" id="rptOpen">Circuits</button>
   <a href="/" id="back-link" class="back">← Platform</a>
@@ -223,7 +253,9 @@
   </div>
   <label class="lp"><input type="checkbox" id="prospect" checked><span>Prospecting colours</span></label>
   <label class="lp" style="border-top:0;padding-top:0;margin-top:4px"><input type="checkbox" id="fiberOn"><span>Fiber / colocation</span></label>
-  <label class="lp"><input type="checkbox" id="ciOn" checked><span><b>C&amp;I accounts</b> (<span id="ciCount">0</span>)</span></label>
+  <label class="lp"><input type="checkbox" id="autoOn" checked><span><b>Live accounts</b> (<span id="autoCount">0</span>)</span></label>
+  <div id="autoMsg" style="font-family:var(--mono);font-size:9px;color:var(--dim);padding:1px 0 3px 22px"></div>
+  <label class="lp" style="border-top:0;padding-top:0;margin-top:4px"><input type="checkbox" id="ciOn" checked><span>Find Sites results (<span id="ciCount">0</span>)</span></label>
   <label class="lp" style="border-top:0;padding-top:0;margin-top:4px"><input type="checkbox" id="edcOn"><span>For sale / lease (<span id="edcCount">–</span>)</span></label>
   <div id="ciKey" style="display:none;padding:2px 0 4px 22px">
     <div class="st" style="cursor:default"><span class="dot" style="background:#E8590C"></span><span>has a phone</span></div>
@@ -231,16 +263,32 @@
     <div class="st" style="cursor:default"><span class="dot" style="background:#9aa7b4"></span><span>owner only</span></div>
   </div>
   <label class="lp" style="border-top:0;padding-top:0;margin-top:4px"><input type="checkbox" id="crmOn" checked><span>Pipeline (<span id="crmCount">0</span>)</span></label>
-  <div id="crmRep" style="margin-top:7px">
-    <input id="repName" placeholder="Your name" style="width:100%;height:26px;border:1px solid var(--line);
-      border-radius:6px;padding:0 8px;font-size:11px;background:var(--panel2);outline:none">
-  </div>
+
   <div id="crmLegend" style="margin-top:7px"></div>
   <div class="lf" id="legendFoot">zoom in to 13+ to draw circuits</div>
 </div>
 
 
 
+
+
+<div id="repWrap">
+  <div id="repBox">
+    <div style="font-weight:700;font-size:16px">Who's working?</div>
+    <div style="font-size:12px;color:var(--muted);margin-top:4px">
+      Every stage change, note and claim is recorded under this name. Pick yourself
+      from the list so the pipeline stays consistent across the floor.
+    </div>
+    <div class="replist" id="repList"></div>
+    <div style="display:flex;gap:8px">
+      <input id="repNew" placeholder="Add a new rep…" maxlength="40"
+        style="flex:1;height:34px;border:1px solid var(--line);border-radius:8px;padding:0 11px;
+               font-size:13px;background:var(--panel2);outline:none">
+      <button class="findbtn" id="repAdd" style="padding:0 15px">Add</button>
+    </div>
+    <div class="r-msg" id="repMsg"></div>
+  </div>
+</div>
 
 <div id="dealWrap">
   <div id="rptBox">
@@ -2710,13 +2758,167 @@ function renderCrmLegend(){
     };})(rows[r].getAttribute("data-st"));
   }
 }
+
+
+/* ── REP IDENTITY ────────────────────────────────────────────────
+   A free-text box was the wrong control for a shared floor: reps
+   forget to fill it, typos fork one person into three in the data,
+   and on a shared machine whoever sits down inherits the last
+   person's name.
+
+   So: a roster held server-side per tenant, picked from a list. The
+   chip in the header always shows who is signed in, and the picker
+   blocks on load until somebody chooses — an unattributed call log
+   is worse than an interrupted one.
+
+   Colour is derived from the name so each rep reads the same
+   everywhere without anyone assigning one. */
+var ROSTER=[];
+function repColor(n){
+  var s=0; n=String(n||"");
+  for(var i=0;i<n.length;i++) s=(s*31+n.charCodeAt(i))>>>0;
+  var pal=["#0a6ed1","#E8590C","#2ea043","#8a5cd1","#c98a2b","#0f8b8d","#b3446c","#4a6fa5"];
+  return pal[s%pal.length];
+}
+function repInitials(n){
+  var p=String(n||"").trim().split(/\s+/).filter(Boolean);
+  if(!p.length) return "?";
+  return (p[0].charAt(0)+(p.length>1?p[p.length-1].charAt(0):"")).toUpperCase();
+}
+function rosterUrl(){
+  return CRM_ENDPOINT ? CRM_ENDPOINT.replace("/crm?","/crm/roster?") : "";
+}
+function loadRoster(cb){
+  var u=rosterUrl();
+  if(!u){ ROSTER=[]; cb&&cb(); return; }
+  fetchJSON(u,function(err,j){
+    ROSTER=(!err&&j&&j.length!==undefined)?j:[];
+    cb&&cb();
+  });
+}
+function addRep(name,cb){
+  var n=String(name||"").trim().replace(/\s+/g," ").slice(0,40);
+  if(!n){ cb&&cb("Enter a name."); return; }
+  var u=rosterUrl();
+  if(!u){                                   /* no shared backend — local only */
+    if(!ROSTER.some(function(r){return r.name.toLowerCase()===n.toLowerCase();}))
+      ROSTER.push({name:n});
+    cb&&cb(null,n); return;
+  }
+  var x=new XMLHttpRequest();
+  x.open("POST",u,true);
+  x.setRequestHeader("Content-Type","application/json");
+  x.onreadystatechange=function(){
+    if(x.readyState!==4) return;
+    var j=null; try{ j=JSON.parse(x.responseText); }catch(e){}
+    if(x.status>=200&&x.status<300&&j&&j.ok){ ROSTER=j.roster||ROSTER; cb&&cb(null,j.name); }
+    else cb&&cb("Could not save that name.");
+  };
+  x.onerror=function(){ cb&&cb("Could not reach the roster."); };
+  x.send(JSON.stringify({name:n}));
+}
+function paintChip(){
+  var c=document.getElementById("repChip");
+  var a=document.getElementById("repAv"), l=document.getElementById("repLbl");
+  if(!c) return;
+  if(REP){
+    c.className="repchip"; a.textContent=repInitials(REP);
+    a.style.background=repColor(REP); l.textContent=REP;
+  } else {
+    c.className="repchip none"; a.textContent="!"; l.textContent="Sign in";
+  }
+}
+function renderRepList(){
+  var el=document.getElementById("repList");
+  if(!ROSTER.length){
+    el.innerHTML='<div style="font-size:12px;color:var(--dim);padding:10px 2px">'+
+      'Nobody on the roster yet \u2014 add yourself below.</div>';
+    return;
+  }
+  var h="";
+  for(var i=0;i<ROSTER.length;i++){
+    var n=ROSTER[i].name;
+    h+='<button data-n="'+esc(n)+'"'+(n===REP?' class="on"':'')+'>'+
+       '<span class="av" style="background:'+repColor(n)+'">'+esc(repInitials(n))+'</span>'+
+       '<span>'+esc(n)+'</span>'+(n===REP?'<span style="margin-left:auto;color:var(--green);font-size:11px">signed in</span>':'')+
+       '</button>';
+  }
+  el.innerHTML=h;
+  var bs=el.getElementsByTagName("button");
+  for(var b=0;b<bs.length;b++){
+    bs[b].onclick=(function(n){ return function(){
+      repSet(n); paintChip(); crmRefresh();
+      document.getElementById("repWrap").className="";
+    };})(bs[b].getAttribute("data-n"));
+  }
+}
+function openRepPicker(){
+  document.getElementById("repMsg").textContent="";
+  document.getElementById("repNew").value="";
+  document.getElementById("repWrap").className="open";
+  loadRoster(renderRepList);
+  renderRepList();
+}
+document.getElementById("repChip").onclick=openRepPicker;
+document.getElementById("repWrap").onclick=function(e){
+  /* only dismissable once somebody is signed in */
+  if(e.target===this&&REP) this.className="";
+};
+document.getElementById("repAdd").onclick=function(){
+  var v=document.getElementById("repNew").value;
+  document.getElementById("repMsg").textContent="Saving\u2026";
+  addRep(v,function(err,name){
+    if(err){ document.getElementById("repMsg").textContent=err; return; }
+    repSet(name); paintChip(); crmRefresh();
+    document.getElementById("repWrap").className="";
+  });
+};
+document.getElementById("repNew").addEventListener("keydown",function(e){
+  if(e.key==="Enter") document.getElementById("repAdd").click();
+});
+
+/* ── KPI STRIP ────────────────────────────────────────────────────
+   Pipeline counts in the header, clickable to filter the map to that
+   stage. The same numbers are readable by the portal index from
+   GET {worker}/crm?org=<tenant> — one call returns every record for
+   the tenant, so the dashboard can count stages without this tool
+   being open. */
+var KPI_SHOW=["target","contacted","qualified","proposal","won"];
+function renderKpi(){
+  var el=document.getElementById("kpi"); if(!el) return;
+  var h="",total=0;
+  for(var i=0;i<KPI_SHOW.length;i++){
+    var s=crmStage(KPI_SHOW[i]), n=crmCount(KPI_SHOW[i]);
+    total+=n;
+    var on=!!CRM_FILTER[s.k];
+    h+='<div class="k" data-st="'+s.k+'" title="'+esc(s.label)+' \u2014 click to filter the map"'+
+       (on?' style="background:'+s.color+'22"':'')+'>'+
+       '<span class="n" style="color:'+(n?s.color:"var(--dim)")+'">'+n+'</span>'+
+       '<span class="l">'+esc(s.label.split(" ")[0])+'</span></div>';
+  }
+  if(!total) h='<div class="k" style="cursor:default"><span class="n" style="color:var(--dim)">0</span>'+
+              '<span class="l">pipeline</span></div>';
+  el.innerHTML=h;
+  var ks=el.getElementsByClassName("k");
+  for(var z=0;z<ks.length;z++){
+    var st=ks[z].getAttribute("data-st"); if(!st) continue;
+    ks[z].onclick=(function(k){ return function(){
+      CRM_FILTER[k]=!CRM_FILTER[k];
+      if(!CRM_FILTER[k]) delete CRM_FILTER[k];
+      crmRefresh();
+    };})(st);
+  }
+}
+
 function crmRefresh(){
   var c=document.getElementById("crmCount"); if(c) c.textContent=crmCount();
+  renderKpi();
   renderCrmLegend();
   if(document.getElementById("crmOn").checked) drawCrm(true);
-  /* claim locks and DNC change how a prospect pin looks, so repaint */
+  /* claim locks, stages and DNC all change how a pin looks, so repaint both layers */
   var ci=document.getElementById("ciOn");
   if(ci&&ci.checked) drawProspects(true);
+  drawAuto();
 }
 
 function crmSelect(pin){
@@ -2742,7 +2944,7 @@ function wireCrm(scope,byPin){
     sel[i].onchange=(function(el){ return function(e){
       e.stopPropagation();
       var pin=el.getAttribute("data-pin");
-      if(!REP){ alert("Enter your name in the legend before working accounts."); el.value=(crmGet(pin)||{}).stage||""; return; }
+      if(!REP){ el.value=(crmGet(pin)||{}).stage||""; openRepPicker(); return; }
       var other=claimedByOther(pin);
       if(other){ alert(pin+" is being worked by "+other+".\n\nClaims release after 8 hours."); 
                  el.value=(crmGet(pin)||{}).stage||""; return; }
@@ -2941,6 +3143,189 @@ function enrichBusinesses(root,acc,feeders,total){
   })();
 }
 
+
+
+/* ══════════════════════════════════════════════════════════════
+   LIVE MODE — accounts appear as you pan, no button
+
+   Find Sites stays exactly as it is: a deliberate, enriched,
+   exportable sweep. This is the other half — a rep opens the map,
+   scrolls to a neighbourhood, and the businesses are simply there.
+
+   TWO-STAGE ENRICHMENT, deliberately. Auto-load fetches only what
+   is cheap: the licensed business and the circuit under it. Owners,
+   phones and metered load cost a request each and are pulled for ONE
+   account when a rep clicks it. Enriching 300 pins nobody clicks
+   would hammer four APIs for nothing and make panning feel broken.
+
+   Gated at zoom 14 and debounced. Below that the viewport spans
+   miles and the query would return tens of thousands of licences.
+   ══════════════════════════════════════════════════════════════ */
+var AUTO={on:true,busy:false,timer:null,key:"",rows:[],layer:null};
+var AUTO_MIN_ZOOM=14;
+
+function autoKey(){
+  var b=map.getBounds();
+  return [b.getWest().toFixed(3),b.getSouth().toFixed(3),
+          b.getEast().toFixed(3),b.getNorth().toFixed(3)].join(",");
+}
+function autoStatus(t,cls){
+  var e=document.getElementById("autoMsg");
+  if(e){ e.textContent=t||""; e.style.color=cls==="err"?"var(--red)":"var(--dim)"; }
+}
+function scheduleAuto(){
+  if(!AUTO.on) return;
+  if(AUTO.timer) clearTimeout(AUTO.timer);
+  AUTO.timer=setTimeout(autoLoad,700);      /* let the pan settle first */
+}
+
+function autoLoad(){
+  if(!AUTO.on||AUTO.busy) return;
+  var root=proxyRoot(); if(!root) return;
+  if(map.getZoom()<AUTO_MIN_ZOOM){
+    if(AUTO.layer){ map.removeLayer(AUTO.layer); AUTO.layer=null; }
+    AUTO.rows=[]; AUTO.key="";
+    autoStatus("zoom in to load accounts");
+    var c0=document.getElementById("autoCount"); if(c0) c0.textContent="0";
+    return;
+  }
+  var k=autoKey();
+  if(k===AUTO.key) return;                  /* same view, nothing new to fetch */
+  AUTO.key=k; AUTO.busy=true;
+  autoStatus("loading accounts\u2026");
+  var b=map.getBounds();
+
+  /* circuits first — a business with no capacity behind it is not a lead */
+  fetchJSON(rptUrl(detailLayer(),{where:"1=1",
+      geometry:JSON.stringify({xmin:b.getWest(),ymin:b.getSouth(),xmax:b.getEast(),
+                               ymax:b.getNorth(),spatialReference:{wkid:4326}}),
+      geometryType:"esriGeometryEnvelope",inSR:"4326",
+      spatialRel:"esriSpatialRelIntersects",
+      outFields:"OBJECTID,Feeder,SS_N,BESS_HC,PV_HC_kW,EV_HC_kW,Feeder_Q",
+      returnGeometry:"true",geometryPrecision:"5",maxAllowableOffset:"0.00025",
+      outSR:"4326",resultRecordCount:"60"}),
+    function(err,j){
+      if(err||!j||!j.features||!j.features.length){ AUTO.busy=false; autoStatus("no circuits here"); return; }
+      var feeders=[];
+      for(var i=0;i<j.features.length;i++){
+        var a=j.features[i].attributes, g=j.features[i].geometry;
+        if(!g||!g.rings) continue;
+        var q=parseFloat(a.Feeder_Q); if(isNaN(q)) q=0;
+        var v=parseFloat(a.BESS_HC); if(isNaN(v)) v=0;
+        feeders.push({feeder:a.Feeder,sub:a.SS_N,val:v,net:v-q,queue:q,
+                      bess:a.BESS_HC,pv:a.PV_HC_kW,ev:a.EV_HC_kW,rings:g.rings});
+      }
+      autoBusinesses(root,b,feeders);
+    });
+}
+
+function autoBusinesses(root,b,feeders){
+  var where="within_box(location, "+b.getNorth()+", "+b.getWest()+", "+
+            b.getSouth()+", "+b.getEast()+") AND license_status='AAI'";
+  fetchJSON(root+"/socrata/chibiz?$where="+encodeURIComponent(where)+"&$limit=4000",
+    function(err,recs){
+      AUTO.busy=false;
+      if(err||!recs||recs.length===undefined){ autoStatus("licences unavailable here","err"); return; }
+      var rows=[],seen={};
+      for(var i=0;i<recs.length;i++){
+        var r=recs[i];
+        var lat=parseFloat(r.latitude), lon=parseFloat(r.longitude);
+        if(isNaN(lat)||isNaN(lon)){
+          var lc=r.location&&r.location.coordinates;
+          if(lc){ lon=lc[0]; lat=lc[1]; } else continue;
+        }
+        var kind=r.business_activity||r.license_description||"";
+        if(BIZ_SKIP.test(kind)) continue;
+        for(var f=0;f<feeders.length;f++){
+          if(!pointInRings(lon,lat,feeders[f].rings)) continue;
+          var key=(r.account_number||r.legal_name||"")+"|"+feeders[f].feeder;
+          if(seen[key]) break;
+          seen[key]=1;
+          rows.push({addr:(r.address||"").trim(),
+            biz:r.doing_business_as_name||r.legal_name||"",
+            bizLegal:r.legal_name||"", bizKind:kind, acct:r.account_number||"",
+            owner:r.legal_name||"", pin:"biz"+(r.account_number||i),
+            lat:lat, lon:lon, clsLabel:kind||"Commercial", cls:"",
+            av:{code:"local",label:"Operating business",rank:2},
+            feeder:feeders[f].feeder, sub:feeders[f].sub, val:feeders[f].val,
+            net:feeders[f].net, queue:feeders[f].queue,
+            bess:feeders[f].bess, pv:feeders[f].pv, ev:feeders[f].ev,
+            lite:true});                       /* not yet enriched */
+          break;
+        }
+      }
+      AUTO.rows=rows;
+      drawAuto();
+      autoStatus(rows.length?(rows.length+" accounts in view"):"no licensed businesses on these circuits");
+      var c=document.getElementById("autoCount"); if(c) c.textContent=rows.length;
+    });
+}
+
+/* Colour tells a rep the state of the lead, and stage always wins — once
+   somebody has touched an account, that fact matters more than its size. */
+function autoStyle(r){
+  var e=crmGet(r.pin)||{}, held=claimHeldBy(e);
+  if(e.stage){
+    var st=crmStage(e.stage);
+    return {radius:8,color:"#fff",weight:2.5,fillColor:st.color,
+            fillOpacity:e.stage==="dnc"?0.15:0.95,interactive:true};
+  }
+  var big=(r.net||0)>=(FD.sysKw||1000);
+  return {radius:big?7:5,
+          color:(held&&held!==REP)?"#e0533d":"#fff",
+          weight:(held&&held!==REP)?2.5:1.2,
+          fillColor:big?"#E8590C":"#9aa7b4",
+          fillOpacity:big?0.85:0.5,interactive:true};
+}
+function drawAuto(){
+  if(AUTO.layer){ map.removeLayer(AUTO.layer); AUTO.layer=null; }
+  if(!AUTO.on||!AUTO.rows.length) return;
+  AUTO.layer=L.layerGroup();
+  for(var i=0;i<AUTO.rows.length;i++){
+    var r=AUTO.rows[i];
+    var mk=L.circleMarker([r.lat,r.lon],autoStyle(r));
+    mk.__row=r;
+    mk.on("click",function(e){ L.DomEvent.stopPropagation(e); openAccount(this.__row); });
+    AUTO.layer.addLayer(mk);
+  }
+  AUTO.layer.addTo(map);
+}
+
+/* Click enriches ONE account, then opens the panel. */
+function openAccount(row){
+  if(!row.lite){ openDeal(row); return; }
+  var root=proxyRoot();
+  if(!root||!row.acct){ row.lite=false; openDeal(row); return; }
+  autoStatus("loading "+(row.biz||"account")+"\u2026");
+  fetchJSON(root+"/socrata/chiowner?$where="+
+      encodeURIComponent("account_number='"+String(row.acct).replace(/'/g,"")+"'")+"&$limit=40",
+    function(err,j){
+      if(!err&&j&&j.length){
+        var people=[],ents=[];
+        for(var n=0;n<j.length;n++){
+          var o=j[n];
+          var person=[titleCase(o.owner_first_name),
+                      (o.owner_middle_initial?titleCase(o.owner_middle_initial).charAt(0)+".":""),
+                      titleCase(o.owner_last_name)].filter(Boolean).join(" ").trim();
+          var ent=titleCase(o.owner_name||"");
+          var nm=person||ent; if(!nm) continue;
+          var lbl=nm+(o.owner_title?(" \u00b7 "+titleCase(o.owner_title)):"");
+          (person?people:ents).indexOf(lbl)<0 && (person?people:ents).push(lbl);
+        }
+        row.people=people.concat(ents).slice(0,4).join("; ");
+      }
+      /* phone from the bundle if it is deployed, else the search link */
+      loadPhoneBundle(function(){
+        var m=bundleLookup(row.addr,row.lat,row.lon);
+        if(m&&!row.phone){ row.phone=m.phone; row.phoneRaw=m.raw; row.phoneSrc=m.src; }
+        row.fb=nearestFiber(row.lat,row.lon);
+        row.cscore=computeScore(row);
+        row.lite=false;
+        autoStatus(AUTO.rows.length+" accounts in view");
+        openDeal(row);
+      });
+    });
+}
 
 /* ══════════════════════════════════════════════════════════════
    FOR SALE / FOR LEASE — Illinois EDC listings
@@ -3315,8 +3700,8 @@ function openDeal(row){
     var m={}; m[row.pin]=row; wireCrm(sw,m);
   } else if(sw){ sw.innerHTML='<span style="font-size:11px;color:var(--dim)">no PIN</span>'; }
   var nr=document.getElementById("dNoteRep");
-  nr.innerHTML=REP?('\u00b7 as <b style="color:var(--ink)">'+esc(REP)+'</b>')
-                  :'<span style="color:var(--red)">\u00b7 set your name in the legend first</span>';
+  nr.innerHTML=REP?('\u00b7 as <b style="color:'+repColor(REP)+'">'+esc(REP)+'</b>')
+                  :'<span style="color:var(--red)">\u00b7 sign in first</span>';
   document.getElementById("dNoteList").innerHTML=row.pin?notesHtml(row.pin):"";
   document.getElementById("dNote").value="";
   document.getElementById("siteCard").innerHTML=siteCardHtml(row);
@@ -4137,6 +4522,12 @@ document.getElementById("fdView").onclick=function(){
 };
 document.getElementById("prospect").onchange=function(){ PROSPECT=this.checked; repaint(); };
 document.getElementById("fiberOn").onchange=function(){ drawFiber(this.checked); };
+document.getElementById("autoOn").onchange=function(){
+  AUTO.on=this.checked;
+  if(AUTO.on){ AUTO.key=""; autoLoad(); } else { drawAuto(); autoStatus(""); }
+};
+map.on("moveend",scheduleAuto);
+setTimeout(function(){ if(SVC.ready) autoLoad(); else setTimeout(autoLoad,2500); },1800);
 document.getElementById("edcOn").onchange=function(){ drawEdc(this.checked); };
 loadEdc();
 document.getElementById("ciOn").onchange=function(){
@@ -4152,13 +4543,12 @@ crmLoad(function(){
   }
 });
 (function(){
-  var ri=document.getElementById("repName");
-  ri.value=repLoad();
-  ri.addEventListener("change",function(){
-    repSet(this.value);
-    this.style.borderColor=REP?"var(--green)":"var(--line)";
+  repLoad(); paintChip();
+  loadRoster(function(){
+    /* Block on identity. A note or a claim with nobody attached is
+       worse on a floor than an extra click at the start of a shift. */
+    if(!REP) openRepPicker();
   });
-  if(REP) ri.style.borderColor="var(--green)";
 })();
 
 
