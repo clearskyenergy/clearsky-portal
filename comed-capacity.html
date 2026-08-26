@@ -4415,12 +4415,14 @@ function renderCI(){
           kind:"Industrial parcel",
           title:row.addr||row.pin,
           sub:row.city||"",
-          lines:[row.owner||"owner unknown",
+          lines:[row.biz?(row.biz+"  ("+(row.bizSrc==="epa"?"EPA permit":"OSM")+", "+(row.bizM||0)+" m)"):"",
+                 row.biz?("Owner of record: "+(row.owner||"unknown")):(row.owner||"owner unknown"),
                  (ac?ac.toFixed(2)+" acres":"")+(ac&&vl?" \u00b7 ":"")+(vl?"$"+vl.toLocaleString()+" assessed":""),
                  (row.parkN>=3?(row.parkName||"Industrial park")+" \u00b7 "+row.parkN+" parcels":"Standalone site"),
                  "PIN "+row.pin],
           pin:row.pin, addr:(row.addr||"")+(row.city?", "+row.city:""),
-          owner:row.owner||"", lat:row.lat, lon:row.lon
+          owner:row.owner||"", business:row.biz||"", phone:row.bizPhone||"",
+          lat:row.lat, lon:row.lon
         },row.lat,row.lon);
       });
     })(r);
@@ -4439,7 +4441,17 @@ function ciPopup(r){
   return '<div class="cipop" data-pin="'+esc(r.pin)+'">'+
     '<b>'+esc(r.addr||r.pin)+'</b>'+
     (r.city?('<div style="font-size:11px;color:var(--muted)">'+esc(r.city.title?r.city:r.city)+'</div>'):'')+
-    '<div style="font-size:12px;font-weight:600;margin-top:3px">'+esc(r.owner||"owner unknown")+'</div>'+
+    /* The operating business leads when we have one — that is who answers
+       the phone. The assessor's owner of record sits under it, smaller,
+       because on industrial land it is usually a holding company. */
+    (r.biz
+      ? ('<div style="font-size:12.5px;font-weight:700;margin-top:3px">'+esc(r.biz)+'</div>'+
+         '<div style="font-size:10px;color:var(--dim);font-family:var(--mono)">'+
+           (r.bizSrc==="epa"?"EPA permit":"OpenStreetMap")+' \u00b7 '+(r.bizM||0)+' m'+
+           (r.bizKind?(' \u00b7 '+esc(r.bizKind)):'')+'</div>'+
+         '<div style="font-size:11px;color:var(--muted);margin-top:2px">Owner: '+esc(r.owner||"unknown")+'</div>')
+      : ('<div style="font-size:12px;font-weight:600;margin-top:3px">'+esc(r.owner||"owner unknown")+'</div>'))+
+    (r.bizPhone?('<div style="margin-top:4px">'+telLink(r.bizPhone,r.bizPhone,r.biz)+'</div>'):'')+
     '<div style="font-size:11px;margin-top:3px">'+
       (acres?(acres.toFixed(2)+' acres'):'')+
       (acres&&val?' \u00b7 ':'')+
@@ -4481,9 +4493,12 @@ function wireCiPopup(popup,r){
          parcel is claimed, the assessor's answer wins until a rep corrects
          it from the panel. */
       fields:{
-        siteName:r.addr||r.pin,
+        /* Site takes the operating business name where we have one, so the
+           pipeline reads as companies rather than street addresses. */
+        siteName:r.biz||r.addr||r.pin,
         address:(r.addr||"")+(r.city?(", "+r.city):""),
-        ownerName:r.owner||""
+        ownerName:r.owner||"",
+        ownerPhone:r.bizPhone||""
       }
     },function(err){
       if(err){ btn.disabled=false; msg.textContent="Could not add \u2014 check your connection."; msg.className="cipop-msg bad"; return; }
