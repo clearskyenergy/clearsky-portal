@@ -259,7 +259,7 @@ table.pv td.num{text-align:right;font-variant-numeric:tabular-nums}
         </div>
         <div class="grid2">
           <label class="f"><span>Markup on cost (%)</span><input type="number" id="p_markup" value="0" step="0.1" oninput="render()"></label>
-          <label class="f"><span>Trench split to future-proofing (%)</span><input type="number" id="p_fp" value="50" step="1" oninput="applyTrenchSplit()"></label>
+          <label class="f"><span>Trench split to future-proofing (%)</span><input type="number" id="p_fp" value="0" step="1" oninput="applyTrenchSplit()"></label>
         </div>
         <label class="f" style="margin-bottom:6px"><span>Tax base</span>
           <select id="p_taxlab" onchange="taxKnob()">
@@ -3338,7 +3338,13 @@ function renderMap(){
       + bnote
       + '<div style="margin-top:8px">Blocks and rows come from '+esc(layoutName())
       + '. FP % moves part of a line into Future Proofing — shared trenching defaults to a '
-      + nval('p_fp')+'/'+(100-nval('p_fp'))+' split.</div>';
+      + nval('p_fp')+'/'+(100-nval('p_fp'))+' split.'
+      + (nval('p_fp')>0
+         ? ' <b>'+nval('p_fp')+'% of the trench is being claimed as future proofing</b> \u2014 which is '
+           +'INELIGIBLE on Eversource and National Grid, so it comes out of the rebate. Set it only when '
+           +'the drawing actually carries spare capacity.'
+         : '')
+      + '</div>';
 }
 function layoutName(){
   return (FORM && formAppliesToClass(FORM))
@@ -3815,6 +3821,24 @@ function esFillTemplate(){
       if(has('l') && w2.lab)              ws.getCell('H'+R.r).value=r2(w2.lab);
       if(has('n') && w2.note)             ws.getCell('C'+R.r).value=w2.note;
       if(has('s') && (w2.mat||w2.lab))    ws.getCell('J'+R.r).value='Yes';
+
+      /* Rows without 'm' deliberately leave the material column to the
+         template's own =E*F formula. When that formula is not there — and on
+         112 Willow it was not — the cell simply stays empty and the money
+         vanishes: $304.20 of conduit and $2,238.00 of chargers dropped off
+         the sheet, and it footed $2,542.20 under the contractor proposal for
+         the same job. Never leave a priced row blank: if the cell carries no
+         formula, write the number. */
+      ensureMoney('G'+R.r, w2.mat);
+      ensureMoney('H'+R.r, w2.lab);
+    }
+    function ensureMoney(addr, v){
+      v=r2(v||0);
+      if(!v) return;
+      var c=ws.getCell(addr), cur=c.value;
+      var hasFormula = cur && typeof cur==='object' && cur.formula;
+      var hasNumber  = typeof cur==='number' && cur;
+      if(!hasFormula && !hasNumber) c.value=v;
     }
     return wb.xlsx.writeBuffer();
   }).then(function(buf){
