@@ -65174,14 +65174,25 @@ function _evFeetFromCanvas(){
     /* stamp first: _cdEstLf reads the riser allowance it sets */
     try{ if(typeof _cdStamp==='function') _cdStamp(c); }catch(e){}
     lf = (typeof _cdEstLf==='function') ? _cdEstLf(c) : (+c.ftLen||0);
-    if(c.route==='trench') ug+=lf; else ag+=lf;
+    /* Underground vs above-ground/indoor is about where the conduit RUNS,
+       not which tool drew it. The interior service->panel feed is tagged
+       L2-INT and is EMT, which is not rated for direct burial — but it is
+       drawn on a trench route, so it was being counted as underground and
+       priced at the buried rate. It belongs on Conduit & Cable - Above
+       Ground/Indoor with the rest of the interior work. */
+    var _cType=String(c.condType||'').toUpperCase();
+    var _cLbl =String(c.label||'').toLowerCase();
+    var _indoor = _cType.indexOf('INT')>=0 || _cType.indexOf('EMT')>=0
+               || _cLbl.indexOf('interior')>=0 || _cLbl.indexOf('indoor')>=0;
+    if(c.route==='trench' && !_indoor) ug+=lf; else ag+=lf;
     cable += (typeof _cdCableLf==='function') ? _cdCableLf(c) : 0;
     /* Surface type from the TRENCHED runs only, counting both kinds. Turf
        taken as "corridor total minus paved" invented 7 ft of excavation on a
        job whose only non-paved footage was a 7.2 ft INTERIOR run — the
        corridor total counts that run, and an interior conduit is not a
        trench. */
-    if(c.route==='trench'){
+    /* an interior run is not excavation, so it does not vote on the surface */
+    if(c.route==='trench' && !_indoor){
       if(c.trenchIn==='concrete'||c.trenchIn==='asphalt') pavedRuns += (+c.ftLen||0);
       else turfRuns += (+c.ftLen||0);
     }
@@ -65189,21 +65200,32 @@ function _evFeetFromCanvas(){
   /* Trench counts each shared corridor once — never the sum of the conduit
      lengths in it. trenchTotals() is the same function the schedule uses. */
   var tt=(typeof trenchTotals==='function')?trenchTotals():{ft:0,corridors:0};
-  /* Runs share corridors, so the corridor total is the truth for HOW MUCH
-     trench there is and the runs are the truth for WHAT KIND. Split the
-     corridor total in the runs' own proportion rather than by subtraction. */
-  var kind=pavedRuns+turfRuns, paved, turf;
-  if(kind>0){ paved=tt.ft*(pavedRuns/kind); turf=tt.ft*(turfRuns/kind); }
-  else { paved=tt.ft; turf=0; }
+
+  /* How much trench there actually is. trenchTotals() measures the CORRIDOR,
+     which counts every run laid in it — including the interior feed, which
+     is not dug. On 112 Willow that reported 156 ft against 141.9 ft of
+     branch actually trenched, so the sheet billed 14 ft of excavation that
+     nobody digs.
+
+     min() is what makes both cases right: when runs share a corridor the
+     sum exceeds the corridor and the corridor wins (no double-count); when
+     the corridor carries a run that is not excavation, the trenched footage
+     is smaller and it wins. */
+  var dug = pavedRuns + turfRuns;
+  var trenchFt = dug>0 ? Math.min(tt.ft, dug) : 0;
+
+  var kind=dug, paved, turf;
+  if(kind>0){ paved=trenchFt*(pavedRuns/kind); turf=trenchFt*(turfRuns/kind); }
+  else { paved=0; turf=0; }
   return {
-    trench:      Math.round(tt.ft),
+    trench:      Math.round(trenchFt),
     trenchPaved: Math.round(paved),
     trenchTurf:  Math.round(turf),
     conduitUG:   Math.round(ug),
     conduitAG:   Math.round(ag),
     conduit:     Math.round(ug+ag),
     cable:       Math.round(cable),
-    trenchDrawn: tt.ft>0
+    trenchDrawn: trenchFt>0
   };
 }
 

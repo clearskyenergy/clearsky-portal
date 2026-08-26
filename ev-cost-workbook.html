@@ -1616,7 +1616,7 @@ function setCustomBand(){
    numbers that came from a build that was no longer the code — the same
    export pasted twice, identical to the byte, while the fix sat undeployed.
    A visible build id ends that argument in one glance. */
-var OMEGA_BUILD = 'wb-2026-08-26i';
+var OMEGA_BUILD = 'wb-2026-08-26j';
 try{ window.OMEGA_BUILD = OMEGA_BUILD; }catch(e){}
 
 var LINES = [];
@@ -2384,6 +2384,7 @@ var STANDARD=[
      this to a button meant a real run silently missing from a submission.
      Gated on footage, so nothing appears without something drawn. */
   ['Conduit & Conductors','mr','conduit',true],
+  ['Conduit & Cable \u2014 Above Ground/Indoor','mr','conduitAG',true],
   ['Wiring','mr','wire',true],
   /* Every one of the three filed jobs on a new service carries a utility
      transformer pad; the two on existing services carry none. Gated on the
@@ -2631,7 +2632,19 @@ function standardRate(row, bucket){
        so the row has to appear for the adder alone, and the adder must not
        scale with feet. Driven by the site being a new service, never added
        silently on an existing-service job. */
-    case 'wire':       if(!(ftAG>0) && newSvc)
+    /* Above-ground footage belongs on the form's ABOVE-GROUND row. On the
+       Eversource matrix 'wire' is "Cable - Underground" and the above-ground
+       row is keyed conduitAG — so 15 LF of interior EMT was being priced
+       onto an underground line. Price conduitAG where the form has it, and
+       fall back to 'wire' only on forms that use it as the AG row. */
+    case 'conduitAG':  return ftAG>0 ? { qty:ftAG, unit:'LF',
+                                mat:RATE_CARD.conduitCableAG.mat*ftAG
+                                    + (newSvc?RATE_CARD.newServiceStructure.mat:0),
+                                lab:RATE_CARD.conduitCableAG.labBase
+                                    + RATE_CARD.conduitCableAG.labPerFt*ftAG,
+                                note:scopeNote('wire', ftAG) } : null;
+    case 'wire':       if(rowExists(bucket,'conduitAG')) return null;   /* AG lives there */
+                       if(!(ftAG>0) && newSvc)
                          return { qty:0, unit:'LF', mat:RATE_CARD.newServiceStructure.mat, lab:0,
                                   note:'New-service structure (underground lateral, no riser) per Price Guide' };
                        return ftAG>0 ? { qty:ftAG, unit:'LF',
