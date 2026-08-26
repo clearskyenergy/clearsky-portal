@@ -141,6 +141,34 @@
   #authBox .a-msg.ok{color:#2ea043}
   #authBox .a-note{font-size:10.5px;color:var(--muted);margin-top:14px;line-height:1.5}
   #authBox .a-note b{color:#0a6ed1}
+  .ctxp-who{margin-top:9px;border-top:1px solid var(--line);padding-top:9px}
+  .ctxp-find{width:100%;height:30px;border:1px solid var(--line);border-radius:7px;
+    background:var(--panel2);color:inherit;font:600 12px/1 inherit;cursor:pointer}
+  .ctxp-find:hover{border-color:#0a6ed1;color:#0a6ed1}
+  .ctxp-find:disabled{opacity:.6;cursor:default}
+  .ctxp-list{margin-top:6px;display:flex;flex-direction:column;gap:4px}
+  .ctxp-hit{text-align:left;border:1px solid var(--line);border-radius:7px;background:#fff;
+    padding:6px 9px;cursor:pointer;display:flex;flex-direction:column;gap:1px;font-family:inherit}
+  .ctxp-hit:hover{border-color:#0a6ed1}
+  .ctxp-hit.on{border-color:#0a6ed1;background:#EFF6FF}
+  .ctxp-hn{font-size:12px;font-weight:600;color:var(--ink)}
+  .ctxp-hm{font-size:10.5px;color:var(--dim)}
+  .ctxp-none{font-size:11px;color:var(--dim);line-height:1.45;padding:4px 2px}
+  .ctxp-none.bad{color:#c0392b}
+  .ctxp-attr{font-size:9px;color:var(--dim);font-family:var(--mono);padding-top:3px}
+
+  /* ── CLICKED-DOT CONTEXT (side panel) ───────────────────────── */
+  .ctxp{display:flex;flex-direction:column}
+  .ctxp-act{margin-top:9px;border-top:1px solid var(--line);padding-top:9px}
+  .ctxp-claim{width:100%;height:32px;border:0;border-radius:7px;background:#0a6ed1;
+    color:#fff;font:600 12.5px/1 inherit;cursor:pointer}
+  .ctxp-claim:hover{background:#0959ab}
+  .ctxp-claim:disabled{opacity:.55;cursor:default}
+  .ctxp-in{font-size:11.5px;font-weight:600}
+  .ctxp-msg{font-size:11px;color:var(--dim);min-height:13px;margin-top:5px}
+  .ctxp-msg.bad{color:#c0392b}
+  .ctxp-msg.ok{color:#2ea043}
+
   /* ── INDUSTRIAL PARCEL POPUP ────────────────────────────────── */
   .cipop{min-width:214px}
   .cipop-act{margin-top:9px;border-top:1px solid var(--line);padding-top:9px}
@@ -349,16 +377,16 @@
   <label class="lp" style="border-top:0;padding-top:0;margin-top:4px"><input type="checkbox" id="ciOn" checked><span>Find Sites results (<span id="ciCount">0</span>)</span></label>
   <label class="lp" style="border-top:0;padding-top:0;margin-top:4px"><input type="checkbox" id="edcOn"><span>For sale / lease (<span id="edcCount">–</span>)</span></label>
   <label class="lp" style="border-top:0;padding-top:0;margin-top:4px"><input type="checkbox" id="ilsOn"><span>Illinois Shines solar (<span id="ilsCount">–</span>)</span></label>
-  <label class="lp" style="border-top:0;padding-top:0;margin-top:4px"><input type="checkbox" id="ciOn"><span>Industrial parcels (<span id="ciCount">–</span>)</span></label>
-  <div id="ciKey" style="display:none;padding:2px 0 4px 22px">
-    <div class="st" style="cursor:default"><span class="dot" style="background:#7C3AED"></span><span>in a park</span></div>
-    <div class="st" style="cursor:default"><span class="dot" style="background:#A78BFA"></span><span>standalone site</span></div>
-    <div style="font-family:var(--mono);font-size:9px;color:var(--dim);padding-top:2px">zoom to 13+ to draw</div>
-  </div>
   <div id="ilsKey" style="display:none;padding:2px 0 4px 22px">
     <div class="st" style="cursor:default"><span class="dot" style="background:#F59E0B"></span><span>energized</span></div>
     <div class="st" style="cursor:default"><span class="dot" style="background:#94A3B8"></span><span>under development</span></div>
     <div style="font-family:var(--mono);font-size:9px;color:var(--dim);padding-top:2px">pins are ZIP centroids</div>
+  </div>
+  <label class="lp" style="border-top:0;padding-top:0;margin-top:4px"><input type="checkbox" id="indOn"><span>Industrial parcels (<span id="indCount">–</span>)</span></label>
+  <div id="indKey" style="display:none;padding:2px 0 4px 22px">
+    <div class="st" style="cursor:default"><span class="dot" style="background:#7C3AED"></span><span>in a park</span></div>
+    <div class="st" style="cursor:default"><span class="dot" style="background:#A78BFA"></span><span>standalone site</span></div>
+    <div style="font-family:var(--mono);font-size:9px;color:var(--dim);padding-top:2px">zoom to 13+ to draw</div>
   </div>
   <div id="ciKey" style="display:none;padding:2px 0 4px 22px">
     <div class="st" style="cursor:default"><span class="dot" style="background:#E8590C"></span><span>has a phone</span></div>
@@ -1092,6 +1120,7 @@ function showResult(ll,info,rendLabel,layerId,all){
      are working wants the stage and the contact first; the feeder numbers
      matter once, at qualification, and are still a scroll away. */
   if(PANEL_PIN&&CRM.data[PANEL_PIN]) h+=crmPanelBlock(PANEL_PIN);
+  else if(PANEL_CTX) h+=ctxPanelBlock(PANEL_CTX);
 
   if(layerId!=null&&layerId!=75){
     h+='<div class="note" style="border-left:3px solid var(--amber);padding-left:9px;margin-bottom:4px">'+
@@ -1137,6 +1166,7 @@ function showResult(ll,info,rendLabel,layerId,all){
   h+='<div class="sec">Diagnostics</div><div class="diag">'+esc(DIAG.slice(-12).join("\n"))+'</div>';
   document.getElementById("pBody").innerHTML=h;
   if(PANEL_PIN&&CRM.data[PANEL_PIN]) wireCrmPanel(PANEL_PIN);
+  else if(PANEL_CTX) wireCtxPanel(PANEL_CTX);
   var ps=document.getElementById("pSize");
   if(ps) ps.onclick=function(){
     var q=parseFloat(info.queue); if(isNaN(q)) q=0;
@@ -1159,6 +1189,27 @@ function showResult(ll,info,rendLabel,layerId,all){
    ══════════════════════════════════════════════════════════════════ */
 var PANEL_PIN=null;
 
+/* ── CLICKING A DATA DOT OPENS THE CAPACITY PANEL ─────────────────
+   Every dot on this map sits at a real coordinate, so clicking one
+   should answer the question a rep actually has — "what can this site
+   take?" — not just show what the source file already said. PANEL_CTX
+   carries the dot's own facts into showResult so the panel leads with
+   them and the ComEd numbers follow.
+
+   Deliberately NOT reverse-geocoded through Google. This map is
+   Leaflet/CARTO, and Google's terms forbid using their geocodes
+   alongside a non-Google basemap — the same reason the address sweep
+   uses county parcel layers instead. Where a dot has no address of its
+   own, the panel says so rather than inventing one. */
+var PANEL_CTX=null;
+
+function openDot(ctx,lat,lon){
+  PANEL_PIN=null;
+  PANEL_CTX=ctx||null;
+  openPanel();
+  analyze(L.latLng(lat,lon));
+}
+
 /* Reps who have worked something in this org. Firebase Auth cannot be
    enumerated from the browser, so the assignable list is built from the
    pipeline itself — which means a brand-new rep does not appear until
@@ -1178,6 +1229,189 @@ function knownReps(){
   }
   out.sort(function(a,b){ return a.name.localeCompare(b.name); });
   return out;
+}
+
+/* What the clicked dot already knows, shown above the ComEd numbers, with
+   one button to put it in the pipeline. Same claim path as the parcel
+   popup, so a site claimed from any layer lands in `sites` keyed the same
+   way and cannot be double-added. */
+/* ══════════════════════════════════════════════════════════════════
+   WHO IS AT THIS LOCATION  —  OpenStreetMap via Overpass
+   ══════════════════════════════════════════════════════════════════
+   The assessor gives the OWNER OF RECORD, which is very often a holding
+   company: "DIEHL ROAD OWNER LLC" tells a rep nothing they can open a
+   call with. What they want is the business operating there.
+
+   NOT Google. Google Places forbids caching most fields, forbids bulk
+   extraction, and forbids displaying its data on a non-Google basemap —
+   this map is Leaflet/CARTO, so that last one alone rules it out. The
+   same constraint is already documented in the address-sweep block.
+
+   OSM is ODbL: free to query, free to store, attribution only, no
+   basemap restriction. Coverage is thinner than Google's — expect a hit
+   on maybe half of industrial sites and better on retail — so this
+   OFFERS candidates and never overwrites silently. The rep picks, or
+   ignores it and types what they learned on the phone.
+   ══════════════════════════════════════════════════════════════════ */
+var OSM_ENDPOINT="https://overpass-api.de/api/interpreter";
+
+function osmNearby(lat,lon,radius,cb){
+  var q='[out:json][timeout:20];('
+    +'nwr(around:'+radius+','+lat+','+lon+')["name"]["office"];'
+    +'nwr(around:'+radius+','+lat+','+lon+')["name"]["craft"];'
+    +'nwr(around:'+radius+','+lat+','+lon+')["name"]["shop"];'
+    +'nwr(around:'+radius+','+lat+','+lon+')["name"]["amenity"];'
+    +'nwr(around:'+radius+','+lat+','+lon+')["name"]["man_made"="works"];'
+    +'nwr(around:'+radius+','+lat+','+lon+')["name"]["industrial"];'
+    +'nwr(around:'+radius+','+lat+','+lon+')["name"]["landuse"="industrial"];'
+    +'nwr(around:'+radius+','+lat+','+lon+')["name"]["building"~"industrial|warehouse|commercial|retail"];'
+    +');out center tags 40;';
+  var x=new XMLHttpRequest();
+  x.open("POST",OSM_ENDPOINT,true);
+  x.setRequestHeader("Content-Type","application/x-www-form-urlencoded");
+  x.timeout=25000;
+  x.onreadystatechange=function(){
+    if(x.readyState!==4) return;
+    if(x.status<200||x.status>=300){ cb("Could not reach OpenStreetMap ("+x.status+")."); return; }
+    var j=null; try{ j=JSON.parse(x.responseText); }catch(e){ cb("Bad response from OpenStreetMap."); return; }
+    var seen={}, out=[];
+    (j.elements||[]).forEach(function(el){
+      var t=el.tags||{};
+      if(!t.name) return;
+      var key=t.name.toLowerCase();
+      if(seen[key]) return;
+      seen[key]=1;
+      var c=el.center||{lat:el.lat,lon:el.lon};
+      out.push({
+        name:t.name,
+        kind:t.industrial||t.office||t.craft||t.shop||t.amenity||t.building||"",
+        phone:t.phone||t["contact:phone"]||"",
+        site:t.website||t["contact:website"]||"",
+        addr:[t["addr:housenumber"],t["addr:street"]].filter(Boolean).join(" "),
+        /* Distance so a rep can tell the tenant on the parcel from the
+           petrol station across the road. */
+        m:(c&&c.lat!=null)?Math.round(distM(lat,lon,c.lat,c.lon)):null
+      });
+    });
+    out.sort(function(a,b){ return (a.m==null?9e9:a.m)-(b.m==null?9e9:b.m); });
+    cb(null,out);
+  };
+  x.ontimeout=function(){ cb("OpenStreetMap timed out."); };
+  x.onerror=function(){ cb("Could not reach OpenStreetMap."); };
+  x.send("data="+encodeURIComponent(q));
+}
+
+function distM(a1,o1,a2,o2){
+  var dy=(a2-a1)*111000, dx=(o2-o1)*111000*Math.cos(a1*Math.PI/180);
+  return Math.sqrt(dy*dy+dx*dx);
+}
+
+function ctxPanelBlock(c){
+  var existing=c.pin?CRM.data[c.pin]:null;
+  var st=existing?crmStage(existing.stage):null;
+  var h='<div class="sec">'+esc(c.kind||"Site")+'</div><div class="ctxp" data-pin="'+esc(c.pin||"")+'">';
+  h+='<div style="font-weight:700;font-size:13px">'+esc(c.title||"Untitled")+'</div>';
+  if(c.sub) h+='<div style="font-size:11.5px;color:var(--muted);margin-top:2px">'+esc(c.sub)+'</div>';
+  for(var i=0;i<(c.lines||[]).length;i++){
+    if(c.lines[i]) h+='<div style="font-size:11.5px;margin-top:3px">'+esc(c.lines[i])+'</div>';
+  }
+  if(c.phone) h+='<div style="margin-top:5px">'+telLink(c.phone,c.phone,c.title)+'</div>';
+  if(c.approx) h+='<div style="font-size:10.5px;color:var(--dim);margin-top:5px;line-height:1.4">'+
+    esc(c.approx)+'</div>';
+  /* Who is actually operating here. Offered, never assumed — the owner of
+     record and the tenant are different facts and the rep decides which
+     one they are calling. */
+  if(c.pin){
+    h+='<div class="ctxp-who">'+
+         '<button class="ctxp-find">Who\u2019s operating here?</button>'+
+         '<div class="ctxp-list"></div>'+
+       '</div>';
+  }
+  h+='<div class="ctxp-act">'+
+     (!c.pin ? '<div class="ctxp-in" style="color:var(--dim)">Not claimable \u2014 no parcel id</div>'
+      : existing
+        ? ('<div class="ctxp-in" style="color:'+(st?st.color:'#666')+'">In your pipeline \u00b7 '+
+           esc(st?st.label:"tracked")+(existing.rep?(' \u00b7 '+esc(existing.rep)):'')+'</div>')
+        : '<button class="ctxp-claim">Add to pipeline</button>')+
+     '<div class="ctxp-msg"></div></div></div>';
+  return h;
+}
+
+function wireCtxPanel(c){
+  var host=document.querySelector('.ctxp[data-pin]');
+  if(!host) return;
+  var btn=host.querySelector(".ctxp-claim");
+  var msg=host.querySelector(".ctxp-msg");
+
+  /* ── business lookup ── */
+  var find=host.querySelector(".ctxp-find");
+  var list=host.querySelector(".ctxp-list");
+  if(find){
+    find.onclick=function(){
+      find.disabled=true; find.textContent="Looking\u2026";
+      list.innerHTML='';
+      osmNearby(c.lat,c.lon,150,function(err,rows){
+        find.disabled=false; find.textContent="Who\u2019s operating here?";
+        if(err){ list.innerHTML='<div class="ctxp-none bad">'+esc(err)+'</div>'; return; }
+        if(!rows.length){
+          list.innerHTML='<div class="ctxp-none">Nothing mapped within 150 m. '+
+            'OpenStreetMap coverage is patchy on industrial sites \u2014 the owner '+
+            'of record above is still your best starting point.</div>';
+          return;
+        }
+        var h='';
+        for(var i=0;i<rows.length&&i<8;i++){
+          var r=rows[i];
+          h+='<button class="ctxp-hit" data-i="'+i+'">'+
+               '<span class="ctxp-hn">'+esc(r.name)+'</span>'+
+               '<span class="ctxp-hm">'+(r.m!=null?(r.m+' m'):'')+
+                 (r.kind?(' \u00b7 '+esc(String(r.kind).replace(/_/g," "))):'')+'</span>'+
+             '</button>';
+        }
+        h+='<div class="ctxp-attr">\u00a9 OpenStreetMap contributors</div>';
+        list.innerHTML=h;
+        var bs=list.getElementsByClassName("ctxp-hit");
+        for(var b=0;b<bs.length;b++){
+          bs[b].onclick=(function(r){ return function(){
+            /* Fill the claim, do not perform it. The rep still presses the
+               button, and can still overrule the name. */
+            c.business=r.name;
+            c.phone=c.phone||r.phone||"";
+            if(r.addr&&!c.addr) c.addr=r.addr;
+            var sel=list.querySelectorAll(".ctxp-hit");
+            for(var k=0;k<sel.length;k++) sel[k].className="ctxp-hit";
+            this.className="ctxp-hit on";
+            if(msg){ msg.textContent="Will file as \u201c"+r.name+"\u201d."; msg.className="ctxp-msg ok"; }
+          };})(rows[b]);
+        }
+      });
+    };
+  }
+
+  if(!btn) return;
+  btn.onclick=function(){
+    if(!FS_READY){ msg.textContent="Sign in first."; msg.className="ctxp-msg bad"; return; }
+    btn.disabled=true; msg.textContent="Adding\u2026"; msg.className="ctxp-msg";
+    crmPush(c.pin,{
+      pin:c.pin, rep:REP, patch:{stage:"target"}, claim:true,
+      row:{addr:c.addr||c.title,owner:c.owner||"",lat:c.lat,lon:c.lon,phone:c.phone||""},
+      /* The operating business becomes the site name when the rep picked
+         one; the assessor's owner of record stays in ownerName. Both are
+         true and a rep needs each for a different call. */
+      fields:{siteName:c.business||c.title||c.pin,
+              address:c.addr||"",
+              ownerName:c.owner||"",
+              contactPhone:c.phone||""}
+    },function(err){
+      if(err){ btn.disabled=false; msg.textContent="Could not add."; msg.className="ctxp-msg bad"; return; }
+      msg.textContent="Added to your pipeline."; msg.className="ctxp-msg ok";
+      crmNote(c.pin,"Added from the "+(c.kind||"map")+" layer."+
+        (c.business?(" Operating business \u201c"+c.business+"\u201d matched from OpenStreetMap \u2014 confirm on the call."):""),
+        null,null);
+      PANEL_CTX=null; PANEL_PIN=c.pin;
+      setTimeout(function(){ analyze(L.latLng(c.lat,c.lon)); },600);
+    });
+  };
 }
 
 function crmPanelBlock(pin){
@@ -1353,7 +1587,7 @@ function openPanel(){document.getElementById("panel").className="open";document.
 document.getElementById("pClose").onclick=function(){document.getElementById("panel").className="";document.body.className="";
   setTimeout(function(){map.invalidateSize();},300);};
 
-map.on("click",function(e){ PANEL_PIN=null; analyze(e.latlng); });
+map.on("click",function(e){ PANEL_PIN=null; PANEL_CTX=null; analyze(e.latlng); });
 map.on("moveend zoomend",function(){ refreshOverlay(); });
 
 /* ── geocode ─────────────────────────────────────────────────── */
@@ -4117,7 +4351,7 @@ function loadCI(cb){
     if(hi>=DATA_HOSTS.length){
       CI.state="failed";
       diag("ci: ci-industrial.js not found on this host or tools.csebuilders.com");
-      var el=document.getElementById("ciCount");
+      var el=document.getElementById("indCount");
       if(el){ el.textContent="!"; el.title="ci-industrial.js not deployed"; }
       var q0=CI.queue; CI.queue=[]; q0.forEach(function(f){f();});
       return;
@@ -4129,7 +4363,7 @@ function loadCI(cb){
       if(!window.CS_CI){ tryHost(); return; }
       CI.rows=window.CS_CI; CI.state="ready";
       diag("ci: "+CI.rows.length+" parcels from "+(url||"same origin"));
-      var el=document.getElementById("ciCount"); if(el) el.textContent=CI.rows.length.toLocaleString();
+      var el=document.getElementById("indCount"); if(el) el.textContent=CI.rows.length.toLocaleString();
       var q=CI.queue; CI.queue=[]; q.forEach(function(f){f();});
     };
     sc.onerror=function(){ diag("ci: miss "+url); tryHost(); };
@@ -4144,7 +4378,7 @@ function ciRadius(ac){
 
 function drawCI(on){
   if(ciLayer){ map.removeLayer(ciLayer); ciLayer=null; }
-  var key=document.getElementById("ciKey");
+  var key=document.getElementById("indKey");
   if(key) key.style.display=on?"block":"none";
   if(!on) return;
   loadCI(function(){
@@ -4154,7 +4388,7 @@ function drawCI(on){
 }
 
 function renderCI(){
-  var box=document.getElementById("ciOn");
+  var box=document.getElementById("indOn");
   if(!box||!box.checked||CI.state!=="ready") return;
   if(ciLayer){ map.removeLayer(ciLayer); ciLayer=null; }
   if(map.getZoom()<CI_MINZOOM){
@@ -4175,6 +4409,20 @@ function renderCI(){
     mk.bindPopup(ciPopup(r),{minWidth:236});
     (function(row){
       mk.on("popupopen",function(ev){ wireCiPopup(ev.popup,row); });
+      mk.on("click",function(){
+        var ac=Number(row.acres)||0, vl=Number(row.val)||0;
+        openDot({
+          kind:"Industrial parcel",
+          title:row.addr||row.pin,
+          sub:row.city||"",
+          lines:[row.owner||"owner unknown",
+                 (ac?ac.toFixed(2)+" acres":"")+(ac&&vl?" \u00b7 ":"")+(vl?"$"+vl.toLocaleString()+" assessed":""),
+                 (row.parkN>=3?(row.parkName||"Industrial park")+" \u00b7 "+row.parkN+" parcels":"Standalone site"),
+                 "PIN "+row.pin],
+          pin:row.pin, addr:(row.addr||"")+(row.city?", "+row.city:""),
+          owner:row.owner||"", lat:row.lat, lon:row.lon
+        },row.lat,row.lon);
+      });
     })(r);
     ciLayer.addLayer(mk);
     drawn++;
@@ -4346,6 +4594,21 @@ function drawIlshines(on){
           why+'<br>Pin is the ZIP centroid, not the parcel \u2014 do not read a feeder off it.'+
         '</div></div>';
       mk.bindPopup(body,{minWidth:220});
+      (function(row){
+        mk.on("click",function(){
+          openDot({
+            kind:"Illinois Shines solar",
+            title:(isCS?"Community solar":"C&I solar")+" \u00b7 "+row.id,
+            sub:row.vendor||"",
+            lines:[row.status+" \u00b7 "+sz, (row.util||"")+" \u00b7 ZIP "+(row.zip||""),
+                   row.subs?(fmtInt(row.subs)+" subscriber"+(row.subs===1?"":"s")):""],
+            /* No pin: a ZIP centroid is not a parcel, so this cannot be
+               claimed as a site without inventing a location. */
+            pin:"", lat:row.lat, lon:row.lon,
+            approx:"Pin is the ZIP centroid, not the parcel \u2014 the capacity below is for that point, not for the array."
+          },row.lat,row.lon);
+        });
+      })(r);
       ilsLayer.addLayer(mk);
     }
     ilsLayer.addTo(map);
@@ -5506,11 +5769,11 @@ map.on("moveend",scheduleAuto);
 setTimeout(function(){ if(SVC.ready) autoLoad(); else setTimeout(autoLoad,2500); },1800);
 document.getElementById("edcOn").onchange=function(){ drawEdc(this.checked); };
 document.getElementById("ilsOn").onchange=function(){ drawIlshines(this.checked); };
-document.getElementById("ciOn").onchange=function(){ drawCI(this.checked); };
+document.getElementById("indOn").onchange=function(){ drawCI(this.checked); };
 /* Redraw on pan/zoom: the layer is viewport-scoped, so a stale draw would
    show parcels from wherever the rep used to be looking. */
 map.on("moveend zoomend",function(){
-  var b=document.getElementById("ciOn");
+  var b=document.getElementById("indOn");
   if(b&&b.checked&&CI.state==="ready") renderCI();
 });
 loadEdc();
