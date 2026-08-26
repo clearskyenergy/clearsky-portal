@@ -1180,9 +1180,38 @@ function crmPanelBlock(pin){
   }
   h+='</select>';
 
-  h+='<label class="acct-l">Contact at this account</label>'+
-     '<input class="acct-cname" maxlength="120" placeholder="Name of the person you spoke to" value="'+esc(e.contactName||"")+'">'+
-     '<input class="acct-cphone" maxlength="40" placeholder="Direct line" value="'+esc(e.contactPhone||"")+'">';
+  /* ── SITE DETAIL ────────────────────────────────────────────────
+     Every source on this map is partial: a parcel record has an owner and
+     no phone, a listing has a phone and no owner, Illinois Shines has a
+     vendor and neither. The rep finds the rest on the call, so all of it
+     is typeable — and once typed it is pinned against the source (see
+     crmPush).
+
+     A pencil marks fields a human has overridden, so the next rep can tell
+     "we confirmed this" from "the scrape said so". */
+  var ed=e.edits||{};
+  function fld(cls,key,label,ph,type){
+    var v=e[key]||"";
+    return '<label class="acct-l">'+esc(label)+
+             (ed[key]?'<span class="acct-ed" title="entered by a rep \u2014 the data source will not overwrite it">\u270e</span>':'')+
+           '</label>'+
+           '<input class="'+cls+'" data-k="'+key+'"'+(type?(' type="'+type+'"'):'')+
+             ' maxlength="300" placeholder="'+esc(ph)+'" value="'+esc(v)+'">';
+  }
+
+  h+='<div class="acct-sec">Site</div>'+
+     fld("acct-f","siteName","Site name","Name this site is known by")+
+     fld("acct-f","address","Address","Street address")+
+     '<div class="acct-sec">Owner</div>'+
+     fld("acct-f","ownerName","Owner / company","Who owns the property")+
+     fld("acct-f","ownerEmail","Owner email","name@company.com","email")+
+     fld("acct-f","ownerPhone","Owner phone","Main line","tel")+
+     '<div class="acct-sec">Contact</div>'+
+     fld("acct-f acct-cname","contactName","Who you spoke to","Name of the person")+
+     fld("acct-f","contactTitle","Title","Facilities manager, owner\u2026")+
+     fld("acct-f","contactEmail","Contact email","name@company.com","email")+
+     fld("acct-f acct-cphone","contactPhone","Direct line","Their direct number","tel")+
+     fld("acct-f","siteNotes","Standing detail","Gate code, best time to call\u2026");
 
   var reps=knownReps();
   h+='<label class="acct-l">Assigned rep</label><select class="acct-rep">'+
@@ -1221,8 +1250,6 @@ function wireCrmPanel(pin){
   var host=document.querySelector('.acct[data-pin]');
   if(!host) return;
   var sel  =host.querySelector(".acct-stage");
-  var cn   =host.querySelector(".acct-cname");
-  var cp   =host.querySelector(".acct-cphone");
   var rep  =host.querySelector(".acct-rep");
   var other=host.querySelector(".acct-repother");
   var note =host.querySelector(".acct-note");
@@ -1235,18 +1262,35 @@ function wireCrmPanel(pin){
     if(rep.value==="__other") other.focus();
   };
 
+  var EMAIL=/^[^@\s]+@[^@\s]+\.[^@\s]+$/;
+
   save.onclick=function(){
     var e=CRM.data[pin]||{};
     var stage=sel.value;
     var assignEmail=(rep.value==="__other")?(other.value||"").trim().toLowerCase():rep.value;
     var text=(note.value||"").trim();
 
-    if(rep.value==="__other"&&assignEmail&&!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(assignEmail)){
+    if(rep.value==="__other"&&assignEmail&&!EMAIL.test(assignEmail)){
       msg.textContent="That does not look like an email address."; msg.className="acct-msg bad"; return;
     }
 
-    var payload={pin:pin,rep:REP,patch:{stage:stage},
-                 contactName:cn.value,contactPhone:cp.value};
+    /* Collect only what actually CHANGED. Sending every field on every save
+       would stamp edits[] on fields nobody touched, permanently freezing the
+       source out of them for no reason. */
+    var fields={},dirty=false,inputs=host.querySelectorAll(".acct-f[data-k]"),n,key,val;
+    for(n=0;n<inputs.length;n++){
+      key=inputs[n].getAttribute("data-k");
+      val=(inputs[n].value||"").trim();
+      if(val===((e[key]||""))) continue;
+      if((key==="ownerEmail"||key==="contactEmail")&&val&&!EMAIL.test(val)){
+        msg.textContent=(key==="ownerEmail"?"Owner":"Contact")+" email does not look valid.";
+        msg.className="acct-msg bad"; inputs[n].focus(); return;
+      }
+      fields[key]=val; dirty=true;
+    }
+
+    var payload={pin:pin,rep:REP,patch:{stage:stage}};
+    if(dirty) payload.fields=fields;
     /* Only send an assignment when it actually changed. Sending it every
        time would rewrite claimedAt on every save and make the claim look
        newer than it is. */
@@ -1257,6 +1301,10 @@ function wireCrmPanel(pin){
           return assignEmail?assignEmail.split("@")[0]:""; })()};
     } else if(stage&&stage!==(e.stage||"")){
       payload.claim=true;                 /* staging an unowned site claims it */
+    }
+
+    if(!dirty && !text && stage===(e.stage||"") && !payload.assign){
+      msg.textContent="Nothing to save."; msg.className="acct-msg"; return;
     }
 
     save.disabled=true;
@@ -2933,6 +2981,19 @@ function fsToEntry(d){
        conventions cannot disagree. */
     notes:(d.notes||[]).slice().sort(function(a,b){ return (b.ts||0)-(a.ts||0); }),
     contactName:d.contactName||"", contactPhone:d.contactPhone||"",
+    contactTitle:d.contactTitle||"", contactEmail:d.contactEmail||"",
+    ownerEmail:d.ownerEmail||"", siteNotes:d.siteNotes||"",
+    siteName:d.siteName||"",
+    /* ALIASES, DELIBERATELY. The rest of the tool has read addr/phone since
+       before Firestore, and the panel inputs key off the Firestore names.
+       Exposing both keeps the map code untouched while letting the editor
+       show what is actually stored — without these two lines the Address
+       and Owner phone boxes render blank over real data, which reads as
+       "my edit did not save". */
+    address:d.address||"", ownerPhone:d.ownerPhone||"", ownerName:d.ownerName||"",
+    /* Which fields a human typed. crmPush reads this to stop the map layer
+       overwriting them on the next save. */
+    edits:d.edits||{},
     claimedBy:d.claimedBy||"", claimedByEmail:d.claimedByEmail||"",
     claimedAt:d.claimedAt&&d.claimedAt.toMillis?d.claimedAt.toMillis():(d.claimedAt||0),
     calls:d.callCount||0,
@@ -3008,15 +3069,54 @@ function crmPush(pin,body,cb){
      owns it; later reps appear in the note log. */
   /* repEmail is written below, inside the claim guard — see mayClaim. */
 
-  /* Enough of the row to draw a pin without re-running the sweep. */
+  /* Enough of the row to draw a pin without re-running the sweep.
+
+     ⚠ A HAND-TYPED VALUE ALWAYS BEATS THE SOURCE. `row` is re-supplied by
+     the map layer on EVERY save, so without this guard a rep who corrects a
+     wrong owner phone would watch the parcel/EDC/Illinois Shines value
+     silently overwrite it the next time anyone touched the site — and the
+     correction would look like it never saved. `edits` records which fields
+     a human typed; those are skipped here for good.
+
+     The rep is the better source anyway: they just had the person on the
+     phone. The scraped record is a starting guess. */
+  var ed=(existing.edits)||{};
+  function srcSet(field,val,editKey){
+    if(val===undefined||val===null||val==="") return;
+    if(ed[editKey||field]) return;          /* a human owns this field now */
+    doc[field]=val;
+  }
   if(row){
-    if(row.addr) doc.address=row.addr;
-    if(row.owner) doc.ownerName=row.owner;
+    srcSet("address",row.addr);
+    srcSet("siteName",row.addr,"address");  /* both come from the same edit */
+    srcSet("ownerName",row.owner);
+    srcSet("ownerPhone",row.phone);
     if(row.feeder) doc.feeder=row.feeder;
     if(row.net!=null) doc.hostingCapacityKw=Number(row.net)||0;
     if(row.lat!=null){ doc.lat=row.lat; doc.lon=row.lon; }
-    if(row.phone) doc.ownerPhone=row.phone;
-    if(row.addr) doc.siteName=row.addr;
+  }
+
+  /* ── HAND-ENTERED SITE DETAIL ──────────────────────────────────────
+     Everything a rep can type. Each write also stamps edits[field] so the
+     source can never take it back. Empty string is a legitimate value —
+     it means "clear what was there" — so this checks for undefined, not
+     for truthiness. */
+  if(body&&body.fields){
+    var F=body.fields, k;
+    var ALLOW=["siteName","address","ownerName","ownerEmail","ownerPhone",
+               "contactName","contactTitle","contactEmail","contactPhone","siteNotes"];
+    /* NESTED OBJECT, NOT A DOTTED KEY. set() treats "edits.siteName" as a
+       field literally called that; only update() reads dots as a path.
+       set({merge:true}) deep-merges maps, so writing a partial edits object
+       marks the new fields without wiping the ones already there. */
+    var marks={};
+    for(var i2=0;i2<ALLOW.length;i2++){
+      k=ALLOW[i2];
+      if(F[k]===undefined) continue;
+      doc[k]=String(F[k]).slice(0,300);
+      marks[k]=true;
+    }
+    for(k in marks){ if(marks.hasOwnProperty(k)){ doc.edits=marks; break; } }
   }
 
   /* A claim is taken when a rep first puts a stage on a site — but ONLY if
@@ -3025,11 +3125,6 @@ function crmPush(pin,body,cb){
      the opposite of what visible claims are for. Taking somebody else's
      account is possible, but it has to be deliberate: the popup shows the
      current owner and offers an explicit Take over. */
-  /* Who the rep is actually talking to at the account. Stored on the site,
-     not buried in a note, because the next person to pick this up needs a
-     name and a number without reading six months of call log. */
-  if(body&&body.contactName!==undefined) doc.contactName=String(body.contactName||"").slice(0,120);
-  if(body&&body.contactPhone!==undefined) doc.contactPhone=String(body.contactPhone||"").slice(0,40);
 
   /* EXPLICIT ASSIGNMENT. Distinct from a claim: a claim is "I picked this
      up", an assignment is "this is yours now" — a manager routing an
@@ -3270,7 +3365,15 @@ function drawCrm(on){
       (e.rep?(' \u00b7 <span style="color:var(--muted);font-weight:400">'+esc(e.rep)+'</span>'):'')+'</div>'+
       (e.owner?('<div style="font-size:11px;color:var(--muted)">'+esc(e.owner)+'</div>'):'')+
       (e.net!=null?('<div style="font-size:11px">'+Math.round(e.net).toLocaleString()+' kW available</div>'):'')+
-      (e.phone?('<div style="margin-top:4px">'+telLink(e.phone,e.phone,e.owner)+'</div>'):'')+
+      (e.contactName?('<div style="font-size:11px;margin-top:4px">'+esc(e.contactName)+
+        (e.contactTitle?(' \u00b7 '+esc(e.contactTitle)):'')+'</div>'):'')+
+      /* Prefer the direct line a rep confirmed over the switchboard the scrape
+         found — that is the number that actually gets answered. */
+      ((e.contactPhone||e.phone)?('<div style="margin-top:4px">'+
+        telLink(e.contactPhone||e.phone,e.contactPhone||e.phone,e.contactName||e.owner)+'</div>'):'')+
+      ((e.contactEmail||e.ownerEmail)?('<div style="margin-top:3px;font-size:11px">'+
+        '<a href="mailto:'+esc(e.contactEmail||e.ownerEmail)+'" style="color:#0a6ed1">'+
+        esc(e.contactEmail||e.ownerEmail)+'</a></div>'):'')+
       (last?('<div style="margin-top:6px;border-top:1px solid #eee;padding-top:5px;font-size:11px">'+
              '<span style="font-family:var(--mono);font-size:9px;color:var(--dim)">'+esc(last.rep)+
              ' \u00b7 '+esc(noteAge(last.ts))+'</span><br>'+esc(last.t.slice(0,140))+'</div>'):'')+
