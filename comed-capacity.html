@@ -643,6 +643,40 @@ var map=L.map("map",{zoomControl:false,minZoom:6,maxZoom:19,preferCanvas:true}).
 L.control.zoom({position:"bottomright"}).addTo(map);
 L.tileLayer("https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png",
   {attribution:"© OpenStreetMap · © CARTO · ComEd hosting capacity",subdomains:"abcd",maxZoom:19}).addTo(map);
+/* ── STACKING ORDER ──────────────────────────────────────────────
+   The pipeline pins were unclickable: drawFeatures() clears and re-adds
+   the whole capacity layer on EVERY pan and zoom, so those polygons kept
+   being re-inserted after the pins. With preferCanvas the last thing
+   drawn is the thing on top, and the polygons are interactive:true with
+   their own click handler — so a rep clicking their own claimed account
+   got the capacity popup for the polygon underneath it instead.
+
+   Fixed with explicit panes rather than by reordering the redraw, because
+   any future layer added after the pins would reintroduce exactly the
+   same bug. Each renderer gets its own canvas in its own pane, so the
+   z-order is declared once here and holds no matter what redraws when.
+
+      capPane   410  hosting-capacity polygons — the backdrop
+      dataPane  450  accounts, for-sale/lease, Find Sites results
+      pipePane  470  the pipeline. Always clickable: it is the one layer
+                     a rep is actually working, and it must win every
+                     click contest against the map beneath it.
+   ──────────────────────────────────────────────────────────────── */
+map.createPane("capPane");  map.getPane("capPane").style.zIndex  = 410;
+map.createPane("dataPane"); map.getPane("dataPane").style.zIndex = 450;
+map.createPane("pipePane"); map.getPane("pipePane").style.zIndex = 470;
+/* Merge a pane + renderer into an existing style object. A helper rather
+   than Object.assign because this file is ES5 throughout and mixing eras
+   in one codebase is how you get a "works on my machine" bug report. */
+function withPane(pane,renderer,style){
+  var o={pane:pane,renderer:renderer},k;
+  for(k in style){ if(style.hasOwnProperty(k)) o[k]=style[k]; }
+  return o;
+}
+var capRenderer  = L.canvas({pane:"capPane"});
+var dataRenderer = L.canvas({pane:"dataPane"});
+var pipeRenderer = L.canvas({pane:"pipePane"});
+
 var capLayer=L.layerGroup().addTo(map);
 var pinMarker=null;
 
@@ -883,13 +917,16 @@ function drawFeatures(feats,meta,id){
     var shape=null;
     if(g.rings){
       shape=L.polygon(ringsToLatLngs(g.rings),
-        {color:fill,weight:(PROSPECT&&bandOf(info&&info.bess)==="hi")?1.6:1,
+        {pane:"capPane",renderer:capRenderer,
+         color:fill,weight:(PROSPECT&&bandOf(info&&info.bess)==="hi")?1.6:1,
          opacity:(PROSPECT&&bandOf(info&&info.bess)!=="hi")?.35:.9,
          fillColor:fill,fillOpacity:fillOp,interactive:true});
     } else if(g.paths){
-      shape=L.polyline(ringsToLatLngs(g.paths),{color:fill,weight:4,opacity:.9,interactive:true});
+      shape=L.polyline(ringsToLatLngs(g.paths),{pane:"capPane",renderer:capRenderer,
+        color:fill,weight:4,opacity:.9,interactive:true});
     } else if(g.x!=null){
-      shape=L.circleMarker([g.y,g.x],{radius:5,color:fill,fillColor:fill,fillOpacity:.8,weight:1});
+      shape=L.circleMarker([g.y,g.x],{pane:"capPane",renderer:capRenderer,
+        radius:5,color:fill,fillColor:fill,fillOpacity:.8,weight:1});
     }
     if(!shape) continue;
     shape.__info=info; shape.__label=(hit&&hit.label)||null; shape.__layer=id;
@@ -2544,7 +2581,8 @@ function drawFiber(on){
     /* radius carries carrier density so the majors read at a glance */
     var r=Math.max(5,Math.min(16,4+Math.sqrt(f[4])*0.9));
     var m=L.circleMarker([f[0],f[1]],
-      {radius:r,color:"#0a6ed1",weight:2,fillColor:"#0a6ed1",fillOpacity:.22,interactive:true});
+      {pane:"dataPane",renderer:dataRenderer,
+       radius:r,color:"#0a6ed1",weight:2,fillColor:"#0a6ed1",fillOpacity:.22,interactive:true});
     m.bindTooltip("<b>"+esc(f[2])+"</b><br>"+esc(f[3])+"<br>"+f[4]+" networks",{direction:"top"});
     fiberLayer.addLayer(m);
   }
@@ -2887,7 +2925,8 @@ function drawCrm(on){
     if(!crmVisible(e.stage)) continue;
     var st=crmStage(e.stage);
     var mk=L.circleMarker([e.lat,e.lon],
-      {radius:7,color:"#fff",weight:2,fillColor:st.color,fillOpacity:.95,interactive:true});
+      {pane:"pipePane",renderer:pipeRenderer,
+       radius:7,color:"#fff",weight:2,fillColor:st.color,fillOpacity:.95,interactive:true});
     var last=(e.notes&&e.notes[0])?e.notes[0]:null;
     var body='<div style="min-width:190px"><b>'+esc(e.addr||pin)+'</b>'+
       '<div style="color:'+st.color+';font-weight:700;font-size:12px">'+esc(st.label)+
@@ -3420,7 +3459,8 @@ function drawAuto(){
   AUTO.layer=L.layerGroup();
   for(var i=0;i<AUTO.rows.length;i++){
     var r=AUTO.rows[i];
-    var mk=L.circleMarker([r.lat,r.lon],autoStyle(r));
+    var mk=L.circleMarker([r.lat,r.lon],
+      withPane("dataPane",dataRenderer,autoStyle(r)));
     mk.__row=r;
     mk.on("click",function(e){ L.DomEvent.stopPropagation(e); openAccount(this.__row); });
     AUTO.layer.addLayer(mk);
@@ -3600,7 +3640,8 @@ function drawEdc(on){
       /* square-ish marker so listings never read as a prospect pin */
       var col=e.sale?"#E8590C":(e.lease?"#0a6ed1":"#8a5cd1");
       var mk=L.circleMarker([e.lat,e.lon],
-        {radius:e.kva?7:5, color:col, weight:e.approx?2:1.5,
+        {pane:"dataPane", renderer:dataRenderer,
+         radius:e.kva?7:5, color:col, weight:e.approx?2:1.5,
          fillColor:col, fillOpacity:e.approx?0.18:0.85,
          dashArray:e.approx?"3,3":null, interactive:true});
       mk.bindPopup(edcPopup(e));
@@ -3695,7 +3736,8 @@ function drawProspects(on){
     var r=FD.rows[i];
     if(r.lat==null||r.lon==null) continue;
     if(r.pin) PROSPECT_BY_PIN[r.pin]=r;
-    var mk=L.circleMarker([r.lat,r.lon],prospectStyle(r));
+    var mk=L.circleMarker([r.lat,r.lon],
+      withPane("dataPane",dataRenderer,prospectStyle(r)));
     mk.bindPopup(prospectPopup(r));
     prospectLayer.addLayer(mk);
   }
