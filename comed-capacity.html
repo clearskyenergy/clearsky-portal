@@ -336,6 +336,12 @@
   <div id="autoMsg" style="font-family:var(--mono);font-size:9px;color:var(--dim);padding:1px 0 3px 22px"></div>
   <label class="lp" style="border-top:0;padding-top:0;margin-top:4px"><input type="checkbox" id="ciOn" checked><span>Find Sites results (<span id="ciCount">0</span>)</span></label>
   <label class="lp" style="border-top:0;padding-top:0;margin-top:4px"><input type="checkbox" id="edcOn"><span>For sale / lease (<span id="edcCount">–</span>)</span></label>
+  <label class="lp" style="border-top:0;padding-top:0;margin-top:4px"><input type="checkbox" id="ilsOn"><span>Illinois Shines solar (<span id="ilsCount">–</span>)</span></label>
+  <div id="ilsKey" style="display:none;padding:2px 0 4px 22px">
+    <div class="st" style="cursor:default"><span class="dot" style="background:#F59E0B"></span><span>energized</span></div>
+    <div class="st" style="cursor:default"><span class="dot" style="background:#94A3B8"></span><span>under development</span></div>
+    <div style="font-family:var(--mono);font-size:9px;color:var(--dim);padding-top:2px">pins are ZIP centroids</div>
+  </div>
   <div id="ciKey" style="display:none;padding:2px 0 4px 22px">
     <div class="st" style="cursor:default"><span class="dot" style="background:#E8590C"></span><span>has a phone</span></div>
     <div class="st" style="cursor:default"><span class="dot" style="background:#0a6ed1"></span><span>named contact</span></div>
@@ -3918,6 +3924,142 @@ function loadEdc(cb){
   })();
 }
 
+/* ══════════════════════════════════════════════════════════════════
+   ILLINOIS SHINES — energized and in-development community solar
+   ══════════════════════════════════════════════════════════════════
+   Built by build_ilshines_layer.py from the IPA / Illinois Shines
+   subscriber export, same lazy-bundle pattern as the EDC layer. Absent
+   file = layer unavailable; nothing else breaks.
+
+   ── WHAT THIS LAYER IS FOR ──────────────────────────────────────────
+   The export is one row per SUBSCRIBER, not per project — a 2 MW farm
+   with 400 subscribers is 400 rows. The build script collapses them to
+   one pin per Project ID and carries the subscription totals, because
+   400 stacked pins on one ZIP centroid is not a map.
+
+   Three reasons a battery prospector cares where these sit:
+
+     1. A landowner who already signed a solar lease has demonstrated
+        they will lease land for energy. That is the warmest call on
+        this map — far warmer than a cold industrial parcel.
+     2. Existing DER EATS FEEDER HOSTING CAPACITY. A cluster of these
+        on one circuit is part of why the ComEd number nearby is low,
+        and it is not visible in the capacity layer alone.
+     3. The developers behind them are already building in ComEd
+        territory — partners, or acquisition targets.
+
+   ── PINS ARE ZIP CENTROIDS, NOT SITES ───────────────────────────────
+   The export gives Project ZIP lat/lon and nothing finer, so a pin is
+   accurate to a ZIP, not a parcel. Several projects share a ZIP, so the
+   build script fans co-located ones onto a small deterministic spiral —
+   otherwise they stack into one dot and the count looks wrong. Never
+   attribute a feeder to one of these: see edcNearestFeeder(), which
+   refuses the same thing for the same reason.
+   ══════════════════════════════════════════════════════════════════ */
+var ILS_URL="ilshines-sites.js";
+var ILS={state:"idle",rows:[],queue:[]};
+var ilsLayer=null;
+
+function loadIlshines(cb){
+  if(ILS.state==="ready"||ILS.state==="failed"){ cb&&cb(); return; }
+  if(ILS.state==="loading"){ if(cb) ILS.queue.push(cb); return; }
+  ILS.state="loading"; ILS.queue=cb?[cb]:[];
+  var hi=0;
+  (function tryHost(){
+    if(hi>=DATA_HOSTS.length){
+      ILS.state="failed";
+      diag("ilshines: ilshines-sites.js not found on this host or tools.csebuilders.com");
+      var el=document.getElementById("ilsCount");
+      if(el){ el.textContent="!"; el.title="ilshines-sites.js not deployed"; }
+      var q0=ILS.queue; ILS.queue=[]; q0.forEach(function(f){f();});
+      return;
+    }
+    var url=DATA_HOSTS[hi++]+ILS_URL;
+    var sc=document.createElement("script");
+    sc.src=url;
+    sc.onload=function(){
+      if(!window.CS_ILSHINES){ tryHost(); return; }
+      ILS.rows=window.CS_ILSHINES; ILS.state="ready";
+      diag("ilshines: "+ILS.rows.length+" projects from "+(url||"same origin"));
+      var el=document.getElementById("ilsCount"); if(el) el.textContent=ILS.rows.length;
+      var q=ILS.queue; ILS.queue=[]; q.forEach(function(f){f();});
+    };
+    sc.onerror=function(){ diag("ilshines: miss "+url); tryHost(); };
+    document.head.appendChild(sc);
+  })();
+}
+
+/* Radius by nameplate. Community solar in Illinois is capped at 5 MW AC, so
+   the spread is narrow and a sqrt scale keeps a 0.3 MW project visible
+   without a 5 MW one swallowing the block. */
+function ilsRadius(mw){
+  var m=Number(mw)||0;
+  return Math.max(4, Math.min(11, 4+Math.sqrt(m)*3));
+}
+
+function drawIlshines(on){
+  if(ilsLayer){ map.removeLayer(ilsLayer); ilsLayer=null; }
+  var key=document.getElementById("ilsKey");
+  if(key) key.style.display=on?"block":"none";
+  if(!on) return;
+  loadIlshines(function(){
+    if(ILS.state!=="ready") return;
+    ilsLayer=L.layerGroup();
+    for(var i=0;i<ILS.rows.length;i++){
+      var r=ILS.rows[i];
+      if(r.lat==null||r.lon==null) continue;
+      var live=(r.status||"").toLowerCase().indexOf("energ")>=0;
+      var col=live?"#F59E0B":"#94A3B8";
+      var mk=L.circleMarker([r.lat,r.lon],
+        {pane:"dataPane",renderer:dataRenderer,
+         radius:ilsRadius(r.mw), color:"#fff", weight:1.5,
+         fillColor:col, fillOpacity:.85, interactive:true});
+
+      /* Percent subscribed is the one number a developer reacts to: a
+         project still selling capacity is a live counterparty, a fully
+         subscribed one is a finished asset. Only shown when the export
+         actually carried subscriptions. */
+      var cap=(Number(r.mw)||0)*1000;
+      var pct=(cap>0&&r.kw)?Math.round((r.kw/cap)*100):null;
+
+      /* Size in kW, not MW: a 120 kW C&I rooftop and a 5 MW farm are both on
+         this layer, and "0.12 MW" reads as a rounding error. */
+      var sz=(Number(r.kwac)||0)>=1000
+        ? ((Number(r.kwac)/1000).toFixed(2).replace(/\.?0+$/,"")+' MW AC')
+        : (fmtInt(Math.round(Number(r.kwac)||0))+' kW AC');
+
+      /* The two project types are leads for different reasons, so say which
+         this is rather than leaving a rep to infer it from the size. */
+      var isCS=(r.type||"").toLowerCase().indexOf("community")>=0;
+      var why=isCS
+        ? 'A landowner already leasing to a solar developer will take a storage call.'
+        : 'A business that already spent capital on generation \u2014 the warmest kind of lead here.';
+
+      var body='<div style="min-width:210px">'+
+        '<b>'+(isCS?'Community solar':'C&amp;I solar')+' \u00b7 '+esc(r.id)+'</b>'+
+        '<div style="color:'+col+';font-weight:700;font-size:12px">'+
+          esc(r.status||"\u2014")+' \u00b7 '+sz+'</div>'+
+        (r.cat?('<div style="font-size:11px;color:var(--muted)">'+esc(r.cat)+'</div>'):'')+
+        (r.vendor?('<div style="font-size:11px;margin-top:3px">'+esc(r.vendor)+'</div>'):'')+
+        '<div style="font-size:11px;margin-top:3px">'+esc(r.util||"\u2014")+
+          ' \u00b7 ZIP '+esc(r.zip||"\u2014")+'</div>'+
+        (r.subs?('<div style="font-size:11px;margin-top:3px">'+fmtInt(r.subs)+' subscriber'+(r.subs===1?"":"s")+
+                 ' \u00b7 '+fmtInt(Math.round(r.kw||0))+' kW subscribed'+
+                 (pct!=null?(' ('+pct+'%)'):'')+'</div>'):'')+
+        '<div style="margin-top:6px;border-top:1px solid #eee;padding-top:5px;'+
+             'font-size:10.5px;color:var(--dim);line-height:1.45">'+
+          why+'<br>Pin is the ZIP centroid, not the parcel \u2014 do not read a feeder off it.'+
+        '</div></div>';
+      mk.bindPopup(body,{minWidth:220});
+      ilsLayer.addLayer(mk);
+    }
+    ilsLayer.addTo(map);
+    diag("ilshines: drew "+ILS.rows.length);
+  });
+}
+
+function fmtInt(n){ return (Number(n)||0).toLocaleString(); }
+
 /* Match a listing to the circuit under it, so a rep sees grid capacity and
    existing service side by side. Falls back to whatever the sweep already
    found nearby rather than firing another query per pin. */
@@ -5068,6 +5210,7 @@ document.getElementById("autoOn").onchange=function(){
 map.on("moveend",scheduleAuto);
 setTimeout(function(){ if(SVC.ready) autoLoad(); else setTimeout(autoLoad,2500); },1800);
 document.getElementById("edcOn").onchange=function(){ drawEdc(this.checked); };
+document.getElementById("ilsOn").onchange=function(){ drawIlshines(this.checked); };
 loadEdc();
 document.getElementById("ciOn").onchange=function(){
   drawProspects(this.checked);
