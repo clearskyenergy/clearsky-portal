@@ -2357,8 +2357,16 @@ var STANDARD=[
   ['Trenching \u2014 non-continuously paved','mr','trenchTurf',true],
   ['Conduit & Conductors','mr','conduit',true],
   ['Wiring','mr','wire',true],
-  ['Restoration and/or Remediation','mr','restore',true],
-  ['Concrete Work/Bases/Pads','mr','concrete',true]
+  /* NOT auto-added, on purpose:
+       Restoration  — $0 on all five filed sheets. Surface repair is inside
+                       the trench rate there, so adding a separate row bills
+                       the patch twice ($3,440 + $1,600 on an 80 LF job).
+       Concrete pads — real on four of five jobs, but only because pads were
+                       drawn. Deriving them from port count invents $2,400 of
+                       concrete on a site whose chargers are wall-mounted.
+       Bollards      — same: drawn or not present.
+     All three keep their rates and are one click away under
+     "Add permitting, design, activation…"; they are simply never assumed. */
 ];
 /* Price the standard rows instead of inserting them at zero.
 
@@ -2446,7 +2454,20 @@ var RATE_CARD = {
   trenchPaved:   { mat:15.00, lab:80.00, n:5, note:'continuously paved (asphalt/concrete)' },
   trenchTurf:    { mat:10.00, lab:60.00, n:1, note:'non-continuously paved (grass/ground cover)' },
   conduitCableUG:{ mat:1.95,  lab:2.50,  n:5, note:'conduit + conductors, underground' },
-  conduitCableAG:{ mat:1.95,  lab:3.85,  n:4, note:'above ground/indoor; labor ran 2.50-5.13, mid used' },
+  /* Above ground is NOT a per-foot labor rate. It looked like one and the
+     three filed jobs disagreed wildly ($3.25, $3.85, $5.13 per foot) — but
+     solving a + b*ft gives $1,170 + $0.25/LF, which is EXACT on all three:
+     240 LF -> $1,230.00 | 325 LF -> $1,251.25 | 390 LF -> $1,267.50.
+     It is a setup cost (risers, standoffs, terminations at both ends) with a
+     small per-foot component, so a mid per-foot rate was wrong at every
+     length. Material is a clean $1.95/LF on all three. */
+  conduitCableAG:{ mat:1.95, labBase:1170, labPerFt:0.25, n:3,
+                   note:'above ground/indoor; labor is setup + $0.25/LF' },
+  /* 17 Calhoun carries $735 more material than $1.95/LF, and its own note
+     says why: "includes new-service structure (underground lateral - no
+     riser) per Price Guide". That is a scope item, not a rate, so it is
+     added only when the job actually has a new service — never silently. */
+  newServiceStructure:{ mat:735, lab:0, n:1 },
 
   /* each ────────────────────────────────────────────────────────────── */
   bollard:       { mat:250,  lab:300,  n:5 },
@@ -2476,6 +2497,10 @@ function standardRate(row, bucket){
   var ftT  =num(DATA.ftTrench), ftC=num(DATA.ftConduit), ftW=num(DATA.ftCable);
   var ftUG =num(DATA.ftConduitUG) || ftC, ftAG=num(DATA.ftConduitAG);
   var ftTurf=num(DATA.ftTrenchTurf);
+  /* A new service is a fact about the site, not a price. Explicit flag first;
+     otherwise a site being given new panel/service gear implies one. */
+  var newSvc = (d('newService')==='Yes') ||
+               (d('newService')!=='No' && d('needPanel')==='Yes');
   /* Paved footage when it is measured; only derive it as the balance when
      nobody has said. Subtracting from an already-explicit paved figure left
      11 Marble with 0.24 LF of trench against a filed 44.12. */
@@ -2535,9 +2560,19 @@ function standardRate(row, bucket){
                                         mat:RATE_CARD.conduitCableUG.mat*ftUG,
                                         lab:RATE_CARD.conduitCableUG.lab*ftUG,
                                         note:scopeNote('conduit', ftUG) } : null;
-    case 'wire':       return ftAG>0 ? { qty:ftAG, unit:'LF',
-                                        mat:RATE_CARD.conduitCableAG.mat*ftAG,
-                                        lab:RATE_CARD.conduitCableAG.lab*ftAG,
+    /* The new-service structure rides on this row: $735 of material on three
+       of the five filed jobs, two of which have ZERO above-ground footage —
+       so the row has to appear for the adder alone, and the adder must not
+       scale with feet. Driven by the site being a new service, never added
+       silently on an existing-service job. */
+    case 'wire':       if(!(ftAG>0) && newSvc)
+                         return { qty:0, unit:'LF', mat:RATE_CARD.newServiceStructure.mat, lab:0,
+                                  note:'New-service structure (underground lateral, no riser) per Price Guide' };
+                       return ftAG>0 ? { qty:ftAG, unit:'LF',
+                                        mat:RATE_CARD.conduitCableAG.mat*ftAG
+                                            + (newSvc?RATE_CARD.newServiceStructure.mat:0),
+                                        lab:RATE_CARD.conduitCableAG.labBase
+                                            + RATE_CARD.conduitCableAG.labPerFt*ftAG,
                                         note:scopeNote('wire', ftAG) } : null;
     case 'trench':     return ftT>0 ? { qty:ftT, unit:'LF',
                                         mat:RATE_CARD.trenchPaved.mat*ftT,
