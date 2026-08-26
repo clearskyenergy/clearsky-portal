@@ -1616,7 +1616,7 @@ function setCustomBand(){
    numbers that came from a build that was no longer the code — the same
    export pasted twice, identical to the byte, while the fix sat undeployed.
    A visible build id ends that argument in one glance. */
-var OMEGA_BUILD = 'wb-2026-08-26h';
+var OMEGA_BUILD = 'wb-2026-08-26i';
 try{ window.OMEGA_BUILD = OMEGA_BUILD; }catch(e){}
 
 var LINES = [];
@@ -2580,12 +2580,28 @@ function standardRate(row, bucket){
     case 'warranty':   return { qty:ports, unit:'EA', mat:0, lab:0,
                                 note:'quote from the OEM \u2014 not carried on the reference jobs' };
     case 'striping':   return { qty:ports, unit:'EA', mat:0, lab:0, note:'' };
-    /* Counted on the drawing, not assumed from port count: a job that drew
-       five bollards prices five, and a job that drew none prices none. */
-    case 'bollard':    var nb=num(DATA.nBollard)||0;
-                       return nb ? { qty:nb, unit:'EA',
+    /* One bollard per Level 2 PORT is the standing rule, so every port
+       carries protection whether or not it was drawn. The drawing still
+       wins when it shows MORE than the rule requires — extra bollards get
+       drawn for a reason.
+
+       Worth knowing: all five filed Eversource sheets carry one per
+       PEDESTAL, not per port (4 ports/2 bollards, 10 ports/5). This rule
+       roughly doubles that line, so the sheet now says plainly how the
+       count was reached. */
+    case 'bollard':    var drawn=num(DATA.nBollard)||0;
+                       var perPort=(chargerClass()==='l2') ? ports : 0;
+                       var nb=Math.max(drawn, perPort);
+                       if(!nb) return null;
+                       return { qty:nb, unit:'EA',
                                 mat:RATE_CARD.bollard.mat*nb, lab:RATE_CARD.bollard.lab*nb,
-                                note:scopeNote('bollard', nb) } : null;
+                                note:scopeNote('bollard', nb)
+                                     + (drawn && drawn<perPort
+                                        ? ' Count is one per Level 2 port ('+perPort+'); the drawing shows '
+                                          + drawn + '.'
+                                        : drawn>perPort
+                                        ? ' Count taken from the drawing ('+drawn+'), above the one-per-port minimum.'
+                                        : ' One per Level 2 port.') };
     case 'pedestal':   return { qty:peds, unit:'EA', mat:ST.pedestal.mat*peds, lab:ST.pedestal.lab*peds,
                                 note:peds+' dual-port pedestals' };
     case 'meter':      return { qty:1, unit:'LS', mat:ST.metering.mat, lab:ST.metering.lab, note:'' };
