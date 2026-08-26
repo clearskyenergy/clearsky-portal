@@ -224,6 +224,7 @@
   <label class="lp"><input type="checkbox" id="prospect" checked><span>Prospecting colours</span></label>
   <label class="lp" style="border-top:0;padding-top:0;margin-top:4px"><input type="checkbox" id="fiberOn"><span>Fiber / colocation</span></label>
   <label class="lp"><input type="checkbox" id="ciOn" checked><span><b>C&amp;I accounts</b> (<span id="ciCount">0</span>)</span></label>
+  <label class="lp" style="border-top:0;padding-top:0;margin-top:4px"><input type="checkbox" id="edcOn"><span>For sale / lease (<span id="edcCount">–</span>)</span></label>
   <div id="ciKey" style="display:none;padding:2px 0 4px 22px">
     <div class="st" style="cursor:default"><span class="dot" style="background:#E8590C"></span><span>has a phone</span></div>
     <div class="st" style="cursor:default"><span class="dot" style="background:#0a6ed1"></span><span>named contact</span></div>
@@ -325,6 +326,8 @@
             <option value="vacant">Vacant / land</option>
             <option value="local">Owner-occupied</option>
           </select></div>
+        <div class="r-f"><label>County</label>
+          <select id="fdCounty"><option value="cook">Cook County</option></select></div>
         <div class="r-f"><label>Search for</label>
           <select id="fdSrc">
             <option value="biz" selected>Businesses to call</option>
@@ -1231,9 +1234,12 @@ function loadCounties(){
   fetchJSON(root+"/counties",function(err,j){
     if(err||!j||j.error) { diag("counties: "+(err?err.message:"error")); return; }
     AD.meta=j;
-    var sel=document.getElementById("adCounty"), html="";
+    var html="";
     for(var k in j){ if(j.hasOwnProperty(k)) html+='<option value="'+esc(k)+'">'+esc(j[k].label||k)+'</option>'; }
-    if(html) sel.innerHTML=html;
+    if(!html) return;
+    var a=document.getElementById("adCounty"); if(a) a.innerHTML=html;
+    var b=document.getElementById("fdCounty"); if(b) b.innerHTML=html;
+    diag("counties: "+Object.keys(j).join(", "));
   });
 }
 
@@ -1576,6 +1582,11 @@ function runFindSites(){
   var useF =document.getElementById("fdUse").value;
   FD.sysKw=minKw; FD.sysHrs=hrs;
   FD.busy=true; FD.rows=[]; FD.useField=useF; hReset();
+  /* Field names differ per county — DuPage calls the owner BILLNAME, Lake
+     calls it taxpayer_name, Cook does not publish one at all. Read the
+     selected county's mapping instead of assuming Cook. */
+  AD.county=(document.getElementById("fdCounty")||{}).value||"cook";
+  AD.cfg=AD.meta[AD.county]||{addr:"street_address",idField:"PIN14_dash",owner:null,label:AD.county};
   document.getElementById("fdRun").disabled=true;
   document.getElementById("fdCsv").disabled=true;
   document.getElementById("fdOut").innerHTML="";
@@ -1633,6 +1644,14 @@ function runFindSites(){
       if(feeders.length>FD_MAX_FEEDERS) feeders=feeders.slice(0,FD_MAX_FEEDERS);
 
       var mode=(document.getElementById("fdSrc")||{}).value||"biz";
+      /* Business licences are a City of Chicago dataset. Outside Cook there
+         is nothing to query, so fall back rather than return an empty list
+         that looks like "no businesses here". */
+      if(mode==="biz"&&AD.county!=="cook"){
+        mode="parcel";
+        fdMsg("Business licences are Chicago-only \u2014 searching "+
+              esc(AD.cfg.label||AD.county)+" property owners instead.","");
+      }
       fdStep('<div class="ok">1 \u00b7 '+total+' circuit'+(total===1?"":"s")+' found'+
              (total>FD_MAX_FEEDERS?(" \u2014 working the top "+FD_MAX_FEEDERS+" by capacity"):"")+'</div>'+
              '<div class="on">2 \u00b7 '+(mode==="biz"?"Pulling licensed businesses":"Pulling parcels")+'\u2026</div>');
@@ -1694,7 +1713,7 @@ function sweepFeeders(root,feeders,i,acc,total){
             if(d>=chunks.length){ sweepFeeders(root,feeders,i+1,acc,total); return; }
             fetchJSONPost(parcelUrl(root),
               formBody({where:"OBJECTID IN ("+chunks[d].join(",")+")",
-                        outFields:[AD.cfg?AD.cfg.addr:"street_address",AD.cfg?AD.cfg.idField:"PIN14_dash"].join(","),
+                        outFields:[AD.cfg.addr,AD.cfg.idField,AD.cfg.owner].filter(Boolean).join(","),
                         returnGeometry:"false",returnCentroid:"true",outSR:"4326"}),
               function(e3,j3){
                 if(!e3&&j3&&j3.features){
@@ -1703,8 +1722,9 @@ function sweepFeeders(root,feeders,i,acc,total){
                     if(acc.length>=FD_MAX_ROWS) break;
                     var at=j3.features[q].attributes;
                     var ctr=j3.features[q].centroid;
-                    acc.push({addr:String(at[AD.cfg?AD.cfg.addr:"street_address"]||"").trim(),
-                              pin:pin14(at[AD.cfg?AD.cfg.idField:"PIN14_dash"]),
+                    acc.push({addr:String(at[AD.cfg.addr]||"").trim(),
+                              pin:pin14(at[AD.cfg.idField]),
+                              ownerDirect:AD.cfg.owner?String(at[AD.cfg.owner]||"").trim():"",
                               lat:ctr?ctr.y:null, lon:ctr?ctr.x:null,
                               feeder:f.feeder,sub:f.sub,val:f.val,net:f.net,
                               bess:f.bess,pv:f.pv,ev:f.ev,queue:f.queue});
@@ -2921,6 +2941,132 @@ function enrichBusinesses(root,acc,feeders,total){
   })();
 }
 
+
+/* ══════════════════════════════════════════════════════════════
+   FOR SALE / FOR LEASE — Illinois EDC listings
+
+   The state's own site-selection feed, published so developers find
+   these properties. The only listings source in this tool that is
+   meant to be consumed this way.
+
+   It carries something nothing else here does: the site's EXISTING
+   electrical service. Feeder capacity says what the grid can accept.
+   Service size says what is already built to the building — and a
+   200 A site needs a service upgrade before a battery conversation
+   is real, which kills more C&I storage deals than interconnection.
+
+   Loaded lazily from a bundle generated by build_edc_layer.py. If the
+   file is absent the layer is simply unavailable; nothing else breaks.
+   ══════════════════════════════════════════════════════════════ */
+var EDC_URL="edc-sites.js";
+var EDC={state:"idle",rows:[],queue:[]};
+var edcLayer=null;
+
+function loadEdc(cb){
+  if(EDC.state==="ready"||EDC.state==="failed"){ cb&&cb(); return; }
+  if(EDC.state==="loading"){ if(cb) EDC.queue.push(cb); return; }
+  EDC.state="loading"; EDC.queue=cb?[cb]:[];
+  var s=document.createElement("script");
+  s.src=EDC_URL;
+  s.onload=function(){
+    EDC.rows=window.CS_EDC||[]; EDC.state="ready";
+    diag("edc: "+EDC.rows.length+" listed sites");
+    var el=document.getElementById("edcCount"); if(el) el.textContent=EDC.rows.length;
+    var q=EDC.queue; EDC.queue=[]; q.forEach(function(f){f();});
+  };
+  s.onerror=function(){
+    EDC.state="failed"; diag("edc: "+EDC_URL+" not found");
+    var q=EDC.queue; EDC.queue=[]; q.forEach(function(f){f();});
+  };
+  document.head.appendChild(s);
+}
+
+/* Match a listing to the circuit under it, so a rep sees grid capacity and
+   existing service side by side. Falls back to whatever the sweep already
+   found nearby rather than firing another query per pin. */
+function edcNearestFeeder(lat,lon){
+  if(!FD.rows||!FD.rows.length) return null;
+  var best=null,bd=1e9;
+  for(var i=0;i<FD.rows.length;i++){
+    var r=FD.rows[i];
+    if(r.lat==null) continue;
+    var d=(r.lat-lat)*(r.lat-lat)+(r.lon-lon)*(r.lon-lon);
+    if(d<bd){ bd=d; best=r; }
+  }
+  /* ~0.01 deg is roughly half a mile; beyond that the circuit is not this
+     site's circuit and quoting it would be misleading */
+  return (best&&bd<0.0001)?best:null;
+}
+
+function edcPopup(e){
+  var f=edcNearestFeeder(e.lat,e.lon);
+  var h='<div style="min-width:250px">';
+  h+='<div style="font-weight:700;font-size:13px">'+esc(e.n)+'</div>';
+  h+='<div style="font-size:11px;color:var(--muted)">'+esc(e.a)+', '+esc(e.c)+'</div>';
+  var tags=[];
+  if(e.sale) tags.push('<span style="background:#E8590C;color:#fff;border-radius:3px;padding:1px 5px;font-size:10px;font-weight:700">FOR SALE</span>');
+  if(e.lease) tags.push('<span style="background:#0a6ed1;color:#fff;border-radius:3px;padding:1px 5px;font-size:10px;font-weight:700">FOR LEASE</span>');
+  if(e.rail) tags.push('<span style="background:var(--panel2);border-radius:3px;padding:1px 5px;font-size:10px">RAIL</span>');
+  if(e.dc) tags.push('<span style="background:var(--panel2);border-radius:3px;padding:1px 5px;font-size:10px">DATA CENTRE SITE</span>');
+  if(tags.length) h+='<div style="margin:5px 0">'+tags.join(" ")+'</div>';
+
+  h+='<div style="font-size:12px;line-height:1.65">';
+  if(e.sf) h+='<div>'+Math.round(e.sf).toLocaleString()+' sq ft'+(e.ac?(' \u00b7 '+e.ac+' acres'):'')+'</div>';
+  else if(e.ac) h+='<div>'+e.ac+' acres</div>';
+  if(e.price) h+='<div>'+esc(e.price)+'</div>';
+  if(e.zone) h+='<div style="color:var(--muted)">Zoned '+esc(e.zone)+'</div>';
+
+  /* the number that qualifies or disqualifies the site */
+  if(e.kva){
+    h+='<div style="margin-top:6px;padding-top:5px;border-top:1px solid #eee">'+
+       '<b>'+Math.round(e.kva).toLocaleString()+' kVA</b> existing service'+
+       (e.amp&&e.v?(' <span style="color:var(--dim)">('+e.amp+'A @ '+e.v+'V)</span>'):'')+
+       '<div style="font-size:9px;color:var(--dim)">'+esc(e.kvaSrc||"")+'</div></div>';
+  } else {
+    h+='<div style="margin-top:6px;font-size:11px;color:var(--dim)">Service size not listed \u2014 ask on the call</div>';
+  }
+  if(e.prov) h+='<div style="font-size:11px;color:var(--muted)">'+esc(e.prov)+'</div>';
+  if(f&&f.net!=null)
+    h+='<div style="font-size:11px">Circuit '+esc(f.feeder)+': <b>'+
+       Math.round(f.net).toLocaleString()+' kW</b> available</div>';
+  h+='</div>';
+
+  if(e.nm||e.ph||e.em){
+    h+='<div style="margin-top:7px;padding-top:6px;border-top:1px solid #eee;font-size:12px">';
+    if(e.nm) h+='<div><b>'+esc(e.nm)+'</b>'+(e.co2?(' <span style="color:var(--muted);font-size:11px">'+esc(e.co2)+'</span>'):'')+'</div>';
+    if(e.ph) h+='<div style="font-size:15px;margin-top:3px">'+telLink(e.ph,e.ph,e.nm)+'</div>';
+    if(e.em) h+='<div><a href="mailto:'+esc(e.em)+'" style="color:var(--accent);font-size:11px">'+esc(e.em)+'</a></div>';
+    h+='</div>';
+  }
+  if(e.approx) h+='<div style="margin-top:5px;font-size:10px;color:var(--amber)">'+
+                  'Pin is the city centre \u2014 the street address would not geocode</div>';
+  if(e.url) h+='<div style="margin-top:6px"><a href="'+esc(e.url)+'" target="_blank" rel="noopener" '+
+              'style="color:var(--accent);font-size:11px">Full listing \u2197</a></div>';
+  h+='</div>';
+  return h;
+}
+
+function drawEdc(on){
+  if(edcLayer){ map.removeLayer(edcLayer); edcLayer=null; }
+  if(!on) return;
+  loadEdc(function(){
+    if(EDC.state!=="ready"||!EDC.rows.length) return;
+    if(edcLayer){ map.removeLayer(edcLayer); }
+    edcLayer=L.layerGroup();
+    for(var i=0;i<EDC.rows.length;i++){
+      var e=EDC.rows[i];
+      /* square-ish marker so listings never read as a prospect pin */
+      var col=e.sale?"#E8590C":(e.lease?"#0a6ed1":"#8a5cd1");
+      var mk=L.circleMarker([e.lat,e.lon],
+        {radius:e.kva?7:5, color:"#1a2733", weight:1.5,
+         fillColor:col, fillOpacity:e.approx?0.35:0.85, interactive:true});
+      mk.bindPopup(edcPopup(e));
+      edcLayer.addLayer(mk);
+    }
+    edcLayer.addTo(map);
+  });
+}
+
 /* ══════════════════════════════════════════════════════════════
    C&I PROSPECTS ON THE MAP
 
@@ -3739,14 +3885,20 @@ function renderSweep(acc,cls,own,feeders,total){
   var seen={},rows=[],dropped=0;
   for(var i=0;i<acc.length;i++){
     var a=acc[i], ce=a.pin?cls[a.pin]:null, c=ce?String(ce.cls||""):"";
-    if(!want(c)||(!c&&!allMode)){ dropped++; continue; }
+    /* The class filter is Cook-only — it comes from the Cook Assessor feed.
+       In another county every parcel would have a blank class and the filter
+       would drop the entire result set, which reads as "no prospects here"
+       rather than "this filter does not apply". */
+    if(AD.county==="cook"){
+      if(!want(c)||(!c&&!allMode)){ dropped++; continue; }
+    }
     var o=(a.pin&&own[a.pin])?own[a.pin]:{};
     var addr=o.propShort||a.addr;
     if(!addr) { dropped++; continue; }
     var k=(a.pin||addr)+"|"+a.feeder;
     if(seen[k]) continue; seen[k]=1;
     rows.push({addr:addr,pin:a.pin||"",cls:c,clsLabel:classLabel(c),
-               owner:o.owner||"",mail:o.mail||"",asOf:o.year||"",
+               owner:a.ownerDirect||o.owner||"",mail:o.mail||"",asOf:o.year||"",
                propCity:o.propCity||"",mailCity:o.mailCity||"",mailState:o.mailState||"",
                feeder:a.feeder,sub:a.sub,val:a.val,net:a.net,queue:a.queue,
                bess:a.bess,pv:a.pv,ev:a.ev});
@@ -3957,6 +4109,8 @@ document.getElementById("fdView").onclick=function(){
 };
 document.getElementById("prospect").onchange=function(){ PROSPECT=this.checked; repaint(); };
 document.getElementById("fiberOn").onchange=function(){ drawFiber(this.checked); };
+document.getElementById("edcOn").onchange=function(){ drawEdc(this.checked); };
+loadEdc();
 document.getElementById("ciOn").onchange=function(){
   drawProspects(this.checked);
   document.getElementById("ciKey").style.display=this.checked&&FD.rows&&FD.rows.length?"":"none";
