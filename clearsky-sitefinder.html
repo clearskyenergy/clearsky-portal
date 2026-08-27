@@ -554,6 +554,11 @@
       }
       ingest(rows || []);
       render();
+      /* A provider that partly failed says so on the header. A short list
+         that looks complete is the failure mode this whole tool exists to
+         avoid — a rep reads an empty corridor as no opportunity. */
+      var note = SRC.active && SRC.active.lastNote;
+      if (note) document.getElementById("resS").textContent += " " + note;
     });
   }
 
@@ -707,9 +712,16 @@
         layNote(notes.join(" "));
       });
     if (document.getElementById("lyCI").checked)
-      LAY.refreshCI(function (n) {
-        layCount("cCI", n);
-        if (n === -1) { notes.push("Zoom to 13+ for parcels."); layNote(notes.join(" ")); }
+      LAY.refreshCI(function (n, err) {
+        /* Parcels arrive as one bundle per county, so a pan across a county
+           line can lose a shard while the rest of the map draws normally.
+           The count keeps reporting what DID draw and the note names what did
+           not — a badge reading "!" over a map with parcels on it is less
+           honest than a number plus the county that is missing from it. */
+        layCount("cCI", n, err && !(n > 0) ? err : null);
+        if (err) notes.push(err.message);
+        if (n === -1) notes.push("Zoom to 13+ for parcels.");
+        layNote(notes.join(" "));
       });
     if (document.getElementById("lyILS").checked)
       LAY.refreshILS(function (n) { layCount("cILS", n); });
@@ -726,10 +738,16 @@
       });
     };
     document.getElementById("lyCI").onchange = function () {
-      LAY.ci(this.checked, function (n, err) {
-        layCount("cCI", n, err);
-        if (err) layNote("ci-industrial.js is not deployed on this tenant.");
+      var on = this.checked;
+      LAY.ci(on, function (n, err) {
+        layCount("cCI", n, err && !(n > 0) ? err : null);
+        /* The error says which county shards are missing, or that no bundle
+           is deployed at all. Naming one file here was true when the parcels
+           were a single ci-industrial.js and is a wrong answer now — the
+           tenant may have twenty-four counties working and one absent. */
+        if (err) layNote(err.message);
         else if (n === -1) layNote("Zoom to 13+ for parcels.");
+        else if (on) layNote("");
       });
     };
     document.getElementById("lyILS").onchange = function () {

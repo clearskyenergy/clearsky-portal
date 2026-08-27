@@ -11,16 +11,36 @@ everyone else's inventory the moment it is saved.
 | `clearsky-sitefinder.html` | tenant page | The sales surface. ES5, single file. |
 | `omega-capacity-ledger.js` | **shared platform** | Circuit allocation math + shared claims. Tenant-neutral: no ComEd, no Cook County, no ClearSky. Should be checksum-identical across tenants. |
 | `omega-listings-source.js` | **shared platform** | Swappable property providers behind one normalized shape. |
-| `omega-comed-layers.js` | **shared platform** | ComEd hosting capacity, C&I parcels and Illinois Shines. Lifted out of `comed-capacity.html` so both tools draw from one definition. |
+| `omega-comed-layers.js` | **shared platform** | ComEd hosting capacity, C&I parcels and Illinois Shines. Lifted out of `comed-capacity.html` so both tools draw from one definition. Also exposes the polygons as rows (`hostingIn`, `feederAt`, `capacityOf`) so a parcel can be told its circuit without a second query. |
+| `omega-comed-listings.js` | **shared platform** | Registers the Capacity Finder's own parcels and EDC listings as a Site Finder provider, and joins each record to its circuit. Utility-specific by design, which is why it is not in either file above. |
 | `firestore-capacity.rules` | rules | The `capacityAllocations` block only, same shape as `firestore-sites.rules`. Paste after `/sites`, before `/omega_orgs`. Defines no root-level helpers. |
 | `check-rules.js` | tooling | Structural validator for the merged rules file. Run it before every deploy. |
+| `verify_counties.py` | pipeline | Finds a county's parcel endpoint and reads its **real** field names off a live record. Nothing gets harvested until it has. |
+| `build_ci_bundles.py` | pipeline | Harvests C&I parcels per county, clips to ComEd feeder buffers, emits one bundle per county plus a manifest. |
+| `counties.json` | pipeline | The endpoint registry and the two class schemes. `verified: false` means "field names nobody has read yet", not "county we do not cover". |
 
-Both `omega-*.js` files are new shared-platform files. They need to travel
-upstream, not live only in one tenant repo.
+The four `omega-*.js` files are shared-platform files. They need to travel
+upstream, not live only in one tenant repo. `omega-comed-listings.js` is the
+one that knows about both a utility and a listings provider; that pairing is
+why it is its own file rather than an addition to either side.
 
 ## Deploying
 
-1. Drop all three JS/HTML files at the repo root next to `omega-brand.js`.
+1. Drop the page and all four `omega-*.js` files at the repo root next to
+   `omega-brand.js`, and the parcel bundles (`ci-manifest.js`, `ci-<county>.js`)
+   wherever `DATA_HOSTS` points.
+
+   Load order in the page is not arbitrary — `omega-comed-listings.js` reads
+   both of the files above it and refuses to register with a console error if
+   either is missing:
+
+   ```html
+   <script src="omega-capacity-ledger.js"></script>
+   <script src="omega-comed-layers.js"></script>
+   <script src="omega-listings-source.js"></script>
+   <script src="omega-comed-listings.js"></script>
+   ```
+
 2. Add the rewrite to `vercel.json`, matching the existing tool entries:
 
    ```json
@@ -72,7 +92,7 @@ Three layers, all from `omega-comed-layers.js`:
 | Layer | Source | Notes |
 |---|---|---|
 | Hosting capacity | live ArcGIS via the worker | Drawn from zoom 12. Shaded **net of `Feeder_Q`** — see below. |
-| C&I / industrial parcels | `ci-industrial.js` bundle | Drawn from zoom 13; below that the canvas stalls. |
+| C&I / industrial parcels | `ci-manifest.js` + one `ci-<county>.js` per county | Drawn from zoom 13; below that the canvas stalls. Only the counties the viewport touches download — see below. |
 | Illinois Shines solar | `ilshines-sites.js` bundle | ZIP centroids, not sited coordinates. Said out loud whenever the layer is on. |
 
 The layers live in a shared file rather than being copied into this page. Two
@@ -91,11 +111,41 @@ that is already spoken for. It is a setting rather than a hardcode because an
 engineer sometimes wants the published number, but the default is the honest
 one.
 
-The two bundles load as `<script>` tags rather than `fetch()`: they are served
-from a different host than the tenant page, and a script tag is not subject to
-CORS. `DATA_HOSTS` falls back to `tools.csebuilders.com` for a tenant that has
-not had them deployed to its own domain, and a missing bundle shows `!` in the
-legend with a reason rather than an empty layer.
+Bundles load as `<script>` tags rather than `fetch()`: they are served from a
+different host than the tenant page, and a script tag is not subject to CORS.
+`DATA_HOSTS` falls back to `tools.csebuilders.com` for a tenant that has not had
+them deployed to its own domain.
+
+### Parcels are sharded per county
+
+C&I across the whole territory is 150–250k parcels. As one script tag that is
+30–50 MB and the tab is unresponsive before the map draws. So the build emits
+one bundle per county and a manifest carrying each shard's bbox, and the page
+downloads only the counties its viewport touches — once each. Pan west out of
+Cook and Kane arrives; pan back and nothing is re-fetched.
+
+**A shard that fails is named.** This is the part that matters and the part
+that is easy to regress. The layer reports *"These counties did not load: will"*
+and the legend shows the count that did draw alongside that message, rather
+than a shortened list that looks complete. A rep reading an empty corridor as
+no opportunity is the specific outcome the whole tool exists to prevent, so:
+
+- `loadCI(cb, bbox)` reports only the shards **that bbox asked for**. Failures
+  accumulate for the life of the tab (`ciFailed()` still has the full list),
+  but a county that failed once must not keep warning after the rep has panned
+  away — a warning about something off screen is noise, and noise is how a real
+  one gets ignored.
+- `refreshCI` passes the error through **whether or not rows came back**. A pan
+  that pulls three counties and loses one draws a map that looks fine;
+  suppressing the error because something loaded is exactly the quiet wrong the
+  naming is for.
+- The page shows the layer's own message. It used to say "ci-industrial.js is
+  not deployed on this tenant", which was true when parcels were one file and
+  is a wrong answer now that a tenant can have twenty-four counties working and
+  one absent.
+
+A tenant with no manifest at all still works: the layer falls back to the old
+single `ci-industrial.js` and says so in the diagnostics.
 
 ## Settings
 
@@ -194,14 +244,76 @@ capacity immediately and keeps the row.
 
 ## Wiring a real property source
 
-`omega-listings-source.js` ships three providers. Switch with one line in the
-page:
+`omega-listings-source.js` ships three providers, and `omega-comed-listings.js`
+registers two more when it is loaded:
 
 ```js
-SRC.use("demo");        // deterministic sample data (current)
-SRC.use("harvest");     // reads a finished prospects.json — the production path
+SRC.use("comed");         // the map's own parcels + EDC listings (default when present)
+SRC.use("comed-listed");  // the on-market subset only
+SRC.use("demo");          // deterministic sample data
+SRC.use("harvest");       // reads a finished prospects.json
 SRC.use("propertyshark");
 ```
+
+The page picks `comed` if it registered and falls back to `demo` if it did not,
+so a tenant without the bundles still gets a working tool rather than an empty
+rail.
+
+### The `comed` provider
+
+It browses the same parcels the map draws, which is the point: the Site Finder
+was otherwise showing sample properties next to a real capacity map, and the
+two disagreeing on screen is worse than either alone.
+
+Three things it does deliberately:
+
+- **Circuits come from the polygons already in memory.** `hostingIn()` caches
+  the hosting rows for the viewport and `feederAt()` is a point-in-polygon
+  against that cache, so 400 parcels cost zero extra calls and the draw layer
+  and the cards can never disagree about a circuit.
+- **A blank circuit stays blank.** `feederId: null` is a real answer. A card
+  with no circuit tells a rep to check; a card with the wrong one tells them to
+  quote a number that is not there. Listings pinned to a ZIP centroid get no
+  circuit at all and say why.
+- **Partial failures reach the header.** `lastNote` carries hosting outages,
+  the named county shards that did not load, and how many rows the cap dropped.
+  Truncation drops the least interesting first — biggest deliverable circuit,
+  then biggest site — rather than whatever the bundle happened to list last.
+
+`estimateSqftFromAcres` is **off** by default. Parcels carry acreage, never
+building area, and modelling one from lot coverage is a guess that drives the
+load ceiling on the card. A null kWh reads as "we do not know"; an invented one
+reads as measurement.
+
+### Building the parcel bundles
+
+```
+python3 verify_counties.py  --registry counties.json --discover --county will
+python3 verify_counties.py  --registry counties.json --probe will --url ... --write
+python3 build_ci_bundles.py --registry counties.json --data data/ --out dist/
+```
+
+`verify_counties.py` will not set `verified: true` without having read a live
+record, and will not guess a column — where it cannot identify one it leaves
+null, because a null renders as blank and a wrong one renders as data. That
+rule is in place because guessing field names has cost real time on this
+project twice.
+
+Two things in `build_ci_bundles.py` are load-bearing and not obvious:
+
+- **The class filter runs on the server.** Cook has ~1.8M parcels; downloading
+  them to discard 95% is a day of paging. Every non-Cook county uses the same
+  IDOR codes, so it is one `where` clause reused 25 times. Cook publishes no
+  class on the parcel layer and is handled separately.
+- **The territory test is the feeder buffers, not the county list.** ComEd
+  reaches into ~25 counties and serves none of the outer ones whole. Shipping a
+  parcel we cannot sell into is worse than missing one — a rep works it, gets
+  to interconnection, and finds the wrong utility. Every parcel is tested
+  against layer 75 and dropped if it is outside, and those drops are expected
+  rather than a failure.
+
+An unverified county in `counties.json` is not a missing county. It is a county
+whose field names nobody has read off a live record yet.
 
 ### About Crexi
 
@@ -308,11 +420,19 @@ disappears the moment a real provider is selected.
 
 ```
 node test.js
+node test-shards.js
 ```
 
-46 assertions covering the ledger: queue subtraction, neighbour blocking, the
-oversell refusal, self-edit not being self-blocking, firm vs soft expiry,
-automatic lapse, release, oversubscription surfacing, and provider determinism.
+`test.js` — 46 assertions covering the ledger: queue subtraction, neighbour
+blocking, the oversell refusal, self-edit not being self-blocking, firm vs soft
+expiry, automatic lapse, release, oversubscription surfacing, and provider
+determinism.
+
+`test-shards.js` — 15 assertions covering sharded parcel loading against a
+faked `document.head`: only the counties in view download, each downloads once,
+panning pulls the next one, a shard that is not deployed is **named** rather
+than quietly shortening the list, and that failure stops being reported once
+the rep pans away from that county.
 
 ## Open questions
 
@@ -347,6 +467,14 @@ automatic lapse, release, oversubscription surfacing, and provider determinism.
 
 ## Known gaps
 
+- **One county of twenty-five is verified.** Cook. Will is the one to do next —
+  the I-80/I-55 intermodal corridor is the densest warehouse concentration in
+  the territory. Until a county is verified it contributes no shard, and the
+  map is honest about that rather than looking empty.
+- **Cook's redistribution licence is unresolved.** At least one Cook hosted
+  parcel layer forbids re-serving over a network without written permission.
+  Which layer that covers needs confirming before the Cook bundle ships to
+  tenants — it is the one county where shipping the data may not be ours to do.
 - **The legend/colour mismatch in ComEd Atlas is not addressed here.** Still
   outstanding from the earlier deck work.
 - `index.html` in the Walters deployment is still a fork pending upstream merge.

@@ -366,13 +366,103 @@
   M.ciRows = function () { return CI.rows || []; };
   M.ciState = function () { return CI.state; };
 
-  /* Load the parcels WITHOUT drawing them. The Site Finder wants the rows as
-     records, not as pins, and it must not be forced to switch a map layer on
-     to get at them. */
-  M.loadCI = function (cb) {
-    loadBundle(CI, M.CI_URL, "CS_CI", function (state) {
-      cb(state === "ready" ? null : new Error(M.CI_URL + " is not deployed to this host."),
-         CI.rows || []);
+  /* ------------------------------------------------------- sharded parcels
+     C&I across the whole territory is 150–250k parcels. As one script tag
+     that is 30–50 MB and the tab is unresponsive before the map draws, so
+     the bundle is split per county and the manifest carries each shard's
+     bbox. Only the counties the viewport actually touches get downloaded,
+     and each one downloads once.
+
+     A shard that fails to load is reported by county name rather than as a
+     silently short list — "5,200 parcels" when the honest answer is "5,200
+     parcels and Will County did not load" is the kind of quiet wrong that
+     sends a rep to a corridor believing it is empty. */
+  var MAN = { state: "idle", shards: [], queue: [] };
+  var SHARDS = {};                 /* key -> {state, rows, queue} */
+  var CI_FAILED = [];
+  M.CI_MANIFEST_URL = "ci-manifest.js";
+
+  M.ciFailed = function () { return CI_FAILED.slice(); };
+  M.ciShards = function () { return MAN.shards.slice(); };
+
+  function loadManifest(cb) {
+    if (MAN.state === "ready" || MAN.state === "failed") { cb(MAN.state); return; }
+    if (MAN.state === "loading") { MAN.queue.push(cb); return; }
+    MAN.state = "loading"; MAN.queue = [cb];
+    loadBundle({ state: "idle", queue: [] }, M.CI_MANIFEST_URL, "CS_CI_MANIFEST",
+      function (state) {
+        if (state === "ready" && root.CS_CI_MANIFEST && root.CS_CI_MANIFEST.length) {
+          MAN.shards = root.CS_CI_MANIFEST;
+          MAN.state = "ready";
+          diag("ci manifest: " + MAN.shards.length + " county shards");
+        } else {
+          /* No manifest means a pre-shard deployment. The old single bundle
+             still works and still says so, rather than the layer going dark
+             on a tenant nobody has rebuilt yet. */
+          MAN.state = "failed";
+          diag("ci manifest: absent — falling back to " + M.CI_URL);
+        }
+        var q = MAN.queue; MAN.queue = [];
+        for (var i = 0; i < q.length; i++) q[i](MAN.state);
+      });
+  }
+
+  function boxHits(bb, b) {
+    /* manifest bbox is [w, s, e, n] */
+    return !(bb[0] > b.e || bb[2] < b.w || bb[1] > b.n || bb[3] < b.s);
+  }
+
+  function loadShard(sh, cb) {
+    var st = SHARDS[sh.key];
+    if (st && (st.state === "ready" || st.state === "failed")) { cb(st.state); return; }
+    if (st && st.state === "loading") { st.queue.push(cb); return; }
+    st = SHARDS[sh.key] = { state: "idle", queue: [], rows: [] };
+    loadBundle(st, sh.file, "CS_CI_" + sh.key.toUpperCase(), function (state) {
+      if (state !== "ready" && CI_FAILED.indexOf(sh.key) < 0) CI_FAILED.push(sh.key);
+      cb(state);
+    });
+  }
+
+  /* Load the parcels WITHOUT drawing them, for the bbox in question. The Site
+     Finder wants the rows as records, not as pins, and must not be forced to
+     switch a map layer on to get at them. */
+  M.loadCI = function (cb, bbox) {
+    loadManifest(function (mstate) {
+      if (mstate !== "ready") {
+        /* Legacy single bundle. */
+        loadBundle(CI, M.CI_URL, "CS_CI", function (state) {
+          cb(state === "ready" ? null : new Error(M.CI_URL + " is not deployed to this host."),
+             CI.rows || []);
+        });
+        return;
+      }
+      var want = [], i;
+      for (i = 0; i < MAN.shards.length; i++)
+        if (!bbox || boxHits(MAN.shards[i].bbox, bbox)) want.push(MAN.shards[i]);
+      if (!want.length) { CI.rows = []; CI.state = "ready"; cb(null, []); return; }
+
+      var pending = want.length;
+      for (i = 0; i < want.length; i++) {
+        loadShard(want[i], function () {
+          if (--pending) return;
+          var rows = [], missing = [], k, st;
+          for (k = 0; k < want.length; k++) {
+            st = SHARDS[want[k].key];
+            if (!st || st.state !== "ready") { missing.push(want[k].key); continue; }
+            if (st.rows && st.rows.length) rows = rows.concat(st.rows);
+          }
+          CI.rows = rows;
+          CI.state = "ready";
+          /* Only the shards THIS viewport asked for. CI_FAILED accumulates for
+             the life of the tab, so reporting it wholesale means a county that
+             failed once keeps appearing in the header long after the rep has
+             panned away from it — a warning about a county that is not on
+             screen is noise, and noise is how a real one gets ignored. */
+          cb(missing.length
+             ? new Error("These counties did not load: " + missing.join(", "))
+             : null, rows);
+        });
+      }
     });
   };
 
@@ -384,12 +474,27 @@
       if (done) done(0);
       return;
     }
-    loadBundle(CI, M.CI_URL, "CS_CI", function (state) {
-      if (state !== "ready") { if (done) done(0, new Error("ci-industrial.js not deployed")); return; }
-      drawCI(done);
-    });
+    var b = map.getBounds();
+    M.loadCI(function (err) {
+      if (err && !CI.rows.length) { if (done) done(0, err); return; }
+      drawCI(function (n) { if (done) done(n, err); });
+    }, { s: b.getSouth(), n: b.getNorth(), w: b.getWest(), e: b.getEast() });
   };
-  M.refreshCI = function (done) { if (CI.on) drawCI(done); else if (done) done(0); };
+  /* Panning west out of Cook and into Kane has to pull Kane, or the layer
+     goes empty at the county line and reads as "no parcels here". */
+  M.refreshCI = function (done) {
+    if (!CI.on) { if (done) done(0); return; }
+    if (!map) { if (done) done(0); return; }
+    var b = map.getBounds();
+    /* The error is passed through whether or not rows came back. A pan that
+       pulls three counties and loses one draws a map that looks complete, and
+       suppressing the error because SOMETHING loaded is precisely the quiet
+       wrong the shard naming exists to prevent. The caller decides whether to
+       show a count, a warning, or both. */
+    M.loadCI(function (err) {
+      drawCI(function (n) { if (done) done(n, err || null); });
+    }, { s: b.getSouth(), n: b.getNorth(), w: b.getWest(), e: b.getEast() });
+  };
 
   function drawCI(done) {
     if (CI.layer) { map.removeLayer(CI.layer); CI.layer = null; }
