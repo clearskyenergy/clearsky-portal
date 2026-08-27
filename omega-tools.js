@@ -339,38 +339,56 @@
       icon:'M12 2 4 6v6c0 5 3.5 8.5 8 10 4.5-1.5 8-5 8-10V6zM9 12h2l-1 3h3' },
 
     /* ── SITE FINDER ──
-       The browsing half of the same data the Capacity Finder reports on.
-       Cards beside a live hosting-capacity map, ranked on DELIVERABLE kW
-       rather than published headroom, with the circuit ledger behind it.
+       Kept adjacent to comedcap on purpose: both are ComEd-territory-bound and
+       both draw their shading from omega-comed-layers.js. If one moves or the
+       ComEd qualifier drops from one desc, the other needs the same edit.
 
-       WHY BOTH EXIST, since they read the same sources:
-         comedcap    answers "what is the capacity at THIS address"
-         sitefinder  answers "which of these hundred addresses do I call"
-       Same pipeline, opposite direction. Merging them would mean one screen
-       doing both jobs badly.
+       The pair are NOT duplicates and the descs must stay distinct or they read
+       as one tool listed twice:
+         comedcap      answers ONE address the rep already has.
+         sitefinder    finds addresses the rep does not have yet, ranked by kW,
+                       and lets them claim the circuit.
+         sitediscovery ranks a pipeline the tenant already assembled.
 
-       SHARED DEPENDENCIES the tenant must have deployed alongside it:
-         omega-capacity-ledger.js   circuit claims (Firestore capacityAllocations)
-         omega-comed-layers.js      hosting capacity / C&I / Illinois Shines
+       tier DELUXE, unlike comedcap. comedcap is a lookup and is TIER.ALL to
+       make the paid tools worth opening. This one carries the shared allocation
+       ledger — one rep's hold removing capacity from every other rep's
+       inventory is a TEAM capability, and a single-seat tenant gets little from
+       it. If it should instead be top-of-funnel bait, change tier to TIER.ALL
+       here; nothing else in the platform depends on the value.
+
+       savesData true, but it DEVIATES from the toolData contract, for the same
+       reason 'intake' does. Claims live at capacityAllocations/{orgId}__{allocId}
+       carrying orgId, because the ledger has to be readable org-wide by every
+       rep — toolData/{orgId}/tools/{key} is a single document and cannot be
+       queried per-circuit. See firestore-capacity.rules and README-sitefinder.md.
+
+       DEPENDENCIES — this entry is metadata only, and the tool is dark until
+       all of these are on TOOL_HOST beside the .html:
+         omega-capacity-ledger.js   allocation math + shared claims
          omega-listings-source.js   property providers
-         ci-industrial.js           C&I parcel bundle   (optional layer)
-         ilshines-sites.js          Illinois Shines     (optional layer)
-       The two bundles are optional — a missing one shows '!' in the legend
-       with a reason rather than an empty layer.
+         omega-comed-layers.js      hosting capacity / C&I / Illinois Shines
+         ci-industrial.js           C&I parcel bundle    (falls back to tools host)
+         ilshines-sites.js          Illinois Shines bundle (same fallback)
+       Plus the capacityAllocations block pasted into the merged rules file. The
+       page degrades honestly without Firestore — the chip reads "Local only" —
+       so a missing rules block looks like a working tool that quietly is not
+       sharing claims. Run check-rules.js before deploying.
 
-       savesData is FALSE deliberately. It persists nothing through the
-       toolData contract; its writes go to capacityAllocations, which is
-       org-wide by design because a claim nobody else can see stops nobody
-       from selling over it. Marking it savesData:true would imply per-org
-       toolData state that does not exist.
+       ORG SCOPING: hrefFor() appends ?org=<orgId> and the page reads it. With
+       no org param it falls back to the "demo" bucket rather than erroring, so
+       a tenant opened without a workspace writes claims somewhere harmless but
+       invisible to their team. That is intentional for demos; it is also the
+       first thing to check if a tenant reports claims vanishing.
 
-       SAME WORKER DEPENDENCY as comedcap — see the note above. If this shows
-       '!' on hosting capacity for everyone at once, check the Worker before
-       anything in this file. */
+       file is the .html itself, not the /sitefinder rewrite in the tenant's
+       vercel.json. Rewrites are per-tenant and TOOL_HOST is one shared deploy,
+       so pointing at the rewrite would 404 for every tenant that has not added
+       it. */
     { key:'sitefinder', name:'Site Finder', category:'interconnection',
-      desc:'Browse C&I sites on a live hosting-capacity map, ranked by the battery you can actually deliver \u2014 and hold the circuit so nobody sells it twice.',
-      file:'/clearsky-sitefinder.html', badge:'new', tier:TIER.ALL,
-      icon:'M3 6l6-3 6 3 6-3v15l-6 3-6-3-6 3zM9 3v15M15 6v15' },
+      desc:'Browse northern-Illinois C&I property ranked by deliverable kW, not price \u2014 hold a circuit and it leaves every other rep\u2019s inventory.',
+      file:'/clearsky-sitefinder.html', badge:'new', tier:TIER.DELUXE, savesData:true,
+      icon:'M12 22s7-5.7 7-11a7 7 0 1 0-14 0c0 5.3 7 11 7 11zM12 7l-2 4h3l-2 4' },
 
     /* ── OPERATIONS ── */
     { key:'degradation', name:'BESS Degradation & Warranty', category:'operations',
