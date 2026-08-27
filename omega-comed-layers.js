@@ -33,6 +33,7 @@
   M.DATA_HOSTS = ["", "https://tools.csebuilders.com/"];
   M.CI_URL = "ci-industrial.js";
   M.ILS_URL = "ilshines-sites.js";
+  M.EDC_URL = "edc-sites.js";
 
   function base() { return M.PROXY || M.DIRECT; }
   function proxyRoot() { return M.PROXY ? M.PROXY.replace(/\/comed\/?$/, "") : null; }
@@ -178,6 +179,108 @@
   M.useField = "bess";
   function col() { return M.FIELD[M.useField] || "BESS_HC"; }
 
+  /* ------------------------------------------------------- feeder lookup
+     The polygons were already being fetched to shade the map and then
+     thrown away except as Leaflet layers. They are the only thing that can
+     tell a parcel which circuit it sits on, so they are kept as rows and
+     the draw step reads the same cache. ONE query, two consumers — the
+     alternative is a second copy of this URL, which is exactly the drift
+     this file exists to prevent.
+
+     Cached by bbox only, not by product: outFields already pull all three
+     columns, so switching Battery/Load/Solar recolours from memory instead
+     of hitting the service again. */
+  var HQ = { key: "", rows: [], busy: false, queue: [] };
+
+  function bboxKey(b) {
+    return [b.s, b.n, b.w, b.e].map(function (x) { return (+x).toFixed(3); }).join(",");
+  }
+
+  M.hostingIn = function (bbox, cb) {
+    var k = bboxKey(bbox);
+    if (k === HQ.key && HQ.rows.length) { cb(null, HQ.rows); return; }
+    if (HQ.busy) { HQ.queue.push(cb); return; }
+    HQ.busy = true; HQ.queue = [cb];
+
+    var env = JSON.stringify({
+      xmin: bbox.w, ymin: bbox.s, xmax: bbox.e, ymax: bbox.n,
+      spatialReference: { wkid: 4326 }
+    });
+    var url = base() + "/" + detailLayer() + "/query?f=json&where=1%3D1" +
+      "&geometry=" + encodeURIComponent(env) +
+      "&geometryType=esriGeometryEnvelope&inSR=4326&spatialRel=esriSpatialRelIntersects" +
+      "&outFields=" + encodeURIComponent("OBJECTID,Feeder,SS_N,BESS_HC,PV_HC_kW,EV_HC_kW,Feeder_Q") +
+      "&returnGeometry=true&geometryPrecision=5&maxAllowableOffset=0.0002" +
+      "&outSR=4326&resultRecordCount=1200";
+
+    getJSON(url, function (err, j) {
+      HQ.busy = false;
+      var rows = [], i;
+      var e = err || (j && j.error ? new Error("service " + j.error.code) : null);
+      if (!e && j && j.features) {
+        for (i = 0; i < j.features.length; i++) {
+          var f = j.features[i], a = f.attributes;
+          if (!f.geometry || !f.geometry.rings) continue;
+          var q = parseFloat(a.Feeder_Q); if (isNaN(q)) q = 0;
+          rows.push({
+            a: a, rings: f.geometry.rings,
+            feeder: String(a.Feeder == null ? "" : a.Feeder),
+            sub: a.SS_N == null ? "" : String(a.SS_N),
+            queue: q,
+            bess: parseFloat(a.BESS_HC),
+            pv: parseFloat(a.PV_HC_kW),
+            ev: parseFloat(a.EV_HC_kW)
+          });
+        }
+        HQ.key = k; HQ.rows = rows;
+        diag("hosting: cached " + rows.length + " circuits");
+      } else {
+        diag("hosting: " + (e ? e.message : "no result"));
+      }
+      var qs = HQ.queue; HQ.queue = [];
+      for (i = 0; i < qs.length; i++) qs[i](e, rows);
+    });
+  };
+
+  M.hostingRows = function () { return HQ.rows.slice(); };
+
+  /* Ray cast in lon/lat. Even-odd across every ring of the feature, so a
+     donut counts as outside rather than inside twice. */
+  function inRing(x, y, ring) {
+    var inside = false, i, j, xi, yi, xj, yj;
+    for (i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+      xi = ring[i][0]; yi = ring[i][1];
+      xj = ring[j][0]; yj = ring[j][1];
+      if (((yi > y) !== (yj > y)) &&
+          (x < (xj - xi) * (y - yi) / ((yj - yi) || 1e-12) + xi)) inside = !inside;
+    }
+    return inside;
+  }
+
+  /* Which circuit is this parcel on? Answered from the cached polygons, so
+     it costs nothing per parcel — a sweep of 400 buildings is still one
+     ArcGIS call. Returns null rather than guessing: a wrong feeder id on a
+     card is worse than a blank one, because a rep will quote it. */
+  M.feederAt = function (lat, lon) {
+    var rows = HQ.rows, i, j, hit;
+    if (lat == null || lon == null) return null;
+    for (i = 0; i < rows.length; i++) {
+      hit = false;
+      for (j = 0; j < rows[i].rings.length; j++)
+        if (inRing(lon, lat, rows[i].rings[j])) hit = !hit;
+      if (hit) return rows[i];
+    }
+    return null;
+  };
+
+  /* Nameplate for the product currently selected, net of queued DER. */
+  M.capacityOf = function (row) {
+    if (!row) return null;
+    var f = M.useField === "ev" ? row.ev : M.useField === "pv" ? row.pv : row.bess;
+    if (isNaN(f)) return null;
+    return { nameplate: f, queue: row.queue || 0, feederId: row.feeder, sub: row.sub };
+  };
+
   M.hosting = function (on, done) {
     HOST.on = !!on;
     if (!map) { if (done) done(); return; }
@@ -215,40 +318,28 @@
     HOST.busy = true;
 
     var b = map.getBounds();
-    var env = JSON.stringify({
-      xmin: b.getWest(), ymin: b.getSouth(), xmax: b.getEast(), ymax: b.getNorth(),
-      spatialReference: { wkid: 4326 }
-    });
-    var url = base() + "/" + detailLayer() + "/query?f=json&where=1%3D1" +
-      "&geometry=" + encodeURIComponent(env) +
-      "&geometryType=esriGeometryEnvelope&inSR=4326&spatialRel=esriSpatialRelIntersects" +
-      "&outFields=" + encodeURIComponent("OBJECTID,Feeder,SS_N,BESS_HC,PV_HC_kW,EV_HC_kW,Feeder_Q") +
-      "&returnGeometry=true&geometryPrecision=5&maxAllowableOffset=0.0002" +
-      "&outSR=4326&resultRecordCount=1200";
+    var bbox = { s: b.getSouth(), n: b.getNorth(), w: b.getWest(), e: b.getEast() };
 
-    getJSON(url, function (err, j) {
+    M.hostingIn(bbox, function (err, rows) {
       HOST.busy = false;
       HOST.key = k;
       if (HOST.layer) { map.removeLayer(HOST.layer); HOST.layer = null; }
-      if (err || !j || j.error || !j.features) {
+      if (err) {
         HOST.n = 0;
-        diag("hosting: " + (err ? err.message : (j && j.error ? ("service " + j.error.code) : "no result")));
-        if (done) done(0, err || new Error(j && j.error ? "service error" : "no result"));
+        if (done) done(0, err);
         return;
       }
       var g = L.layerGroup(), c = col(), i;
-      for (i = 0; i < j.features.length; i++) {
-        var f = j.features[i], a = f.attributes;
-        if (!f.geometry || !f.geometry.rings) continue;
-        var v = parseFloat(a[c]);
-        var q = parseFloat(a.Feeder_Q); if (isNaN(q)) q = 0;
+      for (i = 0; i < rows.length; i++) {
+        var r = rows[i];
+        var v = parseFloat(r.a[c]);
         /* Shaded on what is ACTUALLY available, not the published headline.
            Feeder_Q is queued DER that ComEd does not net out anywhere in its
            own data, so a circuit advertising 15,620 kW with 4,895 queued is
            really about 10,725 — and colouring it by the headline sends reps
            at capacity that is already spoken for. */
-        var net = isNaN(v) ? null : Math.max(0, v - q);
-        var poly = L.polygon(ringsToLatLngs(f.geometry.rings), {
+        var net = isNaN(v) ? null : Math.max(0, v - r.queue);
+        var poly = L.polygon(ringsToLatLngs(r.rings), {
           pane: "capPane",
           color: M.bandColor(net),
           weight: 1,
@@ -257,10 +348,10 @@
           fillOpacity: 0.16,
           interactive: false      /* the cards are the interaction surface */
         });
-        poly._a = a; poly._net = net;
+        poly._a = r.a; poly._net = net;
         g.addLayer(poly);
       }
-      HOST.n = j.features.length;
+      HOST.n = rows.length;
       HOST.layer = g;
       g.addTo(map);
       if (done) done(HOST.n);
@@ -274,6 +365,16 @@
 
   M.ciRows = function () { return CI.rows || []; };
   M.ciState = function () { return CI.state; };
+
+  /* Load the parcels WITHOUT drawing them. The Site Finder wants the rows as
+     records, not as pins, and it must not be forced to switch a map layer on
+     to get at them. */
+  M.loadCI = function (cb) {
+    loadBundle(CI, M.CI_URL, "CS_CI", function (state) {
+      cb(state === "ready" ? null : new Error(M.CI_URL + " is not deployed to this host."),
+         CI.rows || []);
+    });
+  };
 
   M.ci = function (on, done) {
     CI.on = !!on;
@@ -366,6 +467,32 @@
   }
 
   M.ILS_NOTE = "Illinois Shines pins are ZIP centroids, not sited coordinates.";
+
+  M.loadILS = function (cb) {
+    loadBundle(ILS, M.ILS_URL, "CS_ILSHINES", function (state) {
+      cb(state === "ready" ? null : new Error(M.ILS_URL + " is not deployed to this host."),
+         ILS.rows || []);
+    });
+  };
+
+  /* ============================================== FOR SALE / FOR LEASE
+     The Illinois EDC site-selection feed. It carries the one field nothing
+     else here has: EXISTING ELECTRICAL SERVICE. Feeder capacity says what
+     the grid will accept; service size says what is already built to the
+     building, and a 200 A site needs a service upgrade before a battery
+     conversation is real. That kills more C&I storage deals than
+     interconnection does, which is why it travels with the listing rather
+     than being discovered on site visit three. */
+  var EDC = { state: "idle", rows: [], queue: [] };
+
+  M.edcRows = function () { return EDC.rows || []; };
+  M.edcState = function () { return EDC.state; };
+  M.loadEDC = function (cb) {
+    loadBundle(EDC, M.EDC_URL, "CS_EDC", function (state) {
+      cb(state === "ready" ? null : new Error(M.EDC_URL + " is not deployed to this host."),
+         EDC.rows || []);
+    });
+  };
 
   /* Re-run whatever is switched on after a pan or zoom. */
   M.refreshAll = function (done) {

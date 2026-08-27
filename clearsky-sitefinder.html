@@ -475,6 +475,7 @@
 <script src="omega-capacity-ledger.js"></script>
 <script src="omega-comed-layers.js"></script>
 <script src="omega-listings-source.js"></script>
+<script src="omega-comed-listings.js"></script>
 <script>
 /* ==========================================================================
    Site Finder — application layer
@@ -513,7 +514,7 @@
   /* ------------------------------------------------------------- provider
      Demo until a contract exists. Switching source is one line — see the
      README for what each provider needs before it can be turned on. */
-  SRC.use("demo");
+  SRC.use(SRC.providers.comed ? "comed" : "demo");
   function isSample() { return !!(SRC.active && SRC.active.sample); }
 
   /* =========================================================== the search */
@@ -566,11 +567,24 @@
       var r = rows[i];
       if (!r || r.lat == null || r.lon == null) continue;
 
-      if (!r.feederId) {
+      /* Real circuit first: the hosting polygons the map is shaded with are
+         already in memory, so this is a point-in-polygon, not a query. */
+      if (!r.feederId && LAY && LAY.feederAt) {
+        var hit = LAY.feederAt(r.lat, r.lon), cap0 = hit ? LAY.capacityOf(hit) : null;
+        if (cap0 && cap0.nameplate != null) {
+          r.feederId = cap0.feederId; r.sub = r.sub || cap0.sub;
+          r.nameplate = cap0.nameplate; r.queue = cap0.queue;
+        }
+      }
+      /* Only sample data gets a synthetic circuit. A real parcel with no
+         polygon over it keeps a blank feeder and says so on the card — a
+         made-up circuit id under real data is a number a rep will quote. */
+      if (!r.feederId && isSample()) {
         var f = SRC.demoFeederFor(r.lat, r.lon);
         r.feederId = f.feederId; r.sub = r.sub || f.sub;
       }
-      if (L.getFeeder(r.feederId) == null) {
+      if (!r.feederId) { r.feederId = "\u2014"; r.noCircuit = true; }
+      if (L.getFeeder(r.feederId) == null && !r.noCircuit) {
         var cap = r.nameplate != null
           ? { nameplate: r.nameplate, queue: r.queue || 0 }
           : SRC.demoCapacityFor(r.feederId);
@@ -811,6 +825,7 @@
   function srcNote() {
     var P = SRC.active, e = document.getElementById("setSrcNote");
     if (!P || !e) return;
+    if (P.note) { e.textContent = P.note; return; }
     e.textContent = P.sample
       ? "Deterministic sample data. The same viewport returns the same properties every time, so a demo never reshuffles itself in front of a customer."
       : P.url ? ("Reads " + P.url + ", built offline by the harvest pipeline.")
