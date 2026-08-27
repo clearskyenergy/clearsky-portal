@@ -130527,20 +130527,64 @@ function overlapFrac(a, b){
   return aa>0 ? ia/aa : 0;
 }
 
-/* Pixel bbox for a shape, defensively — _shapeBBox is the app's own and is
-   authoritative, but it throws on half-built shapes, so fall back to the
-   point list rather than dropping the object out of the render. */
+/* Pixel bbox for a shape.
+   _shapeBBox is the app's own and is authoritative for the kinds it knows
+   about — but it has NO case for 'dersolar', so it falls through to its
+   generic point loop. An auto-layout array stores pts:[{minX,minY}] (one
+   point) with the real extent in wPx/hPx and boundary, and that loop then
+   returns Math.max(1,0) = a 1x1 PIXEL box. On a site drawn at 0.28 px/ft
+   that renders a 250 kW array as a 4 ft square, which is exactly what it
+   did. So the richer geometry on the shape wins, and _shapeBBox is the
+   fallback rather than the first answer. */
 function shapeBox(sh){
+  /* 1. an explicit authored extent */
+  if(sh.wPx > 0 && sh.hPx > 0 && sh.pts && sh.pts[0])
+    return { x:sh.pts[0].x, y:sh.pts[0].y, w:sh.wPx, h:sh.hPx };
+
+  /* 2. a boundary polygon (auto-layout arrays, drawn regions) */
+  if(sh.boundary && sh.boundary.length > 2) return bboxOfPts(sh.boundary);
+
+  /* 3. the laid-out tables themselves */
+  if(sh.tables && sh.tables.length){
+    var xs = [], i;
+    for(i=0;i<sh.tables.length;i++){
+      var t = sh.tables[i];
+      xs.push({ x:t.x, y:t.y });
+      xs.push({ x:t.x + (t.w||0), y:t.y + (t.h||0) });
+    }
+    return bboxOfPts(xs);
+  }
+
+  /* 3b. kinds that author their size in FEET rather than pixels — bespad,
+     assembly, utility. These carry one anchor point (or cx/cy) plus lf/wf,
+     so a point-based bbox finds nothing. Handled here rather than leaning
+     on the app's _shapeBBox, so the model still reads correctly if that
+     helper is unavailable or changes shape. */
+  if(sh.lf > 0 && sh.wf > 0){
+    var pf = ppf();
+    if(sh.cx != null)
+      return { x:sh.cx - sh.lf*pf/2, y:sh.cy - sh.wf*pf/2, w:sh.lf*pf, h:sh.wf*pf };
+    if(sh.pts && sh.pts[0])
+      return { x:sh.pts[0].x, y:sh.pts[0].y, w:sh.lf*pf, h:sh.wf*pf };
+  }
+
+  /* 4. the app's own, for every kind it does handle properly */
   try{
     if(typeof _shapeBBox==='function'){
-      var b=_shapeBBox(sh);
-      if(b && isFinite(b.x) && isFinite(b.y) && b.w>0 && b.h>0) return b;
+      var b = _shapeBBox(sh);
+      if(b && isFinite(b.x) && isFinite(b.y) && b.w > 1 && b.h > 1) return b;
     }
   }catch(e){}
-  if(sh.wPx>0 && sh.hPx>0 && sh.pts && sh.pts[0])
-    return { x:sh.pts[0].x, y:sh.pts[0].y, w:sh.wPx, h:sh.hPx };
-  if(sh.pts && sh.pts.length) return bboxOfPts(sh.pts);
-  if(sh.cx!=null) return { x:sh.cx-10, y:sh.cy-10, w:20, h:20 };
+
+  if(sh.pts && sh.pts.length > 1) return bboxOfPts(sh.pts);
+  /* A single-point shape of unknown size still exists on the drawing, so
+     give it a small real footprint rather than dropping it from the model
+     without saying anything. */
+  if(sh.pts && sh.pts[0]){
+    var q = ppf() * 4;
+    return { x:sh.pts[0].x - q/2, y:sh.pts[0].y - q/2, w:q, h:q };
+  }
+  if(sh.cx != null) return { x:sh.cx-10, y:sh.cy-10, w:20, h:20 };
   return null;
 }
 
@@ -130578,15 +130622,20 @@ function classifySolar(sh, ctx){
   var label = String(sh.label||'').toLowerCase();
 
   /* --- pass 2: authored ------------------------------------------------
-     The draw tool and the racking preset already recorded the intent. A
-     rooftop array was drawn with the Rooftop tool (mount 'roof'); the
-     Carport preset is the only one that ships gcr 0.85, and 'adjacent' is
-     the mount the canopy tool sets. Trust all of that over geometry. */
+     The draw tool and the racking preset already recorded the intent.
+
+     ORDER MATTERS HERE. `mount` is set PER ARRAY by whichever draw tool
+     the user picked. `gcr` comes from the Solar Assumptions preset, which
+     is GLOBAL — picking "Carport / canopy" there pushes gcr to 0.85 on
+     every ground-class array at once, including ones drawn individually
+     with the Rooftop tool. Testing gcr before mount therefore relabelled
+     genuine rooftop arrays as carports, which is exactly what happened on
+     a real site. The per-array signal has to beat the site-wide one. */
   if(label.indexOf('carport')>=0 || label.indexOf('canopy')>=0)
     return { arch:'solar-carport', why:'authored' };
+  if(mount==='roof')     return { arch:'solar-roof',    why:'authored' };
   if(mount==='adjacent') return { arch:'solar-carport', why:'authored' };
   if(gcr >= 0.80)        return { arch:'solar-carport', why:'authored' };
-  if(mount==='roof')     return { arch:'solar-roof',    why:'authored' };
   /* Tracker preset is the only ground option that drops to ~0.33 GCR. */
   if(gcr > 0 && gcr <= 0.35) return { arch:'solar-tracker', why:'authored' };
 
@@ -130743,8 +130792,17 @@ function readSite(){
                  wf:(t.w||0)/p, lf:(t.h||0)/p };
       });
     }
-    if(sh.pts && sh.pts.length>2){
-      it.poly = sh.pts.map(function(q){ return { x:fx(q.x), z:fz(q.y) }; });
+    /* THE OUTLINE, NOT ITS BOUNDING BOX.
+       Half the arrays on a real site are angled roof planes or clipped
+       parcels. Rendering those as their bounding rectangle spills the deck
+       over roof edges and setbacks it was drawn to respect. An auto-layout
+       array keeps its outline in `boundary`; a hand-drawn polygon keeps it
+       in `pts`. Either way the outline is what gets extruded. */
+    var ring = null;
+    if(sh.boundary && sh.boundary.length > 2) ring = sh.boundary;
+    else if(sh.pts && sh.pts.length > 2)      ring = sh.pts;
+    if(ring){
+      it.poly = ring.map(function(q){ return { x:fx(q.x), z:fz(q.y) }; });
     }
     if(sh.kind==='bespad' || sh.kind==='assembly'){
       it.wf = (+sh.lf||20); it.lf = (+sh.wf||8);
@@ -130953,6 +131011,66 @@ function buildMaterials(){
  *  and rotates it. Feet are the unit throughout.
  * ═══════════════════════════════════════════════════════════════════════ */
 
+/* MODULE-SCALE PANEL MATERIAL.
+   TEX.panel is ONE module (about 3.3 x 6.5 ft). Stretched across a 200 ft
+   carport deck it reads as a single absurd cell grid, which is why a big
+   array looked like painted blue card rather than modules. Repeat is
+   therefore derived from the real footprint, so a module is always a
+   module. Cached by rounded repeat because a site can hold dozens of
+   arrays and each uncached material is a shader compile. */
+var MOD_W_FT = 3.3, MOD_H_FT = 6.5;
+var _panelMats = {};
+function panelMat(wf, lf){
+  var rx = Math.max(1, Math.round(wf / MOD_W_FT));
+  var ry = Math.max(1, Math.round(lf / MOD_H_FT));
+  var key = rx + 'x' + ry;
+  if(_panelMats[key]) return _panelMats[key];
+  var t = TEX.panel.clone();
+  t.needsUpdate = true;
+  t.wrapS = t.wrapT = THREE.RepeatWrapping;
+  t.repeat.set(rx, ry);
+  var m = new THREE.MeshStandardMaterial({
+    map:t, color:0xffffff, metalness:0.32, roughness:0.26 });
+  _panelMats[key] = m;
+  return m;
+}
+
+/* A local outline (ft, {x,z}) as a THREE.Shape.
+   Shapes live in XY and the mesh is rotated -90 deg about X, which maps
+   (x,y,0) -> (x,0,-y). So world z comes from -y, and the outline is built
+   with y = -z to land the right way round rather than mirrored. */
+function polyShape(pts, ox, oz){
+  var s = new THREE.Shape();
+  for(var i=0;i<pts.length;i++){
+    var x = pts[i].x - (ox||0), z = pts[i].z - (oz||0);
+    if(i===0) s.moveTo(x, -z); else s.lineTo(x, -z);
+  }
+  s.closePath();
+  return s;
+}
+
+/* Extrude an outline into a slab of `thick` ft sitting at y=0. */
+function polySlab(pts, ox, oz, thick, mat){
+  var geo = new THREE.ExtrudeGeometry(polyShape(pts, ox, oz),
+    { depth:thick, bevelEnabled:false, curveSegments:1 });
+  geo.rotateX(-Math.PI/2);
+  var m = new THREE.Mesh(geo, mat);
+  m.castShadow = true; m.receiveShadow = true;
+  return m;
+}
+
+/* Even-odd point-in-polygon, so columns and cars only get placed where
+   the canopy actually is. */
+function inPoly(x, z, pts){
+  var inside = false, n = pts.length;
+  for(var i=0, j=n-1; i<n; j=i++){
+    var a = pts[i], b = pts[j];
+    if(((a.z > z) !== (b.z > z)) &&
+       (x < (b.x-a.x) * (z-a.z) / ((b.z-a.z)||1e-9) + a.x)) inside = !inside;
+  }
+  return inside;
+}
+
 function box(w,h,d,mat){ var m=new THREE.Mesh(new THREE.BoxGeometry(w,h,d), mat);
   m.castShadow=true; m.receiveShadow=true; return m; }
 function cyl(rt,rb,h,mat,seg){ var m=new THREE.Mesh(new THREE.CylinderGeometry(rt,rb,h,seg||12), mat);
@@ -130969,7 +131087,8 @@ function pvTable(wf, df, tiltDeg, clearFt){
   var tilt = (tiltDeg||0) * Math.PI/180;
   var planeD = df / Math.cos(tilt);          /* slope length of the table */
 
-  var pv = new THREE.Mesh(new THREE.BoxGeometry(wf, 0.22, planeD), MAT.panel);
+  var pv = new THREE.Mesh(new THREE.BoxGeometry(wf, 0.22, planeD),
+                          panelMat(wf, planeD));
   pv.castShadow = true; pv.receiveShadow = true;
   /* rotate about X so the table leans back along +Z (north-facing rows
      run east-west, which is how a fixed-tilt row is built) */
@@ -131048,7 +131167,8 @@ function buildSolarTracker(it){
   var len = Math.max(6, it.wf*0.96);
   for(var r=0;r<rows;r++){
     var z = -it.lf/2 + pitch*(r+0.5);
-    var pv = new THREE.Mesh(new THREE.BoxGeometry(len, 0.22, tableD), MAT.panel);
+    var pv = new THREE.Mesh(new THREE.BoxGeometry(len, 0.22, tableD),
+                            panelMat(len, tableD));
     pv.rotation.z = 0.16;                    /* a few degrees off flat reads better */
     pv.position.set(0, axis, z);
     pv.castShadow = pv.receiveShadow = true;
@@ -131064,80 +131184,205 @@ function buildSolarTracker(it){
   return g;
 }
 
-/* Rooftop: a low-slope array standing off the deck, on the building it was
-   drawn over. The building is drawn by its own item; this only adds the
-   array, lifted to roof height. */
-function buildSolarRoof(it, arch, roofY){
+/* ROOFTOP ARRAY.
+   A flush array standing off the deck of the building it was drawn over.
+
+   The building is usually NOT drawn. Nobody traces the warehouse before
+   putting panels on it — the satellite image already shows it, so the site
+   map has arrays and nothing else. That left rooftop arrays hovering over
+   bare ground looking like a bug, and it is why rooftop solar appeared not
+   to render at all. So when no building underlies the array, the array
+   raises its own mass from its own outline: a plain parapeted block at a
+   nominal storey height, clearly a stand-in, but it puts the panels where
+   a roof would be and reads correctly from every angle.
+
+   `implied` is true when we invented the building, so the panel can say so
+   rather than presenting a guessed 22 ft as surveyed fact. */
+function buildSolarRoof(it, arch, roofY, implied){
   var g = new THREE.Group();
+  var poly = it.poly;
   var sb = it.setbackFt || 3;
   var bw = Math.max(2, it.wf - sb*2), bl = Math.max(2, it.lf - sb*2);
   var tilt = arch.tilt, tiltR = tilt*Math.PI/180;
+
+  /* --- the building we are standing on, if nobody drew one ---------- */
+  if(implied){
+    var mass;
+    if(poly) mass = polySlab(poly, it.x, it.z, roofY, MAT.wall);
+    else   { mass = box(it.wf, roofY, it.lf, MAT.wall); mass.position.y = roofY/2; }
+    g.add(mass);
+
+    var cap;
+    if(poly) cap = polySlab(poly, it.x, it.z, 1.0, MAT.roofDeck);
+    else     cap = box(it.wf+0.4, 1.0, it.lf+0.4, MAT.roofDeck);
+    cap.position.y = roofY - 0.5;
+    g.add(cap);
+
+    if(roofY > 12 && !poly){
+      var band = box(it.wf+0.1, Math.min(4, roofY*0.2), it.lf+0.1, MAT.glass);
+      band.position.y = roofY*0.6; g.add(band);
+    }
+  }
+
+  /* --- the array itself ---------------------------------------------
+     Its own group, lifted to roof level in one place. The previous
+     version lifted children by index, which silently broke the moment
+     the mass gained or lost a part. */
+  var arr = new THREE.Group();
+  arr.position.y = roofY || 0;
+  g.add(arr);
+
   var rowD = 6.6;
   var gcr = it.gcr>0 ? it.gcr : 0.70;
   var pitch = Math.max(rowD*1.02, rowD/gcr);
   var rows = Math.max(1, Math.floor(bl/pitch));
-  var stride = rows>140 ? Math.ceil(rows/140) : 1;
+  var stride = rows>160 ? Math.ceil(rows/160) : 1;
+  var pm = panelMat(bw, rowD);
 
   for(var r=0;r<rows;r++){
     if(r % stride) continue;
     var z = -bl/2 + pitch*(r+0.5);
-    var pv = new THREE.Mesh(new THREE.BoxGeometry(bw, 0.18, rowD/Math.cos(tiltR)), MAT.panel);
+    /* On an irregular roof, only lay a row where the outline actually is,
+       or rows overhang the angled edges they were drawn inside of. */
+    if(poly && !inPoly(it.x, z + it.z, poly) &&
+               !inPoly(it.x - bw*0.3, z + it.z, poly) &&
+               !inPoly(it.x + bw*0.3, z + it.z, poly)) continue;
+    var pv = new THREE.Mesh(
+      new THREE.BoxGeometry(bw, 0.18, rowD/Math.cos(tiltR)), pm);
     pv.rotation.x = -tiltR;
     pv.position.set(0, arch.clear + Math.sin(tiltR)*rowD/2, z);
-    pv.castShadow = pv.receiveShadow = true;
-    g.add(pv);
+    pv.castShadow = true; pv.receiveShadow = true;
+    arr.add(pv);
     /* ballast trays — what actually holds a flat-roof array down */
     var bal = box(bw, 0.3, 0.8, MAT.concrete);
     bal.position.set(0, 0.15, z - rowD/2);
-    g.add(bal);
+    arr.add(bal);
   }
-  g.position.y = roofY || 0;
   return g;
 }
 
-/* Carport canopy: a continuous deck on columns, high enough to drive under.
-   The columns are the whole visual signature of a carport, so they are
-   placed on a real structural grid rather than at the corners. */
+/* A low-poly parked car. Four of these under a canopy do more to say
+   "carport" than any amount of structural detail. */
+var CAR_COLORS = [0xc8ccd0, 0x2e3238, 0x8a9096, 0x6d2f2f, 0x24415f, 0xe6e8ea];
+function buildCar(seed){
+  var g = new THREE.Group();
+  var col = CAR_COLORS[seed % CAR_COLORS.length];
+  var bodyMat = new THREE.MeshStandardMaterial({ color:col, metalness:0.55, roughness:0.38 });
+  bodyMat._owned = true;
+  var body = box(6.0, 2.0, 14.5, bodyMat); body.position.y = 1.9; g.add(body);
+  var cabin = box(5.4, 1.7, 7.2, MAT.glass); cabin.position.set(0, 3.5, -0.6); g.add(cabin);
+  [[-2.6,-4.6],[2.6,-4.6],[-2.6,4.6],[2.6,4.6]].forEach(function(w){
+    var t = cyl(1.05,1.05,0.7,MAT.darkSteel,10);
+    t.rotation.z = Math.PI/2;
+    t.position.set(w[0], 1.05, w[1]); g.add(t);
+  });
+  return g;
+}
+
+/* CARPORT CANOPY.
+   A canopy is a CONTINUOUS deck over the whole area it was drawn on,
+   carried on a column grid, with parking underneath. The earlier version
+   built a single rectangle from the bounding box, so an angled or clipped
+   array covered the wrong ground and left most of its own footprint bare.
+   The outline is extruded instead, and the columns and cars are placed on
+   a grid clipped to that outline. */
 function buildCarport(it, arch){
   var g = new THREE.Group();
-  var front = arch.clear, tiltR = arch.tilt*Math.PI/180;
+  var front = arch.clear;
+  var poly = it.poly;
   var w = it.wf, d = it.lf;
-  var rise = Math.tan(tiltR) * d;
 
-  /* deck */
-  var deck = new THREE.Mesh(new THREE.BoxGeometry(w, 0.5, d/Math.cos(tiltR)), MAT.panel);
-  deck.rotation.x = -tiltR;
-  deck.position.y = front + rise/2;
-  deck.castShadow = deck.receiveShadow = true;
-  g.add(deck);
+  /* SLOPE IS PER BAY, NOT ACROSS THE WHOLE FIELD.
+     Running the nominal 7 deg over the full depth of a large canopy gives
+     a back edge 22 ft above the front on a 180 ft deck — the structure
+     ends up taller than the building next to it. Real canopies of that
+     size are near-flat, or built as repeated short-slope bays. Rise is
+     therefore capped, and the tilt actually used is derived back from the
+     capped rise so the deck angle and the post heights stay consistent. */
+  var MAX_RISE = 6;
+  var rise = Math.min(Math.tan(arch.tilt*Math.PI/180) * d, MAX_RISE);
+  var tiltR = Math.atan2(rise, d);
+  var deckY = front + rise/2;
 
-  /* underside beams so it does not read as a floating slab */
-  var beams = Math.max(2, Math.round(w/20));
-  for(var i=0;i<=beams;i++){
-    var bx = -w/2 + w*(i/beams);
-    var bm = box(0.55, 0.55, d, MAT.darkSteel);
-    bm.rotation.x = -tiltR;
-    bm.position.set(bx, front + rise/2 - 0.45, 0);
-    g.add(bm);
+  /* --- asphalt + striping under the whole canopy ------------------- */
+  var lot;
+  if(poly) lot = polySlab(poly, it.x, it.z, 0.16, MAT.asphalt);
+  else     lot = box(w, 0.16, d, MAT.asphalt);
+  if(!poly) lot.position.y = 0.08;
+  lot.castShadow = false; lot.receiveShadow = true;
+  g.add(lot);
+
+  var stallW = 9, bayD = 18;
+  var nx = Math.max(1, Math.floor(w/stallW)), nz = Math.max(1, Math.floor(d/bayD));
+  if(nx*nz < 1600){
+    var sg = new THREE.BoxGeometry(0.32, 0.03, bayD*0.9);
+    var si = new THREE.InstancedMesh(sg, MAT.stripe, (nx+1)*nz);
+    var sm = new THREE.Matrix4(), sk = 0;
+    for(var r=0;r<nz;r++) for(var c=0;c<=nx;c++){
+      var sx = -w/2 + stallW*c, sz = -d/2 + bayD*(r+0.5);
+      if(poly && !inPoly(sx + it.x, sz + it.z, poly)) continue;
+      sm.makeTranslation(sx, 0.19, sz); si.setMatrixAt(sk++, sm);
+    }
+    si.count = sk; si.receiveShadow = true;
+    if(sk) g.add(si);
   }
 
-  /* columns on a bay grid, set in from the edge like a real canopy */
-  var bays = Math.max(1, Math.round(w/22));
-  var inset = d*0.22;
-  for(var c=0;c<=bays;c++){
-    var x = -w/2 + w*(c/bays);
-    if(c===0) x += 1.2; if(c===bays) x -= 1.2;
-    [-1,1].forEach(function(sgn){
-      var z = sgn*(d/2 - inset);
-      var hCol = front + (rise/2) + (-sgn)*(rise/2)*0.6;
-      hCol = Math.max(6, hCol);
-      var col = box(0.9, hCol, 0.9, MAT.steel);
-      col.position.set(x, hCol/2, z);
-      g.add(col);
-      var ftg = box(2.2, 0.4, 2.2, MAT.concrete);
-      ftg.position.set(x, 0.2, z);
-      g.add(ftg);
-    });
+  /* --- cars, capped so a big lot does not melt the browser --------- */
+  var cars = 0, CAR_CAP = 48;
+  for(var cr=0; cr<nz && cars<CAR_CAP; cr++){
+    for(var cc=0; cc<nx && cars<CAR_CAP; cc++){
+      if((cr*nx+cc) % 3) continue;                 /* a partly-full lot */
+      var cx2 = -w/2 + stallW*(cc+0.5), cz2 = -d/2 + bayD*(cr+0.5);
+      if(poly && !inPoly(cx2 + it.x, cz2 + it.z, poly)) continue;
+      var car = buildCar(cr*7 + cc*3);
+      car.position.set(cx2, 0, cz2);
+      car.scale.setScalar(0.62);                   /* stall-width fit */
+      g.add(car); cars++;
+    }
+  }
+
+  /* --- the deck ---------------------------------------------------- */
+  var pm = panelMat(w, d);
+  var deck;
+  if(poly){
+    deck = polySlab(poly, it.x, it.z, 0.6, pm);
+    deck.rotation.x = -tiltR;                      /* whole plane leans back */
+    deck.position.y = deckY;
+  } else {
+    deck = new THREE.Mesh(
+      new THREE.BoxGeometry(w, 0.6, d/Math.cos(tiltR)), pm);
+    deck.rotation.x = -tiltR;
+    deck.position.y = deckY;
+    deck.castShadow = true; deck.receiveShadow = true;
+  }
+  g.add(deck);
+
+  /* fascia so the deck edge reads as structure, not a floating sheet */
+  var fascia;
+  if(poly) fascia = polySlab(poly, it.x, it.z, 1.1, MAT.darkSteel);
+  else     fascia = box(w+0.3, 1.1, d/Math.cos(tiltR)+0.3, MAT.darkSteel);
+  fascia.rotation.x = -tiltR;
+  fascia.position.y = deckY - 0.85;
+  g.add(fascia);
+
+  /* --- column grid, clipped to the outline ------------------------- */
+  var bayX = 20, bayZ = Math.max(24, d/2);
+  var gx = Math.max(1, Math.round(w/bayX)), gz = Math.max(1, Math.round(d/bayZ));
+  var placed = 0;
+  for(var i=0;i<=gx && placed<=220;i++){
+    for(var j=0;j<=gz && placed<=220;j++){
+      var px = -w/2 + (w/gx)*i, pz = -d/2 + (d/gz)*j;
+      /* nudge perimeter columns inboard so they sit under the deck */
+      if(i===0) px += 1.5; if(i===gx) px -= 1.5;
+      if(j===0) pz += 1.5; if(j===gz) pz -= 1.5;
+      if(poly && !inPoly(px + it.x, pz + it.z, poly)) continue;
+      var hCol = Math.max(6, front + (pz/d)*rise);
+      var col = box(1.0, hCol, 1.0, MAT.steel);
+      col.position.set(px, hCol/2, pz); g.add(col);
+      var ftg = box(2.4, 0.45, 2.4, MAT.concrete);
+      ftg.position.set(px, 0.22, pz); g.add(ftg);
+      placed++;
+    }
   }
   return g;
 }
@@ -131566,6 +131811,12 @@ function disposeTree(obj){
     if(o.geometry && o.geometry.dispose){
       try{ o.geometry.dispose(); }catch(e){}
     }
+    /* Most materials come from the shared MAT set and must survive. A few
+       are made per-object (car paint) and are flagged _owned; those are
+       ours to free, and there is one per car. */
+    if(o.material && o.material._owned && o.material.dispose){
+      try{ o.material.dispose(); }catch(e){}
+    }
   });
 }
 
@@ -131592,15 +131843,16 @@ function populate(site){
   items.forEach(function(it){
     if(it.hidden || it.arch==='ignore') return;
     var arch = ARCH[it.arch]; if(!arch) return;
-    var g = null, roofY = 0;
+    var g = null;
 
     switch(it.arch){
       case 'solar-ground':  g = buildSolarGround(it, arch); break;
       case 'solar-tracker': g = buildSolarTracker(it); break;
       case 'solar-carport': g = buildCarport(it, arch); break;
       case 'solar-roof':
-        roofY = roofUnder(it, buildings);
-        g = buildSolarRoof(it, arch, roofY); break;
+        var ru = roofUnder(it, buildings);
+        it._impliedRoof = ru.implied;
+        g = buildSolarRoof(it, arch, ru.y, ru.implied); break;
       case 'bess-container': g = buildContainer(it, arch); break;
       case 'bess-cabinet':   g = buildCabinet(it, arch); break;
       case 'pcs':            g = buildCabinet(it, arch); break;
@@ -131636,7 +131888,9 @@ function populate(site){
   buildConduits(site);
 }
 
-/* Which building is this rooftop array on? The one it overlaps most. */
+/* Which building is this rooftop array on? The one it overlaps most.
+   Returns {y, implied} — implied means nobody drew a building here, so the
+   array has to raise its own or it floats over bare ground. */
 function roofUnder(it, buildings){
   var best = 0, y = 0;
   var a = { x:it.x-it.wf/2, y:it.z-it.lf/2, w:it.wf, h:it.lf };
@@ -131645,9 +131899,8 @@ function roofUnder(it, buildings){
     var f = overlapFrac(a, bb);
     if(f > best){ best = f; y = b._roofY || ARCH.building.h; }
   });
-  /* Drawn on a roof that was never drawn: stand it on a nominal parapet so
-     it is not floating on the dirt pretending to be a ground mount. */
-  return best > 0.15 ? y : ARCH.building.h;
+  if(best > 0.15) return { y:y, implied:false };
+  return { y:ARCH.building.h, implied:true };
 }
 
 function buildConduits(site){
@@ -131988,8 +132241,14 @@ function paintSide(){
     });
     h += '</select>'
       +  '<div class="ov-im" style="margin-top:4px">' + Math.round(it.wf) + '\u00d7'
-      +  Math.round(it.lf) + ' ft' + (it.kw ? ' \u00b7 ' + Math.round(it.kw) + ' kW' : '') + '</div>'
-      +  '</div>';
+      +  Math.round(it.lf) + ' ft' + (it.kw ? ' \u00b7 ' + Math.round(it.kw) + ' kW' : '') + '</div>';
+    /* Never let an invented building masquerade as surveyed height. */
+    if(it._impliedRoof){
+      h += '<div class="ov-im" style="margin-top:3px;color:#E0B45C">'
+        +  'No building drawn \u2014 shown on a nominal '
+        +  Math.round(ARCH.building.h) + ' ft mass</div>';
+    }
+    h += '</div>';
   });
 
   side.innerHTML = h;
