@@ -338,6 +338,40 @@
       file:'/comed-capacity.html', badge:'new', tier:TIER.ALL,
       icon:'M12 2 4 6v6c0 5 3.5 8.5 8 10 4.5-1.5 8-5 8-10V6zM9 12h2l-1 3h3' },
 
+    /* ── SITE FINDER ──
+       The browsing half of the same data the Capacity Finder reports on.
+       Cards beside a live hosting-capacity map, ranked on DELIVERABLE kW
+       rather than published headroom, with the circuit ledger behind it.
+
+       WHY BOTH EXIST, since they read the same sources:
+         comedcap    answers "what is the capacity at THIS address"
+         sitefinder  answers "which of these hundred addresses do I call"
+       Same pipeline, opposite direction. Merging them would mean one screen
+       doing both jobs badly.
+
+       SHARED DEPENDENCIES the tenant must have deployed alongside it:
+         omega-capacity-ledger.js   circuit claims (Firestore capacityAllocations)
+         omega-comed-layers.js      hosting capacity / C&I / Illinois Shines
+         omega-listings-source.js   property providers
+         ci-industrial.js           C&I parcel bundle   (optional layer)
+         ilshines-sites.js          Illinois Shines     (optional layer)
+       The two bundles are optional — a missing one shows '!' in the legend
+       with a reason rather than an empty layer.
+
+       savesData is FALSE deliberately. It persists nothing through the
+       toolData contract; its writes go to capacityAllocations, which is
+       org-wide by design because a claim nobody else can see stops nobody
+       from selling over it. Marking it savesData:true would imply per-org
+       toolData state that does not exist.
+
+       SAME WORKER DEPENDENCY as comedcap — see the note above. If this shows
+       '!' on hosting capacity for everyone at once, check the Worker before
+       anything in this file. */
+    { key:'sitefinder', name:'Site Finder', category:'interconnection',
+      desc:'Browse C&I sites on a live hosting-capacity map, ranked by the battery you can actually deliver \u2014 and hold the circuit so nobody sells it twice.',
+      file:'/clearsky-sitefinder.html', badge:'new', tier:TIER.ALL,
+      icon:'M3 6l6-3 6 3 6-3v15l-6 3-6-3-6 3zM9 3v15M15 6v15' },
+
     /* ── OPERATIONS ── */
     { key:'degradation', name:'BESS Degradation & Warranty', category:'operations',
       desc:'Capacity fade over project life vs OEM warranty envelope, with augmentation planning.',
