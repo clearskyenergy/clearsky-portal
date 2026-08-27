@@ -17,6 +17,7 @@ everyone else's inventory the moment it is saved.
 | `check-rules.js` | tooling | Structural validator for the merged rules file. Run it before every deploy. |
 | `verify_counties.py` | pipeline | Finds a county's parcel endpoint and reads its **real** field names off a live record. Nothing gets harvested until it has. |
 | `build_ci_bundles.py` | pipeline | Harvests C&I parcels per county, clips to ComEd feeder buffers, emits one bundle per county plus a manifest. |
+| `build_biz_layer.py` | pipeline | Post-pass over the bundles: adds the operating business from OpenStreetMap and EPA FRS, plus the industrial-park fields. |
 | `counties.json` | pipeline | The endpoint registry and the two class schemes. `verified: false` means "field names nobody has read yet", not "county we do not cover". |
 
 The four `omega-*.js` files are shared-platform files. They need to travel
@@ -291,6 +292,7 @@ reads as measurement.
 python3 verify_counties.py  --registry counties.json --discover --county will
 python3 verify_counties.py  --registry counties.json --probe will --url ... --write
 python3 build_ci_bundles.py --registry counties.json --data data/ --out dist/
+python3 build_biz_layer.py  --data data/ --dist dist/
 ```
 
 `verify_counties.py` will not set `verified: true` without having read a live
@@ -314,6 +316,64 @@ Two things in `build_ci_bundles.py` are load-bearing and not obvious:
 
 An unverified county in `counties.json` is not a missing county. It is a county
 whose field names nobody has read off a live record yet.
+
+### Who is operating the site
+
+A parcel file answers "who owns this" with the assessor's owner of record,
+which on industrial land is a holding company, a trust, or a tax agent in
+another state. None of those answer the phone. `build_biz_layer.py` is a
+post-pass over `dist/` that adds the business actually operating there:
+
+| Field | From | Notes |
+|---|---|---|
+| `biz`, `bizSrc` | OSM tags / EPA FRS | Becomes `owner.name`; the assessor's name moves to `ownerOfRecord`. |
+| `bizPhone` | OSM `contact:phone` | EPA publishes no phone. Most parcels won't have one. |
+| `bizKind` | OSM `industrial=` / `building=` | Drives the EUI, so this is a number and not a label — see below. |
+| `parkName`, `parkN` | OSM named `landuse=industrial` | Only rendered at three or more parcels. |
+
+Run it after `build_ci_bundles.py`; it rewrites each bundle in place and is
+idempotent. Never running it is also fine — the card reads
+`str(r.biz) || str(r.owner)`, so a bundle without these degrades to the owner
+of record rather than breaking.
+
+**Both sources are free to harvest and free to redistribute**, which is the
+whole reason they were picked over a commercial POI feed. Where the same
+operator appears in both, they merge: EPA's name wins because a permit is
+evidence something is running on the site *today*, and OSM's phone survives
+because that is the field EPA does not publish.
+
+**`bizKind` moves the load ceiling.** Everything in the bundle is
+industrially classed by definition, so `clsLabel` reads "Industrial" on a
+foundry and on a cold store alike — and those model at 48 and 96 kBtu/sqft.
+The business kind is the more specific signal and outranks the assessor class
+for that reason.
+
+**A parcel with no business is not a failed lookup.** It is an owner-occupied
+building nobody has mapped, and the card says owner of record instead. Expect
+a match rate well under half and read it that way.
+
+#### Why this is a harvest and not a live Places search on pan
+
+It is tempting to bind a map `moveend` to a Places viewport search and let
+pins appear. Don't:
+
+- **It truncates silently.** Places returns 20 results a page and 60 at most
+  per viewport, so coverage becomes a function of how far a rep happened to
+  zoom. This is the same failure that once returned 1 business licence across
+  113 parcels.
+- **It is billed per call and the key would sit in client JavaScript**, fired
+  on every pan. The rule already written down for Crexi applies unchanged: one
+  billed lookup per site opened, cached for the session, never in bulk over a
+  sweep.
+- **The results can't be kept.** Google's terms do not let you store that data
+  in the ledger afterwards, which is the entire point of a prospect list.
+- **A keyword string is not a filter.** `"warehouse industrial logistics"`
+  returns what a relevance model thinks those words mean, and returns
+  something different next month. The harvester queries tags, so the same
+  query twice returns the same features.
+
+Live per-site enrichment is a real and separate thing, and it belongs on the
+card a rep opens rather than on every pan.
 
 ### About Crexi
 
@@ -421,6 +481,8 @@ disappears the moment a real provider is selected.
 ```
 node test.js
 node test-shards.js
+node test-biz-card.js
+python3 test_biz_join.py
 ```
 
 `test.js` — 46 assertions covering the ledger: queue subtraction, neighbour
@@ -433,6 +495,20 @@ faked `document.head`: only the counties in view download, each downloads once,
 panning pulls the next one, a shard that is not deployed is **named** rather
 than quietly shortening the list, and that failure stops being reported once
 the rep pans away from that county.
+
+`test-biz-card.js` — 17 assertions that the enriched fields survive the trip
+through the provider: the operating business leads and the owner of record
+sits underneath, the source is labelled as a permit or as OpenStreetMap,
+`bizKind` actually changes the modelled type, a parcel with no business falls
+back to the owner rather than going blank, and nameplate is still handed to
+the ledger un-netted.
+
+`test_biz_join.py` — 21 assertions on the join itself, offline against
+fixtures: a business claims the parcel it is on, one beyond the radius claims
+nothing, the nearer of two wins, the same operator in both sources becomes one
+record with EPA's name and OSM's phone, an EPA row with no coordinates is
+skipped rather than crashed on, and a polygon over one parcel is not called a
+park.
 
 ## Open questions
 

@@ -498,16 +498,47 @@
   };
 
   /* ------------------------------------------------------------------ map */
-  var map = L2().setView([41.8500, -87.7100], 14);
+  /* Opening view. Chicago is the default because that is where the ComEd
+     capacity data is, but a tenant outside the territory should not have the
+     tool open five states away from their book. Set window.CS_HOME in
+     omega-brand.js or config.js as [lat, lon, zoom], or pass ?at=lat,lon,zoom
+     for a one-off. */
+  var HOME = window.CS_HOME ||
+    (function (m) { return m ? [+m[1], +m[2], +(m[3] || 14)] : null; })
+      (location.search.match(/[?&]at=(-?[\d.]+),(-?[\d.]+)(?:,(\d+))?/)) ||
+    [41.8500, -87.7100, 14];
+  var map = L2().setView([HOME[0], HOME[1]], HOME[2] || 14);
   /* Top-right: the rail floats over the top-left corner now that the map is
      the background, and the default control sat underneath it. */
   function L2() {
     return window.L.map("map", { zoomControl: false, preferCanvas: true });
   }
   window.L.control.zoom({ position: "topright" }).addTo(map);
-  window.L.tileLayer("https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png", {
-    maxZoom: 19, attribution: "&copy; OpenStreetMap &copy; CARTO"
-  }).addTo(map);
+  /* CARTO's raster basemaps now require an API key. Without one every tile
+     comes back stamped "API KEY REQUIRED" — the map still works, but the
+     product looks broken in exactly the screenshot that ends up in a deck.
+     The key is free (5M tile requests a month, no approval queue) from
+     carto.com/basemaps/apikey.
+
+     It is not a secret and there is nowhere to hide it in a static page, so
+     it sits in config rather than pretending otherwise. Set window.CS_TILE_KEY
+     in omega-brand.js or config.js per tenant, or pass ?tilekey= for a
+     one-off. The raster service is also on its way out; when it goes, the
+     move is MapLibre against the vector style, which is more than a one-line
+     change and should be planned rather than discovered. */
+  var TILE_KEY = window.CS_TILE_KEY ||
+                 (location.search.match(/[?&]tilekey=([^&]+)/) || [])[1] || "";
+  window.L.tileLayer(
+    "https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png" +
+      (TILE_KEY ? "?key=" + encodeURIComponent(TILE_KEY) : ""),
+    { maxZoom: 19, subdomains: "abcd",
+      attribution: "&copy; OpenStreetMap &copy; CARTO" }
+  ).addTo(map);
+  if (!TILE_KEY && window.console) {
+    console.warn("clearsky-sitefinder: no CARTO basemap key. Tiles will be " +
+                 "watermarked 'API KEY REQUIRED'. Set window.CS_TILE_KEY — " +
+                 "free key at carto.com/basemaps/apikey");
+  }
   var markerLayer = window.L.layerGroup().addTo(map);
   var MARKERS = {};
 
@@ -610,7 +641,12 @@
 
      Collapsing them into one number is how a proposal ends up promising
      900 kW on a circuit with 200 kW left. */
-  var EUI_LF = { "Warehouse":0.38,"Industrial":0.55,"Manufacturing":0.60,"Cold Storage":0.72,
+  /* Load factors come from the shared table so the page, the demo provider
+     and the ComEd provider cannot disagree about how a type converts annual
+     kWh into a peak. The local literal is only a fallback for a host that has
+     an older omega-listings-source.js on it. */
+  var EUI_LF = (window.OmegaListings && window.OmegaListings.EUI_LF) ||
+               { "Warehouse":0.38,"Industrial":0.55,"Manufacturing":0.60,"Cold Storage":0.72,
                  "Flex":0.50,"Retail":0.45,"Office":0.50,"Data Center":0.85,
                  "Institutional":0.42,"Multifamily":0.55,"Vacant Land":0,"Other":0.50 };
   var DEMAND_LO = 8, DEMAND_HI = 14;   /* $/kW-month, ComEd C&I delivery + capacity */
@@ -912,7 +948,8 @@
       if (rows[i].claims.length) claimed++;
       if ((rows[i].circ.sellable || 0) <= 0) blocked++;
     }
-    head(rows.length.toLocaleString() + " sites" + (rows.length < ST.rows.length ? " of " + ST.rows.length : ""),
+    head(rows.length.toLocaleString() + (rows.length === 1 ? " site" : " sites") +
+         (rows.length < ST.rows.length ? " of " + ST.rows.length : ""),
       claimed
         ? claimed + " sit on a circuit somebody has already claimed" +
           (blocked ? ", and " + blocked + " have nothing left to sell." : ".")

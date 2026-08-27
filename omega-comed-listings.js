@@ -60,15 +60,14 @@
   }
 
   /* C&I energy-use intensity, kBtu/sqft-yr, converted at 3.412 kBtu/kWh.
-     Same figures the demo provider models with, so a real record and a
-     sample record are never scaled differently. */
-  var EUI = { "Warehouse": 22, "Industrial": 48, "Manufacturing": 68, "Cold Storage": 96,
-              "Flex": 38, "Office": 62, "Retail": 54, "Data Center": 220,
-              "Institutional": 58, "Multifamily": 44, "Vacant Land": 0, "Other": 45 };
+     Read from the shared table in omega-listings-source.js rather than copied,
+     because a copy is what let the demo provider drift 46% above this one on
+     cold storage while a comment here claimed they matched. */
+  var EUI = S.EUI || {};
 
   function modelKwh(sqft, type) {
     if (!sqft) return null;
-    var e = EUI[type] != null ? EUI[type] : 45;
+    var e = EUI[type] != null ? EUI[type] : (EUI.Other != null ? EUI.Other : 45);
     return Math.round(sqft * e / 3.412);
   }
 
@@ -124,7 +123,14 @@
   function fromParcel(r) {
     if (!r || r.lat == null || r.lon == null) return null;
     var acres = num(r.acres != null ? r.acres : r.ac);
-    var type = typeOf(r.cls || r.clsLabel || r.bizKind);
+    /* The business kind outranks the assessor class because it is the more
+       specific of the two and it moves a number. Everything in this bundle
+       is industrially classed by definition, so `clsLabel` is "Industrial"
+       on a foundry and on a cold store alike — and those model at 48 and 96
+       kBtu/sqft. Letting the coarse label win halves the modelled load on
+       exactly the sites worth calling. `subtype` below already reads it in
+       this order; this line was the one disagreeing. */
+    var type = typeOf(r.bizKind || r.cls || r.clsLabel);
     var sqft = CFG.estimateSqftFromAcres && acres
       ? Math.round(acres * 43560 * CFG.coverage) : null;
     var kwh = modelKwh(sqft, type);
@@ -202,7 +208,7 @@
 
     search: function (bbox, filters, cb) {
       var self = this, limit = (filters && filters.limit) || 400;
-      var parcels = null, listings = null, hostErr = null, pending = 3;
+      var parcels = null, listings = null, hostErr = null, shardErr = null, pending = 3;
 
       function step() { if (--pending === 0) finish(); }
 
@@ -211,7 +217,14 @@
          layer reads the same cache, so switching this source on does not
          double the traffic to ComEd. */
       LAY.hostingIn(bbox, function (err) { hostErr = err || null; step(); });
-      LAY.loadCI(function (err, rows) { parcels = err ? [] : rows; step(); });
+      /* bbox scopes which county shards download. A partial failure still
+         returns the counties that DID load — the error names the ones that
+         did not, and that shows on the header rather than being swallowed. */
+      LAY.loadCI(function (err, rows) {
+        parcels = rows || [];
+        if (err) shardErr = err;
+        step();
+      }, bbox);
       if (this.includeListings) {
         LAY.loadEDC(function (err, rows) { listings = err ? [] : rows; step(); });
       } else { listings = []; step(); }
@@ -263,9 +276,13 @@
           return;
         }
         /* Said out loud rather than shown as blank circuits. */
-        self.lastNote = hostErr
-          ? "ComEd hosting capacity did not answer (" + hostErr.message + "), so circuits are blank on these records."
-          : "";
+        var notes = [];
+        if (hostErr) notes.push("ComEd hosting capacity did not answer (" + hostErr.message +
+                                "), so circuits are blank on these records.");
+        if (shardErr) notes.push(shardErr.message);
+        if (self.lastTruncated) notes.push(self.lastTruncated.toLocaleString() +
+          " more parcels are in view than the cap allows \u2014 zoom in or raise the limit.");
+        self.lastNote = notes.join(" ");
         cb(null, out);
       }
 
