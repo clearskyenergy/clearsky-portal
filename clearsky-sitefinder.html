@@ -304,6 +304,14 @@
   .setB h5{margin:0 0 6px;font:700 11px var(--mono);letter-spacing:.09em;
     text-transform:uppercase;color:var(--muted)}
   .setB p{margin:0 0 10px;font-size:11.5px;color:var(--muted);line-height:1.5}
+  .setKeyRow{display:flex;gap:6px;margin:8px 0 4px}
+  .setKeyRow input{flex:1;min-width:0;border:1px solid var(--line);border-radius:8px;
+    padding:8px 10px;font:inherit;font-size:13px;color:var(--ink);background:#fff}
+  .setKeyRow button{border:0;border-radius:8px;padding:8px 14px;font:inherit;
+    font-weight:600;font-size:13px;background:var(--accent);color:#fff;cursor:pointer}
+  .setKeyMsg{min-height:16px;font-size:12px;margin:2px 0 0}
+  .setKeyMsg.good{color:#1a7f4b}
+  .setKeyMsg.bad{color:#b4341f}
   .setSeg{display:flex;background:var(--panel2);border-radius:8px;padding:2px;gap:2px}
   .setSeg button{flex:1;border:0;background:transparent;color:var(--muted);
     font:600 12px var(--sans);padding:7px 4px;border-radius:6px;cursor:pointer}
@@ -424,6 +432,23 @@
   <div class="setH"><b>Settings</b><button id="setX" aria-label="Close">&#215;</button></div>
   <div class="setB">
 
+    <section id="setTileSec">
+      <h5>Basemap key</h5>
+      <p>CARTO now requires a free key for map tiles. Without one every tile is
+         stamped &ldquo;API KEY REQUIRED&rdquo;. Get one at
+         <a href="https://carto.com/basemaps/apikey" target="_blank" rel="noopener">carto.com/basemaps/apikey</a>
+         &mdash; it is free, there is no approval queue, and it covers 5 million
+         tiles a month. Paste it here and the map redraws immediately.</p>
+      <div class="setKeyRow">
+        <input type="text" id="setTileKey" placeholder="Paste your CARTO key" autocomplete="off" spellcheck="false">
+        <button id="setTileSave">Save</button>
+      </div>
+      <p id="setTileMsg" class="setKeyMsg"></p>
+      <p><em>Saved in this browser only. For every user to get it, a developer
+         should set <code>window.CS_TILE_KEY</code> in config.js once &mdash; but
+         this field is enough to go live.</em></p>
+    </section>
+
     <section>
       <h5>Circuit product</h5>
       <p>Which hosting-capacity column the map shades and the ledger meters.
@@ -520,24 +545,40 @@
      The key is free (5M tile requests a month, no approval queue) from
      carto.com/basemaps/apikey.
 
+     Three ways to supply it, in priority order, so that going live never
+     depends on someone being able to edit a file:
+       1. window.CS_TILE_KEY in config.js — every user, set once, the proper fix
+       2. ?tilekey= on the URL — a one-off check
+       3. the Settings panel — saved in this browser, enough to ship today
+
      It is not a secret and there is nowhere to hide it in a static page, so
-     it sits in config rather than pretending otherwise. Set window.CS_TILE_KEY
-     in omega-brand.js or config.js per tenant, or pass ?tilekey= for a
-     one-off. The raster service is also on its way out; when it goes, the
-     move is MapLibre against the vector style, which is more than a one-line
-     change and should be planned rather than discovered. */
+     it sits in config rather than pretending otherwise. The raster service is
+     also being retired; when it goes, the move is MapLibre against the vector
+     style, which is more than a one-line change and should be planned. */
+  function savedTileKey() {
+    try { return window.localStorage.getItem("cs.tileKey") || ""; }
+    catch (e) { return ""; }          /* private mode, or storage disabled */
+  }
   var TILE_KEY = window.CS_TILE_KEY ||
-                 (location.search.match(/[?&]tilekey=([^&]+)/) || [])[1] || "";
-  window.L.tileLayer(
-    "https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png" +
-      (TILE_KEY ? "?key=" + encodeURIComponent(TILE_KEY) : ""),
-    { maxZoom: 19, subdomains: "abcd",
-      attribution: "&copy; OpenStreetMap &copy; CARTO" }
-  ).addTo(map);
+                 (location.search.match(/[?&]tilekey=([^&]+)/) || [])[1] ||
+                 savedTileKey() || "";
+  var tiles = null;
+  function drawTiles() {
+    if (tiles) { map.removeLayer(tiles); tiles = null; }
+    tiles = window.L.tileLayer(
+      "https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png" +
+        (TILE_KEY ? "?key=" + encodeURIComponent(TILE_KEY) : ""),
+      { maxZoom: 19, subdomains: "abcd",
+        attribution: "&copy; OpenStreetMap &copy; CARTO" }
+    );
+    tiles.addTo(map);
+    tiles.bringToBack();
+  }
+  drawTiles();
   if (!TILE_KEY && window.console) {
     console.warn("clearsky-sitefinder: no CARTO basemap key. Tiles will be " +
-                 "watermarked 'API KEY REQUIRED'. Set window.CS_TILE_KEY — " +
-                 "free key at carto.com/basemaps/apikey");
+                 "watermarked 'API KEY REQUIRED'. Settings \u2192 Basemap key, " +
+                 "or set window.CS_TILE_KEY. Free key at carto.com/basemaps/apikey");
   }
   var markerLayer = window.L.layerGroup().addTo(map);
   var MARKERS = {};
@@ -810,6 +851,36 @@
     var panel = document.getElementById("settings");
     document.getElementById("setOpen").onclick = function () { panel.className = "open"; };
     document.getElementById("setX").onclick = function () { panel.className = ""; };
+
+    /* Basemap key. Hidden entirely when a developer has already set
+       window.CS_TILE_KEY, because then it is not this person's problem. */
+    var keySec = document.getElementById("setTileSec");
+    if (window.CS_TILE_KEY) {
+      keySec.style.display = "none";
+    } else {
+      var keyIn = document.getElementById("setTileKey");
+      var keyMsg = document.getElementById("setTileMsg");
+      keyIn.value = TILE_KEY;
+      if (TILE_KEY) { keyMsg.className = "setKeyMsg good"; keyMsg.textContent = "Key saved. Map tiles are unwatermarked."; }
+      document.getElementById("setTileSave").onclick = function () {
+        var v = keyIn.value.replace(/\s+/g, "");
+        try {
+          if (v) window.localStorage.setItem("cs.tileKey", v);
+          else window.localStorage.removeItem("cs.tileKey");
+        } catch (e) {
+          keyMsg.className = "setKeyMsg bad";
+          keyMsg.textContent = "This browser will not let the page save it. " +
+            "Add ?tilekey=" + v + " to the address instead.";
+          return;
+        }
+        TILE_KEY = v;
+        drawTiles();
+        keyMsg.className = "setKeyMsg good";
+        keyMsg.textContent = v
+          ? "Saved. If the watermark is still there, hard-refresh \u2014 the tiles are cached."
+          : "Key cleared. Tiles will be watermarked again.";
+      };
+    }
 
     var segs = document.querySelectorAll("#setUse button");
     for (var i = 0; i < segs.length; i++) segs[i].onclick = (function (b) { return function () {
