@@ -130551,30 +130551,31 @@ function shapeBox(sh){
   /* --- 1. feet: true regardless of drawing scale -------------------- */
   if(sh._ftBoundary && sh._ftBoundary.length > 2 && sh.pts && sh.pts[0]){
     var o = sh.pts[0];
-    return bboxOfPts(sh._ftBoundary.map(function(q){
+    var fb = bboxOfPts(sh._ftBoundary.map(function(q){
       return { x:o.x + q.x*p, y:o.y + q.y*p };
     }));
+    fb.src = '_ftBoundary'; return fb;
   }
   if(sh.wFt > 0 && sh.hFt > 0 && sh.pts && sh.pts[0])
-    return { x:sh.pts[0].x, y:sh.pts[0].y, w:sh.wFt*p, h:sh.hFt*p };
+    return { x:sh.pts[0].x, y:sh.pts[0].y, w:sh.wFt*p, h:sh.hFt*p, src:'wFt/hFt' };
   if(sh._ftTables && sh._ftTables.length && sh.pts && sh.pts[0]){
     var o2 = sh.pts[0], fp = [];
     sh._ftTables.forEach(function(t){
       fp.push({ x:o2.x + t.x*p, y:o2.y + t.y*p });
       fp.push({ x:o2.x + (t.x + (t.w||0))*p, y:o2.y + (t.y + (t.h||0))*p });
     });
-    return bboxOfPts(fp);
+    var tb = bboxOfPts(fp); tb.src='_ftTables'; return tb;
   }
   /* feet-authored equipment kinds: bespad, assembly, utility */
   if(sh.lf > 0 && sh.wf > 0){
     if(sh.cx != null)
-      return { x:sh.cx - sh.lf*p/2, y:sh.cy - sh.wf*p/2, w:sh.lf*p, h:sh.wf*p };
+      return { x:sh.cx - sh.lf*p/2, y:sh.cy - sh.wf*p/2, w:sh.lf*p, h:sh.wf*p, src:'lf/wf' };
     if(sh.pts && sh.pts[0])
-      return { x:sh.pts[0].x, y:sh.pts[0].y, w:sh.lf*p, h:sh.wf*p };
+      return { x:sh.pts[0].x, y:sh.pts[0].y, w:sh.lf*p, h:sh.wf*p, src:'lf/wf' };
   }
 
   /* --- 2. current pixel caches -------------------------------------- */
-  if(sh.boundary && sh.boundary.length > 2) return bboxOfPts(sh.boundary);
+  if(sh.boundary && sh.boundary.length > 2){ var bo=bboxOfPts(sh.boundary); bo.src='boundary'; return bo; }
   if(sh.tables && sh.tables.length){
     var xs = [], i;
     for(i=0;i<sh.tables.length;i++){
@@ -130582,12 +130583,12 @@ function shapeBox(sh){
       xs.push({ x:t2.x, y:t2.y });
       xs.push({ x:t2.x + (t2.w||0), y:t2.y + (t2.h||0) });
     }
-    return bboxOfPts(xs);
+    var tx2 = bboxOfPts(xs); tx2.src='tables'; return tx2;
   }
 
   /* --- 3. raw pixel extent ------------------------------------------ */
   if(sh.wPx > 0 && sh.hPx > 0 && sh.pts && sh.pts[0])
-    return { x:sh.pts[0].x, y:sh.pts[0].y, w:sh.wPx, h:sh.hPx };
+    return { x:sh.pts[0].x, y:sh.pts[0].y, w:sh.wPx, h:sh.hPx, src:'wPx/hPx' };
 
   /* --- 4. the app helper, for the kinds it genuinely handles --------- */
   try{
@@ -130595,13 +130596,13 @@ function shapeBox(sh){
       var b = _shapeBBox(sh);
       /* > 2 px, not > 0: its generic fallback returns exactly 1 for a
          degenerate shape, and 1 px of "geometry" is not geometry. */
-      if(b && isFinite(b.x) && isFinite(b.y) && b.w > 2 && b.h > 2) return b;
+      if(b && isFinite(b.x) && isFinite(b.y) && b.w > 2 && b.h > 2){ b.src='_shapeBBox'; return b; }
     }
   }catch(e){}
 
   if(sh.pts && sh.pts.length > 1){
     var pb = bboxOfPts(sh.pts);
-    if(pb.w > 2 && pb.h > 2) return pb;
+    if(pb.w > 2 && pb.h > 2){ pb.src='pts'; return pb; }
   }
 
   /* --- 5. area, when nothing else survived --------------------------
@@ -130610,15 +130611,15 @@ function shapeBox(sh){
      magnitude, which beats a 1 ft speck that looks like a bug. */
   if(sh.sqft > 0 && sh.pts && sh.pts[0]){
     var side = Math.sqrt(sh.sqft) * p;
-    return { x:sh.pts[0].x, y:sh.pts[0].y, w:side, h:side, approx:true };
+    return { x:sh.pts[0].x, y:sh.pts[0].y, w:side, h:side, approx:true, src:'sqft' };
   }
 
   /* --- 6. a visible stub, so nothing vanishes without explanation ---- */
   if(sh.pts && sh.pts[0]){
     var q2 = p * 4;
-    return { x:sh.pts[0].x - q2/2, y:sh.pts[0].y - q2/2, w:q2, h:q2, approx:true };
+    return { x:sh.pts[0].x - q2/2, y:sh.pts[0].y - q2/2, w:q2, h:q2, approx:true, src:'stub' };
   }
-  if(sh.cx != null) return { x:sh.cx - p*2, y:sh.cy - p*2, w:p*4, h:p*4, approx:true };
+  if(sh.cx != null) return { x:sh.cx - p*2, y:sh.cy - p*2, w:p*4, h:p*4, approx:true, src:'stub' };
   return null;
 }
 
@@ -130633,10 +130634,10 @@ function placedBox(sh){
   var sc = (+sh.scale > 0) ? +sh.scale : 1;
   if(sc !== 1){
     var cx = b.x + b.w/2, cy = b.y + b.h/2;
-    b = { x:cx - b.w*sc/2, y:cy - b.h*sc/2, w:b.w*sc, h:b.h*sc, approx:b.approx };
+    b = { x:cx - b.w*sc/2, y:cy - b.h*sc/2, w:b.w*sc, h:b.h*sc, approx:b.approx, src:b.src };
   }
   if(sh.tx || sh.ty){
-    b = { x:b.x + (+sh.tx||0), y:b.y + (+sh.ty||0), w:b.w, h:b.h, approx:b.approx };
+    b = { x:b.x + (+sh.tx||0), y:b.y + (+sh.ty||0), w:b.w, h:b.h, approx:b.approx, src:b.src };
   }
   return b;
 }
@@ -130694,6 +130695,9 @@ function classifySolar(sh, ctx){
      checking instead of masquerading as intent. */
   if(label.indexOf('carport')>=0 || label.indexOf('canopy')>=0)
     return { arch:'solar-carport', why:'authored' };
+
+  /* Canopy — Custom Shape stamps canopy:true on the array it builds. */
+  if(sh.canopy === true) return { arch:'solar-carport', why:'authored' };
 
   /* 2a. the draw tool */
   if(mount==='adjacent') return { arch:'solar-carport', why:'authored' };
@@ -130862,12 +130866,30 @@ function readSite(){
       x: fx(b.x + b.w/2), z: fz(b.y + b.h/2),
       wf: b.w/p, lf: b.h/p,
       rot: +sh.rot||0,
-      approx: !!b.approx
+      approx: !!b.approx, boxSrc: b.src || '?'
     });
     /* carry the design data the 3D builders need */
     it.kw       = +sh.kw || 0;
     it.gcr      = +sh.gcr || 0;
     it.setbackFt= +sh.setbackFt || 0;
+
+    /* PER-ARRAY GEOMETRY, straight from the draw tools.
+       Array Geometry (Tilt / Height) writes tiltDeg, clearFt, tableWft and
+       sunAltDeg, and derives pitchFt, gcr and topHeightFt from them. The
+       auto-layout writes tableWft/tableHft, pitchFt, rowCount and angleDeg
+       (the row azimuth). All of it was being thrown away in favour of
+       hardcoded archetype defaults, so an array the user had explicitly
+       set to 20 deg on 3 ft posts rendered at whatever the archetype said.
+       If the drawing states a number, the model uses that number. */
+    it.tiltDeg     = (sh.tiltDeg     != null) ? +sh.tiltDeg     : null;
+    it.clearFt     = (sh.clearFt     != null) ? +sh.clearFt     : null;
+    it.pitchFt     = (+sh.pitchFt    > 0)     ? +sh.pitchFt     : null;
+    it.tableWft    = (+sh.tableWft   > 0)     ? +sh.tableWft    : null;
+    it.tableHft    = (+sh.tableHft   > 0)     ? +sh.tableHft    : null;
+    it.topHeightFt = (+sh.topHeightFt> 0)     ? +sh.topHeightFt : null;
+    it.angleDeg    = (+sh.angleDeg   || 0);
+    it.densityOnly = !!sh.densityOnly;
+    it.tableCount  = +sh.tableCount || 0;
     it.mount    = sh.mount || null;
     it.presetKey= sh.presetKey || null;
     /* What the panel shows as the basis, so a classification can be
@@ -130885,13 +130907,23 @@ function readSite(){
     it.stallRows= +sh.rows || 0;
     it.stallCols= +sh.cols || 0;
     it.catalogKey = sh.catalogKey || null;
-    /* An auto-laid-out array already knows where each table goes; use the
-       real table rects rather than re-deriving rows from GCR, so the 3D
-       matches the drawing table-for-table. */
-    if(sh.autoLayout && sh.tables && sh.tables.length){
+    /* THE EXACT TABLES THE DRAWING LAID OUT.
+       _ftTables is the feet truth; tables[] is its pixel cache, which goes
+       stale on rescale. Using these means the 3D shows the same table
+       count and positions the kW number was computed from, and covers
+       exactly the area covered on the map. */
+    var ftT = (sh._ftTables && sh._ftTables.length) ? sh._ftTables : null;
+    if(ftT && sh.pts && sh.pts[0]){
+      var o3 = sh.pts[0];
+      it.tables = ftT.map(function(t){
+        return { x: fx(o3.x + (t.x + (t.w||0)/2)*p),
+                 z: fz(o3.y + (t.y + (t.h||0)/2)*p),
+                 wf: (t.w||0), lf: (t.h||0), a: t.a||0 };
+      });
+    } else if(sh.tables && sh.tables.length){
       it.tables = sh.tables.map(function(t){
         return { x:fx(t.x + (t.w||0)/2), z:fz(t.y + (t.h||0)/2),
-                 wf:(t.w||0)/p, lf:(t.h||0)/p };
+                 wf:(t.w||0)/p, lf:(t.h||0)/p, a:t.a||0 };
       });
     }
     /* THE OUTLINE, NOT ITS BOUNDING BOX.
@@ -131018,7 +131050,7 @@ function mkItem(ref, src, c, geo){
   if(geo){
     it.x=geo.x; it.z=geo.z;
     it.wf=Math.max(0.4,geo.wf); it.lf=Math.max(0.4,geo.lf);
-    it.rot=geo.rot; it.approx=!!geo.approx;
+    it.rot=geo.rot; it.approx=!!geo.approx; it.boxSrc=geo.boxSrc||'';
   }
   if(!it.label) it.label = ARCH[it.arch] ? ARCH[it.arch].label : it.arch;
   return it;
@@ -131264,43 +131296,71 @@ function pvTable(wf, df, tiltDeg, clearFt){
   return g;
 }
 
-/* A whole ground-mount field: rows at the pitch implied by GCR. */
+/* A whole ground-mount field.
+
+   THE ARRAY MUST COVER THE AREA IT WAS DRAWN ON. Generating rows across a
+   bounding rectangle leaves an angled or L-shaped parcel visibly empty in
+   its corners and spilling past its edges — the drawing and the render
+   stop agreeing. So: use the exact tables when the layout produced them,
+   and otherwise generate rows on the array's own pitch and row angle,
+   clipped to the outline.
+
+   Tilt, clearance, pitch and table size come from the array when it
+   states them (Array Geometry writes tiltDeg/clearFt/tableWft; auto-layout
+   writes pitchFt/tableWft/tableHft/angleDeg). Archetype defaults are only
+   for arrays that never had any of it set. */
 function buildSolarGround(it, arch){
   var g = new THREE.Group();
-  var tilt = arch.tilt, clear = arch.clear;
-  var sb = it.setbackFt || 0;
-  var bw = Math.max(2, it.wf - sb*2), bl = Math.max(2, it.lf - sb*2);
+  var tilt  = (it.tiltDeg != null) ? it.tiltDeg : arch.tilt;
+  var clear = (it.clearFt != null) ? it.clearFt : arch.clear;
+  var tW    = it.tableWft || 20;
+  var tD    = it.tableHft || 12;
 
-  /* If the app already laid out real tables, use them verbatim. */
+  /* --- the layout the drawing actually produced --------------------- */
   if(it.tables && it.tables.length){
-    it.tables.forEach(function(t){
-      var tb = pvTable(Math.max(1,t.wf), Math.max(1,t.lf), tilt, clear);
+    var stride = it.tables.length > 900 ? Math.ceil(it.tables.length/900) : 1;
+    for(var k=0;k<it.tables.length;k++){
+      if(k % stride) continue;
+      var t = it.tables[k];
+      var tb = pvTable(Math.max(1, t.wf||tW), Math.max(1, t.lf||tD), tilt, clear);
       tb.position.set(t.x - it.x, 0, t.z - it.z);
+      if(t.a) tb.rotation.y = -t.a;            /* table azimuth, radians */
       g.add(tb);
-    });
+    }
     return g;
   }
 
-  var tableD = 12;                                  /* 2-up landscape table depth */
+  /* --- generate rows, clipped to the outline ------------------------ */
+  var poly = it.poly;
+  var sb = it.setbackFt || 0;
   var gcr = it.gcr > 0 ? it.gcr : 0.40;
-  var pitch = Math.max(tableD*1.05, tableD/gcr);    /* row-to-row, from GCR */
-  var rows = Math.max(1, Math.floor(bl / pitch));
-  var tableW = Math.min(bw, 40);
-  var cols = Math.max(1, Math.round(bw / tableW));
-  var colW = bw / cols;
+  var pitch = it.pitchFt || Math.max(tD*1.05, tD/gcr);
+  var ang = (it.angleDeg || 0) * Math.PI/180;
+  var ca = Math.cos(ang), sa = Math.sin(ang);
 
-  /* Beyond a few hundred tables the browser stops coping and the detail is
-     sub-pixel anyway, so thin the field and keep the footprint honest. */
-  var total = rows*cols, stride = 1;
-  if(total > 420){ stride = Math.ceil(total/420); }
+  /* Work in the row frame, then map back to site coords to test the
+     outline, so rows follow the array's azimuth rather than the screen. */
+  var reach = Math.sqrt(it.wf*it.wf + it.lf*it.lf)/2 + pitch;
+  var cols = Math.max(1, Math.ceil(reach*2 / tW));
+  var rows = Math.max(1, Math.ceil(reach*2 / pitch));
+  var made = 0, CAP = 900;
 
-  var n=0;
-  for(var r=0;r<rows;r++){
-    for(var c=0;c<cols;c++){
-      if((n++ % stride) !== 0) continue;
-      var t = pvTable(colW*0.94, tableD, tilt, clear);
-      t.position.set(-bw/2 + colW*(c+0.5), 0, -bl/2 + pitch*(r+0.5));
-      g.add(t);
+  for(var r=0; r<rows && made<CAP; r++){
+    var lz = -reach + pitch*(r + 0.5);
+    for(var c=0; c<cols && made<CAP; c++){
+      var lx = -reach + tW*(c + 0.5);
+      /* row frame -> local site frame */
+      var wx = lx*ca - lz*sa, wz = lx*sa + lz*ca;
+      /* inside the drawn area? outline if we have one, else the setback box */
+      if(poly){
+        if(!inPoly(wx + it.x, wz + it.z, poly)) continue;
+      } else {
+        if(Math.abs(wx) > (it.wf/2 - sb) || Math.abs(wz) > (it.lf/2 - sb)) continue;
+      }
+      var tbl = pvTable(tW*0.94, tD, tilt, clear);
+      tbl.position.set(wx, 0, wz);
+      tbl.rotation.y = -ang;
+      g.add(tbl); made++;
     }
   }
   return g;
@@ -131352,7 +131412,6 @@ function buildSolarRoof(it, arch, roofY, implied){
   var poly = it.poly;
   var sb = it.setbackFt || 3;
   var bw = Math.max(2, it.wf - sb*2), bl = Math.max(2, it.lf - sb*2);
-  var tilt = arch.tilt, tiltR = tilt*Math.PI/180;
 
   /* --- the building we are standing on, if nobody drew one ---------- */
   if(implied){
@@ -131381,31 +131440,69 @@ function buildSolarRoof(it, arch, roofY, implied){
   arr.position.y = roofY || 0;
   g.add(arr);
 
-  var rowD = 6.6;
-  var gcr = it.gcr>0 ? it.gcr : 0.70;
-  var pitch = Math.max(rowD*1.02, rowD/gcr);
-  var rows = Math.max(1, Math.floor(bl/pitch));
-  var stride = rows>160 ? Math.ceil(rows/160) : 1;
-  var pm = panelMat(bw, rowD);
+  /* Real per-array geometry where the drawing states it. */
+  var tiltR = ((it.tiltDeg != null) ? it.tiltDeg : arch.tilt) * Math.PI/180;
+  var stand = (it.clearFt != null) ? it.clearFt : arch.clear;
+  var rowD  = it.tableHft || 6.6;
+  var tW    = it.tableWft || Math.min(bw, 40);
+  var gcr   = it.gcr>0 ? it.gcr : 0.70;
+  var pitch = it.pitchFt || Math.max(rowD*1.02, rowD/gcr);
+  var ang   = (it.angleDeg || 0) * Math.PI/180;
+  var ca = Math.cos(ang), sa = Math.sin(ang);
 
-  for(var r=0;r<rows;r++){
-    if(r % stride) continue;
-    var z = -bl/2 + pitch*(r+0.5);
-    /* On an irregular roof, only lay a row where the outline actually is,
-       or rows overhang the angled edges they were drawn inside of. */
-    if(poly && !inPoly(it.x, z + it.z, poly) &&
-               !inPoly(it.x - bw*0.3, z + it.z, poly) &&
-               !inPoly(it.x + bw*0.3, z + it.z, poly)) continue;
-    var pv = new THREE.Mesh(
-      new THREE.BoxGeometry(bw, 0.18, rowD/Math.cos(tiltR)), pm);
-    pv.rotation.x = -tiltR;
-    pv.position.set(0, arch.clear + Math.sin(tiltR)*rowD/2, z);
-    pv.castShadow = true; pv.receiveShadow = true;
-    arr.add(pv);
-    /* ballast trays — what actually holds a flat-roof array down */
-    var bal = box(bw, 0.3, 0.8, MAT.concrete);
-    bal.position.set(0, 0.15, z - rowD/2);
-    arr.add(bal);
+  /* If the layout produced real tables, lay those. */
+  if(it.tables && it.tables.length){
+    var st = it.tables.length > 900 ? Math.ceil(it.tables.length/900) : 1;
+    for(var k=0;k<it.tables.length;k++){
+      if(k % st) continue;
+      var t = it.tables[k];
+      var pvT = new THREE.Mesh(
+        new THREE.BoxGeometry(Math.max(1,t.wf||tW), 0.18,
+                              Math.max(1,t.lf||rowD)/Math.cos(tiltR)),
+        panelMat(Math.max(1,t.wf||tW), Math.max(1,t.lf||rowD)));
+      pvT.rotation.x = -tiltR;
+      if(t.a) pvT.rotation.y = -t.a;
+      pvT.position.set(t.x - it.x, stand + Math.sin(tiltR)*(t.lf||rowD)/2, t.z - it.z);
+      pvT.castShadow = true; pvT.receiveShadow = true;
+      arr.add(pvT);
+    }
+    return g;
+  }
+
+  /* Otherwise generate rows and CLIP THEM TO THE OUTLINE, so an angled or
+     stepped roof plane gets panels over its whole area and none past its
+     edge. Laying full-width rows across the bounding box was why an
+     irregular roof looked both under- and over-filled. */
+  var reach = Math.sqrt(bw*bw + bl*bl)/2 + pitch;
+  var nCol = Math.max(1, Math.ceil(reach*2 / tW));
+  var nRow = Math.max(1, Math.ceil(reach*2 / pitch));
+  var pm = panelMat(tW, rowD);
+  var made = 0, CAP = 900;
+
+  for(var r=0; r<nRow && made<CAP; r++){
+    var lz = -reach + pitch*(r + 0.5);
+    for(var c=0; c<nCol && made<CAP; c++){
+      var lx = -reach + tW*(c + 0.5);
+      var wx = lx*ca - lz*sa, wz = lx*sa + lz*ca;
+      if(poly){
+        if(!inPoly(wx + it.x, wz + it.z, poly)) continue;
+      } else {
+        if(Math.abs(wx) > bw/2 || Math.abs(wz) > bl/2) continue;
+      }
+      var pv = new THREE.Mesh(
+        new THREE.BoxGeometry(tW*0.96, 0.18, rowD/Math.cos(tiltR)), pm);
+      pv.rotation.x = -tiltR;
+      pv.rotation.y = -ang;
+      pv.position.set(wx, stand + Math.sin(tiltR)*rowD/2, wz);
+      pv.castShadow = true; pv.receiveShadow = true;
+      arr.add(pv);
+      /* ballast trays — what actually holds a flat-roof array down */
+      var bal = box(tW*0.9, 0.28, 0.7, MAT.concrete);
+      bal.rotation.y = -ang;
+      bal.position.set(wx, 0.14, wz - rowD/2);
+      arr.add(bal);
+      made++;
+    }
   }
   return g;
 }
@@ -131492,8 +131589,10 @@ function buildCarport(it, arch){
      region when the region is the smaller of the two. */
   var DECK_D  = Math.min(40, Math.max(18, A));
   var ROW     = Math.min(18, DECK_D/2 - 1);       /* one parking row  */
-  var CLEAR   = 12;                  /* clearance at the low eave   */
-  var TILT    = 7 * Math.PI/180;
+  /* Per-array geometry when Array Geometry set it; a canopy needs real
+     drive-under clearance, so the floor is 10 ft whatever it says. */
+  var CLEAR   = Math.max(10, (it.clearFt != null) ? it.clearFt : 12);
+  var TILT    = ((it.tiltDeg != null) ? Math.min(12, it.tiltDeg) : 7) * Math.PI/180;
   var rise    = Math.tan(TILT) * DECK_D;
   var deckMid = CLEAR + rise/2;
 
@@ -132480,7 +132579,8 @@ function paintSide(){
     h += '<div class="ov-item' + (q?' q':'') + '">'
       +  '<div class="ov-il"><div class="ov-in">' + esc(it.label || '(unlabelled)') + '</div>'
       +  '<span class="ov-chip c-' + it.why + '">' + it.why.toUpperCase() + '</span></div>'
-      +  '<div class="ov-im" style="margin:-2px 0 4px">' + esc(it.kind) + '</div>'
+      +  '<div class="ov-im" style="margin:-2px 0 4px">' + esc(it.kind)
+      +  (it.boxSrc ? ' \u00b7 size from ' + esc(it.boxSrc) : '') + '</div>'
       +  '<select data-item="' + esc(it.id) + '">';
     ARCH_ORDER.forEach(function(a){
       h += '<option value="' + a + '"' + (a === it.arch ? ' selected' : '') + '>'
@@ -132750,6 +132850,8 @@ window.OmegaSiteVis = {
     s.items.forEach(function(it){
       rows.push({ label:it.label, kind:it.kind, arch:it.arch, why:it.why,
                   ft:Math.round(it.wf)+'x'+Math.round(it.lf), kw:it.kw||0,
+                  sizeFrom:it.boxSrc||'', tilt:it.tiltDeg, clear:it.clearFt,
+                  pitch:it.pitchFt, tables:(it.tables?it.tables.length:0),
                   approx:!!it.approx, hidden:!!it.hidden,
                   basis:it.basis||'' });
     });
