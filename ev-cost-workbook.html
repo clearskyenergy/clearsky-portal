@@ -1616,7 +1616,7 @@ function setCustomBand(){
    numbers that came from a build that was no longer the code — the same
    export pasted twice, identical to the byte, while the fix sat undeployed.
    A visible build id ends that argument in one glance. */
-var OMEGA_BUILD = 'wb-2026-08-26j';
+var OMEGA_BUILD = 'wb-2026-08-27a';
 try{ window.OMEGA_BUILD = OMEGA_BUILD; }catch(e){}
 
 var LINES = [];
@@ -1790,7 +1790,10 @@ function isFootUnit(u){ return /^(lf|lft|lnft|ln ft|ft|feet|foot|linear ?f(ee)?t
 function classify(cat, desc, size, unit){
   var c=String(cat||'').toLowerCase();
   var t=String(desc||'').toLowerCase()+' '+String(size||'').toLowerCase();
-  var future=/spare|future.?proof/.test(t);
+  /* "future capacity", "for future EVSE" and "future position" all describe
+     future proofing as plainly as "future-proof" does; the narrower pattern
+     read them as live make-ready. Not matched: "in the future" as prose. */
+  var future=/spare|future.?proof|future (capacity|position|port|evse|charger|expansion)|for future/.test(t);
   var dc=(chargerClass()==='dcfc');
 
   if(/ev charging/.test(c)){
@@ -1867,8 +1870,23 @@ function classify(cat, desc, size, unit){
   if(/label|signage|arc.?flash/.test(t))           return {b:'ne', r:'signage',  fp:0};
   if(/network|software|ocpp|telemetr|bms/.test(t)) return {b:'ne', r:'network',  fp:0};
   if(/warrant/.test(t))                            return {b:'ne', r:'warranty', fp:0};
-  if(/transformer|xfmr/.test(t))                   return future ? {b:'fp',r:'xfmr',fp:0}
-                                                                : {b:(dc?'mr':'fp'), r:'xfmr', fp:0};
+  /* A service transformer is the UTILITY'S transformer: utility-side
+     make-ready, not future proofing. Sending it to 'fp' on every Level 2 job
+     put $1,140 of "Future Proofing" on a sheet with no future positions on
+     it at all — a reviewer reads that block as capacity built for later, and
+     the programmes book it as ineligible, so it was both wrong and costly.
+     Only a transformer described as future or spare belongs in fp. */
+  /* A transformer PAD is utility-side work and belongs on that row. The
+     transformer line itself — "service transformer (if required)" — is
+     something the contractor is carrying, so it stays customer-side. Sending
+     it to the utility-side row moved $1,140 out of the customer's eligible
+     total and into the separately-reported Civil Work figure, so the sheet
+     footed $1,140 under the contractor proposal for the same job. */
+  if(/transformer|xfmr/.test(t)){
+    if(future) return {b:'fp', r:'xfmr', fp:0};
+    return /\bpad\b/.test(t) ? {b:'mr', r:'xfmrpad', fp:0}
+                             : {b:'mr', r:'other',   fp:0};
+  }
   /* Spare gear, spare breaker positions and the like are future proofing
      wherever they appear — the earlier rule only caught conduit and wire,
      so a spare panel stayed in make-ready and inflated the eligible cost. */
@@ -1987,6 +2005,10 @@ function loadPayload(pay){
      meter. Without this the sheet could price the run but not the equipment
      standing in it, and every one of those rows was typed by hand. */
   EDITOR_COUNTS = pay.counts || null;
+  if(EDITOR_COUNTS && num(EDITOR_COUNTS.fpPositions)>0)
+    DATA.nFpPositions = num(EDITOR_COUNTS.fpPositions);
+  if(EDITOR_COUNTS && num(EDITOR_COUNTS.fpPositions)>0)
+    DATA.nFpPositions = num(EDITOR_COUNTS.fpPositions);
   if(EDITOR_COUNTS){
     if(num(EDITOR_COUNTS.bollard)>0)  DATA.nBollard  = num(EDITOR_COUNTS.bollard);
     if(num(EDITOR_COUNTS.pad)>0)      DATA.nPad      = num(EDITOR_COUNTS.pad);
@@ -2391,6 +2413,12 @@ var STANDARD=[
      scenario rather than assumed, and standardRate returns nothing unless a
      new service is selected. */
   ['Concrete Work \u2014 Utility Transformer Pad','mr','xfmrpad',true],
+  /* future proofing, from the positions drawn on the map */
+  ['Spare conduit & conductors \u2014 future proofing','fp','conduit',true],
+  ['Panel positions \u2014 future proofing','fp','panel',true],
+  /* future proofing, from the FP positions drawn on the map */
+  ['Spare conduit & conductors \u2014 future proofing','fp','conduit',true],
+  ['Panel positions \u2014 future proofing','fp','panel',true],
   /* placed on the drawing, so priced from it */
   ['Protective Bollards','ne','bollard',true],
   ['Concrete Work/Bases/Pads','mr','concrete',true],
@@ -2533,10 +2561,31 @@ var RATE_CARD = {
   /* formulas, not prices ────────────────────────────────────────────── */
   pedestalsFor:  function(ports){ return Math.max(1, Math.ceil(num(ports)/2)); },
   breakersFor:   function(ports){ return num(ports)+3; },
-  freightFor:    function(ports){ return 250 + 100*num(ports); }
+  freightFor:    function(ports){ return 250 + 100*num(ports); },
+
+  /* ── FUTURE PROOFING ────────────────────────────────────────────────
+     A position built out now but not energised: spare conduit and cable
+     pulled to the pad while the trench is open, plus a panel position held
+     for it. No EVSE, no networking, no install labour — there is no port
+     yet, which is why every programme books it as INELIGIBLE rather than
+     make-ready. What it saves is the second mobilisation and a second
+     trench, not the materials. */
+  fpPanelPosition:{ mat:500, lab:1000, n:1, note:'per position, from the 50 Fitch St FP block' },
+  fpSpareRunPerPosition: 60,          /* LF carried per position when the
+                                         drawing does not measure the spare */
+  fpConduit: { mat:1.95, lab:2.50 }   /* same pipe, same ditch, dug once */
 };
 
 function standardRate(row, bucket){
+  /* The future-proofing block reuses the SAME row keys as make-ready
+     ('conduit', 'panel'), so the bucket is what distinguishes a spare run
+     from a live one. Without this, a future-proofing row would be priced at
+     the live rate off the live footage and the ineligible total would carry
+     the whole job's conduit. */
+  if(bucket==='fp'){
+    if(row==='conduit' || row==='wire') return standardRate('_fpConduit','fp');
+    if(row==='panel'  || row==='boards') return standardRate('_fpPanel','fp');
+  }
   var B=L2_BASELINE, ST=STANDARD_ITEMS.l2;
   var ports=Math.max(1, num(DATA.plugs)||1);
   var peds =Math.max(1, Math.ceil(ports/2));       /* dual-port pedestals */
@@ -2623,6 +2672,27 @@ function standardRate(row, bucket){
        trench, because these rows were only filled when the estimate happened
        to carry a matching line. Underground and above ground price
        separately — an indoor run costs more per foot and less to dig. */
+    /* ── FUTURE-PROOFING ROWS ─────────────────────────────────────
+       Driven by the FP positions drawn on the map. They live in the 'fp'
+       bucket, which every programme form books as ineligible, so they
+       never inflate the rebate base. */
+    case '_fpConduit': var nfp=num(DATA.nFpPositions)||0;
+                       if(!nfp) return null;
+                       var fpLf=num(DATA.ftConduitFP) || (nfp*RATE_CARD.fpSpareRunPerPosition);
+                       return { qty:fpLf, unit:'LF',
+                                mat:RATE_CARD.fpConduit.mat*fpLf,
+                                lab:RATE_CARD.fpConduit.lab*fpLf,
+                                note:Math.round(fpLf)+' LF \u2014 spare conduit & conductors to '
+                                     +nfp+' future position'+(nfp===1?'':'s')
+                                     +', pulled while the trench is open. Not energised.' };
+    case '_fpPanel':   var np2=num(DATA.nFpPositions)||0;
+                       if(!np2) return null;
+                       return { qty:np2, unit:'EA',
+                                mat:RATE_CARD.fpPanelPosition.mat*np2,
+                                lab:RATE_CARD.fpPanelPosition.lab*np2,
+                                note:np2+' panel position'+(np2===1?'':'s')
+                                     +' held for future EVSE \u2014 breaker space, bus and '
+                                     +'terminations. No charger, no networking.' };
     case 'conduit':    return ftUG>0 ? { qty:ftUG, unit:'LF',
                                         mat:RATE_CARD.conduitCableUG.mat*ftUG,
                                         lab:RATE_CARD.conduitCableUG.lab*ftUG,
@@ -3292,8 +3362,23 @@ function buildModel(form){
   }
   gm=r2(gm); gl=r2(gl);
   var inc=r2(nval('b_incent'));
+  /* Total tax actually charged, summed off the _tax rows the blocks carry.
+     Nothing set this before, so every reader of m.taxTotal saw 0 — which is
+     why the National Grid sheet printed a blank Sales Tax line and footed
+     $699.38 under the contractor proposal for the same job. */
+  var taxTotal=0, _bi, _ri, _bb, _rr;
+  for(_bi=0;_bi<out.length;_bi++){
+    _bb=out[_bi];
+    for(_ri=0;_ri<_bb.rows.length;_ri++){
+      _rr=_bb.rows[_ri];
+      if(_rr && _rr.tax) taxTotal += num(_rr.mat) + num(_rr.lab);
+    }
+  }
+  taxTotal=r2(taxTotal);
+
   /* the sheet writers need these to emit live tax formulas */
   return { blocks:out, mat:gm, lab:gl, total:r2(gm+gl), incentive:inc, net:r2(gm+gl-inc),
+           taxTotal:taxTotal,
            taxRate:rate, taxOnLabor:taxLab, taxSingle:single, taxSink:sinkId,
            taxBase:(single?{mat:singleMat, lab:singleLab}:null) };
 }

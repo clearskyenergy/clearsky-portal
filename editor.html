@@ -8129,8 +8129,41 @@ function addEl(opts){
   _warnIfMapUnlocked();
   const el={id:uid(),...opts};S.elements.push(el);
   try{ if(typeof _geoStampElement==='function') _geoStampElement(el); }catch(e){}
-  renderEl(el);updCount();renderLegend();pushHist();return el;
+  renderEl(el);
+  try{ _autoBollardsFor(el); }catch(e){}
+  updCount();renderLegend();pushHist();return el;
 }
+
+/* Every Level 2 port gets a bollard, so placing a charger places its
+   protection with it rather than leaving it to be remembered later. The
+   cost sheet counts bollards as real elements, so a port drawn without one
+   was a port priced without one.
+
+   Placed just off the unit and marked _autoFor, so removing the charger can
+   take them with it and a hand-placed bollard is never touched. */
+function _autoBollardsFor(el){
+  if(!el || String(el.eqId||'')!=='charger') return 0;
+  if(window.OMEGA_AUTO_BOLLARDS === false) return 0;
+  if(el._bollardsDone) return 0;
+  if(el.futureProof) return 0;      /* no port yet, so nothing to protect */
+  var ports = +(el.ports||el.portCount||1) || 1;
+  var sz = +(el.w||60), gap = Math.round(sz*0.55), i, made=0;
+  for(i=0;i<ports;i++){
+    /* fan them along the face of the unit */
+    var offset = (i - (ports-1)/2) * Math.round(sz*0.8);
+    var b={ id:uid(), type:el.type, eqId:'bollard', label:'Bollard',
+            x:(+el.x||0)+offset, y:(+el.y||0)+gap,
+            w:Math.round(sz*0.35), rot:el.rot||0,
+            _autoFor:el.id };
+    S.elements.push(b);
+    try{ if(typeof _geoStampElement==='function') _geoStampElement(b); }catch(e){}
+    try{ renderEl(b); }catch(e){}
+    made++;
+  }
+  el._bollardsDone = true;
+  return made;
+}
+window._autoBollardsFor=_autoBollardsFor;
 
 // == EXPORT FOR CAD TOOL (Enlarged Plot Plan generator) =====
 // Converts S.elements (placed equipment) into the JSON shape expected
@@ -8654,6 +8687,14 @@ function renderEl(el){
 
 function removeEl(id){
   document.querySelector(`[data-elid="${id}"]`)?.remove();
+  /* Bollards placed automatically with a charger belong to it. Deleting the
+     charger without them left orphans standing in an empty stall — and the
+     cost sheet counts bollards, so the job kept paying for them. Only the
+     auto-placed ones go; anything hand-placed stays. */
+  (S.elements||[]).filter(e=>e && e._autoFor===id).forEach(function(b){
+    document.querySelector(`[data-elid="${b.id}"]`)?.remove();
+    S.elements=S.elements.filter(e=>e.id!==b.id);
+  });
   S.elements=S.elements.filter(e=>e.id!==id);
   if(S.sel===id){S.sel=null;showProps(null);}
   S.conduits.filter(c=>c.fromId===id||c.toId===id).forEach(c=>removeConduit(c.id));
@@ -16918,6 +16959,33 @@ function renderLegend(){
     h+='<div style="font-size:8px;font-weight:800;letter-spacing:.8px;opacity:.6;margin:2px 0 4px">EQUIPMENT</div>'+eqRows;
   }
 
+  /* ---- FUTURE PROOFING -------------------------------------------
+     Positions built out but not energised. They are drawn like chargers
+     and would otherwise read as live ports on the legend, which is
+     exactly the confusion a reviewer must not have: the utilities pay
+     make-ready on a live port and book future proofing as ineligible.
+     Given its own block so the sheet says which is which. */
+  try{
+    var _fp=(S.elements||[]).filter(function(e){ return e && e.futureProof; });
+    if(_fp.length){
+      var _fpRows='';
+      var _byLbl={};
+      _fp.forEach(function(e){
+        var k=String(e.label||'FP Position');
+        _byLbl[k]=(_byLbl[k]||0)+1;
+      });
+      Object.keys(_byLbl).forEach(function(k){
+        _fpRows+='<div style="display:flex;align-items:center;gap:6px;margin:2px 0">'
+          +'<span style="width:10px;height:10px;border:1.5px dashed #d9a441;border-radius:2px;'
+          +'display:inline-block;flex:0 0 auto"></span>'
+          +'<span style="font-size:9px"><b>'+k+' \u00d7'+_byLbl[k]+'</b>'
+          +'<span style="opacity:.7"> \u2014 conduit + panel position, no EVSE</span></span></div>';
+      });
+      h+='<div style="font-size:8px;font-weight:800;letter-spacing:.8px;opacity:.6;'
+        +'margin:8px 0 4px;color:#d9a441">FUTURE PROOFING (INELIGIBLE)</div>'+_fpRows;
+    }
+  }catch(e){}
+
   /* ---- UTILITY / BOP ---------------------------------------------
      Drawn utility components (kind:'utility') were rendered on the plan
      but never counted anywhere: the shape loop above returns early for
@@ -21475,6 +21543,21 @@ const WIZ_STEPS_L2 = [
     optional: true,
   },
   {
+    id:'l2_evse_fp', icon:'\u26A1',
+    title:'Place Future-Proofing Position (optional)',
+    desc:'A stall built out now but not energised: conduit, trench and a panel position carried '
+        +'to the pad, with no charger and no port. Utilities book this as INELIGIBLE future '
+        +'proofing, never as make-ready, so it is drawn separately from a live port and priced '
+        +'separately. Adding capacity while the trench is open costs a fraction of returning to it.',
+    action:'click-place',
+    eqId:'charger', label:'FP Position', spec:'Future proofing \u2014 conduit + panel position, no EVSE',
+    futureProof:true,
+    btnLabel:'  Click to Place Future-Proofing Position',
+    wireFrom:'l2_panel', wireType:'L2-TRENCH', wireLabel:'Spare branch, panel\u2192FP position (2" PVC trench)',
+    editableSpec: true,
+    optional: true,
+  },
+  {
     id:'l2_bollard', icon:'\u25A0',
     title:'Place Bollards (optional)',
     desc:'Impact protection at the stall. Often required by the property owner or the AHJ where a charger faces oncoming traffic, and it is cheap to include now and expensive to add after the pour.',
@@ -22670,7 +22753,12 @@ function _wizPlaceAt(p){
   // Place the element centered on the click point.
   var newEl = addEl({
     type:'eq', eqId:step.eqId, label:step.label||step.eqId, spec:stepSpec,
-    x:Math.round(p.x - iconSz/2), y:Math.round(p.y - iconSz/2), w:iconSz, rot:0
+    x:Math.round(p.x - iconSz/2), y:Math.round(p.y - iconSz/2), w:iconSz, rot:0,
+    /* A future-proofing position is drawn like a charger but is NOT one: no
+       port, no EVSE, and the utilities book it as ineligible future proofing
+       rather than make-ready. The flag rides on the element so the legend,
+       the port count and the cost sheet all treat it the same way. */
+    futureProof: !!step.futureProof
   });
 
   // Route conduit INTO THE TRENCH from the source device to this one.
@@ -33085,17 +33173,19 @@ function ctxToggleLabel() {
    just flips it and re-renders the chargers. */
 function toggleEvsePads(){
   window.OMEGA_EV_PAD = (window.OMEGA_EV_PAD === false);
-  var hidden = (window.OMEGA_EV_PAD === false), i, el, touched=[];
-  for(i=0;i<(S.elements||[]).length;i++){
-    el=S.elements[i];
-    if(String(el.eqId||'')!=='charger') continue;
-    touched.push(el);
+  var hidden = (window.OMEGA_EV_PAD === false);
+  /* Hide with a stylesheet rule rather than re-rendering each charger.
+     Re-rendering only worked for elements the loop could find and
+     re-draw — anything drawn through a cluster or array path kept its
+     island, which is why the toggle worked "not every time". A rule on
+     .ev-bollard-pad catches every one, including pads drawn later. */
+  var st=document.getElementById('omega-evpad-style');
+  if(!st){
+    st=document.createElement('style');
+    st.id='omega-evpad-style';
+    document.head.appendChild(st);
   }
-  touched.forEach(function(e){
-    var dom=document.querySelector('[data-elid="'+e.id+'"]');
-    if(dom) dom.remove();
-    try{ renderEl(e); }catch(err){}
-  });
+  st.textContent = hidden ? '.ev-bollard-pad{display:none !important}' : '';
   var btn=document.getElementById('btn-hideevselbl');
   if(btn){
     btn.style.background=hidden?'rgba(0,212,255,.2)':'var(--surface)';
@@ -65275,7 +65365,8 @@ function _evFeetFromCanvas(){
    last gap between the map and the matrix. */
 function _evCountsFromCanvas(){
   var els=[]; try{ els=(typeof S!=='undefined' && S.elements)?S.elements:[]; }catch(e){}
-  var c={ bollard:0, pad:0, xfmrpad:0, handhole:0, meter:0, panel:0, disco:0, charger:0 };
+  var c={ bollard:0, pad:0, xfmrpad:0, handhole:0, meter:0, panel:0, disco:0,
+          charger:0, fpPositions:0 };
   var i, t;
   for(i=0;i<els.length;i++){
     t=String((els[i]&&(els[i].type||els[i].eqId))||'').toLowerCase();
@@ -65288,7 +65379,9 @@ function _evCountsFromCanvas(){
     else if(t.indexOf('meter')>=0)                    c.meter++;
     else if(t.indexOf('panel')>=0||t.indexOf('mdp')>=0||t.indexOf('switchgear')>=0) c.panel++;
     else if(t.indexOf('disco')>=0)                    c.disco++;
-    else if(t.indexOf('charger')>=0||t.indexOf('evse')>=0) c.charger++;
+    else if(t.indexOf('charger')>=0||t.indexOf('evse')>=0){
+      if(els[i].futureProof) c.fpPositions++; else c.charger++;
+    }
   }
   /* Whether the service is new is a drawing fact too: an existing meter bank
      on the map means the service is there already. */
