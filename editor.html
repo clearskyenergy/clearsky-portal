@@ -130402,7 +130402,7 @@ challengeRow(s) +
 </script>
 
 
-<!-- ═══ 3D SITE VISUALIZER ═══════════════════════════════════════════
+<!-- ═══ 3D SITE VISUALIZER (BETA) ═════════════════════════════════════
      Renders the drawn site map as a lit 3D model. Adds a button to
      Output › Reports. Self-contained; three.js is lazy-loaded only
      when the view is actually opened.                              -->
@@ -130802,11 +130802,19 @@ function classifyShape(sh, ctx){
 function readSite(){
   var p = ppf();
   var out = { items:[], calibrated:isCalibrated(), ppf:p,
-              warnings:[], counts:{}, kw:0, kwh:0 };
+              warnings:[], counts:{}, kw:0, kwh:0,
+              lat:null, lng:null, tables:0, acres:0 };
   var S_ = (typeof S!=='undefined') ? S : null;
   if(!S_) return out;
 
   var shapes = S_.shapes || [], elements = S_.elements || [];
+
+  /* Site latitude drives the real sun path. The project stores it two
+     ways depending on how the site was located, so try both. */
+  try{
+    if(isFinite(+S_.lat) && +S_.lat !== 0){ out.lat = +S_.lat; out.lng = +S_.lng; }
+    else if(S_.siteLat != null){ out.lat = +S_.siteLat; out.lng = +S_.siteLng; }
+  }catch(e0){}
 
   /* --- context pass -------------------------------------------------
      Solar classification needs to know where the parking and the
@@ -130944,6 +130952,9 @@ function readSite(){
     }
     out.items.push(it);
     out.kw += it.kw;
+    out.tables += (it.tableCount || (it.tables ? it.tables.length : 0));
+    if(ARCH[it.arch] && ARCH[it.arch].group === 'solar')
+      out.acres += (it.wf * it.lf) / 43560;
   }
 
   /* --- elements ------------------------------------------------------ */
@@ -131025,6 +131036,10 @@ function readSite(){
     (S_.bessList||[]).forEach(function(bb){ out.kwh += +(bb.kwh||0); });
   }catch(e3){}
 
+  out.acres = Math.round(out.acres*100)/100;
+  if(out.lat == null) out.warnings.push(
+    'No site coordinates on this project, so the sun path uses a mid-latitude '
+    + 'default. Shadow angles will be indicative rather than accurate.');
   if(!out.calibrated) out.warnings.push(
     'Site scale is not calibrated — heights and spacing use an assumed '
     + p + ' px/ft. Set the scale on the site map for a true-to-size model.');
@@ -131964,17 +131979,20 @@ function buildCamera(it, arch){
 var V = {
   scene:null, camera:null, renderer:null, root:null, groundGrp:null,
   site:null, raf:null, canvas:null,
-  sun:null, hemi:null,
+  sun:null, hemi:null, sunInfo:null,
   target:null, sph:{ r:400, theta:0.85, phi:0.95 },
-  layers:{}, opts:{ hour:15, shadows:true, sat:true, showAll:false },
+  layers:{}, opts:{ hour:13, day:172, shadows:true, sat:true, showAll:false },
   needsRender:true, disposed:false
 };
 
-function skyTexture(hour){
-  /* Warmer and lower-contrast at the ends of the day. A flat blue at 7am
-     and 7pm is the giveaway that a render is fake. */
-  var t = Math.abs(hour-13)/7;                 /* 0 midday .. 1 at the ends */
-  t = Math.max(0, Math.min(1, t));
+function skyTexture(hour, sun){
+  /* Warmth and darkness follow the sun's real elevation rather than the
+     clock, so a June evening and a December one look different — which is
+     the whole point of having a date. */
+  var t;
+  if(sun) t = sun.below ? 1 : Math.max(0, Math.min(1, 1 - sun.altDeg/38));
+  else    t = Math.max(0, Math.min(1, Math.abs(hour-13)/7));
+  var night = sun && sun.below ? 1 : 0;
   var c = document.createElement('canvas'); c.width=8; c.height=256;
   var g = c.getContext('2d');
   var grd = g.createLinearGradient(0,0,0,256);
@@ -131984,6 +132002,10 @@ function skyTexture(hour){
   var top = mix([64,128,206],[36,58,104], t);
   var mid = mix([150,193,235],[196,150,126], t);
   var bot = mix([214,229,242],[236,190,150], t);
+  if(night){
+    top = mix(top,[14,18,34],0.85); mid = mix(mid,[26,32,52],0.8);
+    bot = mix(bot,[44,48,66],0.75);
+  }
   grd.addColorStop(0, rgb(top));
   grd.addColorStop(0.62, rgb(mid));
   grd.addColorStop(1, rgb(bot));
@@ -131993,22 +132015,55 @@ function skyTexture(hour){
   return tex;
 }
 
-/* Sun position from an hour of the day. Not an ephemeris — a plausible arc
-   that lets someone drag through the day and see how the carports shade
-   the lot, which is the question this control exists to answer. */
-function sunFor(hour, radius){
-  var f = (hour - 6) / 12;                       /* 0 at 6am .. 1 at 6pm */
-  f = Math.max(-0.15, Math.min(1.15, f));
-  var az = Math.PI * f;                          /* east -> west */
-  /* named `elev`, not `el`: `el` is the DOM helper at module scope and
-     shadowing it here is one edit away from a very confusing bug */
-  var elev = Math.sin(Math.PI * Math.max(0.04, Math.min(0.96, f))) * 1.05;
+/* REAL SOLAR POSITION.
+
+   The sun was a plausible-looking arc: an east-west sweep with a made-up
+   elevation. That is fine for a pretty picture and useless for the thing
+   people actually open a 3D view to check — whether the carports shade the
+   array in December.
+
+   This is the same declination and altitude/azimuth model the app already
+   uses for row spacing and shadow-length calcs, so the shadows on screen
+   agree with the numbers in the design rather than telling a second story.
+   Azimuth is clockwise from true north; the site map is north-up, so in
+   world terms north is -Z and east is +X. */
+function solarDeclination(dayOfYear){
+  return -23.44 * Math.cos(2*Math.PI*(dayOfYear + 10)/365.25);
+}
+function sunAltAz(latDeg, dayOfYear, solarHour){
+  var D2R = Math.PI/180, R2D = 180/Math.PI;
+  var lat = latDeg*D2R, dec = solarDeclination(dayOfYear)*D2R;
+  var H = (solarHour - 12) * 15 * D2R;
+  var sinAlt = Math.sin(lat)*Math.sin(dec) + Math.cos(lat)*Math.cos(dec)*Math.cos(H);
+  sinAlt = Math.max(-1, Math.min(1, sinAlt));
+  var alt = Math.asin(sinAlt);
+  var cosAz = (Math.sin(dec) - Math.sin(alt)*Math.sin(lat)) /
+              ((Math.cos(alt)*Math.cos(lat)) || 1e-9);
+  var az = Math.acos(Math.max(-1, Math.min(1, cosAz)));
+  if(H > 0) az = 2*Math.PI - az;
+  return { alt: alt*R2D, az: az*R2D };
+}
+
+/* Sun placement for the light. Returns null when the sun is below the
+   horizon, so the caller can render dusk instead of lighting the site from
+   underneath — which is what an unclamped arc does at 7pm in December. */
+function sunFor(hour, day, latDeg, radius){
+  var D2R = Math.PI/180;
+  var p = sunAltAz(latDeg, day, hour);
   var r = radius || 500;
+  var altR = p.alt*D2R, azR = p.az*D2R;
+  /* azimuth clockwise from north: north = -Z, east = +X */
+  var dir = {
+    x:  Math.cos(altR) * Math.sin(azR),
+    y:  Math.sin(altR),
+    z: -Math.cos(altR) * Math.cos(azR)
+  };
   return {
-    x: -Math.cos(az) * r * 0.85,
-    y: Math.max(30, Math.sin(elev) * r * 0.9),
-    z: -Math.cos(elev) * r * 0.35 - r*0.25,
-    warm: 1 - Math.sin(Math.PI*Math.max(0,Math.min(1,f)))
+    x: dir.x * r, y: dir.y * r, z: dir.z * r,
+    altDeg: p.alt, azDeg: p.az,
+    below: p.alt <= 0,
+    /* warmth rises as the sun nears the horizon */
+    warm: Math.max(0, Math.min(1, 1 - p.alt/40))
   };
 }
 
@@ -132065,18 +132120,29 @@ function buildScene(site){
 
 function applySun(span){
   if(!V.sun) return;
-  var s = sunFor(V.opts.hour, Math.max(400, (span|| Math.max(60,
-      Math.max(V.site.sizeFt.w, V.site.sizeFt.h)))*2.2));
-  V.sun.position.set(s.x, s.y, s.z);
+  var sp = span || Math.max(60, Math.max(V.site.sizeFt.w, V.site.sizeFt.h));
+  var lat = (V.site && V.site.lat != null) ? V.site.lat : 39;
+  var s = sunFor(V.opts.hour, V.opts.day, lat, Math.max(400, sp*2.2));
+  V.sunInfo = s;
+
+  if(s.below){
+    /* Below the horizon: hold the light just above it and drop it to
+       almost nothing rather than lighting the site from underground. */
+    V.sun.position.set(s.x, Math.max(20, sp*0.05), s.z);
+    V.sun.intensity = 0.06;
+    V.sun.castShadow = false;
+    if(V.hemi) V.hemi.intensity = 0.20;
+  } else {
+    V.sun.position.set(s.x, Math.max(20, s.y), s.z);
+    var warm = s.warm;
+    V.sun.intensity = 1.55 - warm*0.75;
+    V.sun.color.setRGB(1, 1 - warm*0.16, 1 - warm*0.34);
+    V.sun.castShadow = !!V.opts.shadows;
+    if(V.hemi) V.hemi.intensity = 0.62 - warm*0.22;
+  }
   V.sun.target.position.set(0,0,0);
   V.sun.target.updateMatrixWorld();
-  /* warm and dim the sun toward the ends of the day */
-  var warm = s.warm;
-  V.sun.intensity = 1.55 - warm*0.55;
-  V.sun.color.setRGB(1, 1 - warm*0.16, 1 - warm*0.34);
-  if(V.hemi) V.hemi.intensity = 0.62 - warm*0.16;
-  if(V.scene) V.scene.background = skyTexture(V.opts.hour);
-  V.sun.castShadow = !!V.opts.shadows;
+  if(V.scene) V.scene.background = skyTexture(V.opts.hour, s);
   V.needsRender = true;
 }
 
@@ -132390,6 +132456,12 @@ var CSS = ''
 + '#ovis .ov-ttl{font-size:13px;font-weight:700;letter-spacing:.3px}'
 + '#ovis .ov-ttl span{color:#2FB54A}'
 + '#ovis .ov-sub{font-size:10.5px;color:#9A9A9A;font-family:"IBM Plex Mono",monospace}'
++ '#ovis .ov-beta{display:inline-block;margin-left:7px;padding:1px 5px;border-radius:2px;'
++   'background:#E0A83C;color:#141416;font-size:8.5px;font-weight:800;letter-spacing:.8px;'
++   'vertical-align:2px;font-family:"IBM Plex Mono",monospace}'
++ '#ov-ribbon-btn .rb-badge{position:absolute;top:2px;right:3px;background:#E0A83C;'
++   'color:#141416;font-size:7.5px;font-weight:800;letter-spacing:.5px;padding:0 3px;'
++   'border-radius:2px;line-height:11px;font-family:"IBM Plex Mono",monospace}'
 + '#ovis .ov-sp{flex:1}'
 + '#ovis .ov-b{background:#2D2D2D;border:1px solid #3A3A3A;color:#E0E0E0;border-radius:3px;'
 +   'padding:5px 11px;font-size:11px;cursor:pointer;font-family:inherit;white-space:nowrap}'
@@ -132457,7 +132529,8 @@ function shell(){
   d.id = 'ovis';
   d.innerHTML = ''
   + '<div class="ov-bar">'
-  +   '<div class="ov-ttl">Site <span>Visualizer</span></div>'
+  +   '<div class="ov-ttl">Site <span>Visualizer</span>'
+  +     '<span class="ov-beta">BETA</span></div>'
   +   '<div class="ov-sub" id="ov-scale"></div>'
   +   '<div class="ov-sp"></div>'
   +   '<button class="ov-b" id="ov-refresh" title="Re-read the site map">&#8635; Refresh</button>'
@@ -132503,6 +132576,12 @@ function paintSide(){
     +  '</div><div class="ov-kl">kW-DC drawn</div></div>'
     +  '<div class="ov-k"><div class="ov-kv">' + nSolar + '</div><div class="ov-kl">PV arrays</div></div>'
     +  '<div class="ov-k"><div class="ov-kv">' + nStore + '</div><div class="ov-kl">Storage</div></div>'
+    +  '</div>'
+    +  '<div class="ov-kpi">'
+    +  '<div class="ov-k"><div class="ov-kv">' + (s.tables ? s.tables.toLocaleString() : '\u2014')
+    +  '</div><div class="ov-kl">Tables laid out</div></div>'
+    +  '<div class="ov-k"><div class="ov-kv">' + (s.acres ? s.acres.toFixed(2) : '\u2014')
+    +  '</div><div class="ov-kl">PV acres</div></div>'
     +  '</div>';
 
   h += '<div class="ov-h">View</div><div class="ov-vb">'
@@ -132514,9 +132593,19 @@ function paintSide(){
     +  '<div class="ov-hint">Drag to orbit \u00b7 shift-drag or right-drag to pan \u00b7 scroll to zoom</div>';
 
   h += '<div class="ov-h">Sun &amp; ground</div>'
+    +  '<div class="ov-row"><label for="ov-day">Date</label>'
+    +  '<span class="ov-im" id="ov-dayv">' + fmtDay(V.opts.day) + '</span></div>'
+    +  '<input type="range" id="ov-day" min="1" max="365" step="1" value="' + V.opts.day + '">'
+    +  '<div class="ov-vb" style="margin:5px 0 9px">'
+    +  '<button class="ov-b" data-day="80">Mar 21</button>'
+    +  '<button class="ov-b" data-day="172">Jun 21</button>'
+    +  '<button class="ov-b" data-day="266">Sep 23</button>'
+    +  '<button class="ov-b" data-day="355">Dec 21</button>'
+    +  '</div>'
     +  '<div class="ov-row"><label for="ov-hour">Time of day</label>'
     +  '<span class="ov-im" id="ov-hourv">' + fmtHour(V.opts.hour) + '</span></div>'
-    +  '<input type="range" id="ov-hour" min="6" max="20" step="0.25" value="' + V.opts.hour + '">'
+    +  '<input type="range" id="ov-hour" min="4" max="21" step="0.25" value="' + V.opts.hour + '">'
+    +  '<div class="ov-im" id="ov-sunv" style="margin:4px 0 2px">&nbsp;</div>'
     +  '<div class="ov-row"><input type="checkbox" id="ov-shadow"' + (V.opts.shadows?' checked':'') + '>'
     +  '<label for="ov-shadow">Cast shadows</label></div>'
     +  '<div class="ov-row"><input type="checkbox" id="ov-sat"' + (V.opts.sat?' checked':'') + '>'
@@ -132616,6 +132705,17 @@ function paintSide(){
   wireSide();
 }
 
+/* Day-of-year -> a readable date. Matches the app's own cumulative-days
+   table so the render and the shading calcs mean the same day. */
+var MONTH_CUM = [0,31,59,90,120,151,181,212,243,273,304,334];
+var MONTH_NM  = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+function fmtDay(doy){
+  doy = Math.max(1, Math.min(365, Math.round(doy)));
+  var m = 11;
+  while(m > 0 && MONTH_CUM[m] >= doy) m--;
+  return MONTH_NM[m] + ' ' + (doy - MONTH_CUM[m]);
+}
+
 function fmtHour(v){
   var hh = Math.floor(v), mm = Math.round((v - hh) * 60);
   var ap = hh >= 12 ? 'PM' : 'AM';
@@ -132630,12 +132730,40 @@ function wireSide(){
     b.onclick = function(){ setView(b.getAttribute('data-view')); };
   });
 
+  function paintSun(){
+    var n = el('ov-sunv'); if(!n) return;
+    var s2 = V.sunInfo;
+    if(!s2){ n.textContent = ''; return; }
+    if(s2.below){
+      n.innerHTML = '<span style="color:#8A8A8A">Sun is below the horizon</span>';
+    } else {
+      n.textContent = 'Sun ' + s2.altDeg.toFixed(1) + '\u00b0 above horizon \u00b7 '
+        + s2.azDeg.toFixed(0) + '\u00b0 from north';
+    }
+  }
+
   var hr = el('ov-hour');
   if(hr) hr.oninput = function(){
     V.opts.hour = +hr.value;
     var lbl = el('ov-hourv'); if(lbl) lbl.textContent = fmtHour(V.opts.hour);
-    applySun();
+    applySun(); paintSun();
   };
+
+  var dy = el('ov-day');
+  if(dy) dy.oninput = function(){
+    V.opts.day = +dy.value;
+    var lbl = el('ov-dayv'); if(lbl) lbl.textContent = fmtDay(V.opts.day);
+    applySun(); paintSun();
+  };
+  side.querySelectorAll('[data-day]').forEach(function(b){
+    b.onclick = function(){
+      V.opts.day = +b.getAttribute('data-day');
+      if(dy) dy.value = V.opts.day;
+      var lbl = el('ov-dayv'); if(lbl) lbl.textContent = fmtDay(V.opts.day);
+      applySun(); paintSun();
+    };
+  });
+  paintSun();
 
   var sh = el('ov-shadow');
   if(sh) sh.onchange = function(){ V.opts.shadows = sh.checked; applySun(); };
@@ -132805,8 +132933,12 @@ function injectButton(){
     b.id = 'ov-ribbon-btn';
     b.title = '3D Site Visualizer \u2014 render the drawn site map as a lit 3D model: '
             + 'carports, rooftop and ground arrays, BESS, transformers and parking';
-    b.innerHTML = '<span class="rb-ico" style="color:#2FB54A">\u25E9</span>'
+    /* Flagged BETA: this is under active development and the
+       classification of drawn objects is still being tuned. */
+    b.innerHTML = '<span class="rb-badge">BETA</span>'
+                + '<span class="rb-ico" style="color:#2FB54A">\u25E9</span>'
                 + '<span class="rb-lbl">3D Site<br>Visualizer</span>';
+    b.style.position = 'relative';
     b.onclick = function(){
       if(typeof rbRun === 'function') rbRun(open); else open();
     };
