@@ -584,12 +584,103 @@
   var MARKERS = {};
 
   /* ------------------------------------------------------------- provider
-     Demo until a contract exists. Switching source is one line — see the
-     README for what each provider needs before it can be turned on. */
-  SRC.use(SRC.providers.comed ? "comed" : "demo");
-  function isSample() { return !!(SRC.active && SRC.active.sample); }
+     Real data or nothing. The demo provider fabricates addresses, owners,
+     building sizes and sale prices; next to a genuinely live capacity map
+     that is indistinguishable from a result, and a rep who calls one has
+     called a building that does not exist.
 
-  /* =========================================================== the search */
+     So the fallback is NO provider rather than sample data. The tool still
+     works — the capacity map, the circuit ledger, the claims and the address
+     lookup are all real and none of them need a property list. What is
+     switched off is the browsable prospect list, until a county's parcels
+     are actually harvested.
+
+     Set window.CS_ALLOW_DEMO = true in config.js to bring sample data back
+     for a screenshot or a UI review. It is deliberately opt-in and it is
+     deliberately not the default. */
+  var HAS_REAL = !!(SRC.providers.comed || SRC.providers.harvest ||
+                    SRC.providers.propertyshark || SRC.providers.crexi);
+  if (SRC.providers.comed) SRC.use("comed");
+  else if (SRC.providers.harvest) SRC.use("harvest");
+  else if (window.CS_ALLOW_DEMO && SRC.providers.demo) SRC.use("demo");
+  else SRC.active = null;
+  function isSample() { return !!(SRC.active && SRC.active.sample); }
+  function hasSource() { return !!SRC.active; }
+
+  /* ------------------------------------------------- single-site viability
+     An address is not a viewport. Panning the map to a geocoded point and
+     re-running a bbox search answers "what is near here", which is a
+     different question from "can I put a battery HERE" — and when there is
+     no parcel list it answers nothing at all.
+
+     This reads the one point: which circuit covers it, what the circuit is
+     rated for, what the queue has already taken, what our own ledger has
+     claimed, and what is therefore left. Every number comes from a source
+     already on the page — LAY.feederAt for the circuit, L.feederState for
+     the claims, L.sizeAt for the ceilings. Nothing new is modelled here. */
+  function viabilityAt(lat, lon, label) {
+    var f = LAY.feederAt(lat, lon);
+    if (!f) {
+      return { ok: false, key: "offterritory", label: label,
+               headline: "Outside ComEd's mapped circuits",
+               why: "No ComEd hosting-capacity polygon covers this point. It is " +
+                    "either outside the service territory or on a circuit ComEd " +
+                    "does not publish. Interconnection here starts with a call to " +
+                    "the utility, not with this map." };
+    }
+    var cap = LAY.capacityOf(f) || {};
+    var fid = f.feeder || null;
+    if (fid && cap.nameplate != null) {
+      L.setFeeder(fid, { nameplate: cap.nameplate, queue: cap.queue || 0, sub: f.sub || "" });
+    }
+    var st = L.feederState(fid);
+    var cs = L.circuitStatus(st);
+    /* No building load for a bare address — the circuit ceiling is the only
+       one that binds, and that is said out loud rather than presented as if
+       the customer's own peak had been considered. */
+    var sz = L.sizeAt({ feederId: fid, hours: ST.hours || 2 });
+
+    return {
+      ok: st.known && st.sellable > 0,
+      key: cs.key, label: label,
+      feederId: fid, sub: f.sub || "",
+      state: st, status: cs, size: sz,
+      headline: !st.known
+        ? "Circuit found, capacity not published"
+        : st.sellable > 0
+          ? Math.round(st.sellable).toLocaleString() + " kW available on this circuit"
+          : "No capacity left on this circuit",
+      why: cs.note
+    };
+  }
+
+  /* The queue is the thing that most often kills a deal quietly, so it gets
+     its own sentence rather than being a row in a table. */
+  function queueLine(st) {
+    if (!st.known) return "";
+    if (!st.queue) return "Nothing filed ahead of you on this circuit.";
+    var pct = st.nameplate > 0 ? Math.round(100 * st.queue / st.nameplate) : 0;
+    return Math.round(st.queue).toLocaleString() + " kW is already held by other " +
+      "developers' interconnection applications \u2014 " + pct + "% of the circuit. " +
+      (st.nameplate - st.queue <= 0
+        ? "That alone consumes the circuit; there is nothing to size against."
+        : "Your battery is sized against what is left after that, not against " +
+          "the headline " + Math.round(st.nameplate).toLocaleString() + " kW.");
+  }
+
+  function ourClaimsLine(st) {
+    if (!st.known) return "";
+    var n = st.allocations.length;
+    if (!n) return "No one on your team has claimed capacity here yet.";
+    return n + (n === 1 ? " claim" : " claims") + " from your own team on this " +
+      "circuit: " + Math.round(st.firm).toLocaleString() + " kW firm and " +
+      Math.round(st.soft).toLocaleString() + " kW on soft hold. " +
+      "Anything you size here comes out of what is left after those." +
+      (st.oversubscribed
+        ? " This circuit is already oversubscribed by " +
+          Math.round(st.overBy).toLocaleString() + " kW."
+        : "");
+  }
 
   function bounds() {
     var b = map.getBounds();
@@ -602,6 +693,18 @@
 
   function run(force) {
     if (ST.busy) return;
+    /* No property source is a normal state, not an error. Say what the tool
+       still does rather than showing a failure — the capacity map, the
+       circuit ledger and the address lookup all work without a parcel list. */
+    if (!hasSource()) {
+      head("No property list on this tenant",
+           "Parcels have not been harvested for this territory yet, so there is " +
+           "nothing to browse. Everything else works: search an address above " +
+           "for a full circuit read on that site, turn on the capacity layers, " +
+           "or open the circuit ledger.");
+      ST.rows = []; render();
+      return;
+    }
     /* A hidden or unsized map pane reports a zero-area viewport. Searching it
        returns nothing and would wipe the results the rep is reading. */
     var b0 = bounds();
@@ -1273,6 +1376,67 @@
     document.getElementById("drawer").className = "open";
     wireDrawer(r);
   }
+  /* Renders a searched ADDRESS in the same drawer a parcel uses, so a rep
+     reads one layout whether the site came off a list or out of the search
+     box. It reuses the drawer's circuit block by handing it a record shaped
+     like a property with no building on it. */
+  function showViability(v, lat, lon) {
+    var short = String(v.label).split(",").slice(0, 2).join(",");
+    head(v.headline, v.why);
+    if (!v.feederId) {
+      document.getElementById("dAddr").textContent = short;
+      document.getElementById("dSub").textContent = "No mapped circuit at this point";
+      document.getElementById("dBody").innerHTML =
+        '<div class="sec"><p class="note">' + esc(v.why) + '</p></div>';
+      document.getElementById("drawer").className = "open";
+      return;
+    }
+    var rec = {
+      id: "addr:" + lat.toFixed(5) + "," + lon.toFixed(5),
+      addr: short, city: "", state: "", zip: "",
+      lat: lat, lon: lon,
+      type: "Site lookup", subtype: "Address search \u00b7 no building record",
+      sqft: null, lotAcres: null, annualKwh: null,
+      owner: { name: "", phone: "", email: "", mailing: "" },
+      photos: [], assessedValue: null, lastSale: { date: "", price: null },
+      feederId: v.feederId, sub: v.sub,
+      nameplate: v.state.nameplate, queue: v.state.queue,
+      circ: v.state, sz: v.size, src: "lookup"
+    };
+    ST.sel = rec;
+    document.getElementById("dAddr").textContent = short;
+    document.getElementById("dSub").textContent =
+      "Circuit " + v.feederId + (v.sub ? "  \u00b7  " + v.sub : "");
+    document.getElementById("dBody").innerHTML =
+      '<div class="sec">' +
+        '<div class="hero"><div class="big">' +
+          (v.size.kw == null ? "&mdash;" : fmt(v.size.kw)) + ' <small>kW</small></div>' +
+        '<div class="cap">' + esc(v.headline) + '</div></div>' +
+        /* Said plainly: no building means no load ceiling, and the number
+           above is what the WIRE allows, not what a customer's peak
+           justifies. Presenting a circuit ceiling as a battery size is how a
+           proposal promises a battery three times the load it can shave. */
+        '<p class="note">This is what the circuit will accept, not a sized ' +
+        'battery. There is no building record at this address, so nothing here ' +
+        'accounts for the customer\u2019s own peak demand \u2014 which is usually ' +
+        'the smaller of the two and usually the one that binds. Pull a bill or ' +
+        'an interval file before quoting.</p>' +
+      '</div>' +
+      '<div class="sec"><h4>Other developers in the queue</h4>' +
+        '<p class="note">' + esc(queueLine(v.state)) + '</p></div>' +
+      '<div class="sec"><h4>Your team\u2019s claims on this circuit</h4>' +
+        '<p class="note">' + esc(ourClaimsLine(v.state)) + '</p></div>' +
+      '<div class="sec"><h4>Nearest substation</h4>' +
+        '<p class="note">' + (v.sub
+          ? esc(v.sub) + ' feeds this circuit. ComEd publishes the substation ' +
+            'name but not its location, so the distance to it is not something ' +
+            'this map can measure yet.'
+          : 'ComEd does not name a substation for this circuit.') + '</p></div>' +
+      drawerHtml(rec);
+    document.getElementById("drawer").className = "open";
+    wireDrawer(rec);
+  }
+
   function closeDrawer() {
     document.getElementById("drawer").className = "";
     ST.sel = null;
@@ -1667,8 +1831,16 @@
       var j = null;
       try { j = JSON.parse(x.responseText); } catch (e) {}
       if (!j || !j.length) { head("Not found", "No match for \u201c" + raw + "\u201d. Try a ZIP or a cross street."); return; }
-      map.setView([+j[0].lat, +j[0].lon], 15);
-      run(true);
+      var lat = +j[0].lat, lon = +j[0].lon;
+      var found = j[0].display_name || raw;
+      map.setView([lat, lon], 16);
+      /* Circuits for the point first. feederAt reads the hosting cache, so
+         the polygon has to be in it before the answer means anything. */
+      head("Reading the circuit\u2026", found);
+      LAY.hostingIn(bounds(), function () {
+        showViability(viabilityAt(lat, lon, found), lat, lon);
+        if (hasSource()) run(true);
+      });
     };
     x.send();
   }
