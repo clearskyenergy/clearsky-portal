@@ -310,6 +310,10 @@
   .setKeyRow button{border:0;border-radius:8px;padding:8px 14px;font:inherit;
     font-weight:600;font-size:13px;background:var(--accent);color:#fff;cursor:pointer}
   .setKeyMsg{min-height:16px;font-size:12px;margin:2px 0 0}
+  .diagBox{background:var(--panel2);border:1px solid var(--line);border-radius:8px;
+    padding:9px 10px;font-family:var(--mono);font-size:10.5px;line-height:1.5;
+    max-height:230px;overflow:auto;white-space:pre-wrap;word-break:break-all;
+    color:var(--muted);margin:6px 0 0}
   .setKeyMsg.good{color:#1a7f4b}
   .setKeyMsg.bad{color:#b4341f}
   .setSeg{display:flex;background:var(--panel2);border-radius:8px;padding:2px;gap:2px}
@@ -361,6 +365,8 @@
     <select id="fType">
       <option value="">Any</option>
       <option value="__ci">Industrial &amp; warehouse</option>
+      <option value="__zoned">Assessor-classed C&amp;I</option>
+      <option value="__vacant">Vacant land only</option>
     </select>
   </div>
   <div class="f">
@@ -450,6 +456,20 @@
       <p><em>Saved in this browser only. For every user to get it, a developer
          should set <code>window.CS_TILE_KEY</code> in config.js once &mdash; but
          this field is enough to go live.</em></p>
+    </section>
+
+    <section>
+      <h5>Diagnostics</h5>
+      <p>Every ComEd request this page has made, most recent last, with the
+         full URL. When this tool and ComEd's own viewer disagree about a
+         point, the difference is in the request &mdash; and reading it beats
+         guessing at it.</p>
+      <div class="setKeyRow">
+        <button id="setDiagCopy">Copy log</button>
+        <button id="setDiagRefresh">Refresh</button>
+      </div>
+      <pre id="setDiag" class="diagBox">Run a lookup, then press Refresh.</pre>
+      <p class="setKeyMsg">Build <b id="setBuild">—</b></p>
     </section>
 
     <section>
@@ -558,6 +578,13 @@
      it sits in config rather than pretending otherwise. The raster service is
      also being retired; when it goes, the move is MapLibre against the vector
      style, which is more than a one-line change and should be planned. */
+  /* BUILD STAMP.
+
+     Shown in Settings and stamped into the diagnostics log. Several rounds of
+     debugging have been spent on the question "is the deployed file the one
+     we just changed", and a screenshot cannot answer it. Now it can. */
+  var CS_BUILD = "2026-08-27 23:57 UTC";
+
   function savedTileKey() {
     try { return window.localStorage.getItem("cs.tileKey") || ""; }
     catch (e) { return ""; }          /* private mode, or storage disabled */
@@ -652,19 +679,37 @@
            answer, the service refused us — and saying "no capacity here"
            would tell a rep to walk away from a site that may be fine. */
         var broke = res && res.serviceFailed;
-        cb({ ok: false, key: broke ? "serviceerror" : "offterritory",
+        var odd = res && res.suspicious;
+        cb({ ok: false, key: broke ? "serviceerror" : odd ? "suspicious" : "offterritory",
              label: label, feederId: null,
              errors: res ? res.errors : null,
-             headline: broke ? "Could not reach ComEd" : "No ComEd circuit published here",
+             empties: res ? res.empties : null,
+             tried: res ? res.tried : null,
+             probeUrl: res ? res.lastUrl : "",
+             headline: broke ? "Could not reach ComEd"
+                     : odd ? "Empty answer from every ComEd layer"
+                     : "No ComEd circuit published here",
              why: broke
                ? "Every ComEd layer refused or failed to answer, including the " +
                  "territory-wide block layers \u2014 which cover every point in " +
                  "the service area. So this is NOT a site without capacity; it " +
-                 "is a lookup that did not complete. Most likely the service " +
-                 "name has rotated (it carries a month and refreshes quarterly) " +
-                 "or the proxy is down. Do not treat this address as " +
-                 "disqualified." + (res && res.errors && res.errors.length
+                 "is a lookup that did not complete." +
+                 (res && res.errors && res.errors.length
                    ? " Reported: " + res.errors.join("; ") : "")
+               : odd
+               /* The invariant: layers 71-74 are PLSS blocks that tile the
+                  whole territory with no gaps. A point in northern Illinois
+                  that matches nothing on ANY of them has almost certainly not
+                  been asked correctly. Saying "no capacity" here would be a
+                  confident wrong answer about a site that may be fine. */
+               ? "ComEd answered every layer successfully and returned no features " +
+                 "on any of them \u2014 including the township blocks, which tile " +
+                 "the entire service territory. For a point in northern Illinois " +
+                 "that should be impossible, so treat this as a LOOKUP PROBLEM " +
+                 "rather than as a site without capacity." +
+                 (res && res.tried && res.tried.length
+                   ? " Layers tried: " + res.tried.join(", ") + "." : "") +
+                 " The exact request is below."
                : "ComEd returned no hosting-capacity feature at this point, on " +
                  "any of its published layers. That is not the same as no " +
                  "service \u2014 ComEd publishes capacity for some circuits and " +
@@ -1091,13 +1136,13 @@
      qualified score. Without this cap a rep zoomed out to the metro sees a
      screen of high scores that are block maxima, calls the top ten, and
      finds the capacity belongs to a substation two miles away. */
-  function grainFactor() {
-    var s = LAY.hostingState ? LAY.hostingState() : null;
-    if (!s || !s.layerId) return 1;
-    if (s.addressResolved) return 1;
-    /* Coarser blocks are progressively less about this parcel. */
-    return { 74: 0.6, 73: 0.45, 72: 0.3, 71: 0.15 }[s.layerId] || 0.3;
-  }
+  /* Circuits are now attributed from layer 75 only, so a record either has a
+     real feeder or has none — the old case of a card carrying a block
+     maximum cannot arise. What remains is truncation: if the service capped
+     the layer-75 fetch, some parcels in view silently have no circuit, and
+     the ones that do are still correct. Nothing is scaled down for that; it
+     is surfaced in the header instead. */
+  function grainFactor() { return 1; }
 
   function score(r) {
     var s = 0;
@@ -1219,15 +1264,25 @@
      out, the colours are the BEST circuit in each block. A rep picking
      targets off that is picking blocks, not sites. */
   function hostGrainNote() {
-    var s = LAY.hostingState ? LAY.hostingState() : null;
-    if (!s || !s.layerId) return "";
     var out = [];
-    if (!s.addressResolved) {
+    /* Attribution first — it is the one that changes what a card CLAIMS,
+       where the draw grain only changes what the map looks like. */
+    var a = LAY.attribState ? LAY.attribState() : null;
+    if (a && a.tooWide) {
+      out.push("Circuits are not attributed at this zoom \u2014 layer 75 covers " +
+               "too much ground to resolve here, so cards show no feeder rather " +
+               "than a block average. Zoom to a corridor.");
+    } else if (a && a.truncated) {
+      out.push("More layer-75 circuits are in view than the service returned, " +
+               "so some parcels may show no feeder. Zoom in.");
+    }
+    var s = LAY.hostingState ? LAY.hostingState() : null;
+    if (s && s.layerId && !s.addressResolved) {
       out.push("Shading is layer " + s.layerId + " \u2014 " + s.label +
                ". Each block is coloured by the BEST circuit in it, not the " +
                "feeder at any given address. Zoom to 14+ for actual circuits.");
     }
-    if (s.truncated) {
+    if (s && s.truncated) {
       out.push("More circuits exist in this view than the service returned, so " +
                "blank areas here are not necessarily empty. Zoom in.");
     }
@@ -1281,6 +1336,31 @@
     var panel = document.getElementById("settings");
     document.getElementById("setOpen").onclick = function () { panel.className = "open"; };
     document.getElementById("setX").onclick = function () { panel.className = ""; };
+
+    /* Diagnostics. Every ComEd request, with its URL. This exists because
+       the tool and ComEd's own viewer have disagreed about a point more than
+       once, and each time the answer was in the request rather than in the
+       data — but the request was invisible, so it got guessed at instead. */
+    function paintDiag() {
+      var el = document.getElementById("setDiag");
+      var lines = (LAY.diag ? LAY.diag() : []);
+      el.textContent = "build " + CS_BUILD + "\n" +
+        (lines.length ? lines.join("\n") : "No ComEd requests yet.");
+      el.scrollTop = el.scrollHeight;
+    }
+    document.getElementById("setBuild").textContent = CS_BUILD;
+    document.getElementById("setDiagRefresh").onclick = paintDiag;
+    document.getElementById("setDiagCopy").onclick = function () {
+      var b = this;
+      var ta = document.createElement("textarea");
+      ta.value = (LAY.diag ? LAY.diag() : []).join("\n");
+      document.body.appendChild(ta); ta.select();
+      try { document.execCommand("copy"); } catch (e) {}
+      document.body.removeChild(ta);
+      b.textContent = "Copied";
+      setTimeout(function () { b.textContent = "Copy log"; }, 1400);
+    };
+    document.getElementById("setOpen").addEventListener("click", paintDiag);
 
     /* The key ships with the page, so this section is only needed on a
        hostname the key was not registered for. Shown collapsed-by-default
@@ -1427,8 +1507,19 @@
         if (r.sqft == null) cut.sfUnknown++;
         else if (r.sqft < minSf) { cut.sf++; return false; }
       }
+      /* Two different questions, deliberately separate options.
+           __ci      what the building LOOKS like — modelled from the
+                     business kind or the class label, so it works on demo
+                     data and on records with no class at all.
+           __zoned   what the ASSESSOR says, off the class code the harvest
+                     recorded. Narrower and harder, and the one to use when a
+                     rep needs the parcel to actually be C&I on paper rather
+                     than to resemble it. A record with no class code fails
+                     this filter, because unknown is not a yes. */
       if (type === "__ci" && !/Warehouse|Industrial|Manufacturing|Cold Storage|Flex/.test(r.type)) { cut.type++; return false; }
-      else if (type && type !== "__ci" && r.type !== type) { cut.type++; return false; }
+      else if (type === "__zoned" && !/commercial|industrial|C&I|railroad/i.test(r.clsLabel || "")) { cut.type++; return false; }
+      else if (type === "__vacant" && !/vacant/i.test((r.clsLabel || "") + " " + r.type)) { cut.type++; return false; }
+      else if (type && type.indexOf("__") !== 0 && r.type !== type) { cut.type++; return false; }
       if (circ === "sellable" && !(r.circ.sellable > 0)) { cut.circ++; return false; }
       if (circ === "open" && r.cst.key !== "open") { cut.circ++; return false; }
       if (circ === "partial" && r.cst.key !== "partial") { cut.circ++; return false; }
@@ -1505,6 +1596,83 @@
   }
 
   /* ------------------------------------------------------- circuit meter */
+  /* ══════════════════════════════════════════════════════════════════════
+     WHO ELSE IS ON THIS CIRCUIT
+
+     The ledger already answers "what has MY team claimed here". This answers
+     a different and, for a rep working a corridor, more useful question:
+     what else is standing on the same wire.
+
+     A circuit with 600 kW free and one industrial parcel on it is a site. The
+     same circuit with forty parcels on it is a race — the first credible
+     application takes the headroom and the other thirty-nine get a study
+     that says no. That is the single fact a real-estate listing cannot tell
+     you and this tool can, and it is the reason to look at a map of energy
+     rather than a map of buildings.
+
+     Counted from what is loaded in the current view, so it is a floor rather
+     than a total, and it says so. Widening the map raises the number.
+     ══════════════════════════════════════════════════════════════════════ */
+  function circuitPeers(feederId, exceptId) {
+    var out = { n: 0, ci: 0, kw: 0, biggest: null, claimed: 0 };
+    if (!feederId || feederId === "\u2014") return out;
+    var i, r;
+    for (i = 0; i < ST.rows.length; i++) {
+      r = ST.rows[i];
+      if (String(r.feederId) !== String(feederId)) continue;
+      if (exceptId && r.id === exceptId) continue;
+      out.n++;
+      if (/Warehouse|Industrial|Manufacturing|Cold Storage|Flex/.test(r.type)) out.ci++;
+      if (r.sz && r.sz.kw) {
+        out.kw += r.sz.kw;
+        if (!out.biggest || r.sz.kw > out.biggest.sz.kw) out.biggest = r;
+      }
+      if (r.mine && r.mine.length) out.claimed++;
+    }
+    return out;
+  }
+
+  function peersHtml(r) {
+    var p = circuitPeers(r.feederId, r.id);
+    var st = r.circ;
+    if (!p.n) {
+      return '<div class="sec"><h4>Others on this circuit</h4><p class="note">' +
+        'No other property in the current view sits on ' + esc(r.feederId) +
+        '. That is a floor, not a total \u2014 widen the map to see the rest of ' +
+        'the circuit.</p></div>';
+    }
+    var lines = [];
+    lines.push('<b>' + p.n + '</b> other propert' + (p.n === 1 ? "y" : "ies") +
+      ' in view sit' + (p.n === 1 ? "s" : "") + ' on ' + esc(r.feederId) +
+      (p.ci ? ', <b>' + p.ci + '</b> of them commercial or industrial' : "") + '.');
+
+    /* The competitive read. Deliberately not a score — it is a ratio a rep
+       can check, and the arithmetic is shown so nobody has to trust it. */
+    if (st.known && st.sellable > 0 && p.kw > 0) {
+      var ratio = p.kw / st.sellable;
+      lines.push('If every one of them sized a battery to its own load, that is ' +
+        '<b>' + fmt(p.kw) + ' kW</b> of demand chasing <b>' + fmt(st.sellable) +
+        ' kW</b> of headroom' +
+        (ratio > 1
+          ? ' \u2014 the circuit cannot carry them all. Whoever files a credible ' +
+            'application first takes it.'
+          : ' \u2014 enough for all of them, so this circuit is not the constraint.'));
+    }
+    if (p.biggest && p.biggest.sz.kw) {
+      lines.push('The largest is <b>' + esc(p.biggest.addr) + '</b> at ' +
+        fmt(p.biggest.sz.kw) + ' kW.');
+    }
+    if (p.claimed) {
+      lines.push('<b>' + p.claimed + '</b> of them already carr' +
+        (p.claimed === 1 ? "ies" : "y") + ' a claim from your own team \u2014 ' +
+        'that capacity is already counted against the free figure above.');
+    }
+    lines.push('<small>Counted from the current view only. Widen the map to ' +
+      'see the whole circuit.</small>');
+    return '<div class="sec"><h4>Others on this circuit</h4>' +
+      '<p class="note">' + lines.join("<br>") + '</p></div>';
+  }
+
   function meterHtml(st, tall) {
     if (!st.known) {
       return '<div class="meter' + (tall ? ' tall' : '') + '">' +
@@ -1741,6 +1909,34 @@
     return best ? { row: best, distance: Math.round(bd) } : null;
   }
 
+  /* The parcel the county says is under the pin. Exact where it answers, and
+     silent where no county in the registry covers this point — rather than
+     falling back to a nearest-record guess and presenting it the same way. */
+  function parcelBlockHtml(p) {
+    if (!p) return "";
+    var bits = [];
+    if (p.pin) bits.push("PIN <b>" + esc(p.pin) + "</b>");
+    /* Which COLUMN each value was read from. Two tools built against this
+       same county have disagreed about that more than once, and a blank
+       owner because the field name is wrong looks identical to a parcel with
+       no owner recorded. Showing the column turns a silent blank into an
+       obvious one. */
+    var prov = [];
+    if (p.fields) {
+      if (p.fields.addr) prov.push("address from " + esc(p.fields.addr));
+      if (p.fields.owner) prov.push("owner from " + esc(p.fields.owner));
+      if (p.fields.pin) prov.push("PIN from " + esc(p.fields.pin));
+    }
+    return '<div class="sec"><h4>Parcel under this pin</h4>' +
+      '<p class="note"><b>' + esc(p.addr || "address field returned nothing") + '</b>' +
+      " \u2014 " + esc(p.county) + ". " + bits.join(" \u00b7 ") +
+      (p.owner ? "<br>Owner of record: <b>" + esc(p.owner) + "</b>"
+               : "<br>Owner field returned nothing.") +
+      (prov.length ? '<br><small>' + prov.join(" \u00b7 ") + "</small>" : "") +
+      (p.note ? '<br><small>' + esc(p.note) + "</small>" : "") +
+      '</p></div>';
+  }
+
   function loadBlockHtml(lat, lon) {
     var near = nearestKnown(lat, lon);
     if (!near) {
@@ -1780,17 +1976,57 @@
       '<p class="note">' + body + '</p></div>';
   }
 
-  function dropPin(lat, lon) {
+  /* The pin is the analysed point, and it has to be VISIBLE.
+
+     Placing it only on map-click was wrong: a searched address moved the map
+     and opened a panel with no marker on it, so a rep reading "no circuit
+     published here" had no way to see WHERE the tool had actually looked —
+     which, given how far off some geocodes have landed, is the first thing
+     worth checking. Search and click now drop the same pin.
+
+     It is a marker rather than a circle so it stays the same size at every
+     zoom, and it carries a tooltip with the exact coordinates because that
+     is the number to compare against ComEd's own map. */
+  function placePin(lat, lon, label) {
     if (pinMarker) map.removeLayer(pinMarker);
-    pinMarker = window.L.circleMarker([lat, lon], {
-      radius: 8, weight: 3, color: "#0a6ed1", fillColor: "#0a6ed1", fillOpacity: 0.25
+    pinMarker = window.L.marker([lat, lon], {
+      zIndexOffset: 1000,
+      icon: window.L.divIcon({
+        className: "",
+        html: '<div style="width:24px;height:24px;margin:-12px 0 0 -12px;' +
+              'border-radius:50%;background:rgba(10,110,209,.20);' +
+              'border:2.5px solid #0a6ed1;box-shadow:0 1px 4px rgba(0,0,0,.3)">' +
+              '<div style="width:7px;height:7px;border-radius:50%;' +
+              'background:#0a6ed1;margin:6.5px auto"></div></div>',
+        iconSize: [0, 0]
+      })
     }).addTo(map);
-    var label = lat.toFixed(5) + ", " + lon.toFixed(5);
-    head("Reading the circuit\u2026", label);
-    viabilityAt(lat, lon, label, function (v) {
+    pinMarker.bindTooltip(
+      (label ? esc(label) + "<br>" : "") +
+      lat.toFixed(5) + ", " + lon.toFixed(5),
+      { direction: "top", offset: [0, -14] });
+    /* Clicking the pin re-opens its analysis, so it stays useful after the
+       drawer has been closed. */
+    pinMarker.on("click", function () { analysePoint(lat, lon, label); });
+    return pinMarker;
+  }
+
+  /* One analysis path for both entry points. */
+  function analysePoint(lat, lon, label) {
+    var name = label || (lat.toFixed(5) + ", " + lon.toFixed(5));
+    head("Reading the circuit\u2026", name);
+    viabilityAt(lat, lon, name, function (v) {
       v.pinned = true;
-      showViability(v, lat, lon);
+      SRC.parcelAt(lat, lon, function (e, p) {
+        v.parcel = p || null;
+        showViability(v, lat, lon);
+      });
     });
+  }
+
+  function dropPin(lat, lon) {
+    placePin(lat, lon, null);
+    analysePoint(lat, lon, null);
   }
 
   map.on("click", function (e) {
@@ -1799,6 +2035,235 @@
        card. */
     dropPin(e.latlng.lat, e.latlng.lng);
   });
+
+  /* ══════════════════════════════════════════════════════════════════════
+     PIN PRECISION
+
+     A record's coordinates decide three things: where the marker draws,
+     which circuit it is attributed to, and what a rep sees when they open
+     Google Maps. Getting them wrong is not a cosmetic problem — 2607 W 17th
+     Street rendered a mile and a half away at the 60608 ZIP centroid, on a
+     different circuit, in a different neighbourhood.
+
+     EDC listings are the source of this: many carry only a ZIP, so the feed
+     pins them to its centre and flags them `approx`. The listings bridge
+     already refuses to attribute a circuit to those, which was right but not
+     enough — the marker still drew, and it drew somewhere false.
+
+     So an approximate record gets geocoded from its own address, once, and
+     its position corrected. Census first because it is free, unlimited and
+     rooftop-accurate for US street addresses; Nominatim as the fallback.
+     If both fail the record keeps its ZIP centroid AND keeps saying so.
+     ══════════════════════════════════════════════════════════════════════ */
+  var GEO_CACHE = {}, geoBusy = 0;
+
+  /* Geocode one query.
+
+     `parts` true  — compose the query from address/city/ZIP (a record being
+                     corrected, where those fields are separate).
+     `parts` false — the string is used VERBATIM (the search box, where the
+                     user already typed a whole address). Appending ", IL" to
+                     a string that already ends "IL, USA" produced
+                     "…, IL, USA,  IL " and Census rejected it outright.
+
+     THE HOUSE NUMBER IS VALIDATED. A geocoder asked for "4343 S Michigan Ave
+     Chicago" will happily return the CENTROID OF S MICHIGAN AVENUE if it
+     cannot resolve the number — a point in the Loop, seven kilometres from
+     4343 South, on a different circuit, with a confident-looking answer. So
+     when the query carries a house number, the match has to carry the same
+     one or it is rejected and the next rung is tried. A wrong point is worse
+     than no point, because everything downstream is computed from it. */
+  /* Nominatim allows one request per second, enforced by IP block, and an IP
+     block does not degrade this feature — it breaks the search box for
+     everyone behind the same egress.
+
+     The slot is reserved SYNCHRONOUSLY. The obvious version reads "how long
+     since the last request" inside each caller, but every caller reads the
+     same value before any of them writes it, so five concurrent lookups all
+     compute a zero wait and fire together. Advancing a shared next-slot
+     timestamp at schedule time is what actually serialises them. */
+  var NOMI_NEXT = 0;
+  function nominatimGate(fn) {
+    var now = Date.now();
+    var at = Math.max(now, NOMI_NEXT);
+    NOMI_NEXT = at + 1100;
+    setTimeout(fn, at - now);
+  }
+
+  function houseNumberOf(s) {
+    /* A house number is a number followed by a STREET. "60653, IL, USA"
+       starts with five digits and is a postcode — reading that as a house
+       number makes the ZIP rung of the search ladder impossible to satisfy,
+       because nothing will ever match house number 60653. */
+    var m = String(s || "").trim().match(/^(\d+)\s+(.+)$/);
+    if (!m) return null;
+    if (/^(il|illinois|usa|us)\b/i.test(m[2])) return null;
+    return m[1];
+  }
+
+  function geocodeOne(addr, city, zip, cb, parts) {
+    var key = (addr + "|" + city + "|" + zip + "|" + (parts ? "p" : "v")).toLowerCase();
+    if (GEO_CACHE[key] !== undefined) { cb(GEO_CACHE[key]); return; }
+    if (!addr) { cb(null); return; }
+
+    var q = parts
+      ? (addr + ", " + (city || "Chicago") + ", IL " + (zip || "")).replace(/\s+/g, " ").trim()
+      : addr;
+    var want = houseNumberOf(parts ? addr : q);
+
+    function accept(hit) { GEO_CACHE[key] = hit; cb(hit); }
+    function reject() { GEO_CACHE[key] = null; cb(null); }
+
+    var one = "https://geocoding.geo.census.gov/geocoder/locations/onelineaddress" +
+      "?address=" + encodeURIComponent(q) +
+      "&benchmark=Public_AR_Current&format=json";
+    var x = new XMLHttpRequest();
+    try { x.open("GET", one, true); } catch (e) { nominatim(); return; }
+    x.timeout = 15000;
+    x.onreadystatechange = function () {
+      if (x.readyState !== 4) return;
+      var j = null;
+      try { j = JSON.parse(x.responseText); } catch (e) {}
+      var m = j && j.result && j.result.addressMatches && j.result.addressMatches[0];
+      if (m && m.coordinates) {
+        /* Census echoes what it matched. An exact number is best; a NEARBY
+           number on the same street is still the right block and the right
+           circuit, so it is accepted and flagged rather than discarded —
+           discarding it was making the whole search fail. A number far away
+           is a different site and is refused. */
+        var got = houseNumberOf(m.matchedAddress);
+        var near = true;
+        if (want && got && got !== want) {
+          near = Math.abs(parseInt(got, 10) - parseInt(want, 10)) <= 40;
+          if (!near) { nominatim(); return; }
+        }
+        accept({ lat: +m.coordinates.y, lon: +m.coordinates.x,
+                 src: "census", exact: !want || got === want,
+                 interpolated: !!(want && got && got !== want),
+                 matched: m.matchedAddress || "" });
+        return;
+      }
+      nominatim();
+    };
+    x.ontimeout = x.onerror = nominatim;
+    x.send();
+
+    function nominatim() {
+      /* Serialised with a one-second gap. Nominatim's usage policy is one
+         request per second, enforced by IP block — and an IP block does not
+         degrade this feature, it breaks the search box for everyone on the
+         same egress. Census is tried first precisely so this is rare. */
+      nominatimGate(function () { nominatimNow(); });
+    }
+    function nominatimNow() {
+      var u = "https://nominatim.openstreetmap.org/search?format=json&addressdetails=1" +
+        "&countrycodes=us&limit=5&q=" + encodeURIComponent(q);
+      var y = new XMLHttpRequest();
+      try { y.open("GET", u, true); } catch (e) { reject(); return; }
+      y.timeout = 15000;
+      y.onreadystatechange = function () {
+        if (y.readyState !== 4) return;
+        var j = null;
+        try { j = JSON.parse(y.responseText); } catch (e) {}
+        if (!j || !j.length) { reject(); return; }
+
+        /* THREE PASSES, degrading deliberately.
+
+           Requiring a house number outright was too strict and broke every
+           search: Nominatim frequently answers a numbered address with a
+           STREET INTERPOLATION — a point measured along the road, with no
+           house_number field — and that is a perfectly good answer, close
+           enough that ComEd resolves the same circuit from it.
+
+           What must still be refused is the STREET ITSELF (class=highway),
+           whose "location" is the centroid of the whole road. For South
+           Michigan Avenue that is in the Loop, seven kilometres from 4343
+           South. So: take an exact house match if there is one, else the
+           best non-street result and mark it interpolated, and only then
+           give up. */
+        var i, r, ad, interpolated = null;
+
+        for (i = 0; i < j.length; i++) {
+          r = j[i]; ad = r.address || {};
+          if (want && ad.house_number === want) {
+            accept({ lat: +r.lat, lon: +r.lon, src: "nominatim",
+                     exact: true, matched: r.display_name || "" });
+            return;
+          }
+        }
+        for (i = 0; i < j.length; i++) {
+          r = j[i]; ad = r.address || {};
+          /* The road itself is never an answer for a numbered address. */
+          if (want && r.class === "highway") continue;
+          /* A DIFFERENT house number is a different building. */
+          if (want && ad.house_number && ad.house_number !== want) continue;
+          interpolated = r;
+          break;
+        }
+        if (interpolated) {
+          accept({ lat: +interpolated.lat, lon: +interpolated.lon,
+                   src: "nominatim",
+                   exact: !want,
+                   interpolated: !!want,
+                   matched: interpolated.display_name || "" });
+          return;
+        }
+        /* LAST PASS: take the first result whatever it is, flagged as a
+           street-level match. The Capacity Finder does exactly this and never
+           fails; refusing here is what made every search come back "not
+           found". A street centroid IS a bad answer for a numbered address —
+           so it is accepted and labelled, not accepted silently, and the next
+           rung of the ladder would have been looser anyway. */
+        r = j[0];
+        accept({ lat: +r.lat, lon: +r.lon, src: "nominatim",
+                 exact: !want, interpolated: !!want,
+                 street: !!(want && r.class === "highway"),
+                 matched: r.display_name || "" });
+        return;
+                reject();
+      };
+      y.ontimeout = y.onerror = function () { reject(); };
+      y.send();
+    }
+  }
+
+  /* Approximate pins are corrected ONE AT A TIME, ON DEMAND — never as a
+     sweep over the result set.
+
+     The first version of this geocoded every ZIP-centroid record as the
+     viewport loaded. With 287 EDC listings in view that is hundreds of
+     requests. Nominatim's usage policy is one request per second enforced by
+     IP block, so the sweep throttled the whole origin and the SEARCH BOX
+     started failing — the same address resolving on a retry and not on the
+     first attempt. A background convenience broke the primary feature.
+
+     This codebase already had the rule and I ignored it: one lookup per site
+     opened, never in bulk. So a record's pin is corrected when its card is
+     opened, and at no other time. Until then the marker draws at the ZIP
+     centroid and the card says so in red, which is honest and costs nothing.
+
+     Nominatim requests are additionally serialised with a one-second gap.
+     Census has no such limit and is tried first, so in practice most lookups
+     never reach the throttle at all. */
+  function fixOnePin(r, cb) {
+    if (!r || !r.approx || !r.addr || r.geoFixed) { cb(false); return; }
+    r.geoFixed = true;
+    geocodeOne(r.addr, r.city, r.zip, function (hit) {
+      if (!hit) { cb(false); return; }
+      r.lat = hit.lat; r.lon = hit.lon;
+      r.approx = false;
+      r.geoSrc = hit.src;
+      r.geoMatched = hit.matched || "";
+      /* Re-join the circuit from the corrected position — the old one was
+         for the centre of a postcode. */
+      var f = LAY.feederAt(r.lat, r.lon), cap = f ? LAY.capacityOf(f) : null;
+      r.feederId = f ? (f.feeder || null) : null;
+      r.sub = f ? (f.sub || "") : "";
+      if (cap && cap.nameplate != null) { r.nameplate = cap.nameplate; r.queue = cap.queue || 0; }
+      enrich(r);
+      cb(true);
+    }, true);
+  }
 
   function drawMarkers(rows) {
     markerLayer.clearLayers(); MARKERS = {};
@@ -1836,18 +2301,243 @@
 
   /* ======================================================== the drawer */
 
+  /* ══════════════════════════════════════════════════════════════════════
+     VERIFY ON OPEN
+
+     A card in the list is assembled from bulk data: a harvested parcel
+     bundle that may be a year old, and circuit polygons cached for the whole
+     viewport. That is the right trade for drawing two hundred results. It is
+     the wrong trade for the one card a rep is about to act on.
+
+     So opening a card re-asks the two authorities about that exact point —
+     ComEd for the circuit, the county assessor for the parcel — and reports
+     what came back. Where the live answer differs from the card, the
+     difference is shown rather than silently swapped, because a rep who
+     quoted the old number yesterday needs to know it moved.
+
+     This is one lookup per card opened, never a sweep. The same rule the
+     README already sets for billed enrichment applies here for the same
+     reason: two hundred verifications on a pan is a different product.
+     ══════════════════════════════════════════════════════════════════════ */
+  function verifyBlock(state, r, live) {
+    if (state === "busy") {
+      return '<div class="sec" id="dVerify"><h4>Verifying against source</h4>' +
+        '<p class="note">Asking ComEd for the circuit at this point and the ' +
+        'county for the parcel\u2026</p></div>';
+    }
+    var rows = [], warn = [];
+
+    /* --- circuit ---------------------------------------------------- */
+    if (live.circuitErr) {
+      rows.push("ComEd did not answer: " + esc(live.circuitErr) +
+                ". The circuit on this card is unverified.");
+    } else if (!live.feederId) {
+      rows.push("ComEd publishes no circuit at this exact point. The card\u2019s " +
+                "circuit came from the surrounding viewport and should be " +
+                "confirmed with the utility.");
+    } else if (String(live.feederId) !== String(r.feederId)) {
+      warn.push("CIRCUIT DIFFERS. The card says <b>" + esc(r.feederId) +
+        "</b>; ComEd says <b>" + esc(live.feederId) + "</b>" +
+        (live.sub ? " on " + esc(live.sub) : "") + " at this point" +
+        (live.addressResolved ? ", resolved on layer 75" : "") +
+        ". Anything quoted from the card\u2019s circuit is quoting the wrong " +
+        "feeder.");
+    } else {
+      rows.push("Circuit <b>" + esc(live.feederId) + "</b> confirmed by ComEd" +
+        (live.addressResolved ? " on layer 75, address-resolved" : "") +
+        (live.covering > 1 ? " \u2014 " + live.covering +
+          " circuits cover this point and this is the one with most headroom" : "") +
+        ".");
+      if (live.nameplate != null && r.nameplate != null &&
+          Math.abs(live.nameplate - r.nameplate) > 1) {
+        warn.push("CAPACITY MOVED. The card was built with <b>" +
+          fmt(r.nameplate) + " kW</b>; ComEd now publishes <b>" +
+          fmt(live.nameplate) + " kW</b> on this circuit. The map refreshes " +
+          "quarterly, so a card held open across a refresh goes stale.");
+      }
+    }
+
+    /* --- parcel ----------------------------------------------------- */
+    var p = live.parcel;
+    if (!p) {
+      rows.push("No county assessor service is registered for this location, " +
+                "so the parcel details are whatever the harvest recorded.");
+    } else {
+      var diffs = [];
+      if (p.addr && r.addr && keyFromFull(p.addr) && keyFromFull(r.addr) &&
+          keyFromFull(p.addr).full !== keyFromFull(r.addr).full) {
+        diffs.push("address \u2014 county says <b>" + esc(p.addr) + "</b>");
+      }
+      if (p.owner && r.ownerOfRecord && p.owner.toUpperCase() !== String(r.ownerOfRecord).toUpperCase()) {
+        diffs.push("owner of record \u2014 county says <b>" + esc(p.owner) + "</b>");
+      }
+      if (p.acres && r.lotAcres && Math.abs(p.acres - r.lotAcres) > 0.05) {
+        diffs.push("acreage \u2014 county says <b>" + p.acres.toFixed(2) + "</b>");
+      }
+      if (diffs.length) {
+        warn.push("PARCEL DIFFERS from " + esc(p.county) + " County\u2019s live " +
+          "record: " + diffs.join("; ") + ".");
+      } else {
+        rows.push("Parcel confirmed against " + esc(p.county) + " County" +
+          (p.pin ? ", PIN <b>" + esc(p.pin) + "</b>" : "") + ".");
+      }
+      if (p.asOf) {
+        rows.push("<small>County data complete to assessment year " +
+          esc(p.asOf) + " \u2014 owner and value may have changed since.</small>");
+      }
+    }
+
+    return '<div class="sec" id="dVerify"><h4>Verified against source</h4>' +
+      (warn.length ? '<p class="note" style="color:var(--red)"><b>' +
+        warn.join('</b></p><p class="note" style="color:var(--red)"><b>') +
+        '</b></p>' : '') +
+      (rows.length ? '<p class="note">' + rows.join("<br>") + '</p>' : '') +
+      '</div>';
+  }
+
+  function verifyRecord(r) {
+    var live = { covering: 0 }, pending = 2;
+    function done() {
+      if (--pending) return;
+      var el = document.getElementById("dVerify");
+      if (el && ST.sel && ST.sel.id === r.id) el.outerHTML = verifyBlock("done", r, live);
+    }
+    LAY.probePoint(r.lat, r.lon, function (err, res) {
+      if (err) { live.circuitErr = err.message; done(); return; }
+      if (res && res.serviceFailed) {
+        live.circuitErr = (res.errors && res.errors[0]) || "no layer answered";
+        done(); return;
+      }
+      if (res && res.rows.length) {
+        var f = res.rows[0], cap = LAY.capacityOf(f) || {};
+        live.feederId = f.feeder || null;
+        live.sub = f.sub || "";
+        live.nameplate = cap.nameplate != null ? cap.nameplate : null;
+        live.addressResolved = res.addressResolved;
+        live.covering = res.rows.length;
+      }
+      done();
+    });
+    SRC.parcelAt(r.lat, r.lon, function (e, p) { live.parcel = p || null; done(); });
+  }
+
   function openDrawer(r) {
     document.getElementById("dAddr").textContent = r.addr;
     document.getElementById("dSub").textContent =
       r.city + ", " + r.state + " " + r.zip + "  \u00b7  " + (r.subtype || r.type);
-    document.getElementById("dBody").innerHTML = drawerHtml(r);
+    document.getElementById("dBody").innerHTML =
+      verifyBlock("busy", r, {}) + drawerHtml(r);
     document.getElementById("drawer").className = "open";
     wireDrawer(r);
+    /* One lookup, for the one site being opened. If this record was pinned to
+       a ZIP centroid, correcting it has to happen BEFORE the circuit is
+       verified — otherwise the verification confirms a circuit for the middle
+       of a postcode. */
+    fixOnePin(r, function (moved) {
+      if (moved) {
+        document.getElementById("dBody").innerHTML =
+          verifyBlock("busy", r, {}) + drawerHtml(r);
+        wireDrawer(r);
+        render();
+      }
+      verifyRecord(r);
+    });
   }
   /* Renders a searched ADDRESS in the same drawer a parcel uses, so a rep
      reads one layout whether the site came off a list or out of the search
      box. It reuses the drawer's circuit block by handing it a record shaped
      like a property with no building on it. */
+  /* ComEd's record for this point, exactly as the service returned it.
+
+     This exists because a derived field can be derived from the wrong
+     column. ComEd's own viewer shows "Feeder: F0297" where this tool read
+     "Z13733" — same feature, same substation, same kW, different identifier.
+     Guessing which attribute holds the published name has now cost several
+     rounds, so the card shows ALL of them and a rep can read the one ComEd
+     will recognise on the phone.
+
+     Labels follow ComEd's own popup wording where we know it, so the card
+     and the utility's map say the same words about the same number. */
+  function comedRecordHtml(attrs, covering) {
+    if (!attrs) return "";
+    var L = LAY.COMED_LABELS || {};
+    var keys = [], p;
+    for (p in attrs) if (attrs.hasOwnProperty(p)) keys.push(p);
+    if (!keys.length) return "";
+    keys.sort();
+    var out = "";
+    for (var i = 0; i < keys.length; i++) {
+      var raw = attrs[keys[i]];
+      if (raw == null || raw === "") continue;
+      if (/^(objectid|globalid|shape)/i.test(keys[i])) continue;
+      var label = L[keys[i].toUpperCase()] || keys[i];
+      out += g(esc(label), '<small>' + esc(String(raw)) + '</small>');
+    }
+    return out
+      ? '<div class="sec"><h4>ComEd\u2019s published record</h4>' +
+        '<div class="grid2">' + out + '</div>' +
+        '<p class="note">Every field ComEd returned for the circuit covering this ' +
+        'point, unmodified and in ComEd\u2019s own wording. If the circuit shown ' +
+        'above does not match ComEd\u2019s map, the identifier they use is one of ' +
+        'these \u2014 quote that one when you call.' +
+        (covering > 1 ? " " + covering + " circuits cover this point; this is the " +
+          "one with the most headroom." : "") + '</p></div>'
+      : "";
+  }
+
+  /* Any real address gets a score, not only parcels in the harvested list.
+
+     The list and the address lookup were scoring differently: a card carried
+     a battery score and a large-load score, and a searched address carried
+     none. But the score is mostly a function of the CIRCUIT — deliverable
+     kW, headroom, whether the wire or the load binds — and all of that is
+     available for any point ComEd answers about. Withholding it because no
+     parcel record exists made the address lookup feel like a lesser tool.
+
+     What genuinely cannot be scored without a building is the load half, so
+     that is stated rather than guessed at. */
+  function scoreBlockHtml(v, lat, lon) {
+    if (!v.feederId || !v.state || !v.state.known) return "";
+    var near = nearestKnown(lat, lon);
+    var r = near ? near.row : null;
+
+    /* A record shaped like a card, from the circuit plus whatever building
+       is known at this point. */
+    var pseudo = {
+      type: r ? r.type : "Industrial",
+      sqft: r ? r.sqft : null,
+      lotAcres: (v.parcel && v.parcel.acres) || (r ? r.lotAcres : null),
+      peakKw: r ? r.peakKw : null,
+      annualKwh: r ? r.annualKwh : null,
+      sz: v.size, circ: v.state,
+      grainFactor: 1
+    };
+    var battery = score(pseudo);
+    var large = loadScore(pseudo);
+
+    var why = [];
+    why.push("<b>" + fmt(v.state.sellable) + " kW</b> deliverable after ComEd\u2019s " +
+             "queue and your team\u2019s claims.");
+    if (!pseudo.peakKw) {
+      why.push("No building load is known at this point, so the battery score " +
+               "reflects the CIRCUIT only. A real peak usually lowers it \u2014 " +
+               "the load is normally the smaller of the two ceilings.");
+    } else {
+      why.push("Modelled peak <b>" + fmt(pseudo.peakKw) + " kW</b>" +
+               (pseudo.annualKwh && pseudo.annualKwh.src === "metered"
+                 ? " from metered consumption." : ", estimated from floor area."));
+    }
+    if (!v.addressResolved) {
+      why.push("Read from " + esc(v.grain) + ", not the circuit itself, so treat " +
+               "both scores as indicative.");
+    }
+
+    return '<div class="sec"><h4>Score</h4><div class="grid2">' +
+      g("Battery deal", '<b>' + battery + '</b> / 100') +
+      g("Large load / data centre", '<b>' + large + '</b> / 100') +
+      '</div><p class="note">' + why.join(" ") + '</p></div>';
+  }
+
   function showViability(v, lat, lon) {
     var short = String(v.label).split(",").slice(0, 2).join(",");
     head(v.headline, v.why);
@@ -1858,7 +2548,32 @@
                                  : "No circuit published here";
       document.getElementById("dBody").innerHTML =
         '<div class="sec"><p class="note">' + esc(v.why) + '</p></div>' +
-        (v.key === "serviceerror" ? '' :
+        (v.probeUrl ? '<div class="sec"><h4>The request that was sent</h4>' +
+          '<pre class="diagBox">' + esc(v.probeUrl) + '</pre>' +
+          '<p class="note"><a href="' + esc(v.probeUrl) + '" target="_blank" ' +
+          'rel="noopener"><b>Open this request in a new tab</b></a>. If ComEd ' +
+          'returns features, the bug is in how this page reads the answer. If ' +
+          'it returns none, the request is wrong.</p></div>' : '') +
+        /* WHAT EVERY LAYER ACTUALLY SAID.
+           These were being collected and thrown away unless every single
+           layer failed. A mixed result — some layers erroring, some genuinely
+           empty — fell through to the generic "no capacity published" message
+           and hid the errors completely, which is how a broken lookup has
+           been reading as a dead site. */
+        ((v.errors && v.errors.length) || (v.empties && v.empties.length)
+          ? '<div class="sec"><h4>What each layer said</h4><pre class="diagBox">' +
+            esc(
+              (v.errors || []).join("\n") +
+              ((v.errors || []).length && (v.empties || []).length ? "\n" : "") +
+              ((v.empties || []).length
+                ? "0 features on: L" + v.empties.join(", L") : "")
+            ) + '</pre>' +
+            '<p class="note">An ERROR line is the service refusing or ' +
+            'rejecting the query \u2014 that is a broken lookup, not an empty ' +
+            'site. A "0 features" line is a real answer. If they are mixed, ' +
+            'the errors are the thing to fix first.</p></div>'
+          : '') +
+        (v.key === "serviceerror" || v.key === "suspicious" ? '' :
         '<div class="sec"><h4>What to do with this</h4>' +
         '<p class="note">ComEd was asked directly about this point and returned ' +
         'nothing on any published layer. Two things to check before concluding ' +
@@ -1899,6 +2614,9 @@
       '</div>' +
       '<div class="sec"><h4>How this circuit was matched</h4>' +
         '<p class="note">' + esc(matchLine(v)) + '</p></div>' +
+      scoreBlockHtml(v, lat, lon) +
+      comedRecordHtml(v.rows && v.rows[0] ? v.rows[0].a : null, v.covering) +
+      parcelBlockHtml(v.parcel) +
       loadBlockHtml(lat, lon) +
       '<div class="sec"><h4>Other developers in the queue</h4>' +
         '<p class="note">' + esc(queueLine(v.state)) + '</p></div>' +
@@ -1962,6 +2680,12 @@
     /* -- who else is on this circuit ------------------------------------
        The reason the tool exists. Anything live here means the circuit is
        spoken for and a second battery on the next block is not a deal. */
+    /* Who else is standing on the wire comes BEFORE the filing history:
+       a rep scanning a card needs the competitive picture before the
+       paperwork trail. */
+    /* The utility's own record, on every card. */
+    h.push(comedRecordHtml(r.comed, r.comedCovering));
+    h.push(peersHtml(r));
     h.push('<div class="sec"><h4>Interconnection activity on this circuit</h4>');
     if (!live.length && !st.queue) {
       h.push('<div class="note">Nothing filed and nothing held. The full ' +
@@ -2019,23 +2743,77 @@
         'circuit for everyone on the team immediately.</div>' +
       '</div>');
 
-    /* -- property ------------------------------------------------------- */
+    /* -- property -------------------------------------------------------
+       Every row is always present, and a missing value reads "N/A" rather
+       than a dash. A dash is ambiguous — it could mean zero, or not
+       applicable, or nobody has loaded it yet. "N/A" says the field exists
+       and we do not have it, which is what a rep needs to know before
+       quoting anything from this card. Rows stay listed even when empty so
+       the panel shows the SHAPE of what will be there as sources come
+       online, rather than silently shrinking. */
     h.push('<div class="sec"><h4>Property</h4><div class="grid2">' +
-      g("Use", esc(r.subtype || r.type)) +
-      g("Building", r.sqft ? fmt(r.sqft) + " SF" : "\u2014") +
-      g("Lot", r.lotAcres ? r.lotAcres + " ac" : "\u2014") +
-      g("Built", r.yearBuilt || "\u2014") +
-      g("Assessed", r.assessedValue ? money(r.assessedValue) : "\u2014") +
+      /* Use is the property TYPE. It used to render `subtype`, which on an
+         EDC listing is the listing's own name — and that name is frequently
+         the street address, so the panel showed the address twice and never
+         showed the use at all. */
+      g("Use", esc(r.type || "N/A") +
+          (r.clsLabel ? ' <small>' + esc(r.clsLabel) + '</small>' : '')) +
+      g("Class code", r.cls ? esc(r.cls) : "N/A") +
+      g("Building", r.sqft ? fmt(r.sqft) + " SF" : "N/A") +
+      g("Lot", r.lotAcres ? r.lotAcres + " ac" : "N/A") +
+      g("Built", r.yearBuilt || "N/A") +
+      g("Assessed", r.assessedValue ? money(r.assessedValue) : "N/A") +
       g("Last sale", r.lastSale && r.lastSale.price
-        ? money(r.lastSale.price) + ' <small>' + esc(r.lastSale.date || "") + '</small>' : "\u2014") +
+        ? money(r.lastSale.price) + ' <small>' + esc(r.lastSale.date || "") + '</small>'
+        : "N/A") +
+      g("PIN", r.pin ? esc(r.pin) : (r.id && /^\d/.test(r.id) ? esc(r.id) : "N/A")) +
+      g("County", r.county ? esc(r.county) : "N/A") +
+      g("Coordinates", (r.lat != null && r.lon != null)
+        ? '<small>' + r.lat.toFixed(5) + ", " + r.lon.toFixed(5) + '</small>' : "N/A") +
+      /* Where the position came from, because everything else on this card
+         is derived from it — the circuit, the substation, the map pin. A
+         ZIP-centroid position can be a mile from the building and put the
+         site on the wrong feeder entirely. */
+      g("Position", r.approx
+          ? '<b style="color:var(--red)">ZIP centroid \u2014 not the building</b>'
+          : r.geoStreet
+              ? '<b style="color:var(--red)">Street-level only</b> \u2014 the ' +
+                'house number did not resolve, so this is a point on the road ' +
+                'and may be far from the building'
+          : r.geoInterp
+              ? '<b>Interpolated along the street</b> \u00b7 ' +
+                (r.geoSrc === "census" ? "US Census" : "OpenStreetMap") +
+                ' \u2014 the block is right, the rooftop may not be'
+          : r.geoSrc === "census" ? "Geocoded \u00b7 US Census \u00b7 rooftop"
+          : r.geoSrc === "nominatim" ? "Geocoded \u00b7 OpenStreetMap"
+          : r.src === "comed" ? "Parcel centroid \u00b7 county assessor"
+          : "As supplied") +
       '</div></div>');
 
     /* -- load ----------------------------------------------------------- */
     h.push('<div class="sec"><h4>Energy</h4><div class="grid2">' +
-      g("Annual use", r.annualKwh ? fmt(r.annualKwh.value) + " kWh" : "\u2014") +
-      g("Source", r.annualKwh ? '<small>' + esc(r.annualKwh.src) + '</small>' : "\u2014") +
-      g("Load factor", r.lf ? r.lf.toFixed(2) : "\u2014") +
-      g("Estimated peak", r.peakKw ? fmt(r.peakKw) + " kW" : "\u2014") +
+      g("Annual use", r.annualKwh ? fmt(r.annualKwh.value) + " kWh" : "N/A") +
+      g("Source", r.annualKwh ? '<small>' + esc(r.annualKwh.src) + '</small>' : "N/A") +
+      g("Load factor", r.lf ? r.lf.toFixed(2) : "N/A") +
+      g("Estimated peak", r.peakKw ? fmt(r.peakKw) + " kW" : "N/A") +
+      g("Circuit", r.feederId ? esc(r.feederId) : "N/A") +
+      g("Substation", r.sub ? esc(r.sub) : "N/A") +
+      /* ComEd's own wording. "Estimated Net Load Capacity" is the figure this
+         tool calls BESS hosting capacity — same number, the utility's name
+         for it, and the name that appears on the interconnection form. */
+      g("Net load capacity", r.comed && r.comed.BESS_HC != null
+        ? fmt(r.comed.BESS_HC) + " kW" : "N/A") +
+      g("Net generation capacity", r.comed && r.comed.PV_HC_kW != null
+        ? fmt(r.comed.PV_HC_kW) + " kW" : "N/A") +
+      g("Feeder DER in queue", r.comed && r.comed.Feeder_Q != null
+        ? fmt(r.comed.Feeder_Q) + " kW" : (r.circ && r.circ.known ? fmt(r.circ.queue) + " kW" : "N/A")) +
+      g("Queue refreshed", r.queueRefreshed ? esc(String(r.queueRefreshed)) : "N/A") +
+      g("Buffer distance", r.buffFt != null ? fmt(r.buffFt) + " ft" : "N/A") +
+      g("Circuits covering", r.comedCovering ? r.comedCovering : "N/A") +
+      g("Free after queue and claims",
+        r.circ && r.circ.known ? fmt(r.circ.sellable) + " kW" : "N/A") +
+      g("Battery size", r.sz && r.sz.kw != null
+        ? fmt(r.sz.kw) + " kW / " + fmt(r.sz.kwh) + " kWh" : "N/A") +
       '</div>' +
       (r.annualKwh && r.annualKwh.src !== "metered"
         ? '<div class="note">Consumption is <b>' + esc(r.annualKwh.src) + '</b> from building type and floor area, ' +
@@ -2300,29 +3078,82 @@
       return;
     }
     head("Locating\u2026", raw);
-    var url = "https://nominatim.openstreetmap.org/search?format=json&limit=1&countrycodes=us&q=" +
-      encodeURIComponent(raw);
-    var x = new XMLHttpRequest();
-    x.open("GET", url, true);
-    x.onreadystatechange = function () {
-      if (x.readyState !== 4) return;
-      var j = null;
-      try { j = JSON.parse(x.responseText); } catch (e) {}
-      if (!j || !j.length) { head("Not found", "No match for \u201c" + raw + "\u201d. Try a ZIP or a cross street."); return; }
-      var lat = +j[0].lat, lon = +j[0].lon;
-      var found = j[0].display_name || raw;
-      map.setView([lat, lon], 16);
-      /* The probe asks ComEd about this point directly, so it does not wait
-         on the viewport polygon cache — that cache is for drawing, and it is
-         simplified. The layers still load underneath for the map itself. */
-      head("Reading the circuit\u2026", found);
-      viabilityAt(lat, lon, found, function (v) {
-        showViability(v, lat, lon);
-        if (hasSource()) run(true);
+
+    /* THE CAPACITY FINDER'S LADDER, verbatim.
+
+       Its geocode() builds these attempts and takes the first Nominatim
+       result that comes back for any of them. It never fails, which is why
+       it resolves addresses this tool was rejecting. The rungs, in order:
+
+         1. the string as typed
+         2. same, with the house number stripped off the first part
+         3. everything after the first comma (city, state, ZIP)
+         4. the string with ", IL, USA" appended, if no state present
+         5. the bare ZIP with ", IL, USA"
+
+       Census is tried first on each rung because it is the authority for US
+       street addresses and returns a rooftop rather than an interpolation.
+       If it has nothing, Nominatim answers exactly as it does for the
+       Capacity Finder. The two tools now resolve the same string the same
+       way. */
+    var txt = raw.trim();
+    var parts = txt.split(",").map(function (s) { return s.trim(); }).filter(Boolean);
+    var attempts = [{ q: txt, kind: "as typed" }];
+    if (parts.length > 1) {
+      var p0 = parts[0].replace(/^\s*\d+\s+/, "");
+      if (p0 !== parts[0])
+        attempts.push({ q: [p0].concat(parts.slice(1)).join(", "), kind: "street only", approx: true });
+      attempts.push({ q: parts.slice(1).join(", "), kind: "city and ZIP", approx: true });
+    }
+    if (!/\b(il|illinois)\b/i.test(txt))
+      attempts.push({ q: txt + ", IL, USA", kind: "state added" });
+    var zip = (txt.match(/\b\d{5}\b/) || [])[0];
+    if (zip) attempts.push({ q: zip + ", IL, USA", kind: "ZIP centroid", approx: true });
+
+    var ai = 0;
+    (function rung() {
+      if (ai >= attempts.length) {
+        head("Not found",
+             "No match for \u201c" + raw + "\u201d after " + attempts.length +
+             " attempts. Try a cross street.");
+        return;
+      }
+      var a = attempts[ai++];
+      geocodeOne(a.q, "", "", function (hit) {
+        if (!hit) { rung(); return; }
+        landOn(hit.lat, hit.lon, raw, a, hit);
+      }, false);
+    })();
+
+    function landOn(lat, lon, label, attempt, hit) {
+      map.setView([lat, lon], 17);
+      /* Drop the pin FIRST, before any lookup runs. If the circuit query
+         comes back empty, the rep can still see exactly where the tool
+         looked — and whether that is the building they meant. */
+      placePin(lat, lon, label);
+
+      if (attempt.approx) {
+        head("Approximate location",
+             "Only \u201c" + attempt.kind + "\u201d matched, so this pin is not the " +
+             "building \u2014 it may be a long way from it. The circuit below is " +
+             "for the pinned point.");
+      } else {
+        head("Reading the circuit\u2026", label);
+      }
+      viabilityAt(lat, lon, label, function (v) {
+        v.geoSrc = hit.src; v.approxPin = !!attempt.approx;
+        v.geoInterp = !!hit.interpolated;
+        v.geoStreet = !!hit.street;
+        v.matched = hit.matched || "";
+        v.pinned = true;
+        SRC.parcelAt(lat, lon, function (e, p) {
+          v.parcel = p || null;
+          showViability(v, lat, lon);
+          if (hasSource()) run(true);
+        });
       });
-      LAY.hostingIn(bounds(), function () {});
-    };
-    x.send();
+      LAY.attribIn(bounds(), function () {});
+    }
   }
 
   /* ----------------------------------------------------------------- rep */

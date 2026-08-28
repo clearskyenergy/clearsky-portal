@@ -75,6 +75,123 @@
                "Office": 0.50, "Data Center": 0.85, "Institutional": 0.42,
                "Multifamily": 0.55, "Vacant Land": 0, "Other": 0.50 };
 
+  /* ══════════════════════════════════════════════════════════════════════
+     PARCEL UNDER A POINT
+
+     Ported from the ComEd Capacity Finder, which had this before the Site
+     Finder did. A point-in-polygon query against the county's own live
+     assessor service answers "what parcel is this" exactly, where matching
+     against records already downloaded only answers "what is the nearest
+     thing I happen to hold".
+
+     Note the geometry type: a POINT, not an envelope. ComEd's circuits get
+     an envelope because a buffer boundary is approximate and a click on the
+     kerb should still find the circuit down the street. A parcel boundary is
+     a legal line — the point is either inside it or on the neighbour's land,
+     and widening that query would return whichever parcel happened to sort
+     first.
+
+     Each county is added only once its endpoint AND field names have been
+     read off a live record. Field names are never copied between counties:
+     a wrong mapping returns a blank field rather than an error, which is
+     indistinguishable from a parcel that genuinely has no owner recorded.
+     ══════════════════════════════════════════════════════════════════════ */
+  /* ══════════════════════════════════════════════════════════════════════
+     PARCEL UNDER A POINT
+
+     The county registry lives in the Worker, not here. It exposes it at
+     /counties and proxies each county at /parcel/<key>/query, so adding a
+     county is a Worker deploy rather than a change to every page that asks
+     about parcels. Two tools reading two hardcoded lists is how they end up
+     disagreeing about which field holds the owner — which has already
+     happened on DuPage.
+
+     Going through the proxy also solves CORS: county servers vary in what
+     they allow, and the Worker answers with a permissive header regardless.
+
+     Note the geometry type: a POINT, not an envelope. ComEd's circuits get
+     an envelope because a buffer boundary is approximate and a click on the
+     kerb should still find the circuit down the street. A parcel boundary is
+     a legal line — the point is either inside it or on the neighbour's land,
+     and widening that query would return whichever parcel sorted first.
+     ══════════════════════════════════════════════════════════════════════ */
+  S.PROXY_ROOT = "https://comed-proxy.clearsky-omega.workers.dev";
+  var COUNTIES = null, countiesBusy = false, countiesQ = [];
+
+  function getJSONx(url, cb) {
+    var x = new XMLHttpRequest();
+    try { x.open("GET", url, true); } catch (e) { cb(e); return; }
+    x.timeout = 20000;
+    x.onreadystatechange = function () {
+      if (x.readyState !== 4) return;
+      if (x.status < 200 || x.status >= 300) { cb(new Error("HTTP " + x.status)); return; }
+      var j = null;
+      try { j = JSON.parse(x.responseText); } catch (e) { cb(e); return; }
+      cb(null, j);
+    };
+    x.ontimeout = function () { cb(new Error("timed out")); };
+    x.onerror = function () { cb(new Error("network error")); };
+    x.send();
+  }
+
+  S.counties = function (cb) {
+    if (COUNTIES) { cb(null, COUNTIES); return; }
+    countiesQ.push(cb);
+    if (countiesBusy) return;
+    countiesBusy = true;
+    getJSONx(S.PROXY_ROOT + "/counties", function (err, j) {
+      countiesBusy = false;
+      COUNTIES = (!err && j && !j.error) ? j : {};
+      var qs = countiesQ; countiesQ = [];
+      for (var i = 0; i < qs.length; i++) qs[i](err || null, COUNTIES);
+    });
+  };
+
+  S.parcelAt = function (lat, lon, cb) {
+    S.counties(function (err, reg) {
+      var keys = [], k;
+      for (k in reg) if (reg.hasOwnProperty(k)) keys.push(k);
+      /* Regrid last: it is licensed and covers all 102 counties, so it is the
+         fallback rather than the first thing asked. A free county answer is
+         also the county's own record, which is the one a rep will be quoted
+         back at them. */
+      keys.sort(function (a, b) { return (a === "regrid") - (b === "regrid"); });
+      var i = 0;
+      (function next() {
+        if (i >= keys.length) { cb(null, null); return; }
+        var key = keys[i++], cfg = reg[key];
+        var flds = [cfg.idField, cfg.addr, cfg.owner].filter(Boolean).join(",");
+        var q = S.PROXY_ROOT + "/parcel/" + key + "/query?" + [
+          "geometry=" + lon + "," + lat,
+          "geometryType=esriGeometryPoint",
+          "inSR=4326",
+          "spatialRel=esriSpatialRelIntersects",
+          "outFields=" + encodeURIComponent(flds || "*"),
+          "returnGeometry=false",
+          "f=json"
+        ].join("&");
+        getJSONx(q, function (e2, j) {
+          var f = (!e2 && j && !j.error && j.features && j.features[0])
+                    ? j.features[0].attributes : null;
+          if (!f) { next(); return; }
+          /* Report which field each value came from. When two tools disagree
+             about a county's schema — and they have — the card should show
+             what it read, not just what it concluded. */
+          cb(null, {
+            county: cfg.label || key, countyKey: key,
+            pin: cfg.idField ? String(f[cfg.idField] || "").trim() : "",
+            addr: cfg.addr ? String(f[cfg.addr] || "").trim() : "",
+            owner: cfg.owner ? String(f[cfg.owner] || "").trim() : "",
+            fields: { pin: cfg.idField || null, addr: cfg.addr || null,
+                      owner: cfg.owner || null },
+            note: cfg.note || "",
+            raw: f, src: "assessor"
+          });
+        });
+      })();
+    });
+  };
+
   S.register = function (key, impl) { S.providers[key] = impl; return impl; };
   S.use = function (key) {
     if (!S.providers[key]) throw new Error("No listing provider registered as '" + key + "'.");

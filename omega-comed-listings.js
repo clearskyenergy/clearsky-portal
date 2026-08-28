@@ -106,6 +106,21 @@
     var cap = LAY.capacityOf(f);
     rec.feederId = f.feeder || null;
     rec.sub = f.sub || "";
+    /* ComEd's record for this circuit, verbatim, on EVERY record — not only
+       on a searched point. The attributes are already in memory: attribIn
+       fetches layer 75 with outFields=*, so the whole published row for the
+       covering circuit is sitting right here and used to be discarded after
+       two fields were read off it.
+
+       It matters because a derived field can be derived from the wrong
+       column. ComEd's own viewer names a circuit F0297 where reading the
+       first feeder-ish attribute gives Z13733 — same feature, same
+       substation, same kilowatts, different identifier. Carrying the record
+       lets every card show the name ComEd will actually recognise. */
+    rec.comed = f.a || null;
+    rec.comedCovering = LAY.feedersAt ? LAY.feedersAt(rec.lat, rec.lon).length : 1;
+    rec.buffFt = f.buff != null ? f.buff : null;
+    rec.queueRefreshed = f.refreshed || null;
     if (cap && cap.nameplate != null) {
       /* Passed as nameplate + queue, NOT as a pre-netted figure. The ledger
          subtracts the queue itself and then subtracts our own claims on top;
@@ -142,6 +157,12 @@
       sqft: sqft, lotAcres: acres,
       type: type,
       subtype: str(r.bizKind || r.cls) || "Industrially classed parcel",
+      /* The assessor's own words, carried through rather than only used to
+         pick a type. The "assessor-classed C&I" filter runs on this, and a
+         card that shows a class it cannot be filtered by is a card a rep
+         cannot act on. */
+      clsLabel: str(r.clsLabel),
+      cls: str(r.cls),
       yearBuilt: num(r.yearBuilt),
       /* The operating business leads where we have one — that is who answers
          the phone. On industrial land the assessor's owner of record is
@@ -216,7 +237,10 @@
          not a result. It is one call for the whole viewport, and the draw
          layer reads the same cache, so switching this source on does not
          double the traffic to ComEd. */
-      LAY.hostingIn(bbox, function (err) { hostErr = err || null; step(); });
+      /* attribIn, not hostingIn: attribution needs layer 75 specifically.
+         hostingIn fetches whatever grain the map is DRAWN at, and a block
+         maximum is not the circuit serving a parcel. */
+      LAY.attribIn(bbox, function (err) { hostErr = err || null; step(); });
       /* bbox scopes which county shards download. A partial failure still
          returns the counties that DID load — the error names the ones that
          did not, and that shows on the header rather than being swallowed. */

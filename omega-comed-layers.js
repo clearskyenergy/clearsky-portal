@@ -305,6 +305,96 @@
              label: (GRAIN[HQ.layerId] && GRAIN[HQ.layerId].label) || "" };
   };
 
+  /* ══════════════════════════════════════════════════════════════════════
+     ATTRIBUTION IS NOT DRAWING
+
+     These are two different questions answered from two different layers,
+     and conflating them was producing confidently wrong circuits.
+
+       DRAWING     — which grain is legible at this zoom. ComEd switches
+                     between five, exactly as its own viewer does, and a
+                     metro view is necessarily block maxima.
+       ATTRIBUTING — which circuit serves THIS parcel. Only layer 75 can
+                     answer that. A township block says "the best feeder in
+                     36 square miles is X", which is not a claim about any
+                     particular building on it.
+
+     Sharing one cache meant a parcel picked up whatever grain happened to be
+     drawn. Zoomed out, every card got a block maximum — a real feeder id and
+     a real number, both belonging to somewhere else.
+
+     So attribution has its own cache, always layer 75, fetched at higher
+     resolution than the drawn copy because it decides containment rather
+     than appearance. Above a viewport of about ten miles it refuses to
+     fetch at all: layer 75 across a metro is tens of thousands of buffers
+     and the answer would be truncated, which is worse than absent. In that
+     state parcels carry NO circuit and the page says to zoom in — an honest
+     blank rather than a plausible wrong id.
+     ══════════════════════════════════════════════════════════════════════ */
+  var AQ = { key: "", rows: [], busy: false, queue: [], tooWide: false, truncated: false };
+  M.ATTRIB_LAYER = 75;
+  M.ATTRIB_MAX_DEG = 0.15;        /* ~10 miles of longitude at this latitude */
+
+  M.attribState = function () {
+    return { count: AQ.rows.length, tooWide: AQ.tooWide,
+             truncated: AQ.truncated, layerId: M.ATTRIB_LAYER };
+  };
+
+  M.attribIn = function (bbox, cb) {
+    var k = bboxKey(bbox);
+    if (k === AQ.key) { cb(null, AQ.rows); return; }
+    if (AQ.busy) { AQ.queue.push(cb); return; }
+
+    if ((bbox.e - bbox.w) > M.ATTRIB_MAX_DEG || (bbox.n - bbox.s) > M.ATTRIB_MAX_DEG) {
+      AQ.key = k; AQ.rows = []; AQ.tooWide = true; AQ.truncated = false;
+      diag("attrib: viewport too wide for layer 75 — parcels get no circuit");
+      cb(null, AQ.rows);
+      return;
+    }
+
+    AQ.busy = true; AQ.queue = [cb];
+    /* Web Mercator in, degrees out — the projection ComEd's own viewer
+       sends. Geometry comes back in 4326 because the point-in-polygon tests
+       in this file work in degrees. */
+    var sw = toMerc(bbox.s, bbox.w), ne = toMerc(bbox.n, bbox.e);
+    var env = JSON.stringify({
+      xmin: sw.x, ymin: sw.y, xmax: ne.x, ymax: ne.y,
+      spatialReference: { wkid: 102100 }
+    });
+    var url = base() + "/" + M.ATTRIB_LAYER + "/query?f=json&where=1%3D1" +
+      "&geometry=" + encodeURIComponent(env) +
+      "&geometryType=esriGeometryEnvelope&inSR=102100&outSR=4326" +
+      "&spatialRel=esriSpatialRelIntersects&outFields=*&returnGeometry=true" +
+      /* Ten times finer than the drawn copy. The drawn one is simplified for
+         speed; this one decides whether a parcel is on a circuit, and 22 m
+         of simplification is enough to move a building off its own feeder. */
+      "&geometryPrecision=6&maxAllowableOffset=0.00002" +
+      "&maxRecordCountFactor=3&returnExceededLimitFeatures=false" +
+      "&resultRecordCount=4000";
+
+    getJSON(url, function (err, j) {
+      AQ.busy = false; AQ.tooWide = false;
+      var rows = [], i, row;
+      if (!err && j && !j.error && j.features) {
+        for (i = 0; i < j.features.length; i++) {
+          if (!j.features[i].geometry || !j.features[i].geometry.rings) continue;
+          row = interpret(j.features[i].attributes || {});
+          row.rings = j.features[i].geometry.rings;
+          rows.push(row);
+        }
+        AQ.truncated = !!j.exceededTransferLimit;
+        diag("attrib: " + rows.length + " layer-75 circuits" +
+             (AQ.truncated ? " (TRUNCATED)" : ""));
+      } else {
+        diag("attrib: " + (err ? err.message :
+             (j && j.error ? "service " + j.error.code : "no result")));
+      }
+      AQ.key = k; AQ.rows = rows;
+      var qs = AQ.queue; AQ.queue = [];
+      for (i = 0; i < qs.length; i++) qs[i](null, rows);
+    });
+  };
+
   M.hostingIn = function (bbox, cb) {
     var k = bboxKey(bbox);
     if (k === HQ.key && HQ.rows.length) { cb(null, HQ.rows); return; }
@@ -431,7 +521,10 @@
      the most genuinely available capacity, which is also the one a rep would
      work. This mirrors feeder_for() in build_ci_bundles.py exactly. */
   M.feederAt = function (lat, lon) {
-    var rows = HQ.rows, i, best = null, bestNet = -2, n;
+    /* AQ, not HQ. The drawn cache may be block grain; only layer 75 can say
+       which circuit serves a parcel. Empty AQ means "not resolvable at this
+       zoom", and null is the correct answer to that. */
+    var rows = AQ.rows, i, best = null, bestNet = -2, n;
     if (lat == null || lon == null) return null;
     for (i = 0; i < rows.length; i++) {
       if (!covers(rows[i], lat, lon)) continue;
@@ -444,7 +537,7 @@
   /* Every circuit covering a point, best first. The card can then say "two
      circuits cover this parcel" instead of silently picking one. */
   M.feedersAt = function (lat, lon) {
-    var rows = HQ.rows, out = [], i;
+    var rows = AQ.rows, out = [], i;
     if (lat == null || lon == null) return out;
     for (i = 0; i < rows.length; i++)
       if (covers(rows[i], lat, lon)) out.push(rows[i]);
@@ -476,7 +569,7 @@
     if (inside) return { row: inside, contains: true, beyond: false, distance: 0,
                          alsoCovering: M.feedersAt(lat, lon).length };
     var lim = maxM == null ? M.NEAREST_M : maxM;
-    var rows = HQ.rows, best = null, bd = Infinity, i, j, d;
+    var rows = AQ.rows, best = null, bd = Infinity, i, j, d;
     if (lat == null || lon == null) return null;
     for (i = 0; i < rows.length; i++) {
       for (j = 0; j < rows[i].rings.length; j++) {
@@ -500,6 +593,8 @@
      thing that drifts silently, so they need to be exercised without a live
      ComEd fetch. Nothing in the page calls this. */
   M.__setHostingRows = function (rows) { HQ.rows = rows || []; HQ.key = "test"; };
+  /* Attribution cache, which is what feederAt actually reads. */
+  M.__setAttribRows = function (rows) { AQ.rows = rows || []; AQ.key = "test"; AQ.tooWide = false; };
 
   /* ------------------------------------------------------ point resolution
      ASK THE SERVER. The cached polygons this file draws with are fetched at
@@ -539,57 +634,159 @@
 
      So: request everything, uppercase the keys, and pick. Same approach the
      Capacity Finder uses, for the same reason. */
+  /* ComEd's own popup labels, so the card reads the same words the utility
+     uses. "Estimated Net Load Capacity" is the figure this tool has been
+     calling BESS hosting capacity — same number, ComEd's name for it. */
+  M.COMED_LABELS = {
+    BESS_HC: "Estimated Net Load Capacity",
+    PV_HC_KW: "Estimated Net Generation Capacity",
+    EV_HC_KW: "Estimated Net Load Capacity (EV)",
+    FEEDER_Q: "Feeder DER in Queue",
+    SS_N: "Substation",
+    FEEDER: "Feeder",
+    BUFF_DIST: "Buffer distance"
+  };
+
   function interpret(attrs) {
     if (!attrs) return null;
     var k = {}, p;
     for (p in attrs) if (attrs.hasOwnProperty(p)) k[p.toUpperCase()] = attrs[p];
     function n(v) { var x = parseFloat(v); return isNaN(x) ? null : x; }
     function co(a, b) { return (a != null && a !== "") ? a : b; }
+
+    /* THE FEEDER NAME IS NOT NECESSARILY IN A FIELD CALLED "Feeder".
+       ComEd's own viewer shows "Feeder: F0297" at a point where reading the
+       first feeder-ish attribute yields "Z13733" — a different identifier
+       for the same circuit. One of them is an internal key and the other is
+       the name ComEd will recognise on a phone call, and quoting the wrong
+       one wastes an interconnection enquiry.
+
+       So candidates are tried in order of how likely they are to be the
+       PUBLISHED name, and the whole attribute set is carried on the record
+       so the card can show exactly what ComEd returned. */
+    var feeder = "";
+    var cands = ["FEEDER_NAME", "FEEDERNAME", "FDR_NAME", "FEEDER_NO", "FEEDER_NUM",
+                 "FDR_NUM", "FDR", "CIRCUIT", "CIRCUIT_ID", "CKT", "CKT_NAME",
+                 "FEEDER", "FEEDER_N", "FEEDER_ID"];
+    for (var ci = 0; ci < cands.length; ci++) {
+      if (k[cands[ci]] != null && String(k[cands[ci]]).trim() !== "") {
+        feeder = String(k[cands[ci]]).trim();
+        break;
+      }
+    }
     var q = n(k.FEEDER_Q);
     return {
-      a: attrs,
+      a: attrs,            /* ComEd's record, verbatim, for display */
       rings: [],
-      feeder: String(co(k.FEEDER, co(k.FEEDER_N, "")) || ""),
+      feeder: feeder,
       sub: k.SS_N == null ? "" : String(k.SS_N),
       queue: q == null ? 0 : q,
       bess: n(k.BESS_HC),
       pv: n(k.PV_HC_KW),
       ev: n(k.EV_HC_KW),
-      buff: n(k.BUFF_DIST)
+      buff: n(k.BUFF_DIST),
+      refreshed: k.IN_QUEUE_DATA_REFRESH_DATE || k.QUEUE_REFRESH || k.REFRESH_DATE || null
     };
+  }
+
+  /* Which layers to probe, in the Capacity Finder's own order.
+
+     Its analyze() calls layersForScale(scaleAtZoom(17)) — every layer the
+     service advertises, those VISIBLE at street scale first, then all the
+     rest appended, capped at 12 attempts. That ordering is why it resolves
+     points this tool did not: a layer whose scale range makes it visible at
+     zoom 17 gets asked before anything else, whatever its id happens to be.
+
+     Reimplementing this by sorting ids was a guess. This is the same
+     function, so the two tools ask the same layers in the same order and can
+     no longer disagree about whether a point has capacity. */
+  function layersForScale(scale) {
+    var vis = [], other = [], j, l, mn, mx;
+    for (j = 0; j < SVC.layers.length; j++) {
+      l = SVC.layers[j];
+      if (l.id == null) continue;
+      mn = l.minScale || 0;            /* zoomed-OUT limit */
+      mx = l.maxScale || 0;            /* zoomed-IN limit  */
+      var ok = (mn === 0 || scale <= mn) && (mx === 0 || scale >= mx);
+      (ok ? vis : other).push(l.id);
+    }
+    return vis.concat(other);
+  }
+  M.layersForScale = layersForScale;
+
+  /* 403/498/499 mean ComEd refused us, not that the site is empty. The
+     usual cause is the monthly service name rotating out from under the
+     Worker's UPSTREAM constant. */
+  function is403(j) {
+    return !!(j && j.error && (j.error.code === 403 || j.error.code === 499 ||
+                               j.error.code === 498));
   }
 
   M.probePoint = function (lat, lon, cb) {
     if (lat == null || lon == null) { cb(new Error("no point given")); return; }
-    var dLat = M.PROBE_DEG;
-    var dLon = M.PROBE_DEG / Math.cos(lat * Math.PI / 180);
-    var env = JSON.stringify({
-      xmin: lon - dLon, ymin: lat - dLat, xmax: lon + dLon, ymax: lat + dLat,
-      spatialReference: { wkid: 4326 }
+    M.boot(function () {
+      var ids = layersForScale(scaleAtZoom(17)).slice(0, 12);
+      if (!ids.length) ids = M.POINT_LAYERS.slice();
+      diag("probe: layer order " + ids.join(","));
+      probeOrder(lat, lon, ids, cb);
     });
-    var order = M.POINT_LAYERS.slice(), i = 0, errs = [];
+  };
+
+  /* Web Mercator, because that is what ComEd's own viewer sends.
+
+     Its tile requests carry inSR=102100 with the envelope in metres. This
+     tool has been sending inSR=4326 with degrees — which ArcGIS is supposed
+     to reproject, but "supposed to" is doing a lot of work on a service that
+     has already surprised us twice. The known-good request is in Web
+     Mercator, so the probe now matches it exactly rather than relying on a
+     reprojection nobody has verified.
+
+     outSR stays 4326 so anything that does come back with geometry is still
+     in the degrees the rest of this file works in. */
+  function toMerc(lat, lon) {
+    var x = lon * 20037508.34 / 180;
+    var y = Math.log(Math.tan((90 + lat) * Math.PI / 360)) / (Math.PI / 180);
+    return { x: x, y: y * 20037508.34 / 180 };
+  }
+
+  function probeOrder(lat, lon, order, cb) {
+    /* ~61 m each way ON THE GROUND, matching the Capacity Finder's snap
+       radius. Web Mercator units are only metres at the equator — at
+       Chicago's latitude one Mercator unit is cos(41.8) = 0.745 real metres,
+       so an unscaled 61-unit box would be a 45 m box and could miss a circuit
+       the Capacity Finder catches. */
+    var c = toMerc(lat, lon);
+    var R = 61 / Math.cos(lat * Math.PI / 180);
+    var env = JSON.stringify({
+      xmin: c.x - R, ymin: c.y - R, xmax: c.x + R, ymax: c.y + R,
+      spatialReference: { wkid: 102100 }
+    });
+    var i = 0, errs = [], lastUrl = "", empties = [];
 
     (function tryNext() {
       if (i >= order.length) {
-        /* EVERY layer failing is not the same as every layer being empty.
-           The block layers tile the whole territory, so a point in ComEd's
-           service area that matches nothing on layer 71 means the SERVICE
-           did not answer — a refused request, a rotated service name, a
-           proxy that is down. Reporting that as "ComEd publishes nothing
-           here" tells a rep a site is dead when the tool is simply broken,
-           which is the worst answer this thing can give. */
+        var inTerritory = (lat > 40.6 && lat < 42.6 && lon > -89.5 && lon < -87.4);
         cb(null, { rows: [], layerId: null, addressResolved: false,
                    grain: "", tried: order, errors: errs,
-                   serviceFailed: errs.length === order.length });
+                   serviceFailed: errs.length === order.length,
+                   emptyEverywhere: errs.length === 0,
+                   suspicious: errs.length === 0 && inTerritory,
+                   empties: empties,
+                   lastUrl: lastUrl });
         return;
       }
       var id = order[i++];
       var url = base() + "/" + id + "/query?f=json&where=1%3D1" +
         "&geometry=" + encodeURIComponent(env) +
-        "&geometryType=esriGeometryEnvelope&inSR=4326&outSR=4326" +
+        "&geometryType=esriGeometryEnvelope&inSR=102100&outSR=4326" +
         "&spatialRel=esriSpatialRelIntersects" +
-        /* Everything, because the grains do not share a schema. */
-        "&outFields=*&returnGeometry=false&resultRecordCount=25";
+        "&outFields=*&returnGeometry=false" +
+        /* Both sent by ComEd's viewer. The factor lifts the service's own
+           record cap; returnExceededLimitFeatures=false makes it SAY when it
+           truncated instead of quietly returning a partial set. */
+        "&maxRecordCountFactor=3&returnExceededLimitFeatures=false" +
+        "&resultRecordCount=25";
+      lastUrl = url;
 
       getJSON(url, function (err, j) {
         if (err || !j || j.error) {
@@ -597,12 +794,23 @@
                      (j.error.message ? " " + j.error.message : ""));
           errs.push("L" + id + ": " + msg);
           diag("probe L" + id + ": " + msg);
+          /* A refusal is not a per-layer miss — every other layer will refuse
+             too. Stop and say so, rather than burning eleven more requests
+             and then reporting "no capacity". Almost always this is ComEd's
+             monthly service name having rotated past the Worker's UPSTREAM. */
+          if (is403(j)) {
+            cb(null, { rows: [], layerId: null, addressResolved: false,
+                       grain: "", tried: order.slice(0, i), errors: errs,
+                       serviceFailed: true, blocked: true,
+                       emptyEverywhere: false, suspicious: false,
+                       empties: empties, lastUrl: url });
+            return;
+          }
           tryNext();
           return;
         }
         if (!j.features || !j.features.length) {
-          /* A real, successful "nothing here" — recorded as such, not as an
-             error, so the caller can tell the two apart. */
+          empties.push(id);
           diag("probe L" + id + ": 0 features");
           tryNext();
           return;
@@ -617,12 +825,13 @@
         cb(null, {
           rows: rows, layerId: id,
           addressResolved: !!(GRAIN[id] && GRAIN[id].addressResolved),
-          grain: (GRAIN[id] && GRAIN[id].label) || "unknown grain",
-          tried: order.slice(0, i), errors: errs, serviceFailed: false
+          grain: (GRAIN[id] && GRAIN[id].label) || ("layer " + id),
+          tried: order.slice(0, i), errors: errs, serviceFailed: false,
+          lastUrl: url
         });
       });
     })();
-  };
+  }
 
   /* Nameplate for the product currently selected, net of queued DER. */
   M.capacityOf = function (row) {
