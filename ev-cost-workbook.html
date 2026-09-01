@@ -171,6 +171,16 @@ table.pv td.num{text-align:right;font-variant-numeric:tabular-nums}
 .rate-modal-title{font-size:17px;font-weight:700}
 .rate-modal-sub{font-size:11px;color:var(--sub);margin-top:2px}
 .rate-modal-body{padding:20px 24px 28px}
+.setup-tabs{display:flex;gap:2px;padding:0 24px;border-bottom:1px solid var(--line2);overflow-x:auto}
+.setup-tab{padding:10px 14px;font-size:12px;font-weight:600;background:none;border:none;
+  border-bottom:2px solid transparent;color:var(--sub);cursor:pointer;white-space:nowrap}
+.setup-tab.on{color:var(--ink,#111);border-bottom-color:var(--accent,#c8a44d)}
+/* the relocated cards lose their own frame inside the dialog */
+#setupBody .card{border:none;box-shadow:none;margin:0}
+#setupBody .card>h3{display:none}
+#setupBody .card>.body{padding:0}
+#setupBody .setup-pane{display:none}
+#setupBody .setup-pane.on{display:block}
 .rate-modal-body table.pv{width:100%}
 .rate-modal-body table.pv td,.rate-modal-body table.pv th{vertical-align:top}
 </style>
@@ -197,6 +207,8 @@ table.pv td.num{text-align:right;font-variant-numeric:tabular-nums}
   <span class="tb-who" id="tbWho"></span>
   <span class="tb-who" id="tbBuild" title="Which build is running. Quote this when a number looks wrong."
         style="opacity:.55;margin-left:10px;font-variant-numeric:tabular-nums"></span>
+  <button class="btn" id="btnSetup" onclick="openSetup()"
+          title="Contractor, site, pricing rules and proposal settings — all in one panel">Project setup</button>
   <button class="btn" id="btnRates" onclick="openRateSettings()"
           title="Set the labour and material rates every sheet is priced from">Settings</button>
   <button class="btn p" id="btnExport" onclick="exportWorkbook()">Export workbook</button>
@@ -232,7 +244,7 @@ table.pv td.num{text-align:right;font-variant-numeric:tabular-nums}
 
 
 
-    <div class="card">
+    <div class="card" id="setupContractor">
       <h3>Contractor<span class="hint">the company submitting</span></h3>
       <div class="body">
         <label class="f"><span>Saved profiles</span>
@@ -267,12 +279,12 @@ table.pv td.num{text-align:right;font-variant-numeric:tabular-nums}
       </div>
     </div>
 
-    <div class="card">
+    <div class="card" id="setupSite">
       <h3>Site &amp; program<span class="hint" id="formHint"></span></h3>
       <div class="body" id="siteForm"></div>
     </div>
 
-    <div class="card">
+    <div class="card" id="setupPricing">
       <h3>Pricing rules</h3>
       <div class="body">
         <div class="grid2">
@@ -293,7 +305,7 @@ table.pv td.num{text-align:right;font-variant-numeric:tabular-nums}
       </div>
     </div>
 
-    <div class="card">
+    <div class="card" id="setupFP">
       <h3>Future proofing<span class="hint" id="fpTotal"></span></h3>
       <div class="body">
         <div class="note" style="margin-bottom:10px">Spare capacity installed now so the
@@ -305,7 +317,7 @@ table.pv td.num{text-align:right;font-variant-numeric:tabular-nums}
       </div>
     </div>
 
-    <div class="card">
+    <div class="card" id="setupProposal">
       <h3>Proposal appearance<span class="hint">what the customer sees</span></h3>
       <div class="body">
         <label class="f"><span>Brand this proposal as</span>
@@ -1637,7 +1649,7 @@ function setCustomBand(){
    numbers that came from a build that was no longer the code — the same
    export pasted twice, identical to the byte, while the fix sat undeployed.
    A visible build id ends that argument in one glance. */
-var OMEGA_BUILD = 'wb-2026-09-01c';
+var OMEGA_BUILD = 'wb-2026-09-01d';
 try{ window.OMEGA_BUILD = OMEGA_BUILD; }catch(e){}
 
 var LINES = [];
@@ -3651,6 +3663,76 @@ function saveRateOverrides(){
   });
 }
 window.setRate=setRate; window.resetRate=resetRate; window.resetAllRates=resetAllRates;
+
+/* ── PROJECT SETUP ────────────────────────────────────────────────────
+   Contractor, site, pricing rules, future proofing and proposal appearance
+   were five stacked cards in the left rail. Reaching the pricing rules meant
+   scrolling past four cards of fields that were already filled in, on every
+   job — and the rail is narrow enough that the longer notes were clipped.
+
+   The panel does NOT rebuild those forms. It MOVES the existing card
+   elements into it, so every id, every handler and every value is the same
+   object it always was. A rebuilt copy would have been a second set of
+   inputs quietly disagreeing with the first. */
+var SETUP_PANES = [
+  { id:'setupSite',       label:'Site & program' },
+  { id:'setupPricing',    label:'Pricing rules' },
+  { id:'setupContractor', label:'Contractor' },
+  { id:'setupFP',         label:'Future proofing' },
+  { id:'setupProposal',   label:'Proposal appearance' }
+];
+var SETUP_TAB = 'setupSite';
+var _setupMoved = false;
+
+function _setupRelocate(){
+  if(_setupMoved) return;
+  var body=document.getElementById('setupBody');
+  if(!body) return;
+  for(var i=0;i<SETUP_PANES.length;i++){
+    var card=document.getElementById(SETUP_PANES[i].id);
+    if(!card) continue;
+    var pane=document.createElement('div');
+    pane.className='setup-pane';
+    pane.setAttribute('data-pane', SETUP_PANES[i].id);
+    if(card.parentNode) card.parentNode.removeChild(card);
+    pane.appendChild(card);
+    body.appendChild(pane);
+  }
+  _setupMoved=true;
+}
+function setSetupTab(id){
+  SETUP_TAB=id;
+  var panes=document.querySelectorAll('#setupBody .setup-pane'), i;
+  for(i=0;i<panes.length;i++)
+    panes[i].className='setup-pane'+(panes[i].getAttribute('data-pane')===id?' on':'');
+  var tabs=document.querySelectorAll('#setupTabs .setup-tab');
+  for(i=0;i<tabs.length;i++)
+    tabs[i].className='setup-tab'+(tabs[i].getAttribute('data-tab')===id?' on':'');
+}
+window.setSetupTab=setSetupTab;
+
+function openSetup(){
+  var m=document.getElementById('setupModal');
+  if(!m) return;
+  _setupRelocate();
+  var t=document.getElementById('setupTabs'), h='', i;
+  for(i=0;i<SETUP_PANES.length;i++){
+    var p=SETUP_PANES[i];
+    if(!document.querySelector('#setupBody [data-pane="'+p.id+'"]')) continue;
+    h+='<button class="setup-tab'+(p.id===SETUP_TAB?' on':'')+'" data-tab="'+p.id+'"'
+      +' onclick="setSetupTab(\''+p.id+'\')">'+esc(p.label)+'</button>';
+  }
+  if(t) t.innerHTML=h;
+  m.style.display='flex';
+  setSetupTab(SETUP_TAB);
+  render();
+}
+function closeSetup(){
+  var m=document.getElementById('setupModal');
+  if(m) m.style.display='none';
+  render();
+}
+window.openSetup=openSetup; window.closeSetup=closeSetup;
 
 function openRateSettings(){
   var m=document.getElementById('rateModal');
@@ -7216,6 +7298,23 @@ auth.onAuthStateChanged(function(user){
 
 })();
 </script>
+<div id="setupModal" class="rate-modal" style="display:none" onclick="if(event.target===this)closeSetup()">
+  <div class="rate-modal-box" style="width:min(1180px,100%)">
+    <div class="rate-modal-head">
+      <div>
+        <div class="rate-modal-title">Project setup</div>
+        <div class="rate-modal-sub">Everything about this job in one place — nothing to scroll past</div>
+      </div>
+      <div style="display:flex;gap:8px;align-items:center">
+        <button class="btn" onclick="openRateSettings()">Rate settings</button>
+        <button class="btn p" onclick="closeSetup()">Done</button>
+      </div>
+    </div>
+    <div class="setup-tabs" id="setupTabs"></div>
+    <div class="rate-modal-body" id="setupBody"></div>
+  </div>
+</div>
+
 <div id="rateModal" class="rate-modal" style="display:none" onclick="if(event.target===this)closeRateSettings()">
   <div class="rate-modal-box">
     <div class="rate-modal-head">
