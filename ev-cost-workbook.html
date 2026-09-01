@@ -1305,7 +1305,12 @@ function rowExists(bid,k){ var b=blockById(bid), i; for(i=0;i<b.rows.length;i++)
    ------------------------------------------------------------------ */
 var TENANT_SEED = [
   { key:'',              name:'— no tenant / generic —', logo:'',                       site:'',               brand:null },
-  { key:'concordenergy.com', name:'Concord Energy LLC',  logo:'',                       site:'',
+  /* Concord signs in as @concordenergyusa.com and works at
+     concordenergyusa.clearskyomega.com; the seed only had the shorter
+     domain, so their own tenant never matched and every proposal came out
+     generic. `alt` carries the other spellings a tenant is known by. */
+  { key:'concordenergyusa.com', name:'Concord Energy LLC', logo:'', site:'concordenergyusa.com',
+    alt:['concordenergy.com','concordenergyusa'],
     address:'2299 Summer St #1062, Stamford CT 06905', brand:null },
   { key:'nextnrg.com',   name:'NextNRG',                 logo:'',                       site:'nextnrg.com',    brand:null },
   { key:'spatco.com',    name:'SPATCO',                  logo:'/spatco-logo.jpg',       site:'spatco.com',     brand:null },
@@ -1359,6 +1364,94 @@ function mergeTenants(){
   }
 }
 function tenantByKey(k){ var i; for(i=0;i<TENANTS.length;i++){ if(TENANTS[i].key===k) return TENANTS[i]; } return TENANTS[0]; }
+
+/* ── WHOSE TOOL IS THIS? ───────────────────────────────────────────────
+   A rep at Concord, signed in as @concordenergyusa.com, working at
+   concordenergyusa.clearskyomega.com, should not have to tell the tool who
+   they work for — it is in the address bar and in their email. Nobody was
+   asking, so every proposal defaulted to "no tenant / generic" and went out
+   unbranded unless someone remembered the dropdown.
+
+   Matched on the signed-in domain first, then the host, and only the part
+   before .clearskyomega.com — so a tenant subdomain identifies its owner. */
+function _tenantNorm(x){ return String(x||'').toLowerCase().replace(/^www\./,''); }
+function tenantMatches(t, hint){
+  hint=_tenantNorm(hint);
+  if(!hint || !t || !t.key) return false;
+  var keys=[t.key].concat(t.alt||[]);
+  if(t.site) keys.push(t.site);
+  for(var i=0;i<keys.length;i++){
+    var k=_tenantNorm(keys[i]);
+    if(!k) continue;
+    if(hint===k) return true;
+    /* the subdomain form: concordenergyusa.clearskyomega.com */
+    if(hint===k.replace(/\.[a-z]+$/,'')) return true;
+    if(hint.indexOf(k.replace(/\.[a-z]+$/,'')+'.')===0) return true;
+  }
+  return false;
+}
+function detectTenantKey(){
+  var hints=[], i;
+  try{ if(window.OMEGA_ORG) hints.push(window.OMEGA_ORG); }catch(e){}
+  try{
+    var host=_tenantNorm(location.hostname||'');
+    if(host){
+      hints.push(host);
+      var sub=host.split('.')[0];
+      if(sub && sub!=='tools' && sub!=='alpha' && sub!=='www') hints.push(sub);
+    }
+  }catch(e){}
+  for(i=0;i<hints.length;i++){
+    for(var j=0;j<TENANTS.length;j++){
+      if(tenantMatches(TENANTS[j], hints[i])) return TENANTS[j].key;
+    }
+  }
+  return '';
+}
+/* Only ever fills a BLANK choice. A rep who deliberately picked generic, or
+   picked another tenant, keeps what they picked. */
+function autoSelectTenant(){
+  if(d('tenant')) return d('tenant');
+  var k=detectTenantKey();
+  if(!k) return '';
+  DATA.tenant=k;
+  var t=tenantByKey(k);
+  if(t){
+    if(!d('propCompany') && t.name)   DATA.propCompany=t.name;
+    if(!d('propFooter') && t.address) DATA.propFooter=t.address;
+    tenantLogo(t);
+  }
+  return k;
+}
+
+/* The tenant's logo lives in their own deployment. Try the paths the
+   platform actually uses, on the tenant's own origin, and take the first
+   that loads — a 404 costs nothing and beats asking a rep to upload the
+   logo of the company they work for. */
+function tenantLogo(t){
+  if(!t || !t.key) return;
+  if(d('propLogo')) return;                  /* a chosen logo always wins */
+  var names=[];
+  if(t.logo) names.push(t.logo);
+  var base=String(t.key).replace(/\.[a-z]+$/,'');
+  names.push('/'+base+'-logo.png', '/'+base+'-logo.jpg', '/'+base+'-logo.svg',
+             '/logo.png', '/logo.svg', '/assets/logo.png');
+  var i=0;
+  function tryNext(){
+    if(i>=names.length) return;
+    var src=names[i++];
+    var img=new Image();
+    img.onload=function(){
+      DATA.propLogo=src;
+      try{ if(typeof deriveFromLogo==='function' && !tenantByKey(d('tenant')).brand) deriveFromLogo(src); }catch(e){}
+      render();
+    };
+    img.onerror=tryNext;
+    img.src=src;
+  }
+  tryNext();
+}
+window.autoSelectTenant=autoSelectTenant;
 
 /* ---- colour maths, all ES5 ---- */
 function hex2rgb(h){
@@ -1449,6 +1542,7 @@ function applyTenant(key){
     msg('tenantMsg','No colours on file for '+esc(t.name)+' and no logo to read. '
       + 'Upload their logo below and I\u2019ll take the colours from it, or type a hex.','warn');
     loadRateOverrides();
+    autoSelectTenant();
     render();
   }
 }
@@ -1649,7 +1743,7 @@ function setCustomBand(){
    numbers that came from a build that was no longer the code — the same
    export pasted twice, identical to the byte, while the fix sat undeployed.
    A visible build id ends that argument in one glance. */
-var OMEGA_BUILD = 'wb-2026-09-01d';
+var OMEGA_BUILD = 'wb-2026-09-01e';
 try{ window.OMEGA_BUILD = OMEGA_BUILD; }catch(e){}
 
 var LINES = [];
