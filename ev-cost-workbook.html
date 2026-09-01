@@ -6,6 +6,7 @@
 <title>EV Cost Workbook</title>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js" onerror="void 0"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js" onerror="void 0"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js" onerror="void 0"></script>
 <script src="/config.js" onerror="void 0"></script>
 <script src="/omega-tools.js" onerror="void 0"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.4.0/exceljs.min.js" onerror="window._XLFAIL=1"></script>
@@ -157,6 +158,21 @@ table.pv td.num{text-align:right;font-variant-numeric:tabular-nums}
 .gate-msg code{background:#F6F4F0;border:1px solid var(--line2);border-radius:3px;padding:1px 5px;font-size:11.5px}
 .gate-foot{margin-top:22px;padding-top:14px;border-top:1px solid var(--line2);font-size:10px;letter-spacing:.9px;text-transform:uppercase;color:var(--dim)}
 .tb-who{font-size:11px;color:var(--sub);padding-right:12px;border-right:1px solid var(--line);margin-right:2px}
+
+/* Rate settings opens as a dialog. In the left rail the table was clipped at
+   the column edge, which hid the evidence text — the part that tells a
+   customer WHY a rate is what it is. */
+.rate-modal{position:fixed;inset:0;z-index:9000;background:rgba(15,18,24,.55);
+  display:flex;align-items:flex-start;justify-content:center;padding:40px 20px;overflow:auto}
+.rate-modal-box{background:var(--bg,#fff);border-radius:12px;width:min(1080px,100%);
+  box-shadow:0 24px 60px rgba(0,0,0,.32);overflow:hidden}
+.rate-modal-head{display:flex;align-items:center;justify-content:space-between;gap:16px;
+  padding:18px 24px;border-bottom:1px solid var(--line2)}
+.rate-modal-title{font-size:17px;font-weight:700}
+.rate-modal-sub{font-size:11px;color:var(--sub);margin-top:2px}
+.rate-modal-body{padding:20px 24px 28px}
+.rate-modal-body table.pv{width:100%}
+.rate-modal-body table.pv td,.rate-modal-body table.pv th{vertical-align:top}
 </style>
 </head>
 <body>
@@ -181,6 +197,8 @@ table.pv td.num{text-align:right;font-variant-numeric:tabular-nums}
   <span class="tb-who" id="tbWho"></span>
   <span class="tb-who" id="tbBuild" title="Which build is running. Quote this when a number looks wrong."
         style="opacity:.55;margin-left:10px;font-variant-numeric:tabular-nums"></span>
+  <button class="btn" id="btnRates" onclick="openRateSettings()"
+          title="Set the labour and material rates every sheet is priced from">Settings</button>
   <button class="btn p" id="btnExport" onclick="exportWorkbook()">Export workbook</button>
 </div>
 
@@ -212,10 +230,7 @@ table.pv td.num{text-align:right;font-variant-numeric:tabular-nums}
       <div class="body" id="outPick"></div>
     </div>
 
-    <div class="card">
-      <h3>Rate settings<span class="hint">what every price is built from</span></h3>
-      <div class="body" id="rateSettings"></div>
-    </div>
+
 
     <div class="card">
       <h3>Contractor<span class="hint">the company submitting</span></h3>
@@ -1622,7 +1637,7 @@ function setCustomBand(){
    numbers that came from a build that was no longer the code — the same
    export pasted twice, identical to the byte, while the fix sat undeployed.
    A visible build id ends that argument in one glance. */
-var OMEGA_BUILD = 'wb-2026-09-01a';
+var OMEGA_BUILD = 'wb-2026-09-01c';
 try{ window.OMEGA_BUILD = OMEGA_BUILD; }catch(e){}
 
 var LINES = [];
@@ -3559,37 +3574,97 @@ function setRate(k, which, v){
   rateSet(k, which, v);
   if(!RATE_OVERRIDES[k]) RATE_OVERRIDES[k]={};
   RATE_OVERRIDES[k][which]=num(v);
-  try{ localStorage.setItem(RATE_STORE_KEY, JSON.stringify(RATE_OVERRIDES)); }catch(e){}
+  saveRateOverrides();
   render();
 }
 function resetRate(k){
   var d=rateDefaults()[k]; if(!d) return;
   rateSet(k,'mat',d.mat); rateSet(k,'lab',d.lab);
   delete RATE_OVERRIDES[k];
-  try{ localStorage.setItem(RATE_STORE_KEY, JSON.stringify(RATE_OVERRIDES)); }catch(e){}
+  saveRateOverrides();
   render();
 }
 function resetAllRates(){
   var d=rateDefaults(), k;
   for(k in d) if(d.hasOwnProperty(k)){ rateSet(k,'mat',d[k].mat); rateSet(k,'lab',d[k].lab); }
   RATE_OVERRIDES={};
-  try{ localStorage.removeItem(RATE_STORE_KEY); }catch(e){}
+  saveRateOverrides();
   render();
+}
+function applyOverrideObj(o){
+  var k, w;
+  for(k in o) if(o.hasOwnProperty(k) && o[k] && typeof o[k]==='object'){
+    for(w in o[k]) if(o[k].hasOwnProperty(w)) rateSet(k,w,o[k][w]);
+    RATE_OVERRIDES[k]=o[k];
+  }
 }
 function loadRateOverrides(){
   rateDefaults();
+  /* Browser copy first so the panel is populated instantly, then the
+     account copy, which wins. */
   var raw=null;
   try{ raw=localStorage.getItem(RATE_STORE_KEY); }catch(e){}
-  if(!raw) return;
+  if(raw){ try{ applyOverrideObj(JSON.parse(raw)); }catch(e){} }
+  rateDocRef(function(ref){
+    if(!ref) return;
+    ref.get().then(function(snap){
+      if(!snap || !snap.exists) return;
+      var d=snap.data();
+      if(!d || !d.rates) return;
+      RATE_OVERRIDES={};
+      resetAllRatesQuiet();
+      applyOverrideObj(d.rates);
+      RATE_SOURCE='account';
+      try{ localStorage.setItem(RATE_STORE_KEY, JSON.stringify(RATE_OVERRIDES)); }catch(e){}
+      render();
+    })['catch'](function(){ /* offline or no access: the browser copy stands */ });
+  });
+}
+/* Reset without writing anything back — used before applying the account
+   copy so a rate cleared on another machine does not linger here. */
+function resetAllRatesQuiet(){
+  var d=rateDefaults(), k;
+  for(k in d) if(d.hasOwnProperty(k)){ rateSet(k,'mat',d[k].mat); rateSet(k,'lab',d[k].lab); }
+}
+
+/* One document per account. Keyed by the org domain so a company shares one
+   rate card, which is the point: pricing is the company's, not the rep's. */
+var RATE_SOURCE='browser';
+function rateDocRef(cb){
   try{
-    var o=JSON.parse(raw), k, w;
-    for(k in o) if(o.hasOwnProperty(k)){
-      for(w in o[k]) if(o[k].hasOwnProperty(w)) rateSet(k,w,o[k][w]);
-      RATE_OVERRIDES[k]=o[k];
-    }
-  }catch(e){}
+    if(typeof firebase==='undefined' || !firebase.firestore) return cb(null);
+    var org=window.OMEGA_ORG||'', user=window.OMEGA_USER||'';
+    if(!org && !user) return cb(null);
+    var id=(org||user).replace(/[^a-z0-9.-]+/gi,'_').toLowerCase();
+    cb(firebase.firestore().collection('rateCards').doc(id));
+  }catch(e){ cb(null); }
+}
+function saveRateOverrides(){
+  try{ localStorage.setItem(RATE_STORE_KEY, JSON.stringify(RATE_OVERRIDES)); }catch(e){}
+  rateDocRef(function(ref){
+    if(!ref) return;
+    ref.set({ rates:RATE_OVERRIDES,
+              updatedAt:new Date().toISOString(),
+              updatedBy:window.OMEGA_USER||'' }, {merge:true})
+      .then(function(){ RATE_SOURCE='account'; renderRateSettings(); })
+      ['catch'](function(){ RATE_SOURCE='browser'; renderRateSettings(); });
+  });
 }
 window.setRate=setRate; window.resetRate=resetRate; window.resetAllRates=resetAllRates;
+
+function openRateSettings(){
+  var m=document.getElementById('rateModal');
+  if(!m) return;
+  renderRateSettings();
+  m.style.display='flex';
+}
+function closeRateSettings(){
+  var m=document.getElementById('rateModal');
+  if(m) m.style.display='none';
+  render();          /* pick up anything changed while it was open */
+}
+window.openRateSettings=openRateSettings;
+window.closeRateSettings=closeRateSettings;
 
 function renderRateSettings(){
   var host=document.getElementById('rateSettings');
@@ -3597,9 +3672,14 @@ function renderRateSettings(){
   var n=0, k;
   for(k in RATE_OVERRIDES) if(RATE_OVERRIDES.hasOwnProperty(k)) n++;
 
+  var scope = (RATE_SOURCE==='account' && (window.OMEGA_ORG||window.OMEGA_USER))
+    ? 'Saved to <b>'+esc(window.OMEGA_ORG||window.OMEGA_USER)+'</b> \u2014 these rates apply to '
+      + 'every project on this account, on any machine.'
+    : 'Saved in this browser only. Sign in to apply one rate card across the account.';
   var h='<div class="note" style="margin-bottom:10px">'
     + 'Every price on every sheet is built from these rates \u00d7 what the site map '
     + 'measures. Change one and the preview and all exports follow. '
+    + scope+' '
     + '<b>Jobs</b> is how many of the five filed submissions carry that figure \u2014 '
     + '<b>5 of 5</b> is settled, <b>1 of 5</b> is a starting point.'
     + (n ? ' <b>'+n+' rate'+(n===1?'':'s')+' overridden.</b>' : '')
@@ -3609,13 +3689,16 @@ function renderRateSettings(){
          + 'Reset all to the filed evidence</button>';
 
   h+='<table class="pv" style="font-size:11px"><tr>'
-    +'<th style="text-align:left">Rate</th><th>Material</th><th>Labour</th>'
-    +'<th>Unit</th><th>Jobs</th><th></th></tr>';
+    +'<th style="text-align:left;width:34%">Rate</th>'
+    +'<th style="width:96px">Material</th><th style="width:96px">Labour</th>'
+    +'<th style="width:88px">Unit</th><th style="width:64px">Jobs</th>'
+    +'<th style="text-align:left">Where this number comes from</th>'
+    +'<th style="width:70px"></th></tr>';
 
   for(var i=0;i<RATE_FIELDS.length;i++){
     var f=RATE_FIELDS[i];
     if(f.sec){
-      h+='<tr><td colspan="6" style="background:var(--line2);font-weight:700;'
+      h+='<tr><td colspan="7" style="background:var(--line2);font-weight:700;'
         +'font-size:10px;letter-spacing:.4px">'+esc(f.sec)+'</td></tr>';
       continue;
     }
@@ -3631,11 +3714,15 @@ function renderRateSettings(){
     var showLab = !f.matOnly;
     if(f.plain || f.pct){ showMat=false; showLab=true; }
     h+='<tr'+(over?' style="background:rgba(255,193,7,.10)"':'')+'>'
-      +'<td><div style="font-weight:600">'+esc(f.label)+(over?' <span style="color:#b8860b">\u25cf</span>':'')+'</div>'
-      +'<div class="o" style="font-size:9px;line-height:1.35;opacity:.75">'+esc(f.why)+'</div></td>'
+      +'<td><div style="font-weight:600">'+esc(f.label)
+      +(over?' <span style="color:#b8860b" title="overridden">\u25cf</span>':'')+'</div>'
+      +(over?'<div style="font-size:9px;color:#b8860b">your rate \u2014 filed evidence was '
+             +money(rateDefaults()[f.k].mat)+' / '+money(rateDefaults()[f.k].lab)+'</div>':'')
+      +'</td>'
       + cell('mat', showMat) + cell('lab', showLab)
       +'<td style="text-align:center;white-space:nowrap">'+esc(f.unit)+'</td>'
       +'<td style="text-align:center;white-space:nowrap;font-size:10px">'+jobs+'</td>'
+      +'<td class="o" style="font-size:10px;line-height:1.4;opacity:.8">'+esc(f.why)+'</td>'
       +'<td style="text-align:center">'
       +(over?'<button class="btn sm" onclick="resetRate(\''+f.k+'\')">Reset</button>':'')
       +'</td></tr>';
@@ -3904,7 +3991,9 @@ function fieldHTML(f, tight){
 function shortLabel(l){ return String(l).replace(/^#\s*of\s*/i,'# ').replace(/^Total Feet of\s*/i,'Feet — '); }
 
 /* ── 12. RENDER — mapping + previews ──────────────────────────────── */
-function render(){ syncCivil(); syncPermit(); renderRateSettings(); renderMap(); renderOutputs(); }
+function render(){ syncCivil(); syncPermit();
+  var _rm=document.getElementById('rateModal');
+  if(_rm && _rm.style.display!=='none') renderRateSettings(); renderMap(); renderOutputs(); }
 
 function renderMap(){
   var BL=activeBlocks();
@@ -7025,6 +7114,12 @@ function show(title, msg, actions){
 function openApp(email){
   $('gate').style.display='none';
   $('app').style.display='block';
+  /* The rate card belongs to the ACCOUNT, not the laptop. Pricing set once
+     has to apply to every project that account opens, on any machine —
+     browser storage could not do that, so a customer who lowered their
+     trench rate got the old number back on the next device. */
+  window.OMEGA_USER  = email || '';
+  window.OMEGA_ORG   = domainOf(email);
   if(window.__omegaSetRep) window.__omegaSetRep(email);
   if(window.__omegaBoot) window.__omegaBoot();
 }
@@ -7121,5 +7216,18 @@ auth.onAuthStateChanged(function(user){
 
 })();
 </script>
+<div id="rateModal" class="rate-modal" style="display:none" onclick="if(event.target===this)closeRateSettings()">
+  <div class="rate-modal-box">
+    <div class="rate-modal-head">
+      <div>
+        <div class="rate-modal-title">Rate settings</div>
+        <div class="rate-modal-sub">What every price on every sheet is built from</div>
+      </div>
+      <button class="btn" onclick="closeRateSettings()">Done</button>
+    </div>
+    <div class="rate-modal-body" id="rateSettings"></div>
+  </div>
+</div>
+
 </body>
 </html>
