@@ -143537,11 +143537,44 @@ if (root.console && console.info) {
 (function (root) {
 'use strict';
 
+/* ══════════════════════════════════════════════════════════════════════
+ *  THE ONE LINE TO EDIT PER DEPLOYMENT
+ *
+ *  The render service does not belong in every tenant repo. It is one
+ *  endpoint holding one Google credential; duplicating it across tenants
+ *  means N copies of a secret and N places to rotate it when one leaks.
+ *
+ *  So deploy api/render.js ONCE — to the portal — and set the host below.
+ *  Every tenant repo that ships this file then works with no further
+ *  configuration: no console command, no per-tenant setting.
+ *
+ *  Resolution order:
+ *    1  an endpoint set by hand in the dialog        (overrides everything)
+ *    2  /api/render on this host                     (tenant carries its own)
+ *    3  OMEGA_RENDER_SERVICE                         (the shared portal)
+ *
+ *  Same-origin comes before the portal so a tenant that DOES carry its own
+ *  copy keeps using it — one tenant can be moved without touching the rest.
+ * ══════════════════════════════════════════════════════════════════════ */
+var OMEGA_RENDER_SERVICE = 'https://clearsky-portal.vercel.app/api/render';
+
 function cfg(){
-  var url = '';
-  try { url = localStorage.getItem('omega.render.endpoint') || ''; } catch (e) {}
-  return { url: url || '/api/render' };
+  var explicit = '';
+  try { explicit = localStorage.getItem('omega.render.endpoint') || ''; } catch (e) {}
+  var remembered = '';
+  try { remembered = localStorage.getItem('omega.render.worked') || ''; } catch (e) {}
+
+  var list = [];
+  if (explicit) list.push(explicit);
+  else {
+    if (remembered) list.push(remembered);
+    ['/api/render', OMEGA_RENDER_SERVICE].forEach(function (u) {
+      if (u && list.indexOf(u) < 0) list.push(u);
+    });
+  }
+  return { url: list[0], candidates: list };
 }
+function remember(u){ try { localStorage.setItem('omega.render.worked', u); } catch (e) {} }
 
 /* The snapshot, as a data URL, without triggering a download. */
 /* THE CONTROL IMAGE HAS TO FIT IN A REQUEST.
@@ -143581,6 +143614,57 @@ function grabView(){
   } catch (e) { return null; }
 }
 
+/* THE SATELLITE PHOTO, AS GROUND TRUTH.
+
+   Sending only the 3D view asks the model to invent everything the massing
+   does not describe — and it does. White blocks become an anonymous
+   campus, flat roof arrays sprout carport legs, and a park with cherry
+   blossoms appears on what is actually a parking apron. Every one of those
+   is the model filling a gap we left.
+
+   The gap closes by sending the aerial photograph as well. It already
+   exists: it is the ground texture under the 3D scene. Two images go
+   across with different jobs:
+
+     PHOTO   what the place actually looks like — roads, roofs, planting,
+             parking, materials. Nothing here may be invented or moved.
+     MASSING where the solar and equipment go, and nothing else.
+
+   That is the difference between a picture of a solar site and a picture
+   of THIS solar site. */
+function grabSatellite(){
+  try {
+    var src = null;
+    var fz = document.getElementById('frozen-map-img');
+    var bd = document.getElementById('backdrop');
+    if (fz && fz.src && fz.style.display !== 'none') src = fz.src;
+    else if (bd && bd.src) src = bd.src;
+    if (!src && root._frozenMapImg) src = root._frozenMapImg;
+    if (!src || src.indexOf('data:') !== 0) return null;
+
+    /* Same size discipline as the control image — two large images in one
+       request is the fastest way back to a 413. */
+    return new Promise(function (resolve) {
+      var img = new Image();
+      var done = false;
+      var to = setTimeout(function(){ if(!done){ done=true; resolve(null); } }, 6000);
+      img.onload = function(){
+        if (done) return; done = true; clearTimeout(to);
+        try {
+          var W = img.width, H = img.height;
+          var s = Math.min(1, CONTROL_MAX / Math.max(W, H));
+          var c = document.createElement('canvas');
+          c.width = Math.round(W * s); c.height = Math.round(H * s);
+          c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+          resolve(c.toDataURL('image/jpeg', 0.9));
+        } catch (e) { resolve(null); }
+      };
+      img.onerror = function(){ if(!done){ done=true; clearTimeout(to); resolve(null); } };
+      img.src = src;
+    });
+  } catch (e) { return null; }
+}
+
 /* What the model needs to know that the picture cannot tell it.
 
    Pulled from the model rather than typed, so the prompt and the design
@@ -143615,7 +143699,29 @@ function siteFacts(){
   return f;
 }
 
-function buildPrompt(f, style){
+function buildPrompt(f, style, twoImage){
+  /* THE CARPORT-LEGS FAILURE.
+
+     A flush roof array came back on stilts over a plaza, because "solar
+     array" without a mounting type invites the model to pick the one it
+     has seen most. Each mount gets an explicit instruction about what it
+     sits ON, which is the thing that was ambiguous. */
+  function mountRule(ff){
+    var r = [];
+    if (ff.mount.indexOf('roof') >= 0)
+      r.push('Rooftop arrays lie FLAT ON THE ROOF SURFACE in low tilted rows — '
+           + 'no posts, no legs, no canopy, no shade structure, nothing raised above '
+           + 'the parapet.');
+    if (ff.mount.indexOf('carport') >= 0)
+      r.push('Carport arrays are raised canopies on steel columns over parking bays, '
+           + 'with cars beneath.');
+    if (ff.mount.indexOf('ground') >= 0)
+      r.push('Ground arrays are tilted rows on low racking set on the ground.');
+    if (ff.mount.indexOf('tracker') >= 0)
+      r.push('Tracker arrays are long single-axis rows on a torque tube.');
+    return r.join(' ') + (r.length ? ' ' : '');
+  }
+
   var mount = f.mount.map(function (m) {
     return m === 'carport' ? 'solar carport canopies'
          : m === 'roof'    ? 'flush rooftop solar'
@@ -143644,31 +143750,53 @@ function buildPrompt(f, style){
      neighbour rendered as the wrong building is the kind of error a client
      spots immediately. Clean massing reads as a study, which is honest
      about what it is. */
-  var base =
-    'Photorealistic architectural visualisation, aerial oblique view, of an existing '
-    + 'commercial site. Match the provided image exactly for building massing, roof '
-    + 'outlines, road layout, parking geometry, and the position, orientation and '
-    + 'extent of every solar array. Do not add, move, resize or re-orient any solar '
-    + 'array, building or piece of equipment. '
-    + 'Render ' + mount + ' as dark blue-black photovoltaic modules in neat rows with '
-    + 'visible module framing, thin racking and clean edges. '
-    + (f.storage ? 'Render battery enclosures as clean white industrial containers. ' : '')
-    + 'Surrounding buildings: smooth matte white and light grey massing, minimal facade '
-    + 'detail, crisp edges, no signage. '
-    + 'Ground: dark asphalt roads with clean lane markings, light concrete sidewalks, '
-    + 'manicured green lawns, mature deciduous street trees with full canopies, a few '
-    + 'ornamental flowering trees. Sparse traffic, a scattering of parked cars. '
-    + light + ', clear blue sky with light atmospheric haze toward the horizon. '
-    + 'Clean, calm, high-end property-marketing render. Sharp focus throughout, no '
-    + 'people, no lens flare. '
-    /* The satellite ground carries Google's and Airbus's attribution baked
-       into the pixels, and the model WILL try to reproduce it as lettering
-       across the site. Saying "no text" alone does not help — it is looking
-       at text and being told there is none. Naming it as an artefact to
-       replace works far better than denying it exists. */
-    + 'Any map attribution lettering or watermark visible on the ground in the source '
-    + 'is an artefact: replace it with the surface underneath. No text, no signage, '
-    + 'no logos anywhere in the final image.';
+  /* TWO IMAGES, TWO JOBS.
+
+     Written for a pair: the aerial photograph is the site, the massing
+     render says only where the solar goes. Every failure in the first
+     attempt was the model inventing something the massing did not
+     describe — so the prompt now names those failures directly. Telling a
+     model "be accurate" does nothing; telling it "do not put legs under a
+     roof array" does. */
+  var base = twoImage
+    ? ('You are given TWO images of the SAME site.\n\n'
+     + 'IMAGE 1 is a real aerial photograph. It is the ground truth for the '
+     + 'place: keep every building, road, kerb line, parking bay, tree and '
+     + 'open area exactly where it is, at the same size and shape. Do not add '
+     + 'buildings. Do not add trees, planters or parkland. Do not turn '
+     + 'pavement into lawn. Do not restyle any roof.\n\n'
+     + 'IMAGE 2 is a massing model of the SAME view showing the proposed '
+     + 'solar. The white blocks in it are the buildings already visible in '
+     + 'image 1 — they are placeholders, NOT new structures. Take only ONE '
+     + 'thing from image 2: the position, orientation, extent and mounting of '
+     + 'the solar arrays'
+     + (f.storage ? ' and the battery enclosures' : '') + '.\n\n'
+     + 'Produce image 1, photographically unchanged, with the solar from '
+     + 'image 2 added on top. '
+     + mountRule(f)
+     + (f.storage ? 'Battery enclosures: white industrial containers at ground level. ' : '')
+     + 'Modules are dark blue-black with thin visible framing, in neat rows.\n\n'
+     + 'Keep the original lighting, shadow direction and season from image 1. '
+     + 'Photoreal, sharp, no people, no text, no logos, no new landscaping.')
+
+    : ('Photorealistic architectural visualisation, aerial oblique view, of an '
+     + 'existing commercial site. Match the provided image exactly for building '
+     + 'massing, roof outlines, road layout, parking geometry, and the position, '
+     + 'orientation and extent of every solar array. Do not add, move, resize or '
+     + 're-orient any solar array, building or piece of equipment. '
+     + mountRule(f)
+     + (f.storage ? 'Render battery enclosures as clean white industrial containers. ' : '')
+     + 'Surrounding buildings: smooth matte white and light grey massing, minimal '
+     + 'facade detail, crisp edges, no signage. '
+     + 'Ground: dark asphalt roads with clean lane markings, light concrete '
+     + 'sidewalks, manicured green lawns, mature deciduous street trees. Sparse '
+     + 'traffic, a scattering of parked cars. '
+     + light + ', clear blue sky with light atmospheric haze toward the horizon. '
+     + 'Clean, calm, high-end property-marketing render. Sharp focus throughout, '
+     + 'no people, no lens flare. '
+     + 'Any map attribution lettering or watermark visible on the ground in the '
+     + 'source is an artefact: replace it with the surface underneath. No text, '
+     + 'no signage, no logos anywhere in the final image.');
 
   if (style === 'dusk')    base += ' Dusk: warm low sun, long shadows, deep blue gradient sky, '
                                   + 'warm light in building windows.';
@@ -143729,17 +143857,107 @@ function label(dataUrl, f){
   });
 }
 
+/* ── DIRECT, WITH THE TENANT'S OWN KEY ────────────────────────────────
+   The editor already stores a Gemini key per tenant under
+   'clearsky_gemini_key' — the "Image AI token" in Settings › AI Keys — and
+   the map-stencil feature already calls Gemini 2.5 Flash Image with it,
+   image in and image out, exactly as this needs to.
+
+   So a tenant with that token set needs no service at all. Their key,
+   their bill, their render, nothing to deploy. And a tenant WITHOUT one
+   still falls through to the shared portal service, so nothing breaks
+   for anybody who has not set it.
+
+   The trade is real and worth naming: a key in localStorage is readable
+   by anything running on the page. That is already true of the Maps key,
+   the NREL key and this same Gemini token, so it is the app's existing
+   posture rather than a new hole — but the server path is still the
+   better one, and stays the default when it is available. */
+function tenantKey(){
+  try {
+    if (typeof _getGeminiKey === 'function') { var k = _getGeminiKey(); if (k) return k; }
+    return localStorage.getItem('clearsky_gemini_key') || '';
+  } catch (e) { return ''; }
+}
+
+function viaTenantKey(view, prompt, cb, satellite){
+  var key = tenantKey();
+  if (!key) { cb(null, 'no-key'); return; }
+  var m = /^data:(image\/\w+);base64,(.*)$/.exec(view || '');
+  if (!m) { cb(null, 'bad-image'); return; }
+
+  fetch('https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-image:generateContent', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'x-goog-api-key': key },
+    body: JSON.stringify({
+      contents: [{ role: 'user', parts: (function(){
+        var parts = [{ text: prompt }];
+        /* Photo FIRST, then massing — the prompt calls them image 1 and
+           image 2, so the order is load-bearing, not cosmetic. */
+        var sm = satellite && /^data:(image\/\w+);base64,(.*)$/.exec(satellite);
+        if (sm) parts.push({ inline_data: { mime_type: sm[1], data: sm[2] } });
+        parts.push({ inline_data: { mime_type: m[1], data: m[2] } });
+        return parts;
+      })() }],
+      generationConfig: { responseModalities: ['TEXT', 'IMAGE'] }
+    })
+  })
+  .then(function (r) {
+    if (!r.ok) {
+      return r.text().then(function(){
+        throw new Error(r.status === 400 ? 'The Image AI token was rejected. Re-save it in Settings \u203a AI Keys.'
+                      : r.status === 429 ? 'Rate limited on your Image AI token \u2014 try again shortly.'
+                      : 'Google returned ' + r.status);
+      });
+    }
+    return r.json();
+  })
+  .then(function (d) {
+    var parts = (((d.candidates || [])[0] || {}).content || {}).parts || [];
+    for (var i = 0; i < parts.length; i++) {
+      var inl = parts[i].inlineData || parts[i].inline_data;
+      if (inl && inl.data) {
+        cb('data:' + (inl.mimeType || inl.mime_type || 'image/png') + ';base64,' + inl.data, null);
+        return;
+      }
+    }
+    throw new Error('Google returned no image \u2014 usually a safety filter.');
+  })
+  .catch(function (e) { cb(null, (e && e.message) || 'direct call failed'); });
+}
+
 function render(style, cb, aspect){
   cb = cb || function(){};
   var view = grabView();
   if (!view) { cb(null, 'Open the Site Visualizer first \u2014 the render is built from that view.'); return; }
   var f = siteFacts(), C = cfg();
-  var prompt = buildPrompt(f, style);
+  /* Resolve the satellite first — everything downstream depends on whether
+     we have it, including which prompt gets built. */
+  Promise.resolve(grabSatellite()).then(function (satellite) {
+  var prompt = buildPrompt(f, style, !!satellite);
 
-  fetch(C.url, {
+  var list = C.candidates || [C.url];
+  var idx = 0, target = list[0];
+
+  /* Tenant key first when they have one: no service, no shared budget,
+     and it is the credential they already manage in Settings. */
+  if (tenantKey()) {
+    viaTenantKey(view, prompt, function (url, err) {
+      if (url) { label(url, f).then(function (u) { cb(u, null); }); return; }
+      if (err === 'no-key' || err === 'bad-image') { attempt(); return; }
+      /* A real failure on their own key is theirs to see, not something to
+         silently bill to the shared service. */
+      cb(null, err);
+    }, satellite);
+    return;
+  }
+
+  function attempt(){
+  fetch(target, {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
-      image: view, prompt: prompt, style: style || 'day', aspectRatio: aspect || '16:9',
+      image: view, satellite: satellite || null,
+      prompt: prompt, style: style || 'day', aspectRatio: aspect || '16:9',
       site: { address: f.addr, lat: f.lat, lng: f.lng,
               arrays: f.arrays, kwdc: Math.round(f.kwdc), storage: f.storage }
     })
@@ -143761,10 +143979,24 @@ function render(style, cb, aspect){
   .then(function (j) {
     var out = j && (j.image || j.dataUrl || j.url);
     if (!out) throw new Error('the service returned no image');
+    remember(target);
     return label(out, f);
   })
   .then(function (finalUrl) { cb(finalUrl, null); })
-  .catch(function (e) { cb(null, (e && e.message) || 'render failed'); });
+  .catch(function (e) {
+    /* A same-origin 404 just means this tenant does not carry its own copy.
+       That is not an error worth showing anybody — it is the reason the
+       portal fallback exists. Try the next one first. */
+    var m = (e && e.message) || '';
+    if (idx + 1 < list.length && /404|no render service|failed to fetch/i.test(m)) {
+      idx++; target = list[idx];
+      return attempt();
+    }
+    cb(null, m || 'render failed');
+  });
+  }
+  attempt();
+  });
 }
 
 /* ── ENHANCE, WITH NO SERVICE AT ALL ──────────────────────────────────
