@@ -194,6 +194,21 @@ table.pv td.num{text-align:right;font-variant-numeric:tabular-nums}
     <div class="gate-title" id="gateTitle">Checking access…</div>
     <div class="gate-msg" id="gateMsg">One moment.</div>
     <div id="gateActions" class="row-btn" style="justify-content:center;margin-top:16px"></div>
+    <!-- Password sign-in. Hidden until asked for: Google is the common path,
+         but accounts created with an email and password in the Firebase
+         console have no Google identity and could not sign in here at all. -->
+    <div id="gatePw" style="display:none;margin-top:14px;text-align:left;max-width:320px;margin-left:auto;margin-right:auto">
+      <input type="email" id="gatePwEmail" placeholder="you@company.com" autocomplete="username"
+             style="width:100%;padding:9px 11px;margin-bottom:8px;border:1px solid #cbd5e1;border-radius:6px;font-size:14px;box-sizing:border-box">
+      <input type="password" id="gatePwPass" placeholder="Password" autocomplete="current-password"
+             onkeydown="if(event.key==='Enter')window.__gatePwSignIn()"
+             style="width:100%;padding:9px 11px;margin-bottom:10px;border:1px solid #cbd5e1;border-radius:6px;font-size:14px;box-sizing:border-box">
+      <div id="gatePwErr" style="display:none;color:#b91c1c;font-size:13px;margin-bottom:8px"></div>
+      <div class="row-btn" style="justify-content:center">
+        <button class="btn p" onclick="window.__gatePwSignIn()">Sign in</button>
+        <button class="btn" onclick="window.__gatePwReset()">Forgot password</button>
+      </div>
+    </div>
     <div class="gate-foot">Internal tool — ClearSky Energy Solutions</div>
   </div>
 </div>
@@ -7259,18 +7274,40 @@ var ALLOWED_HOSTS = (window.OMEGA_INTERNAL_HOSTS && window.OMEGA_INTERNAL_HOSTS.
   : ['tools.csebuilders.com', 'alpha.clearskyomega.com'];
 var DEV_HOSTS = ['localhost','127.0.0.1',''];   /* '' covers file:// */
 
+/* Every domain comparison in this gate runs through here. domainOf() already
+   lowercases the address, but nothing lowercased the LIST — so a config that
+   supplied 'ConcordEnergyUSA.com' refused every user in that tenant, and the
+   card blamed their account. Same case fold the Firestore rules apply in
+   userOrg(), applied to the other half of the comparison. */
+function normDomains(list){
+  var out=[], i, d;
+  for(i=0;i<(list||[]).length;i++){
+    d=String(list[i]||'').trim().toLowerCase().replace(/^@/,'');
+    if(d && out.indexOf(d)===-1) out.push(d);
+  }
+  return out;
+}
+
 /* Email domains that count as internal staff. Same two domains the
    Firestore rules treat as isAdmin(). */
-var INTERNAL_DOMAINS = ['clearsky-usa.com','csebuilders.com'];
+var INTERNAL_DOMAINS = normDomains(['clearsky-usa.com','csebuilders.com']);
 
 /* Tenants licensed to run this tool on their own projects. Kept separate
    from INTERNAL_DOMAINS on purpose: these accounts are NOT ClearSky staff
    and must not inherit anything else that keys off "internal". Adding a
    tenant here is the whole of granting access — the sign-in wall is the
-   boundary, and it now admits this list as well. */
-var TENANT_DOMAINS = (window.OMEGA_WORKBOOK_TENANTS && window.OMEGA_WORKBOOK_TENANTS.length)
-  ? window.OMEGA_WORKBOOK_TENANTS
-  : ['concordenergyusa.com'];
+   boundary, and it now admits this list as well.
+
+   ⚠ THE CONFIG OVERRIDE NOW ADDS TO THIS LIST RATHER THAN REPLACING IT.
+   Previously a non-empty window.OMEGA_WORKBOOK_TENANTS won outright, so a
+   deployment whose config.js carried an older or misspelled list silently
+   dropped the tenant named right here — and the domain in this file became
+   dead code that read like a grant. A tenant listed in either place is
+   admitted. To REVOKE a tenant, remove it from this line; removing it from a
+   config.js alone no longer does anything. */
+var TENANT_DOMAINS = normDomains(
+  ['concordenergyusa.com'].concat(window.OMEGA_WORKBOOK_TENANTS || [])
+);
 
 var FB = {
   apiKey:            "AIzaSyABoM1lgOYUnd5ZadaoTMhYmA9cHa8Tyo0",
@@ -7286,6 +7323,14 @@ function show(title, msg, actions){
   $('gateTitle').textContent = title;
   $('gateMsg').innerHTML = msg;
   $('gateActions').innerHTML = actions || '';
+  /* Every card change starts from a closed, empty form. Leaving a typed
+     password sitting behind a later card is both untidy and a small hazard. */
+  var pw=$('gatePw');
+  if(pw){
+    pw.style.display='none';
+    $('gatePwPass').value='';
+    $('gatePwErr').style.display='none';
+  }
 }
 function openApp(email){
   $('gate').style.display='none';
@@ -7300,8 +7345,24 @@ function openApp(email){
   if(window.__omegaBoot) window.__omegaBoot();
 }
 function domainOf(email){
-  var m=String(email||'').toLowerCase().split('@');
-  return m.length===2 ? m[1] : '';
+  /* Trim as well as lower-case. Firebase hands back a clean address, but the
+     password box below takes one typed by hand, and a trailing space pasted
+     in from a mail client would otherwise deny a licensed tenant. */
+  var m=String(email||'').trim().toLowerCase().split('@');
+  return m.length===2 ? m[1].trim() : '';
+}
+/* user.email is normally set, but it comes back EMPTY on a session whose
+   token predates an email change in the Firebase console — and every check in
+   this gate keys off the domain, so an empty address matches nothing and the
+   user is told their account is unlicensed. It isn't; the session is stale.
+   providerData still carries the address from the identity provider, so try
+   that before concluding anything. */
+function emailOf(user){
+  if(!user) return '';
+  if(user.email) return user.email;
+  var pd=user.providerData||[], i;
+  for(i=0;i<pd.length;i++){ if(pd[i] && pd[i].email) return pd[i].email; }
+  return '';
 }
 function isInternal(email){
   var dom=domainOf(email), i;
@@ -7373,21 +7434,115 @@ function signIn(){
 window.__gateSignIn=signIn;
 window.__gateSignOut=function(){ auth.signOut(); };
 
-auth.onAuthStateChanged(function(user){
-  if(!user){
-    show('Sign in required',
-         'Sign in with your ClearSky or licensed tenant account to build project workbooks.',
-         '<button class="btn p" onclick="window.__gateSignIn()">Sign in with Google</button>');
+/* ---- password sign-in ----
+   Not every account here has a Google identity. Anyone added through the
+   Firebase console with an address and a password has only that, and until
+   now the gate offered them no way in: the sole button ran the Google popup,
+   and signing out of a working session left them stranded on it. */
+function pwErr(msg){
+  var e=$('gatePwErr');
+  e.textContent=msg;
+  e.style.display='block';
+}
+window.__gateShowPw=function(){
+  $('gatePw').style.display='block';
+  var box=$('gatePwEmail');
+  if(!box.value && window.__gateLastEmail) box.value=window.__gateLastEmail;
+  (box.value ? $('gatePwPass') : box).focus();
+};
+window.__gatePwSignIn=function(){
+  var em=String($('gatePwEmail').value||'').trim();
+  var pw=String($('gatePwPass').value||'');
+  if(!em || !pw){ pwErr('Enter both an email address and a password.'); return; }
+  $('gatePwErr').style.display='none';
+  auth.signInWithEmailAndPassword(em, pw)['catch'](function(err){
+    var code=(err && err.code)||'';
+    if(code==='auth/wrong-password' || code==='auth/invalid-credential'
+       || code==='auth/user-not-found' || code==='auth/invalid-email'){
+      /* Deliberately one message for all four: saying which half was wrong
+         tells an outsider which addresses exist. */
+      pwErr('That email and password combination was not recognised.');
+    } else if(code==='auth/too-many-requests'){
+      pwErr('Too many attempts. Wait a few minutes, or reset the password.');
+    } else if(code==='auth/user-disabled'){
+      pwErr('That account is disabled. Contact dev@clearsky-usa.com.');
+    } else {
+      pwErr(String(err && err.message ? err.message : err));
+    }
+  });
+};
+window.__gatePwReset=function(){
+  var em=String($('gatePwEmail').value||'').trim();
+  if(!em){ pwErr('Enter your email address first, then choose Forgot password.'); return; }
+  auth.sendPasswordResetEmail(em)['catch'](function(){})
+    .then(function(){
+      /* Same confirmation whether or not the address exists, for the reason
+         above. The mail either arrives or it doesn't. */
+      var e=$('gatePwErr');
+      e.style.color='#15803d';
+      e.textContent='If that address has an account, a reset link is on its way.';
+      e.style.display='block';
+    });
+};
+
+/* Decide on a user we have already tried to refresh. Split out so the
+   refresh path below and the ordinary path share one set of outcomes. */
+function decide(user){
+  var email = emailOf(user);
+
+  /* NO ADDRESS AT ALL — not a licensing outcome, and must not be reported as
+     one. The old card rendered '<b></b> is not on an account licensed for
+     this tool', naming nobody, and sent the customer to ask for access they
+     already had. Signing out and back in mints a fresh token with the
+     address on it. */
+  if(!email){
+    show('Session needs refreshing',
+         'You are signed in, but this session is carrying no email address — '
+       + 'which happens after an account address is changed. Sign out and sign '
+       + 'in again to refresh it. If it repeats, tell dev@clearsky-usa.com.',
+         '<button class="btn p" onclick="window.__gateSignOut()">Sign out and start over</button>');
     return;
   }
-  if(!mayUse(user.email)){
+
+  if(!mayUse(email)){
+    /* Kept so the password form can prefill it after a sign-out — the person
+       who lands here has usually mistyped or used a personal address, and
+       retyping it into an empty box is the third annoyance in a row. */
+    window.__gateLastEmail = email;
     show('No access',
-         '<b>'+String(user.email||'')+'</b> is not on an account licensed for this tool. '
+         '<b>'+email+'</b> is not on an account licensed for this tool. '
        + 'If you need access, contact dev@clearsky-usa.com.',
          '<button class="btn" onclick="window.__gateSignOut()">Sign in as someone else</button>');
     return;
   }
-  openApp(user.email);
+
+  openApp(email);
+}
+
+auth.onAuthStateChanged(function(user){
+  if(!user){
+    show('Sign in required',
+         'Sign in with your ClearSky or licensed tenant account to build project workbooks.',
+         '<button class="btn p" onclick="window.__gateSignIn()">Sign in with Google</button>'
+       + '<button class="btn" onclick="window.__gateShowPw()">Use email and password</button>');
+    return;
+  }
+
+  /* One forced round-trip before refusing anybody, but ONLY when the address
+     is missing — a stale token is the one case a refresh fixes, and making
+     every sign-in wait on a network call to solve a rare fault is a bad
+     trade. reload() re-reads the account record; getIdToken(true) discards
+     the cached claims. Either alone has been seen to return the old blank. */
+  if(!emailOf(user) && user.reload && user.getIdToken){
+    show('Checking access…', 'One moment.');
+    user.reload()
+      .then(function(){ return user.getIdToken(true); })
+      ['catch'](function(){ /* offline or revoked — decide() reports it */ })
+      .then(function(){ decide(auth.currentUser || user); });
+    return;
+  }
+
+  decide(user);
 });
 
 })();
